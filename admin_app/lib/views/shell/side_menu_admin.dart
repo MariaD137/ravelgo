@@ -1,0 +1,91 @@
+import 'package:flutter/material.dart';
+import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/views/auth/admin_login_screen.dart';
+import 'package:ravelgo_admin/views/carpaddy/car_paddy_requests_screen.dart';
+import 'package:ravelgo_admin/views/couriers/courier_requests_screen.dart';
+import 'package:ravelgo_admin/views/pricing/pricing_surge_screen.dart';
+import 'package:ravelgo_admin/views/promotions/loyalty_program_screen.dart';
+import 'package:ravelgo_admin/views/rentals/rental_listings_screen.dart';
+import 'package:ravelgo_admin/views/reports/analytics_screen.dart';
+import 'package:ravelgo_admin/views/riders/rider_list_screen.dart';
+import 'package:ravelgo_admin/views/safety/emergency_alerts_screen.dart';
+import 'package:ravelgo_admin/views/safety/fraud_alerts_screen.dart';
+import 'package:ravelgo_admin/views/settings/admin_profile_screen.dart';
+import 'package:ravelgo_admin/views/settings/admin_roles_screen.dart';
+import 'package:ravelgo_admin/views/subscriptions/driver_subscriptions_screen.dart';
+
+class SideMenuAdmin extends StatelessWidget {
+  const SideMenuAdmin({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      backgroundColor: Colors.white,
+      child: SafeArea(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              color: AppColors.background,
+              child: Row(
+                children: [
+                  const CircleAvatar(radius: 26, backgroundColor: Colors.white, child: Icon(Icons.admin_panel_settings_outlined, color: Colors.black87)),
+                  const SizedBox(width: 14),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text("Ops Admin", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                        SizedBox(height: 2),
+                        Text("admin@ravelgo.com", style: TextStyle(fontSize: 12, color: Colors.black54)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            _item(context, Icons.people_outline, "Riders", () => const RiderListScreen()),
+            _item(context, Icons.local_shipping_outlined, "Courier Requests", () => const CourierRequestsScreen()),
+            _item(context, Icons.badge_outlined, "Car Paddy Requests", () => const CarPaddyRequestsScreen()),
+            _item(context, Icons.key_outlined, "Luxury Rental Listings", () => const RentalListingsScreen()),
+            _item(context, Icons.tune_outlined, "Pricing & Surge", () => const PricingSurgeScreen()),
+            _item(context, Icons.workspace_premium_outlined, "Driver Subscriptions", () => const DriverSubscriptionsScreen()),
+            AppComponents.divider(),
+            _item(context, Icons.warning_amber_outlined, "Fraud Alerts", () => const FraudAlertsScreen()),
+            _item(context, Icons.sos, "Emergency Alerts", () => const EmergencyAlertsScreen()),
+            _item(context, Icons.emoji_events_outlined, "Loyalty & Promotions", () => const LoyaltyProgramScreen()),
+            AppComponents.divider(),
+            _item(context, Icons.bar_chart_outlined, "Reports & Analytics", () => const AnalyticsScreen()),
+            _item(context, Icons.manage_accounts_outlined, "Admin Roles", () => const AdminRolesScreen()),
+            _item(context, Icons.person_outline, "My Profile", () => const AdminProfileScreen()),
+            _item(context, Icons.logout, "Log out", () => const AdminLoginScreen(), replace: true),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _item(BuildContext context, IconData icon, String label, Widget Function() builder, {bool replace = false}) {
+    return InkWell(
+      onTap: () {
+        Navigator.pop(context);
+        if (replace) {
+          Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => builder()), (route) => false);
+        } else {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => builder()));
+        }
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, size: 21, color: Colors.black87),
+            const SizedBox(width: 16),
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500))),
+          ],
+        ),
+      ),
+    );
+  }
+}

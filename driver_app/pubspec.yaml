@@ -1,0 +1,35 @@
+name: ravelgo_driver_app
+description: "RavelGo Driver Application"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_native_splash: ^2.4.1
+  cupertino_icons: ^1.0.8
+  geolocator: ^14.0.2
+  google_maps_flutter: ^2.10.0
+  flutter_dotenv: ^6.0.0
+  image_picker: ^1.0.0
+  share_plus: ^12.0.1
+  dotted_border: ^3.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - .env
+    - assets/
+flutter_native_splash:
+  color: "#000000"
+  image: assets/logo.png
+  android: true
+  ios: true
