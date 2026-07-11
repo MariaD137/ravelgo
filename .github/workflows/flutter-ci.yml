@@ -1,0 +1,45 @@
+name: Flutter CI
+
+on:
+  pull_request:
+    paths:
+      - "user_app/**"
+      - "driver_app/**"
+      - "admin_app/**"
+      - ".github/workflows/flutter-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "user_app/**"
+      - "driver_app/**"
+      - "admin_app/**"
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [user_app, driver_app, admin_app]
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: Set up placeholder .env
+        run: cp .env.example .env
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test

@@ -1,0 +1,126 @@
+import * as cdk from "aws-cdk-lib";
+import * as apprunner from "aws-cdk-lib/aws-apprunner";
+import * as ec2 from "aws-cdk-lib/aws-ec2";
+import * as ecr from "aws-cdk-lib/aws-ecr";
+import * as iam from "aws-cdk-lib/aws-iam";
+import * as rds from "aws-cdk-lib/aws-rds";
+import * as s3 from "aws-cdk-lib/aws-s3";
+import type { Construct } from "constructs";
+
+export interface ApiStackProps extends cdk.StackProps {
+  vpc: ec2.IVpc;
+  dbInstance: rds.DatabaseInstance;
+  dbSecurityGroup: ec2.SecurityGroup;
+  documentsBucket: s3.Bucket;
+  assetsBucket: s3.Bucket;
+  cognitoUserPoolId: string;
+  cognitoUserPoolClientId: string;
+}
+
+export class ApiStack extends cdk.Stack {
+  public readonly repository: ecr.Repository;
+  public readonly service: apprunner.CfnService;
+
+  constructor(scope: Construct, id: string, props: ApiStackProps) {
+    super(scope, id, props);
+
+    this.repository = new ecr.Repository(this, "BackendRepository", {
+      repositoryName: "ravelgo-backend",
+      imageScanOnPush: true,
+      lifecycleRules: [{ maxImageCount: 20 }],
+    });
+
+    // Lets App Runner's compute reach the RDS instance, which lives in
+    // isolated subnets with no route to the internet.
+    const connectorSecurityGroup = new ec2.SecurityGroup(this, "ConnectorSecurityGroup", {
+      vpc: props.vpc,
+      description: "App Runner VPC connector -> RDS",
+      allowAllOutbound: true,
+    });
+
+    // A standalone ingress-rule resource (rather than dbSecurityGroup.addIngressRule)
+    // so the rule lives in this stack instead of mutating DataStack's security
+    // group — mutating it there would create a dependency cycle between the two.
+    new ec2.CfnSecurityGroupIngress(this, "DbIngressFromConnector", {
+      groupId: props.dbSecurityGroup.securityGroupId,
+      sourceSecurityGroupId: connectorSecurityGroup.securityGroupId,
+      ipProtocol: "tcp",
+      fromPort: 5432,
+      toPort: 5432,
+      description: "From App Runner VPC connector",
+    });
+
+    const vpcConnector = new apprunner.CfnVpcConnector(this, "VpcConnector", {
+      subnets: props.vpc.selectSubnets({ subnetType: ec2.SubnetType.PRIVATE_ISOLATED }).subnetIds,
+      securityGroups: [connectorSecurityGroup.securityGroupId],
+    });
+
+    const accessRole = new iam.Role(this, "AppRunnerAccessRole", {
+      assumedBy: new iam.ServicePrincipal("build.apprunner.amazonaws.com"),
+      description: "Lets App Runner pull the backend image from ECR",
+    });
+    this.repository.grantPull(accessRole);
+
+    const instanceRole = new iam.Role(this, "AppRunnerInstanceRole", {
+      assumedBy: new iam.ServicePrincipal("tasks.apprunner.amazonaws.com"),
+      description: "Runtime permissions for the running backend container",
+    });
+    props.dbInstance.secret?.grantRead(instanceRole);
+    props.documentsBucket.grantReadWrite(instanceRole);
+    props.assetsBucket.grantReadWrite(instanceRole);
+
+    const dbSecretArn = props.dbInstance.secret!.secretArn;
+
+    this.service = new apprunner.CfnService(this, "BackendService", {
+      serviceName: "ravelgo-backend",
+      sourceConfiguration: {
+        autoDeploymentsEnabled: true,
+        authenticationConfiguration: { accessRoleArn: accessRole.roleArn },
+        imageRepository: {
+          imageRepositoryType: "ECR",
+          imageIdentifier: `${this.repository.repositoryUri}:latest`,
+          imageConfiguration: {
+            port: "8080",
+            runtimeEnvironmentVariables: [
+              { name: "NODE_ENV", value: "production" },
+              { name: "AWS_REGION", value: this.region },
+              { name: "DB_HOST", value: props.dbInstance.instanceEndpoint.hostname },
+              { name: "DB_PORT", value: props.dbInstance.instanceEndpoint.port.toString() },
+              { name: "DB_NAME", value: "ravelgo" },
+              { name: "COGNITO_USER_POOL_ID", value: props.cognitoUserPoolId },
+              { name: "COGNITO_CLIENT_ID", value: props.cognitoUserPoolClientId },
+              { name: "DOCUMENTS_BUCKET", value: props.documentsBucket.bucketName },
+              { name: "ASSETS_BUCKET", value: props.assetsBucket.bucketName },
+            ],
+            runtimeEnvironmentSecrets: [
+              { name: "DB_USERNAME", value: `${dbSecretArn}:username::` },
+              { name: "DB_PASSWORD", value: `${dbSecretArn}:password::` },
+            ],
+          },
+        },
+      },
+      instanceConfiguration: {
+        cpu: "1024",
+        memory: "2048",
+        instanceRoleArn: instanceRole.roleArn,
+      },
+      networkConfiguration: {
+        egressConfiguration: {
+          egressType: "VPC",
+          vpcConnectorArn: vpcConnector.attrVpcConnectorArn,
+        },
+      },
+      healthCheckConfiguration: {
+        protocol: "HTTP",
+        path: "/health",
+        interval: 10,
+        timeout: 5,
+        healthyThreshold: 1,
+        unhealthyThreshold: 5,
+      },
+    });
+
+    new cdk.CfnOutput(this, "ServiceUrl", { value: `https://${this.service.attrServiceUrl}` });
+    new cdk.CfnOutput(this, "EcrRepositoryUri", { value: this.repository.repositoryUri });
+  }
+}

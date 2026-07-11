@@ -1,0 +1,43 @@
+name: Backend Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-deploy.yml"
+
+permissions:
+  id-token: write # required to assume the AWS role via OIDC
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image
+        working-directory: backend
+        env:
+          REPOSITORY_URI: ${{ vars.ECR_REPOSITORY_URI }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t "$REPOSITORY_URI:$IMAGE_TAG" -t "$REPOSITORY_URI:latest" .
+          docker push "$REPOSITORY_URI:$IMAGE_TAG"
+          docker push "$REPOSITORY_URI:latest"
+
+      - name: Trigger App Runner deployment
+        run: |
+          aws apprunner start-deployment --service-arn "${{ vars.APP_RUNNER_SERVICE_ARN }}"

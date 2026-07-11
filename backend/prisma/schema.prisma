@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  RIDER
+  DRIVER
+  ADMIN
+}
+
+enum DriverStatus {
+  ACTIVE
+  PENDING_REVIEW
+  SUSPENDED
+}
+
+enum TripStatus {
+  REQUESTED
+  MATCHED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum DocumentStatus {
+  NOT_UPLOADED
+  PENDING
+  APPROVED
+  EXPIRING_SOON
+  REJECTED
+}
+
+enum CarPaddyStatus {
+  SUBMITTED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum RentalListingStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+model User {
+  id                String   @id @default(uuid())
+  cognitoSub        String   @unique
+  role              Role     @default(RIDER)
+  firstName         String
+  lastName          String
+  email             String   @unique
+  phoneNumber       String?
+  isLoyaltyMember   Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  driverProfile     Driver?
+  ridesAsRider      Trip[]   @relation("RiderTrips")
+  supportTickets    SupportTicket[]
+}
+
+model Driver {
+  id                String       @id @default(uuid())
+  userId            String       @unique
+  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status            DriverStatus @default(PENDING_REVIEW)
+  rating            Float        @default(5.0)
+  totalTrips        Int          @default(0)
+  preferredLanguage String       @default("English")
+  quietModePreferred Boolean     @default(false)
+  subscriptionActive Boolean     @default(false)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  vehicles          Vehicle[]
+  documents         DriverDocument[]
+  tripsAsDriver     Trip[]       @relation("DriverTrips")
+  carPaddyRequests  CarPaddyRequest[]
+  rentalListings    RentalListing[]
+}
+
+model Vehicle {
+  id               String   @id @default(uuid())
+  driverId         String
+  driver           Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  brand            String
+  model            String
+  colour           String
+  plateNumber      String   @unique
+  year             String
+  isPrimary        Boolean  @default(false)
+  listedForRental  Boolean  @default(false)
+  createdAt        DateTime @default(now())
+
+  rentalListings   RentalListing[]
+}
+
+model Trip {
+  id            String     @id @default(uuid())
+  riderId       String
+  rider         User       @relation("RiderTrips", fields: [riderId], references: [id])
+  driverId      String?
+  driver        Driver?    @relation("DriverTrips", fields: [driverId], references: [id])
+  pickup        String
+  destination   String
+  estimatedFare Float
+  finalFare     Float?
+  status        TripStatus @default(REQUESTED)
+  category      String     @default("Personal")
+  pickupNote    String?
+  requestedAt   DateTime   @default(now())
+  completedAt   DateTime?
+}
+
+model DriverDocument {
+  id         String         @id @default(uuid())
+  driverId   String
+  driver     Driver         @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  title      String
+  status     DocumentStatus @default(NOT_UPLOADED)
+  fileKey    String?
+  expiryDate DateTime?
+  updatedAt  DateTime       @updatedAt
+}
+
+model CarPaddyRequest {
+  id           String         @id @default(uuid())
+  driverId     String
+  driver       Driver         @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  plateNumber  String
+  status       CarPaddyStatus @default(SUBMITTED)
+  submittedAt  DateTime       @default(now())
+  reviewedAt   DateTime?
+}
+
+model RentalListing {
+  id         String               @id @default(uuid())
+  driverId   String
+  driver     Driver               @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicleId  String
+  vehicle    Vehicle              @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  dailyRate  Float
+  location   String
+  status     RentalListingStatus  @default(PENDING_APPROVAL)
+  createdAt  DateTime             @default(now())
+}
+
+model SupportTicket {
+  id        String       @id @default(uuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject   String
+  category  String
+  status    TicketStatus @default(OPEN)
+  createdAt DateTime     @default(now())
+}

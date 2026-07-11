@@ -1,0 +1,32 @@
+name: Infra CI
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - ".github/workflows/infra-ci.yml"
+
+defaults:
+  run:
+    working-directory: infra
+
+jobs:
+  synth:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: infra/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: CDK synth (no AWS credentials needed — stacks are environment-agnostic)
+        run: npx cdk synth

@@ -2,20 +2,26 @@
 
 RavelGo is a ride-hailing platform (rides, luxury car rental, courier/delivery,
 and vehicle license renewal via "Car Paddy") built from the Ravel Go Product
-Requirement Document. This repo contains three independent Flutter apps:
+Requirement Document.
 
-| App | Folder | Description |
+| Component | Folder | Description |
 |---|---|---|
-| Rider | [`user_app/`](./user_app) | The rider-facing app: booking, tracking, services, account |
-| Driver | [`driver_app/`](./driver_app) | The driver-facing app: onboarding, trips, earnings, documents |
-| Admin | [`admin_app/`](./admin_app) | The operations/back-office dashboard |
+| Rider app | [`user_app/`](./user_app) | Flutter: booking, tracking, services, account |
+| Driver app | [`driver_app/`](./driver_app) | Flutter: onboarding, trips, earnings, documents |
+| Admin app | [`admin_app/`](./admin_app) | Flutter: operations/back-office dashboard |
+| Backend | [`backend/`](./backend) | Node.js/Express API shared by all three apps |
+| Infrastructure | [`infra/`](./infra) | AWS CDK — provisions everything the backend runs on |
+
+See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for the full path from a fresh AWS
+account to a live, auto-deploying backend.
 
 ## Status
 
-All three apps are frontend MVPs: screens and flows are built out with local
-mock data, and there is no backend yet. Each app is structured so a real
-API/service layer and state management can be introduced later without
-reworking the UI.
+The three Flutter apps are UI-complete MVPs (mock data, no live API calls
+yet). The backend, infrastructure, and CI/CD pipeline described in
+`DEPLOYMENT.md` exist and are validated (synth/build/boot tested), but wiring
+the Flutter apps' screens to call the real API instead of their local mock
+data is the next step — see `DEPLOYMENT.md` for details.
 
 ## Getting started
 
