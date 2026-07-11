@@ -47,5 +47,7 @@
 		<true/>
 		<key>UIStatusBarHidden</key>
 		<false/>
-	</dict>
+		<key>GMSApiKey</key>
+	<string>$(GOOGLE_MAPS_API_KEY)</string>
+</dict>
 </plist>

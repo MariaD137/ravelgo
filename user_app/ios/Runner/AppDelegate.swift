@@ -11,7 +11,9 @@ import GoogleMaps   // 👈 Add this import
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        GMSServices.provideAPIKey("AIzaSyCgU5ni3lgFTdw77-q2uGQuc6P4Cunv1_U")
+        if let apiKey = Bundle.main.object(forInfoDictionaryKey: "GMSApiKey") as? String, !apiKey.isEmpty {
+            GMSServices.provideAPIKey(apiKey)
+        }
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
 }
