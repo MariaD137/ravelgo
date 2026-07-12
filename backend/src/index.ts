@@ -8,7 +8,12 @@ import { carPaddyRouter } from "./routes/carpaddy.routes";
 import { documentsRouter } from "./routes/documents.routes";
 import { driversRouter } from "./routes/drivers.routes";
 import { healthRouter } from "./routes/health.routes";
+import { rentalsRouter } from "./routes/rentals.routes";
+import { ridersRouter } from "./routes/riders.routes";
+import { supportRouter } from "./routes/support.routes";
 import { tripsRouter } from "./routes/trips.routes";
+import { uploadsRouter } from "./routes/uploads.routes";
+import { vehiclesRouter } from "./routes/vehicles.routes";
 
 const app = express();
 
@@ -19,6 +24,11 @@ app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
 
 app.use(healthRouter);
 app.use("/api", driversRouter);
+app.use("/api", ridersRouter);
+app.use("/api", vehiclesRouter);
+app.use("/api", rentalsRouter);
+app.use("/api", supportRouter);
+app.use("/api", uploadsRouter);
 app.use("/api", tripsRouter);
 app.use("/api", documentsRouter);
 app.use("/api", carPaddyRouter);

@@ -40,6 +40,37 @@ driversRouter.patch("/drivers/:id/status", requireAuth, requireRole("Admin"), as
   res.json(driver);
 });
 
+const createDriverSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  email: z.string().email(),
+  phoneNumber: z.string().optional(),
+  preferredLanguage: z.string().default("English"),
+});
+
+// Driver: create my profile (called once, right after Cognito sign-up completes
+// the driver onboarding flow — Cognito itself has no Postgres row for the user)
+driversRouter.post("/drivers/me", requireAuth, requireRole("Driver"), async (req, res) => {
+  const parsed = createDriverSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { preferredLanguage, ...userFields } = parsed.data;
+
+  const user = await prisma.user.upsert({
+    where: { cognitoSub: req.user!.sub },
+    update: {},
+    create: { cognitoSub: req.user!.sub, role: "DRIVER", ...userFields },
+  });
+
+  const driver = await prisma.driver.upsert({
+    where: { userId: user.id },
+    update: {},
+    create: { userId: user.id, preferredLanguage },
+  });
+
+  res.status(201).json(driver);
+});
+
 // Driver: get my own profile
 driversRouter.get("/drivers/me", requireAuth, requireRole("Driver"), async (req, res) => {
   const driver = await prisma.driver.findFirst({

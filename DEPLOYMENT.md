@@ -52,7 +52,8 @@ account or a real Flutter SDK installed:
 
 | Checked | How |
 |---|---|
-| Backend compiles, lints, boots, and enforces auth | Ran it directly: `/health` → 200, unauthenticated `/api/drivers` → 401 |
+| Backend compiles, lints, boots, and enforces auth on every route | Ran it directly against a real local Postgres 16 instance: `/health` reports `database: connected`, every protected route (`/api/riders`, `/api/vehicles`, `/api/rentals`, `/api/support-tickets`, `/api/uploads/presign`, etc.) correctly 401s without a token |
+| Prisma migration + seed script | Actually applied `prisma migrate dev` and `npm run prisma:seed` against a real Postgres 16 instance — not just type-checked. Verified the seeded rows directly with `psql` |
 | CDK app synthesizes to valid CloudFormation | Ran `cdk synth` on all 6 stacks — caught and fixed one real dependency-cycle bug this way |
 | Cross-stack wiring (DB host/port/creds, Cognito IDs → App Runner env) | Inspected the synthesized template directly |
 | Docker image build | **Not run** — no Docker daemon available in this sandbox. The Dockerfile mirrors the exact build/generate/compile steps already verified above, so it should work, but build it yourself once before relying on it |
