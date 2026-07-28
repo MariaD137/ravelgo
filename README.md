@@ -13,7 +13,9 @@ Requirement Document.
 | Infrastructure | [`infra/`](./infra) | AWS CDK — provisions everything the backend runs on |
 
 See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for the full path from a fresh AWS
-account to a live, auto-deploying backend.
+account to a live, auto-deploying backend, and
+[`docs/admin-bootstrap.md`](./docs/admin-bootstrap.md) for how to create the
+first Admin user once Cognito is deployed.
 
 ## Status
 

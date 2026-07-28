@@ -18,6 +18,13 @@ const rawEnvSchema = z.object({
   AWS_REGION: z.string().default("us-east-1"),
   DOCUMENTS_BUCKET: z.string().optional(),
   ASSETS_BUCKET: z.string().optional(),
+  // Comma-separated list of allowed origins for CORS, e.g.
+  // "https://app.ravelgo.com,https://admin.ravelgo.com". Empty in
+  // development so local Flutter/web dev builds on arbitrary ports aren't
+  // blocked; required to actually allow any cross-origin request once
+  // NODE_ENV is production (enforced below, not by zod, so the message names
+  // the real cause instead of a generic schema error).
+  ALLOWED_ORIGINS: z.string().optional(),
 });
 
 export interface Env {
@@ -29,6 +36,7 @@ export interface Env {
   AWS_REGION: string;
   DOCUMENTS_BUCKET?: string;
   ASSETS_BUCKET?: string;
+  ALLOWED_ORIGINS: string[];
 }
 
 function loadEnv(): Env {
@@ -51,6 +59,15 @@ function loadEnv(): Env {
     databaseUrl = `postgresql://${user}:${pass}@${data.DB_HOST}:${data.DB_PORT}/${data.DB_NAME}`;
   }
 
+  const allowedOrigins = (data.ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (data.NODE_ENV === "production" && allowedOrigins.length === 0) {
+    throw new Error("ALLOWED_ORIGINS is required in production (comma-separated list of allowed origins)");
+  }
+
   return {
     NODE_ENV: data.NODE_ENV,
     PORT: data.PORT,
@@ -60,6 +77,7 @@ function loadEnv(): Env {
     AWS_REGION: data.AWS_REGION,
     DOCUMENTS_BUCKET: data.DOCUMENTS_BUCKET,
     ASSETS_BUCKET: data.ASSETS_BUCKET,
+    ALLOWED_ORIGINS: allowedOrigins,
   };
 }
 

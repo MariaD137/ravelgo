@@ -17,7 +17,7 @@ declare global {
   }
 }
 
-const verifier = CognitoJwtVerifier.create({
+export const verifier = CognitoJwtVerifier.create({
   userPoolId: env.COGNITO_USER_POOL_ID,
   tokenUse: "access",
   clientId: env.COGNITO_CLIENT_ID,

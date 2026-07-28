@@ -55,6 +55,44 @@ enum TicketStatus {
   RESOLVED
 }
 
+enum CourierStatus {
+  REQUESTED
+  MATCHED
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum AlertType {
+  SOS
+  FRAUD_SUSPECTED
+}
+
+enum AlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+enum PaymentMethod {
+  CARD
+  CASH
+  WALLET
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
 model User {
   id                String   @id @default(uuid())
   cognitoSub        String   @unique
@@ -71,6 +109,9 @@ model User {
   driverProfile     Driver?
   ridesAsRider      Trip[]   @relation("RiderTrips")
   supportTickets    SupportTicket[]
+  courierRequestsSent CourierRequest[] @relation("CourierSender")
+  emergencyAlerts   EmergencyAlert[]
+  payments          Payment[]
 }
 
 model Driver {
@@ -91,6 +132,8 @@ model Driver {
   tripsAsDriver     Trip[]       @relation("DriverTrips")
   carPaddyRequests  CarPaddyRequest[]
   rentalListings    RentalListing[]
+  courierRequestsHandled CourierRequest[] @relation("CourierDriver")
+  subscription      DriverSubscription?
 }
 
 model Vehicle {
@@ -124,6 +167,9 @@ model Trip {
   pickupNote    String?
   requestedAt   DateTime   @default(now())
   completedAt   DateTime?
+
+  payment       Payment?
+  emergencyAlerts EmergencyAlert[]
 }
 
 model DriverDocument {
@@ -167,4 +213,72 @@ model SupportTicket {
   category  String
   status    TicketStatus @default(OPEN)
   createdAt DateTime     @default(now())
+}
+
+model CourierRequest {
+  id                  String        @id @default(uuid())
+  senderId             String
+  sender               User          @relation("CourierSender", fields: [senderId], references: [id])
+  driverId             String?
+  driver               Driver?       @relation("CourierDriver", fields: [driverId], references: [id])
+  pickupAddress        String
+  dropoffAddress       String
+  packageDescription   String
+  recipientName        String
+  recipientPhone       String
+  estimatedFare        Float
+  finalFare            Float?
+  status               CourierStatus @default(REQUESTED)
+  requestedAt          DateTime      @default(now())
+  deliveredAt          DateTime?
+}
+
+model EmergencyAlert {
+  id         String      @id @default(uuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tripId     String?
+  trip       Trip?       @relation(fields: [tripId], references: [id])
+  type       AlertType
+  message    String?
+  status     AlertStatus @default(OPEN)
+  createdAt  DateTime    @default(now())
+  resolvedAt DateTime?
+}
+
+model SubscriptionPlan {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  description  String
+  priceMonthly Float
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  subscriptions DriverSubscription[]
+}
+
+model DriverSubscription {
+  id               String             @id @default(uuid())
+  driverId         String             @unique
+  driver           Driver             @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  planId           String
+  plan             SubscriptionPlan   @relation(fields: [planId], references: [id])
+  status           SubscriptionStatus @default(ACTIVE)
+  startedAt        DateTime           @default(now())
+  currentPeriodEnd DateTime
+}
+
+model Payment {
+  id                 String        @id @default(uuid())
+  tripId             String        @unique
+  trip               Trip          @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  userId             String
+  user               User          @relation(fields: [userId], references: [id])
+  amount             Float
+  currency           String        @default("USD")
+  method             PaymentMethod @default(CARD)
+  status             PaymentStatus @default(PENDING)
+  providerReference  String?
+  createdAt          DateTime      @default(now())
+  paidAt             DateTime?
 }

@@ -14,30 +14,6 @@ ridersRouter.get("/riders", requireAuth, requireRole("Admin"), async (_req, res)
   res.json(riders);
 });
 
-// Admin: get a single rider with trip history
-ridersRouter.get("/riders/:id", requireAuth, requireRole("Admin"), async (req, res) => {
-  const rider = await prisma.user.findFirst({
-    where: { id: req.params.id, role: "RIDER" },
-    include: { ridesAsRider: { orderBy: { requestedAt: "desc" }, take: 20 } },
-  });
-  if (!rider) return res.status(404).json({ error: "Rider not found" });
-  res.json(rider);
-});
-
-const statusSchema = z.object({ suspended: z.boolean() });
-
-// Admin: suspend / reactivate a rider
-ridersRouter.patch("/riders/:id/status", requireAuth, requireRole("Admin"), async (req, res) => {
-  const parsed = statusSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-
-  const rider = await prisma.user.update({
-    where: { id: req.params.id },
-    data: { suspended: parsed.data.suspended },
-  });
-  res.json(rider);
-});
-
 // Rider: get my own profile (creates it on first call, since Cognito sign-up
 // doesn't itself create a Postgres row — the app calls this right after auth)
 const meSchema = z.object({
@@ -62,5 +38,32 @@ ridersRouter.post("/riders/me", requireAuth, requireRole("Rider"), async (req, r
 ridersRouter.get("/riders/me", requireAuth, requireRole("Rider"), async (req, res) => {
   const rider = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
   if (!rider) return res.status(404).json({ error: "Rider profile not found" });
+  res.json(rider);
+});
+
+// Admin: get a single rider with trip history.
+// Registered after the literal "/riders/me" routes above — Express matches
+// path segments in registration order, so ":id" would otherwise swallow
+// "me" and shadow the rider's own-profile routes with this Admin check.
+ridersRouter.get("/riders/:id", requireAuth, requireRole("Admin"), async (req, res) => {
+  const rider = await prisma.user.findFirst({
+    where: { id: req.params.id, role: "RIDER" },
+    include: { ridesAsRider: { orderBy: { requestedAt: "desc" }, take: 20 } },
+  });
+  if (!rider) return res.status(404).json({ error: "Rider not found" });
+  res.json(rider);
+});
+
+const statusSchema = z.object({ suspended: z.boolean() });
+
+// Admin: suspend / reactivate a rider
+ridersRouter.patch("/riders/:id/status", requireAuth, requireRole("Admin"), async (req, res) => {
+  const parsed = statusSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const rider = await prisma.user.update({
+    where: { id: req.params.id },
+    data: { suspended: parsed.data.suspended },
+  });
   res.json(rider);
 });

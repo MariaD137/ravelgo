@@ -16,12 +16,26 @@ TypeScript, PostgreSQL via Prisma, authenticated with Amazon Cognito JWTs.
 - `GET /api/documents/me`, `POST /api/documents` (driver), `PATCH /api/documents/:id/review` (admin)
 - `POST /api/car-paddy` (driver), `GET /api/car-paddy` (admin), `PATCH /api/car-paddy/:id` (admin)
 - `GET /api/admin/dashboard` (admin)
+- `POST /api/courier-requests` (rider), `GET /api/courier-requests/available` (driver), `PATCH /api/courier-requests/:id/accept` (driver), `PATCH /api/courier-requests/:id/status` (assigned driver or admin), `GET /api/courier-requests/:id` (party to it, or admin), `GET /api/courier-requests` (admin)
+- `POST /api/emergency-alerts` (any authenticated user), `GET /api/emergency-alerts/mine` (any authenticated user), `GET /api/emergency-alerts` (admin), `PATCH /api/emergency-alerts/:id/status` (admin)
+- `GET /api/subscription-plans` (any authenticated user), `POST /api/subscription-plans` (admin), `POST /api/drivers/me/subscription`, `GET /api/drivers/me/subscription`, `DELETE /api/drivers/me/subscription` (driver)
+- `POST /api/trips/:id/charge` (driver on the trip, or admin) — records a `Payment` for a `COMPLETED` trip's `finalFare`; `GET /api/payments/mine` (any authenticated user), `GET /api/payments` (admin)
 
 Authorization is role-based via Cognito group membership (`Rider`, `Driver`,
-`Admin`) checked in `src/middleware/auth.ts`. This still isn't full coverage
-of every screen in the three Flutter apps (couriers, fraud/emergency alerts,
-subscriptions, loyalty, and pricing/surge have no backing model yet) —
-extend the `routes/` folder the same way as traffic/features are wired up.
+`Admin`) checked in `src/middleware/auth.ts`. Still open: loyalty tiers,
+promotions, pricing rules/surge zones, pagination on list endpoints, and an
+OpenAPI/Swagger spec — extend the `routes/` folder and `prisma/schema.prisma`
+the same way as traffic/features are wired up.
+
+**A routing gotcha worth knowing if you add more `/thing/:id` + `/thing/me`
+pairs**: Express matches routes in registration order, and `:id` matches any
+single path segment — including the literal string `me`. `GET /drivers/:id`
+registered before `GET /drivers/me` will silently shadow it (every driver
+calling their own profile endpoint gets the Admin-only 403 instead of their
+profile) since Express never reaches the later route. Fixed here by always
+registering the literal `/me` routes before the `:id` wildcard route in the
+same router — `riders.routes.ts` and `drivers.routes.ts` had exactly this bug
+until the test suite caught it (see `QA-01` below).
 
 Cognito itself doesn't create a Postgres row for a new user — that's why
 `POST /api/drivers/me` and `POST /api/riders/me` exist: each app calls its
@@ -53,6 +67,31 @@ npm run prisma:seed           # populates sample rider/driver/vehicle/trip data
 The migration in `prisma/migrations/` and the seed script have both been run
 against a real local Postgres 16 instance as part of building this — not
 just type-checked.
+
+## Tests
+
+Real, HTTP-level tests (`supertest` against the actual Express `app`, real
+Postgres, not mocked) covering every route in every router — auth checks
+(401/403), the happy path, and ownership/not-found edge cases:
+
+```bash
+createdb ravelgo_test        # once, or point DATABASE_URL in .env at any local test DB
+npx prisma migrate deploy    # applies prisma/migrations/ to it
+npm test
+```
+
+`src/middleware/auth.ts` calls a real `CognitoJwtVerifier`, and there's no
+real Cognito user pool available while testing — so instead of real JWTs,
+tests stub the shared `verifier.verify()` singleton with Node's built-in
+`node:test` `mock.method()` (see `src/test/helpers.ts`'s `mockAuthAs()`),
+which returns whatever `sub`/`cognito:groups` the test asks for.
+
+Test files must run one at a time (`--test-concurrency=1`, already set in
+the `test` script): every file shares one physical Postgres database and
+resets it in its own `beforeEach`, so if Node ran files concurrently
+(its default), one file's reset could wipe rows out from under a different
+file's assertion mid-test — real, observed flakiness during development,
+not a hypothetical.
 
 ## Building the container
 
