@@ -2,16 +2,26 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const ridersRouter = Router();
 
 // Admin: list all riders
-ridersRouter.get("/riders", requireAuth, requireRole("Admin"), async (_req, res) => {
-  const riders = await prisma.user.findMany({
-    where: { role: "RIDER" },
-    orderBy: { createdAt: "desc" },
-  });
-  res.json(riders);
+ridersRouter.get("/riders", requireAuth, requireRole("Admin"), async (req, res) => {
+  const parsed = paginationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { page, pageSize } = parsed.data;
+
+  const [riders, total] = await Promise.all([
+    prisma.user.findMany({
+      where: { role: "RIDER" },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.user.count({ where: { role: "RIDER" } }),
+  ]);
+  res.json(paginate(riders, total, page, pageSize));
 });
 
 // Rider: get my own profile (creates it on first call, since Cognito sign-up

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const supportRouter = Router();
 
@@ -37,12 +38,21 @@ supportRouter.get("/support-tickets/mine", requireAuth, async (req, res) => {
 });
 
 // Admin: list all support tickets
-supportRouter.get("/support-tickets", requireAuth, requireRole("Admin"), async (_req, res) => {
-  const tickets = await prisma.supportTicket.findMany({
-    include: { user: true },
-    orderBy: { createdAt: "desc" },
-  });
-  res.json(tickets);
+supportRouter.get("/support-tickets", requireAuth, requireRole("Admin"), async (req, res) => {
+  const parsed = paginationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { page, pageSize } = parsed.data;
+
+  const [tickets, total] = await Promise.all([
+    prisma.supportTicket.findMany({
+      include: { user: true },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.supportTicket.count(),
+  ]);
+  res.json(paginate(tickets, total, page, pageSize));
 });
 
 const statusSchema = z.object({ status: z.enum(["OPEN", "IN_PROGRESS", "RESOLVED"]) });

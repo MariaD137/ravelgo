@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const paymentsRouter = Router();
 
@@ -58,11 +59,19 @@ paymentsRouter.get("/payments/mine", requireAuth, async (req, res) => {
 });
 
 // Admin: view all payments
-paymentsRouter.get("/payments", requireAuth, requireRole("Admin"), async (_req, res) => {
-  const payments = await prisma.payment.findMany({
-    include: { user: true, trip: true },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
-  res.json(payments);
+paymentsRouter.get("/payments", requireAuth, requireRole("Admin"), async (req, res) => {
+  const parsed = paginationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { page, pageSize } = parsed.data;
+
+  const [payments, total] = await Promise.all([
+    prisma.payment.findMany({
+      include: { user: true, trip: true },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.payment.count(),
+  ]);
+  res.json(paginate(payments, total, page, pageSize));
 });

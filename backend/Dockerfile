@@ -13,6 +13,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 COPY prisma ./prisma
 RUN npm ci --omit=dev && npm run prisma:generate
+COPY openapi.yaml ./
 COPY --from=build /app/dist ./dist
 
 EXPOSE 8080

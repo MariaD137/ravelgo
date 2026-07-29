@@ -20,12 +20,21 @@ TypeScript, PostgreSQL via Prisma, authenticated with Amazon Cognito JWTs.
 - `POST /api/emergency-alerts` (any authenticated user), `GET /api/emergency-alerts/mine` (any authenticated user), `GET /api/emergency-alerts` (admin), `PATCH /api/emergency-alerts/:id/status` (admin)
 - `GET /api/subscription-plans` (any authenticated user), `POST /api/subscription-plans` (admin), `POST /api/drivers/me/subscription`, `GET /api/drivers/me/subscription`, `DELETE /api/drivers/me/subscription` (driver)
 - `POST /api/trips/:id/charge` (driver on the trip, or admin) — records a `Payment` for a `COMPLETED` trip's `finalFare`; `GET /api/payments/mine` (any authenticated user), `GET /api/payments` (admin)
+- `GET /api/loyalty-tiers` (any authenticated user), `POST /api/loyalty-tiers` (admin), `GET /api/riders/me/loyalty` (rider) — current tier is *computed* from completed-trip count on every read, not stored, so it can't drift out of sync with actual trips
+- `GET /api/promotions` (any authenticated user), `POST /api/promotions` (admin), `POST /api/promotions/:code/redeem` (any authenticated user, once per user — enforced by a unique constraint on `(promotionId, userId)`)
+- `GET /api/pricing-rules` (any authenticated user), `POST /api/pricing-rules` (admin), `PATCH /api/pricing-rules/:id` (admin); `GET /api/surge-zones`, `POST /api/surge-zones` (admin), `PATCH /api/surge-zones/:id` (admin); `GET /api/pricing/quote?distanceKm=&durationMinutes=&zone=` (any authenticated user) — computes a fare estimate from whichever `PricingRule` is `active`, times an active `SurgeZone`'s multiplier if `zone` matches one by name
+- Full interactive docs: `GET /docs` (Swagger UI), raw spec at `GET /openapi.json` — see `openapi.yaml`
 
 Authorization is role-based via Cognito group membership (`Rider`, `Driver`,
-`Admin`) checked in `src/middleware/auth.ts`. Still open: loyalty tiers,
-promotions, pricing rules/surge zones, pagination on list endpoints, and an
-OpenAPI/Swagger spec — extend the `routes/` folder and `prisma/schema.prisma`
-the same way as traffic/features are wired up.
+`Admin`) checked in `src/middleware/auth.ts`. Every admin/system-wide list
+endpoint above (`/drivers`, `/riders`, `/trips`, `/rentals`,
+`/support-tickets`, `/car-paddy`, `/courier-requests`,
+`/courier-requests/available`, `/payments`, `/emergency-alerts`) is
+paginated — `?page=1&pageSize=20` (`pageSize` capped at 100), response shape
+`{ data, page, pageSize, total }` (see `src/lib/pagination.ts`). Personal
+`/mine` and `/me`-scoped list endpoints (naturally bounded to one user's own
+data) were left as plain arrays — pagination there would add complexity
+without much value.
 
 **A routing gotcha worth knowing if you add more `/thing/:id` + `/thing/me`
 pairs**: Express matches routes in registration order, and `:id` matches any

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const tripsRouter = Router();
 
@@ -66,11 +67,19 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
 });
 
 // Admin: monitor all trips
-tripsRouter.get("/trips", requireAuth, requireRole("Admin"), async (_req, res) => {
-  const trips = await prisma.trip.findMany({
-    include: { rider: true, driver: { include: { user: true } } },
-    orderBy: { requestedAt: "desc" },
-    take: 100,
-  });
-  res.json(trips);
+tripsRouter.get("/trips", requireAuth, requireRole("Admin"), async (req, res) => {
+  const parsed = paginationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { page, pageSize } = parsed.data;
+
+  const [trips, total] = await Promise.all([
+    prisma.trip.findMany({
+      include: { rider: true, driver: { include: { user: true } } },
+      orderBy: { requestedAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.trip.count(),
+  ]);
+  res.json(paginate(trips, total, page, pageSize));
 });

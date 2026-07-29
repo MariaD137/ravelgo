@@ -2,7 +2,11 @@ import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import helmet from "helmet";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import morgan from "morgan";
+import swaggerUi from "swagger-ui-express";
+import { load as loadYaml } from "js-yaml";
 import { env } from "./config/env";
 import { adminRouter } from "./routes/admin.routes";
 import { alertsRouter } from "./routes/alerts.routes";
@@ -11,7 +15,9 @@ import { courierRouter } from "./routes/courier.routes";
 import { documentsRouter } from "./routes/documents.routes";
 import { driversRouter } from "./routes/drivers.routes";
 import { healthRouter } from "./routes/health.routes";
+import { loyaltyRouter } from "./routes/loyalty.routes";
 import { paymentsRouter } from "./routes/payments.routes";
+import { pricingRouter } from "./routes/pricing.routes";
 import { rentalsRouter } from "./routes/rentals.routes";
 import { ridersRouter } from "./routes/riders.routes";
 import { subscriptionsRouter } from "./routes/subscriptions.routes";
@@ -47,6 +53,13 @@ if (env.NODE_ENV !== "test") {
   );
 }
 
+// BE-15: the OpenAPI spec is hand-written (openapi.yaml, project root) rather
+// than generated from the zod schemas — served as-is, both raw and via a
+// browsable UI, so it's one file to keep in sync as routes change.
+const openapiDocument = loadYaml(readFileSync(join(__dirname, "..", "openapi.yaml"), "utf-8")) as object;
+app.get("/openapi.json", (_req, res) => res.json(openapiDocument));
+app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiDocument));
+
 app.use(healthRouter);
 app.use("/api", driversRouter);
 app.use("/api", ridersRouter);
@@ -62,6 +75,8 @@ app.use("/api", courierRouter);
 app.use("/api", alertsRouter);
 app.use("/api", subscriptionsRouter);
 app.use("/api", paymentsRouter);
+app.use("/api", loyaltyRouter);
+app.use("/api", pricingRouter);
 
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: "Not found" });

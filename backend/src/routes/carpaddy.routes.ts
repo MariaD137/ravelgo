@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const carPaddyRouter = Router();
 
@@ -24,12 +25,21 @@ carPaddyRouter.post("/car-paddy", requireAuth, requireRole("Driver"), async (req
 });
 
 // Admin: list all Car Paddy requests
-carPaddyRouter.get("/car-paddy", requireAuth, requireRole("Admin"), async (_req, res) => {
-  const requests = await prisma.carPaddyRequest.findMany({
-    include: { driver: { include: { user: true } } },
-    orderBy: { submittedAt: "desc" },
-  });
-  res.json(requests);
+carPaddyRouter.get("/car-paddy", requireAuth, requireRole("Admin"), async (req, res) => {
+  const parsed = paginationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { page, pageSize } = parsed.data;
+
+  const [requests, total] = await Promise.all([
+    prisma.carPaddyRequest.findMany({
+      include: { driver: { include: { user: true } } },
+      orderBy: { submittedAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.carPaddyRequest.count(),
+  ]);
+  res.json(paginate(requests, total, page, pageSize));
 });
 
 const decisionSchema = z.object({

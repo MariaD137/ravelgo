@@ -68,8 +68,9 @@ test("GET /api/rentals only shows approved listings to non-admin callers", async
   const res = await request(app).get("/api/rentals").set("Authorization", `Bearer ${token}`);
 
   assert.equal(res.status, 200);
-  assert.equal(res.body.length, 1);
-  assert.equal(res.body[0].status, "APPROVED");
+  assert.equal(res.body.total, 1);
+  assert.equal(res.body.data.length, 1);
+  assert.equal(res.body.data[0].status, "APPROVED");
 });
 
 test("PATCH /api/rentals/:id/status rejects a non-Admin caller", async () => {

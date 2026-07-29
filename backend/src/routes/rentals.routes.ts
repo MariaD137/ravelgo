@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const rentalsRouter = Router();
 
@@ -51,15 +52,25 @@ rentalsRouter.get("/rentals/mine", requireAuth, requireRole("Driver"), async (re
 
 // Riders/public: browse approved rental listings
 rentalsRouter.get("/rentals", requireAuth, async (req, res) => {
+  const parsed = paginationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { page, pageSize } = parsed.data;
+
   const groups = req.user!.groups;
   const isAdmin = groups.includes("Admin");
+  const where = isAdmin ? {} : { status: "APPROVED" as const };
 
-  const listings = await prisma.rentalListing.findMany({
-    where: isAdmin ? {} : { status: "APPROVED" },
-    include: { vehicle: true, driver: { include: { user: true } } },
-    orderBy: { createdAt: "desc" },
-  });
-  res.json(listings);
+  const [listings, total] = await Promise.all([
+    prisma.rentalListing.findMany({
+      where,
+      include: { vehicle: true, driver: { include: { user: true } } },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.rentalListing.count({ where }),
+  ]);
+  res.json(paginate(listings, total, page, pageSize));
 });
 
 const decisionSchema = z.object({ status: z.enum(["APPROVED", "REJECTED"]) });

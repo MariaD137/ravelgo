@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const courierRouter = Router();
 
@@ -33,12 +34,22 @@ courierRouter.post("/courier-requests", requireAuth, requireRole("Rider"), async
 });
 
 // Driver: view unassigned courier requests to accept
-courierRouter.get("/courier-requests/available", requireAuth, requireRole("Driver"), async (_req, res) => {
-  const requests = await prisma.courierRequest.findMany({
-    where: { status: "REQUESTED", driverId: null },
-    orderBy: { requestedAt: "desc" },
-  });
-  res.json(requests);
+courierRouter.get("/courier-requests/available", requireAuth, requireRole("Driver"), async (req, res) => {
+  const parsed = paginationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { page, pageSize } = parsed.data;
+  const where = { status: "REQUESTED" as const, driverId: null };
+
+  const [requests, total] = await Promise.all([
+    prisma.courierRequest.findMany({
+      where,
+      orderBy: { requestedAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.courierRequest.count({ where }),
+  ]);
+  res.json(paginate(requests, total, page, pageSize));
 });
 
 // Driver: accept a courier request
@@ -109,11 +120,19 @@ courierRouter.get("/courier-requests/:id", requireAuth, async (req, res) => {
 });
 
 // Admin: monitor all courier requests
-courierRouter.get("/courier-requests", requireAuth, requireRole("Admin"), async (_req, res) => {
-  const requests = await prisma.courierRequest.findMany({
-    include: { sender: true, driver: { include: { user: true } } },
-    orderBy: { requestedAt: "desc" },
-    take: 100,
-  });
-  res.json(requests);
+courierRouter.get("/courier-requests", requireAuth, requireRole("Admin"), async (req, res) => {
+  const parsed = paginationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { page, pageSize } = parsed.data;
+
+  const [requests, total] = await Promise.all([
+    prisma.courierRequest.findMany({
+      include: { sender: true, driver: { include: { user: true } } },
+      orderBy: { requestedAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.courierRequest.count(),
+  ]);
+  res.json(paginate(requests, total, page, pageSize));
 });

@@ -2,16 +2,26 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const driversRouter = Router();
 
 // Admin: list all drivers
-driversRouter.get("/drivers", requireAuth, requireRole("Admin"), async (_req, res) => {
-  const drivers = await prisma.driver.findMany({
-    include: { user: true, vehicles: true },
-    orderBy: { createdAt: "desc" },
-  });
-  res.json(drivers);
+driversRouter.get("/drivers", requireAuth, requireRole("Admin"), async (req, res) => {
+  const parsed = paginationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { page, pageSize } = parsed.data;
+
+  const [drivers, total] = await Promise.all([
+    prisma.driver.findMany({
+      include: { user: true, vehicles: true },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.driver.count(),
+  ]);
+  res.json(paginate(drivers, total, page, pageSize));
 });
 
 const createDriverSchema = z.object({

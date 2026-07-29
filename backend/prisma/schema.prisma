@@ -112,6 +112,7 @@ model User {
   courierRequestsSent CourierRequest[] @relation("CourierSender")
   emergencyAlerts   EmergencyAlert[]
   payments          Payment[]
+  promotionRedemptions PromotionRedemption[]
 }
 
 model Driver {
@@ -281,4 +282,66 @@ model Payment {
   providerReference  String?
   createdAt          DateTime      @default(now())
   paidAt             DateTime?
+}
+
+// A catalog of tiers, not a stored assignment on User — the caller's current
+// tier is computed on read from their completed trip count against
+// minCompletedTrips, so it can never drift out of sync with actual trips.
+model LoyaltyTier {
+  id                String   @id @default(uuid())
+  name              String   @unique
+  minCompletedTrips Int
+  discountPercent   Float
+  perks             String?
+  createdAt         DateTime @default(now())
+}
+
+model Promotion {
+  id               String    @id @default(uuid())
+  code             String    @unique
+  description      String
+  discountPercent  Float
+  active           Boolean   @default(true)
+  expiresAt        DateTime?
+  maxRedemptions   Int?
+  redemptionCount  Int       @default(0)
+  createdAt        DateTime  @default(now())
+
+  redemptions      PromotionRedemption[]
+}
+
+model PromotionRedemption {
+  id          String    @id @default(uuid())
+  promotionId String
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redeemedAt  DateTime  @default(now())
+
+  @@unique([promotionId, userId])
+}
+
+// A flat rate card (base + per-km + per-minute) used to compute a fare
+// quote. Only one should be `active` at a time — enforced in the route, not
+// the schema, since "at most one active row" isn't expressible as a
+// constraint here.
+model PricingRule {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  baseFare   Float
+  perKm      Float
+  perMinute  Float
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+}
+
+model SurgeZone {
+  id         String    @id @default(uuid())
+  name       String    @unique
+  location   String
+  multiplier Float
+  active     Boolean   @default(true)
+  startsAt   DateTime?
+  endsAt     DateTime?
+  createdAt  DateTime  @default(now())
 }

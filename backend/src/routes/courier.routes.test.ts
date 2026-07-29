@@ -66,7 +66,8 @@ test("GET /api/courier-requests/available only shows unassigned requests to a Dr
   const res = await request(app).get("/api/courier-requests/available").set("Authorization", `Bearer ${token}`);
 
   assert.equal(res.status, 200);
-  assert.equal(res.body.length, 1);
+  assert.equal(res.body.total, 1);
+  assert.equal(res.body.data.length, 1);
 });
 
 test("PATCH /api/courier-requests/:id/accept matches a driver to the request", async () => {

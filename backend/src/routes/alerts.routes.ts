@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const alertsRouter = Router();
 
@@ -38,12 +39,21 @@ alertsRouter.get("/emergency-alerts/mine", requireAuth, async (req, res) => {
 });
 
 // Admin: list all alerts, most urgent (open) first
-alertsRouter.get("/emergency-alerts", requireAuth, requireRole("Admin"), async (_req, res) => {
-  const alerts = await prisma.emergencyAlert.findMany({
-    include: { user: true, trip: true },
-    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-  });
-  res.json(alerts);
+alertsRouter.get("/emergency-alerts", requireAuth, requireRole("Admin"), async (req, res) => {
+  const parsed = paginationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { page, pageSize } = parsed.data;
+
+  const [alerts, total] = await Promise.all([
+    prisma.emergencyAlert.findMany({
+      include: { user: true, trip: true },
+      orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.emergencyAlert.count(),
+  ]);
+  res.json(paginate(alerts, total, page, pageSize));
 });
 
 const statusSchema = z.object({ status: z.enum(["ACKNOWLEDGED", "RESOLVED"]) });

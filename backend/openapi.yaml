@@ -1,0 +1,1463 @@
+openapi: 3.0.3
+info:
+  title: RavelGo API
+  version: "0.1.0"
+  description: >
+    Unified REST API for the RavelGo rider, driver, and admin apps.
+    Authenticated with Amazon Cognito access tokens; role checks are enforced
+    via Cognito group membership (`Rider`, `Driver`, `Admin`) — see
+    `src/middleware/auth.ts`.
+servers:
+  - url: /api
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Health
+  - name: Riders
+  - name: Drivers
+  - name: Vehicles
+  - name: Rentals
+  - name: Trips
+  - name: Documents
+  - name: Support
+  - name: Uploads
+  - name: Car Paddy
+  - name: Admin
+  - name: Courier
+  - name: Emergency Alerts
+  - name: Subscriptions
+  - name: Payments
+  - name: Loyalty & Promotions
+  - name: Pricing
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Liveness/readiness check
+      security: []
+      responses:
+        "200":
+          description: Database reachable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  database: { type: string, example: connected }
+                  timestamp: { type: string, format: date-time }
+        "503":
+          description: Database unreachable
+
+  /riders:
+    get:
+      tags: [Riders]
+      summary: List riders (Admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated riders
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedUser"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /riders/me:
+    post:
+      tags: [Riders]
+      summary: Create/upsert my rider profile (Rider)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firstName, lastName, email]
+              properties:
+                firstName: { type: string }
+                lastName: { type: string }
+                email: { type: string, format: email }
+                phoneNumber: { type: string }
+      responses:
+        "201":
+          description: Rider profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    get:
+      tags: [Riders]
+      summary: My own rider profile (Rider)
+      responses:
+        "200":
+          description: Rider profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /riders/me/loyalty:
+    get:
+      tags: [Loyalty & Promotions]
+      summary: My current loyalty tier, computed from completed trips (Rider)
+      responses:
+        "200":
+          description: Completed trip count and computed tier
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  completedTrips: { type: integer }
+                  currentTier:
+                    oneOf:
+                      - $ref: "#/components/schemas/LoyaltyTier"
+                      - nullable: true
+        "404": { $ref: "#/components/responses/NotFound" }
+  /riders/{id}:
+    get:
+      tags: [Riders]
+      summary: Get a rider with trip history (Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Rider
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /riders/{id}/status:
+    patch:
+      tags: [Riders]
+      summary: Suspend/reactivate a rider (Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [suspended]
+              properties:
+                suspended: { type: boolean }
+      responses:
+        "200":
+          description: Updated rider
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+
+  /drivers:
+    get:
+      tags: [Drivers]
+      summary: List drivers (Admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated drivers
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedDriver" }
+  /drivers/me:
+    post:
+      tags: [Drivers]
+      summary: Create/upsert my driver profile (Driver)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firstName, lastName, email]
+              properties:
+                firstName: { type: string }
+                lastName: { type: string }
+                email: { type: string, format: email }
+                phoneNumber: { type: string }
+                preferredLanguage: { type: string, default: English }
+      responses:
+        "201":
+          description: Driver profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Driver" }
+    get:
+      tags: [Drivers]
+      summary: My own driver profile (Driver)
+      responses:
+        "200":
+          description: Driver profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Driver" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /drivers/me/subscription:
+    post:
+      tags: [Subscriptions]
+      summary: Subscribe (or switch) to a plan (Driver)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [planId, currentPeriodEnd]
+              properties:
+                planId: { type: string }
+                currentPeriodEnd: { type: string, format: date-time }
+      responses:
+        "201":
+          description: Subscription
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverSubscription" }
+    get:
+      tags: [Subscriptions]
+      summary: My own subscription (Driver)
+      responses:
+        "200":
+          description: Subscription
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverSubscription" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Subscriptions]
+      summary: Cancel my own subscription (Driver)
+      responses:
+        "200":
+          description: Cancelled subscription
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverSubscription" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /drivers/{id}:
+    get:
+      tags: [Drivers]
+      summary: Get a driver with documents (Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Driver
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Driver" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /drivers/{id}/status:
+    patch:
+      tags: [Drivers]
+      summary: Suspend/reactivate a driver (Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: "#/components/schemas/DriverStatus" }
+      responses:
+        "200":
+          description: Updated driver
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Driver" }
+
+  /vehicles/me:
+    get:
+      tags: [Vehicles]
+      summary: My own vehicles (Driver)
+      responses:
+        "200":
+          description: Vehicles
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Vehicle" }
+  /vehicles:
+    post:
+      tags: [Vehicles]
+      summary: Add a vehicle (Driver)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VehicleInput" }
+      responses:
+        "201":
+          description: Created vehicle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Vehicle" }
+  /vehicles/{id}:
+    patch:
+      tags: [Vehicles]
+      summary: Update one of my own vehicles (Driver)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VehicleInput" }
+      responses:
+        "200":
+          description: Updated vehicle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Vehicle" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /rentals:
+    post:
+      tags: [Rentals]
+      summary: List a vehicle for luxury rental (Driver)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vehicleId, dailyRate, location]
+              properties:
+                vehicleId: { type: string }
+                dailyRate: { type: number }
+                location: { type: string }
+      responses:
+        "201":
+          description: Rental listing
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RentalListing" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    get:
+      tags: [Rentals]
+      summary: Browse rental listings (approved only, unless Admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated rental listings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedRentalListing" }
+  /rentals/mine:
+    get:
+      tags: [Rentals]
+      summary: My own rental listings (Driver)
+      responses:
+        "200":
+          description: Rental listings
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RentalListing" }
+  /rentals/{id}/status:
+    patch:
+      tags: [Rentals]
+      summary: Approve/reject a rental listing (Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [APPROVED, REJECTED] }
+      responses:
+        "200":
+          description: Updated listing
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RentalListing" }
+
+  /trips:
+    post:
+      tags: [Trips]
+      summary: Request a trip (Rider)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pickup, destination, estimatedFare]
+              properties:
+                pickup: { type: string }
+                destination: { type: string }
+                estimatedFare: { type: number }
+                category: { type: string, default: Personal }
+                pickupNote: { type: string }
+      responses:
+        "201":
+          description: Trip
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Trip" }
+    get:
+      tags: [Trips]
+      summary: Monitor all trips (Admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated trips
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedTrip" }
+  /trips/{id}:
+    get:
+      tags: [Trips]
+      summary: View a trip (rider/driver party to it, or Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Trip
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Trip" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /trips/{id}/status:
+    patch:
+      tags: [Trips]
+      summary: Advance trip status (Driver or Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [MATCHED, IN_PROGRESS, COMPLETED, CANCELLED, DISPUTED] }
+                finalFare: { type: number }
+      responses:
+        "200":
+          description: Updated trip
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Trip" }
+  /trips/{id}/charge:
+    post:
+      tags: [Payments]
+      summary: Charge the rider for a completed trip's final fare (Driver on the trip, or Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                method: { type: string, enum: [CARD, CASH, WALLET], default: CARD }
+      responses:
+        "201":
+          description: Payment record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Trip not eligible to be charged, or already charged
+
+  /documents/me:
+    get:
+      tags: [Documents]
+      summary: My own driver documents (Driver)
+      responses:
+        "200":
+          description: Documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DriverDocument" }
+  /documents:
+    post:
+      tags: [Documents]
+      summary: Register an uploaded document's metadata (Driver)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, fileKey]
+              properties:
+                title: { type: string }
+                fileKey: { type: string }
+      responses:
+        "201":
+          description: Document
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverDocument" }
+  /documents/{id}/review:
+    patch:
+      tags: [Documents]
+      summary: Approve/reject a document (Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [APPROVED, REJECTED] }
+      responses:
+        "200":
+          description: Updated document
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverDocument" }
+
+  /support-tickets:
+    post:
+      tags: [Support]
+      summary: Open a support ticket (any authenticated user)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject, category]
+              properties:
+                subject: { type: string }
+                category: { type: string }
+      responses:
+        "201":
+          description: Ticket
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupportTicket" }
+    get:
+      tags: [Support]
+      summary: List all support tickets (Admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated tickets
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedSupportTicket" }
+  /support-tickets/mine:
+    get:
+      tags: [Support]
+      summary: My own support tickets (any authenticated user)
+      responses:
+        "200":
+          description: Tickets
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SupportTicket" }
+  /support-tickets/{id}/status:
+    patch:
+      tags: [Support]
+      summary: Update ticket status (Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [OPEN, IN_PROGRESS, RESOLVED] }
+      responses:
+        "200":
+          description: Updated ticket
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupportTicket" }
+
+  /uploads/presign:
+    post:
+      tags: [Uploads]
+      summary: Get a short-lived S3 upload URL (any authenticated user)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bucket, fileName, contentType]
+              properties:
+                bucket: { type: string, enum: [documents, assets] }
+                fileName: { type: string }
+                contentType: { type: string }
+      responses:
+        "200":
+          description: Presigned URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploadUrl: { type: string }
+                  fileKey: { type: string }
+                  expiresIn: { type: integer }
+
+  /car-paddy:
+    post:
+      tags: [Car Paddy]
+      summary: Submit a Car Paddy (vehicle license renewal) request (Driver)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plateNumber]
+              properties:
+                plateNumber: { type: string }
+      responses:
+        "201":
+          description: Request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CarPaddyRequest" }
+    get:
+      tags: [Car Paddy]
+      summary: List all Car Paddy requests (Admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated requests
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedCarPaddyRequest" }
+  /car-paddy/{id}:
+    patch:
+      tags: [Car Paddy]
+      summary: Approve/reject a Car Paddy request (Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [APPROVED, REJECTED] }
+      responses:
+        "200":
+          description: Updated request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CarPaddyRequest" }
+
+  /admin/dashboard:
+    get:
+      tags: [Admin]
+      summary: Admin dashboard KPIs (Admin)
+      responses:
+        "200":
+          description: KPIs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activeTrips: { type: integer }
+                  onlineDrivers: { type: integer }
+                  pendingApprovals: { type: integer }
+
+  /courier-requests:
+    post:
+      tags: [Courier]
+      summary: Request a courier/package delivery (Rider)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CourierRequestInput" }
+      responses:
+        "201":
+          description: Courier request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierRequest" }
+    get:
+      tags: [Courier]
+      summary: Monitor all courier requests (Admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated courier requests
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedCourierRequest" }
+  /courier-requests/available:
+    get:
+      tags: [Courier]
+      summary: Unassigned courier requests to accept (Driver)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated available requests
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedCourierRequest" }
+  /courier-requests/{id}:
+    get:
+      tags: [Courier]
+      summary: View a courier request (party to it, or Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Courier request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /courier-requests/{id}/accept:
+    patch:
+      tags: [Courier]
+      summary: Accept a courier request (Driver)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Matched request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Request already matched
+  /courier-requests/{id}/status:
+    patch:
+      tags: [Courier]
+      summary: Advance courier status (assigned Driver, or Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [IN_TRANSIT, DELIVERED, CANCELLED] }
+                finalFare: { type: number }
+      responses:
+        "200":
+          description: Updated request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CourierRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /emergency-alerts:
+    post:
+      tags: [Emergency Alerts]
+      summary: Raise an emergency/fraud alert (any authenticated user)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type: { type: string, enum: [SOS, FRAUD_SUSPECTED] }
+                tripId: { type: string }
+                message: { type: string }
+      responses:
+        "201":
+          description: Alert
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmergencyAlert" }
+    get:
+      tags: [Emergency Alerts]
+      summary: List all alerts, most urgent first (Admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated alerts
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedEmergencyAlert" }
+  /emergency-alerts/mine:
+    get:
+      tags: [Emergency Alerts]
+      summary: My own alerts (any authenticated user)
+      responses:
+        "200":
+          description: Alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EmergencyAlert" }
+  /emergency-alerts/{id}/status:
+    patch:
+      tags: [Emergency Alerts]
+      summary: Acknowledge or resolve an alert (Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [ACKNOWLEDGED, RESOLVED] }
+      responses:
+        "200":
+          description: Updated alert
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmergencyAlert" }
+
+  /subscription-plans:
+    get:
+      tags: [Subscriptions]
+      summary: Browse active subscription plans (any authenticated user)
+      responses:
+        "200":
+          description: Plans
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SubscriptionPlan" }
+    post:
+      tags: [Subscriptions]
+      summary: Create a subscription plan (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, description, priceMonthly]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                priceMonthly: { type: number }
+      responses:
+        "201":
+          description: Plan
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SubscriptionPlan" }
+
+  /payments/mine:
+    get:
+      tags: [Payments]
+      summary: My own payment history (any authenticated user)
+      responses:
+        "200":
+          description: Payments
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Payment" }
+  /payments:
+    get:
+      tags: [Payments]
+      summary: All payments (Admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated payments
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedPayment" }
+
+  /loyalty-tiers:
+    get:
+      tags: [Loyalty & Promotions]
+      summary: Browse the loyalty tier ladder (any authenticated user)
+      responses:
+        "200":
+          description: Tiers
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/LoyaltyTier" }
+    post:
+      tags: [Loyalty & Promotions]
+      summary: Define a loyalty tier (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, minCompletedTrips, discountPercent]
+              properties:
+                name: { type: string }
+                minCompletedTrips: { type: integer }
+                discountPercent: { type: number }
+                perks: { type: string }
+      responses:
+        "201":
+          description: Tier
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoyaltyTier" }
+
+  /promotions:
+    get:
+      tags: [Loyalty & Promotions]
+      summary: Browse active, unexpired promotions (any authenticated user)
+      responses:
+        "200":
+          description: Promotions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Promotion" }
+    post:
+      tags: [Loyalty & Promotions]
+      summary: Create a promotion code (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, description, discountPercent]
+              properties:
+                code: { type: string }
+                description: { type: string }
+                discountPercent: { type: number }
+                expiresAt: { type: string, format: date-time }
+                maxRedemptions: { type: integer }
+      responses:
+        "201":
+          description: Promotion
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Promotion" }
+  /promotions/{code}/redeem:
+    post:
+      tags: [Loyalty & Promotions]
+      summary: Redeem a promotion code, once per user (any authenticated user)
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "201":
+          description: Redemption + discount
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  redemption: { $ref: "#/components/schemas/PromotionRedemption" }
+                  discountPercent: { type: number }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Expired, redemption limit reached, or already redeemed by this user
+
+  /pricing-rules:
+    get:
+      tags: [Pricing]
+      summary: Browse pricing rules (any authenticated user)
+      responses:
+        "200":
+          description: Rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PricingRule" }
+    post:
+      tags: [Pricing]
+      summary: Define a pricing rule (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, baseFare, perKm, perMinute]
+              properties:
+                name: { type: string }
+                baseFare: { type: number }
+                perKm: { type: number }
+                perMinute: { type: number }
+      responses:
+        "201":
+          description: Rule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PricingRule" }
+  /pricing-rules/{id}:
+    patch:
+      tags: [Pricing]
+      summary: Update or (de)activate a pricing rule (Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                baseFare: { type: number }
+                perKm: { type: number }
+                perMinute: { type: number }
+                active: { type: boolean }
+      responses:
+        "200":
+          description: Updated rule
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PricingRule" }
+
+  /surge-zones:
+    get:
+      tags: [Pricing]
+      summary: Browse surge zones (any authenticated user)
+      responses:
+        "200":
+          description: Zones
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SurgeZone" }
+    post:
+      tags: [Pricing]
+      summary: Define a surge zone (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, location, multiplier]
+              properties:
+                name: { type: string }
+                location: { type: string }
+                multiplier: { type: number }
+                startsAt: { type: string, format: date-time }
+                endsAt: { type: string, format: date-time }
+      responses:
+        "201":
+          description: Zone
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SurgeZone" }
+  /surge-zones/{id}:
+    patch:
+      tags: [Pricing]
+      summary: Update or (de)activate a surge zone (Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                location: { type: string }
+                multiplier: { type: number }
+                active: { type: boolean }
+                startsAt: { type: string, format: date-time }
+                endsAt: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Updated zone
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SurgeZone" }
+
+  /pricing/quote:
+    get:
+      tags: [Pricing]
+      summary: Get a fare estimate (any authenticated user)
+      parameters:
+        - name: distanceKm
+          in: query
+          required: true
+          schema: { type: number }
+        - name: durationMinutes
+          in: query
+          required: true
+          schema: { type: number }
+        - name: zone
+          in: query
+          schema: { type: string }
+          description: Matched case-insensitively against an active SurgeZone's name
+      responses:
+        "200":
+          description: Fare estimate
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  estimatedFare: { type: number }
+                  pricingRule: { type: string }
+                  surgeMultiplier: { type: number }
+                  surgeZone: { type: string, nullable: true }
+        "409":
+          description: No active pricing rule configured
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Cognito access token
+
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    pageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    BadRequest:
+      description: Validation error
+    Unauthorized:
+      description: Missing or invalid bearer token
+    Forbidden:
+      description: Caller lacks the required Cognito group
+    NotFound:
+      description: Resource not found
+
+  schemas:
+    DriverStatus:
+      type: string
+      enum: [ACTIVE, PENDING_REVIEW, SUSPENDED]
+
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        cognitoSub: { type: string }
+        role: { type: string, enum: [RIDER, DRIVER, ADMIN] }
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: string }
+        phoneNumber: { type: string, nullable: true }
+        isLoyaltyMember: { type: boolean }
+        suspended: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    Driver:
+      type: object
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        status: { $ref: "#/components/schemas/DriverStatus" }
+        rating: { type: number }
+        totalTrips: { type: integer }
+        preferredLanguage: { type: string }
+        subscriptionActive: { type: boolean }
+
+    VehicleInput:
+      type: object
+      properties:
+        brand: { type: string }
+        model: { type: string }
+        colour: { type: string }
+        plateNumber: { type: string }
+        year: { type: string }
+        isPrimary: { type: boolean }
+
+    Vehicle:
+      allOf:
+        - $ref: "#/components/schemas/VehicleInput"
+        - type: object
+          properties:
+            id: { type: string }
+            driverId: { type: string }
+            listedForRental: { type: boolean }
+
+    RentalListing:
+      type: object
+      properties:
+        id: { type: string }
+        driverId: { type: string }
+        vehicleId: { type: string }
+        dailyRate: { type: number }
+        location: { type: string }
+        status: { type: string, enum: [PENDING_APPROVAL, APPROVED, REJECTED] }
+
+    Trip:
+      type: object
+      properties:
+        id: { type: string }
+        riderId: { type: string }
+        driverId: { type: string, nullable: true }
+        pickup: { type: string }
+        destination: { type: string }
+        estimatedFare: { type: number }
+        finalFare: { type: number, nullable: true }
+        status: { type: string, enum: [REQUESTED, MATCHED, IN_PROGRESS, COMPLETED, CANCELLED, DISPUTED] }
+        category: { type: string }
+
+    DriverDocument:
+      type: object
+      properties:
+        id: { type: string }
+        driverId: { type: string }
+        title: { type: string }
+        status: { type: string, enum: [NOT_UPLOADED, PENDING, APPROVED, EXPIRING_SOON, REJECTED] }
+        fileKey: { type: string, nullable: true }
+
+    SupportTicket:
+      type: object
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        subject: { type: string }
+        category: { type: string }
+        status: { type: string, enum: [OPEN, IN_PROGRESS, RESOLVED] }
+
+    CarPaddyRequest:
+      type: object
+      properties:
+        id: { type: string }
+        driverId: { type: string }
+        plateNumber: { type: string }
+        status: { type: string, enum: [SUBMITTED, IN_REVIEW, APPROVED, REJECTED] }
+
+    CourierRequestInput:
+      type: object
+      properties:
+        pickupAddress: { type: string }
+        dropoffAddress: { type: string }
+        packageDescription: { type: string }
+        recipientName: { type: string }
+        recipientPhone: { type: string }
+        estimatedFare: { type: number }
+
+    CourierRequest:
+      allOf:
+        - $ref: "#/components/schemas/CourierRequestInput"
+        - type: object
+          properties:
+            id: { type: string }
+            senderId: { type: string }
+            driverId: { type: string, nullable: true }
+            finalFare: { type: number, nullable: true }
+            status: { type: string, enum: [REQUESTED, MATCHED, IN_TRANSIT, DELIVERED, CANCELLED] }
+
+    EmergencyAlert:
+      type: object
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        tripId: { type: string, nullable: true }
+        type: { type: string, enum: [SOS, FRAUD_SUSPECTED] }
+        message: { type: string, nullable: true }
+        status: { type: string, enum: [OPEN, ACKNOWLEDGED, RESOLVED] }
+
+    SubscriptionPlan:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        priceMonthly: { type: number }
+        active: { type: boolean }
+
+    DriverSubscription:
+      type: object
+      properties:
+        id: { type: string }
+        driverId: { type: string }
+        planId: { type: string }
+        status: { type: string, enum: [ACTIVE, CANCELLED, EXPIRED] }
+        currentPeriodEnd: { type: string, format: date-time }
+
+    Payment:
+      type: object
+      properties:
+        id: { type: string }
+        tripId: { type: string }
+        userId: { type: string }
+        amount: { type: number }
+        currency: { type: string }
+        method: { type: string, enum: [CARD, CASH, WALLET] }
+        status: { type: string, enum: [PENDING, SUCCEEDED, FAILED, REFUNDED] }
+
+    LoyaltyTier:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        minCompletedTrips: { type: integer }
+        discountPercent: { type: number }
+        perks: { type: string, nullable: true }
+
+    Promotion:
+      type: object
+      properties:
+        id: { type: string }
+        code: { type: string }
+        description: { type: string }
+        discountPercent: { type: number }
+        active: { type: boolean }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        maxRedemptions: { type: integer, nullable: true }
+        redemptionCount: { type: integer }
+
+    PromotionRedemption:
+      type: object
+      properties:
+        id: { type: string }
+        promotionId: { type: string }
+        userId: { type: string }
+        redeemedAt: { type: string, format: date-time }
+
+    PricingRule:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        baseFare: { type: number }
+        perKm: { type: number }
+        perMinute: { type: number }
+        active: { type: boolean }
+
+    SurgeZone:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        location: { type: string }
+        multiplier: { type: number }
+        active: { type: boolean }
+        startsAt: { type: string, format: date-time, nullable: true }
+        endsAt: { type: string, format: date-time, nullable: true }
+
+    PaginatedUser:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/User" } }
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+    PaginatedDriver:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Driver" } }
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+    PaginatedTrip:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Trip" } }
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+    PaginatedRentalListing:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/RentalListing" } }
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+    PaginatedSupportTicket:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/SupportTicket" } }
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+    PaginatedCarPaddyRequest:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/CarPaddyRequest" } }
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+    PaginatedCourierRequest:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/CourierRequest" } }
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+    PaginatedEmergencyAlert:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/EmergencyAlert" } }
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
+    PaginatedPayment:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Payment" } }
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }

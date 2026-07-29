@@ -37,8 +37,10 @@ test("GET /api/riders lists riders for an Admin caller", async () => {
   const res = await request(app).get("/api/riders").set("Authorization", `Bearer ${token}`);
 
   assert.equal(res.status, 200);
-  assert.equal(res.body.length, 1);
-  assert.equal(res.body[0].email, "ada@example.com");
+  assert.equal(res.body.total, 1);
+  assert.equal(res.body.page, 1);
+  assert.equal(res.body.data.length, 1);
+  assert.equal(res.body.data[0].email, "ada@example.com");
 });
 
 test("POST /api/riders/me creates my profile on first call, then upserts on repeat calls", async () => {
