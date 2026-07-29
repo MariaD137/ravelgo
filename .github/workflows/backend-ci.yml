@@ -17,6 +17,28 @@ defaults:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ravelgo
+          POSTGRES_PASSWORD: ravelgo
+          POSTGRES_DB: ravelgo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ravelgo:ravelgo@localhost:5432/ravelgo_test
+      # Dummy — QA-01's tests mock the Cognito verifier and the Stripe SDK
+      # directly, so no real credentials are needed to run them in CI.
+      COGNITO_USER_POOL_ID: us-east-1_ciPool0000
+      COGNITO_CLIENT_ID: ciclientid0000000000000
+      STRIPE_SECRET_KEY: sk_test_ci_dummy
+      STRIPE_WEBHOOK_SECRET: whsec_ci_dummy
     steps:
       - uses: actions/checkout@v4
 
@@ -32,6 +54,9 @@ jobs:
       - name: Generate Prisma client
         run: npm run prisma:generate
 
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
       - name: Lint
         run: npm run lint
 
@@ -40,3 +65,10 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # QA-03: this step didn't exist before — package.json has always had a
+      # test script, but nothing in CI ran it, so a failing test never
+      # failed a PR. Runs last since it's the slowest step and the others
+      # fail faster on the more common mistakes (lint/type errors).
+      - name: Test
+        run: npm test

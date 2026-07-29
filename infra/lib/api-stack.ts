@@ -5,6 +5,7 @@ import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as rds from "aws-cdk-lib/aws-rds";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import type { Construct } from "constructs";
 
 export interface ApiStackProps extends cdk.StackProps {
@@ -15,6 +16,11 @@ export interface ApiStackProps extends cdk.StackProps {
   assetsBucket: s3.Bucket;
   cognitoUserPoolId: string;
   cognitoUserPoolClientId: string;
+  // Comma-joined into ALLOWED_ORIGINS — env.ts throws at container boot in
+  // production if this ends up empty, so there's no silent-failure mode:
+  // forgetting to pass this breaks the deploy loudly instead of quietly
+  // leaving CORS wide open.
+  allowedOrigins: string[];
 }
 
 export class ApiStack extends cdk.Stack {
@@ -71,6 +77,26 @@ export class ApiStack extends cdk.Stack {
 
     const dbSecretArn = props.dbInstance.secret!.secretArn;
 
+    // Placeholder values — CDK can't know your real Stripe keys, and they
+    // shouldn't be plaintext CDK context/props anyway. Deploy creates this
+    // secret with dummy values that will fail real Stripe calls until you
+    // overwrite it once, post-deploy:
+    //   aws secretsmanager put-secret-value --secret-id <StripeSecretArn output> \
+    //     --secret-string '{"secretKey":"sk_live_...","webhookSecret":"whsec_..."}'
+    // See ../../docs/admin-bootstrap.md for the same "one manual step,
+    // documented" pattern used for the first Cognito Admin user.
+    const stripeSecret = new secretsmanager.Secret(this, "StripeSecret", {
+      description: "RavelGo Stripe keys — replace these placeholders post-deploy, see api-stack.ts",
+      secretObjectValue: {
+        // unsafePlainText is fine here specifically because these aren't
+        // real secret material — they're placeholders meant to be
+        // overwritten once, exactly like Cognito's admin bootstrap step.
+        secretKey: cdk.SecretValue.unsafePlainText("sk_live_REPLACE_ME"),
+        webhookSecret: cdk.SecretValue.unsafePlainText("whsec_REPLACE_ME"),
+      },
+    });
+    stripeSecret.grantRead(instanceRole);
+
     this.service = new apprunner.CfnService(this, "BackendService", {
       serviceName: "ravelgo-backend",
       sourceConfiguration: {
@@ -91,10 +117,13 @@ export class ApiStack extends cdk.Stack {
               { name: "COGNITO_CLIENT_ID", value: props.cognitoUserPoolClientId },
               { name: "DOCUMENTS_BUCKET", value: props.documentsBucket.bucketName },
               { name: "ASSETS_BUCKET", value: props.assetsBucket.bucketName },
+              { name: "ALLOWED_ORIGINS", value: props.allowedOrigins.join(",") },
             ],
             runtimeEnvironmentSecrets: [
               { name: "DB_USERNAME", value: `${dbSecretArn}:username::` },
               { name: "DB_PASSWORD", value: `${dbSecretArn}:password::` },
+              { name: "STRIPE_SECRET_KEY", value: `${stripeSecret.secretArn}:secretKey::` },
+              { name: "STRIPE_WEBHOOK_SECRET", value: `${stripeSecret.secretArn}:webhookSecret::` },
             ],
           },
         },
@@ -122,5 +151,6 @@ export class ApiStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, "ServiceUrl", { value: `https://${this.service.attrServiceUrl}` });
     new cdk.CfnOutput(this, "EcrRepositoryUri", { value: this.repository.repositoryUri });
+    new cdk.CfnOutput(this, "StripeSecretArn", { value: stripeSecret.secretArn });
   }
 }

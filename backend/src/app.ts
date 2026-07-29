@@ -10,6 +10,7 @@ import { load as loadYaml } from "js-yaml";
 import { env } from "./config/env";
 import { adminRouter } from "./routes/admin.routes";
 import { alertsRouter } from "./routes/alerts.routes";
+import { billingRouter } from "./routes/billing.routes";
 import { carPaddyRouter } from "./routes/carpaddy.routes";
 import { courierRouter } from "./routes/courier.routes";
 import { documentsRouter } from "./routes/documents.routes";
@@ -36,6 +37,15 @@ app.use(
   helmet(),
   cors({ origin: env.NODE_ENV === "production" ? env.ALLOWED_ORIGINS : true }),
 );
+
+// Mounted at this one exact path, before express.json(): Stripe signs the
+// exact raw request bytes, so parsing the body as JSON first would break
+// the signature check in src/routes/billing.routes.ts. Scoped this
+// narrowly (not the whole "/api" prefix) so express.raw() doesn't consume
+// the body stream for every other /api route before express.json() below
+// gets a chance to parse it.
+app.use("/api/billing/webhook", express.raw({ type: "application/json" }), billingRouter);
+
 app.use(express.json());
 app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
 

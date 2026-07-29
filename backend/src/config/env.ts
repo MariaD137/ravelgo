@@ -25,6 +25,12 @@ const rawEnvSchema = z.object({
   // NODE_ENV is production (enforced below, not by zod, so the message names
   // the real cause instead of a generic schema error).
   ALLOWED_ORIGINS: z.string().optional(),
+  // Optional: unset in dev/test (Stripe-backed routes give a clear 500
+  // instead of silently no-opping — see src/billing/stripe.ts). Required in
+  // production, enforced below rather than by zod so the error names the
+  // real cause.
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
 });
 
 export interface Env {
@@ -37,6 +43,8 @@ export interface Env {
   DOCUMENTS_BUCKET?: string;
   ASSETS_BUCKET?: string;
   ALLOWED_ORIGINS: string[];
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
 }
 
 function loadEnv(): Env {
@@ -67,6 +75,9 @@ function loadEnv(): Env {
   if (data.NODE_ENV === "production" && allowedOrigins.length === 0) {
     throw new Error("ALLOWED_ORIGINS is required in production (comma-separated list of allowed origins)");
   }
+  if (data.NODE_ENV === "production" && (!data.STRIPE_SECRET_KEY || !data.STRIPE_WEBHOOK_SECRET)) {
+    throw new Error("STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required in production");
+  }
 
   return {
     NODE_ENV: data.NODE_ENV,
@@ -78,6 +89,8 @@ function loadEnv(): Env {
     DOCUMENTS_BUCKET: data.DOCUMENTS_BUCKET,
     ASSETS_BUCKET: data.ASSETS_BUCKET,
     ALLOWED_ORIGINS: allowedOrigins,
+    STRIPE_SECRET_KEY: data.STRIPE_SECRET_KEY,
+    STRIPE_WEBHOOK_SECRET: data.STRIPE_WEBHOOK_SECRET,
   };
 }
 

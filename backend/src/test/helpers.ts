@@ -1,6 +1,7 @@
 import { mock } from "node:test";
 import { verifier } from "../middleware/auth";
 import { prisma } from "../db/prisma";
+import { stripeClient } from "../billing/stripe";
 
 export interface MockCognitoUser {
   sub: string;
@@ -30,6 +31,19 @@ export function mockAuthAs(user: MockCognitoUser): string {
 
 export function restoreAuth() {
   mock.restoreAll();
+}
+
+/**
+ * Stubs stripeClient.paymentIntents.create so route tests never make a real
+ * network call to Stripe — returns a fake PaymentIntent id/clientSecret,
+ * same pattern as mockAuthAs() for the Cognito verifier.
+ */
+export function mockPaymentIntentCreate(id = `pi_test_${Date.now()}`) {
+  mock.method(stripeClient.paymentIntents, "create", async () => ({
+    id,
+    client_secret: `${id}_secret_test`,
+  }));
+  return id;
 }
 
 // Delete in FK-safe order (children before parents).

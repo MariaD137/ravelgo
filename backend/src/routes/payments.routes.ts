@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { stripeClient } from "../billing/stripe";
 
 export const paymentsRouter = Router();
 
@@ -11,9 +12,12 @@ const chargeSchema = z.object({
 });
 
 // Driver or Admin: charge the rider for a completed trip's final fare.
-// This is a bookkeeping record, not a live processor integration (PAY-01/02
-// wire a real processor in later) — it exists so a trip has exactly one
-// payment record to reconcile against.
+// Creates a real Stripe PaymentIntent and a Payment row in PENDING —
+// PAY-01/02's actual outcome (succeeded/failed) arrives asynchronously via
+// POST /billing/webhook once the client confirms the PaymentIntent
+// (confirming it is a client-side/mobile-SDK step, out of scope for this
+// backend route). CASH/WALLET charges skip Stripe entirely and settle
+// immediately, since there's no card to authorize.
 paymentsRouter.post("/trips/:id/charge", requireAuth, requireRole("Driver", "Admin"), async (req, res) => {
   const parsed = chargeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -32,6 +36,25 @@ paymentsRouter.post("/trips/:id/charge", requireAuth, requireRole("Driver", "Adm
   const existing = await prisma.payment.findUnique({ where: { tripId: trip.id } });
   if (existing) return res.status(409).json({ error: "Trip has already been charged" });
 
+  if (parsed.data.method === "CARD") {
+    const intent = await stripeClient.paymentIntents.create({
+      amount: Math.round(trip.finalFare * 100),
+      currency: "usd",
+      metadata: { tripId: trip.id },
+    });
+    const payment = await prisma.payment.create({
+      data: {
+        tripId: trip.id,
+        userId: trip.riderId,
+        amount: trip.finalFare,
+        method: "CARD",
+        status: "PENDING",
+        providerReference: intent.id,
+      },
+    });
+    return res.status(201).json({ ...payment, clientSecret: intent.client_secret });
+  }
+
   const payment = await prisma.payment.create({
     data: {
       tripId: trip.id,
@@ -43,6 +66,33 @@ paymentsRouter.post("/trips/:id/charge", requireAuth, requireRole("Driver", "Adm
     },
   });
   res.status(201).json(payment);
+});
+
+// Rider (who owns the payment) or Admin: a receipt for a charged trip
+paymentsRouter.get("/payments/:id/receipt", requireAuth, async (req, res) => {
+  const payment = await prisma.payment.findUnique({
+    where: { id: req.params.id },
+    include: { trip: true, user: true },
+  });
+  if (!payment) return res.status(404).json({ error: "Payment not found" });
+
+  const isAdmin = req.user!.groups.includes("Admin");
+  if (!isAdmin && payment.user.cognitoSub !== req.user!.sub) {
+    return res.status(403).json({ error: "Not authorized to view this receipt" });
+  }
+
+  res.json({
+    paymentId: payment.id,
+    tripId: payment.tripId,
+    pickup: payment.trip.pickup,
+    destination: payment.trip.destination,
+    amount: payment.amount,
+    currency: payment.currency,
+    method: payment.method,
+    status: payment.status,
+    paidAt: payment.paidAt,
+    issuedAt: payment.createdAt,
+  });
 });
 
 // Rider: view my own payment history

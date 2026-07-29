@@ -17,6 +17,11 @@ const env = {
 const githubOrg = app.node.tryGetContext("githubOrg") ?? "MariaD137";
 const githubRepo = app.node.tryGetContext("githubRepo") ?? "ravelgo";
 const githubBranch = app.node.tryGetContext("githubBranch") ?? "main";
+// Override with: cdk deploy --context allowedOrigins="https://admin.ravelgo.com,https://app.ravelgo.com"
+const allowedOrigins = (app.node.tryGetContext("allowedOrigins") ?? "https://admin.ravelgo.com")
+  .split(",")
+  .map((origin: string) => origin.trim())
+  .filter(Boolean);
 
 const network = new NetworkStack(app, "RavelGo-Network", { env });
 const auth = new AuthStack(app, "RavelGo-Auth", { env });
@@ -32,6 +37,7 @@ const api = new ApiStack(app, "RavelGo-Api", {
   assetsBucket: storage.assetsBucket,
   cognitoUserPoolId: auth.userPool.userPoolId,
   cognitoUserPoolClientId: auth.userPoolClient.userPoolClientId,
+  allowedOrigins,
 });
 
 new CiStack(app, "RavelGo-CI", {

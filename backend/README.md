@@ -19,7 +19,8 @@ TypeScript, PostgreSQL via Prisma, authenticated with Amazon Cognito JWTs.
 - `POST /api/courier-requests` (rider), `GET /api/courier-requests/available` (driver), `PATCH /api/courier-requests/:id/accept` (driver), `PATCH /api/courier-requests/:id/status` (assigned driver or admin), `GET /api/courier-requests/:id` (party to it, or admin), `GET /api/courier-requests` (admin)
 - `POST /api/emergency-alerts` (any authenticated user), `GET /api/emergency-alerts/mine` (any authenticated user), `GET /api/emergency-alerts` (admin), `PATCH /api/emergency-alerts/:id/status` (admin)
 - `GET /api/subscription-plans` (any authenticated user), `POST /api/subscription-plans` (admin), `POST /api/drivers/me/subscription`, `GET /api/drivers/me/subscription`, `DELETE /api/drivers/me/subscription` (driver)
-- `POST /api/trips/:id/charge` (driver on the trip, or admin) — records a `Payment` for a `COMPLETED` trip's `finalFare`; `GET /api/payments/mine` (any authenticated user), `GET /api/payments` (admin)
+- `POST /api/trips/:id/charge` (driver on the trip, or admin) — `CARD` creates a real Stripe `PaymentIntent`, `Payment` starts `PENDING`; `CASH`/`WALLET` settle immediately; `GET /api/payments/mine` (any authenticated user), `GET /api/payments` (admin), `GET /api/payments/:id/receipt` (the paying rider, or admin)
+- `POST /api/billing/webhook` (Stripe calls this directly, no bearer token) — verifies the signature and moves a `Payment` from `PENDING` to `SUCCEEDED`/`FAILED` on `payment_intent.succeeded`/`payment_intent.payment_failed`
 - `GET /api/loyalty-tiers` (any authenticated user), `POST /api/loyalty-tiers` (admin), `GET /api/riders/me/loyalty` (rider) — current tier is *computed* from completed-trip count on every read, not stored, so it can't drift out of sync with actual trips
 - `GET /api/promotions` (any authenticated user), `POST /api/promotions` (admin), `POST /api/promotions/:code/redeem` (any authenticated user, once per user — enforced by a unique constraint on `(promotionId, userId)`)
 - `GET /api/pricing-rules` (any authenticated user), `POST /api/pricing-rules` (admin), `PATCH /api/pricing-rules/:id` (admin); `GET /api/surge-zones`, `POST /api/surge-zones` (admin), `PATCH /api/surge-zones/:id` (admin); `GET /api/pricing/quote?distanceKm=&durationMinutes=&zone=` (any authenticated user) — computes a fare estimate from whichever `PricingRule` is `active`, times an active `SurgeZone`'s multiplier if `zone` matches one by name
@@ -77,6 +78,35 @@ an HTTP equivalent (`GET /api/trips/:id/driver-location`,
 Real, tested code — `src/realtime/realtime.test.ts` drives an actual `ws`
 client against a real HTTP server (not a mock), covering auth rejection,
 subscribe authorization, and both broadcast paths end to end.
+
+## Payments (Stripe)
+
+`POST /api/trips/:id/charge` with `method: "CARD"` creates a real Stripe
+`PaymentIntent` (`src/billing/stripe.ts`) and records a `Payment` as
+`PENDING`, returning the `clientSecret` the mobile app needs to confirm it
+client-side (out of scope for this backend — that's a Stripe mobile SDK
+call). The actual outcome arrives asynchronously: `POST /api/billing/webhook`
+verifies Stripe's signature against the *exact raw request bytes* — which is
+why it's mounted in `app.ts` with `express.raw()` at that one specific path,
+before the global `express.json()` — and flips the matching `Payment` to
+`SUCCEEDED` or `FAILED` on `payment_intent.succeeded` /
+`payment_intent.payment_failed`. `CASH`/`WALLET` charges skip Stripe
+entirely and settle immediately, since there's no card to authorize.
+
+Set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` to actually use this
+(unset is fine in dev/test — `src/billing/stripe.ts` constructs the SDK
+client with a dummy key so it never fails to *load*, only real API calls
+would fail, and tests mock those directly). **Not validated against a live
+Stripe account** — no test-mode keys available in this sandbox — but the
+webhook signature verification itself is tested for real:
+`billing.routes.test.ts` builds a genuinely, correctly HMAC-signed payload
+with Stripe's own `webhooks.generateTestHeaderString` (not a mock) and
+confirms the handler updates the right `Payment`. One gotcha that cost real
+debugging time while writing that test: sending the signed payload via
+`supertest` as `Buffer.from(body)` silently breaks the signature check —
+superagent JSON-serializes a Buffer into `{"type":"Buffer","data":[...]}`
+before it hits the wire. Send the raw string instead; see the comment in
+`billing.routes.test.ts`.
 
 ## Local development
 

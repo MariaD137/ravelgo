@@ -28,10 +28,25 @@ account is wired into this repo.
 3. **Deploy everything**:
    ```bash
    npx cdk deploy --all
+   # Or, if the admin dashboard's real domain isn't https://admin.ravelgo.com:
+   npx cdk deploy --all --context allowedOrigins="https://your-real-domain.com"
    ```
    This takes ~15-20 minutes the first time (mostly the RDS instance). Note
    the outputs at the end — you'll need `EcrRepositoryUri`, `ServiceUrl`,
-   `UserPoolId`, `UserPoolClientId`, and `GitHubActionsDeployRoleArn`.
+   `UserPoolId`, `UserPoolClientId`, `StripeSecretArn`, and
+   `GitHubActionsDeployRoleArn`.
+
+3a. **Replace the placeholder Stripe secret.** `RavelGo-Api` creates a
+    Secrets Manager secret with dummy `sk_live_REPLACE_ME` /
+    `whsec_REPLACE_ME` values (App Runner needs *something* to reference at
+    deploy time, and CDK can't know your real Stripe keys) — overwrite it
+    once with the real ones from your Stripe dashboard:
+    ```bash
+    aws secretsmanager put-secret-value --secret-id <StripeSecretArn output> \
+      --secret-string '{"secretKey":"sk_live_...","webhookSecret":"whsec_..."}'
+    ```
+    Same "one manual step, documented" pattern as bootstrapping the first
+    Cognito Admin user — see `../docs/admin-bootstrap.md`.
 
 4. **Push a first image** so the App Runner service has something to run
    (`cdk deploy` creates the service, but it needs at least one image in ECR

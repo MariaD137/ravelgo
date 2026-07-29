@@ -492,7 +492,13 @@ paths:
   /trips/{id}/charge:
     post:
       tags: [Payments]
-      summary: Charge the rider for a completed trip's final fare (Driver on the trip, or Admin)
+      summary: >-
+        Charge the rider for a completed trip's final fare (Driver on the
+        trip, or Admin). CARD creates a real Stripe PaymentIntent and
+        returns the Payment as PENDING plus a clientSecret for the mobile
+        app to confirm; the outcome (SUCCEEDED/FAILED) lands asynchronously
+        via POST /billing/webhook. CASH/WALLET settle immediately, no
+        Stripe involved.
       parameters:
         - $ref: "#/components/parameters/id"
       requestBody:
@@ -504,14 +510,69 @@ paths:
                 method: { type: string, enum: [CARD, CASH, WALLET], default: CARD }
       responses:
         "201":
-          description: Payment record
+          description: Payment record (PENDING with a clientSecret for CARD, SUCCEEDED for CASH/WALLET)
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Payment" }
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Payment"
+                  - type: object
+                    properties:
+                      clientSecret: { type: string, nullable: true }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: Trip not eligible to be charged, or already charged
+
+  /payments/{id}/receipt:
+    get:
+      tags: [Payments]
+      summary: A receipt for a charged trip (the paying rider, or Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Receipt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paymentId: { type: string }
+                  tripId: { type: string }
+                  pickup: { type: string }
+                  destination: { type: string }
+                  amount: { type: number }
+                  currency: { type: string }
+                  method: { type: string, enum: [CARD, CASH, WALLET] }
+                  status: { type: string, enum: [PENDING, SUCCEEDED, FAILED, REFUNDED] }
+                  paidAt: { type: string, format: date-time, nullable: true }
+                  issuedAt: { type: string, format: date-time }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /billing/webhook:
+    post:
+      tags: [Payments]
+      summary: Stripe webhook (not called by any RavelGo client — Stripe calls this directly)
+      security: []
+      parameters:
+        - name: stripe-signature
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: A raw Stripe Event payload; signature-verified against STRIPE_WEBHOOK_SECRET
+      responses:
+        "200":
+          description: Acknowledged
+        "400":
+          description: Missing/invalid signature
 
   /documents/me:
     get:
