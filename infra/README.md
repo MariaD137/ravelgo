@@ -9,7 +9,8 @@ Provisions everything the backend needs to run in AWS:
 | `RavelGo-Storage` | S3 buckets (driver documents, private; assets, via CloudFront) |
 | `RavelGo-Data` | RDS PostgreSQL (single-AZ, `db.t4g.micro` to start) |
 | `RavelGo-Api` | ECR repo + App Runner service running the backend container |
-| `RavelGo-CI` | GitHub OIDC provider + IAM role GitHub Actions assumes to deploy |
+| `RavelGo-Monitoring` | CloudWatch alarms (5xx rate, RDS CPU/storage) + AWS Budget, both -> one SNS topic -> email |
+| `RavelGo-CI` | GitHub OIDC provider + IAM role GitHub Actions assumes to deploy (production only, see "Staging" below) |
 
 Validated locally with `cdk synth` (no AWS credentials needed for that). Actually
 deploying (`cdk deploy`) does need your own AWS credentials — nobody's AWS
@@ -96,11 +97,29 @@ one:
   provisioned amount while idle — cheaper than an always-on ECS/EKS cluster
   for an app that isn't yet at scale.
 
-## Adding a stage (dev/staging/prod)
+## Adding a stage (staging/dev/etc)
 
-Right now `bin/infra.ts` deploys one environment. To add more, either:
-- Duplicate the stack instantiation block in `bin/infra.ts` with a different
-  name suffix (e.g. `RavelGo-Api-Staging`) and different context values, or
-- Use CDK Pipelines if you want promotion between stages automated end to
-  end (a bigger step up in complexity — only worth it once you have real
-  users depending on staging being separate from prod).
+Both production and non-production environments live in the same AWS account/region.
+Production is the default; to deploy a staging environment:
+
+```bash
+cd infra
+# Deploy all stacks with staging suffix
+npx cdk deploy --all --context envName=staging
+# Or with custom alert email and budget:
+npx cdk deploy --all --context envName=staging --context alertEmail=staging-alerts@example.com --context monthlyBudgetUsd=50
+```
+
+This creates separate, parallel resources:
+- Stack names get suffixed: `RavelGo-Network-staging`, `RavelGo-Auth-staging`, etc.
+- ECR repo becomes `ravelgo-backend-staging` (not `ravelgo-backend`)
+- App Runner service becomes `ravelgo-backend-staging`
+- Cognito User Pool name becomes `ravelgo-users-staging`
+- All other resource names are automatically suffixed
+
+**Note:** GitHub Actions CI/CD (GitHub OIDC + IAM role) is **production-only**. AWS
+only allows one OIDC provider per issuer per account, so staging deploys must be
+manual (`cdk deploy --context envName=staging` from a developer machine with
+real AWS credentials). To automate staged deployments, use CDK Pipelines or switch
+to per-environment AWS accounts (a bigger step in complexity — only worth it once
+you have real users depending on staging isolation).

@@ -2,15 +2,23 @@ import * as cdk from "aws-cdk-lib";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import type { Construct } from "constructs";
 
+export interface AuthStackProps extends cdk.StackProps {
+  // Cognito pool *names* don't actually need to be unique (only the pool ID
+  // does) — namespaced anyway so staging/production are distinguishable at
+  // a glance in the Cognito console, not because it's required.
+  envName?: string;
+}
+
 export class AuthStack extends cdk.Stack {
   public readonly userPool: cognito.UserPool;
   public readonly userPoolClient: cognito.UserPoolClient;
 
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props?: AuthStackProps) {
     super(scope, id, props);
+    const envName = props?.envName ?? "production";
 
     this.userPool = new cognito.UserPool(this, "UserPool", {
-      userPoolName: "ravelgo-users",
+      userPoolName: envName === "production" ? "ravelgo-users" : `ravelgo-users-${envName}`,
       selfSignUpEnabled: true,
       signInAliases: { email: true },
       autoVerify: { email: true },

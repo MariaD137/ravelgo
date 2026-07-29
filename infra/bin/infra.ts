@@ -4,6 +4,7 @@ import { ApiStack } from "../lib/api-stack";
 import { AuthStack } from "../lib/auth-stack";
 import { CiStack } from "../lib/ci-stack";
 import { DataStack } from "../lib/data-stack";
+import { MonitoringStack } from "../lib/monitoring-stack";
 import { NetworkStack } from "../lib/network-stack";
 import { StorageStack } from "../lib/storage-stack";
 
@@ -22,13 +23,23 @@ const allowedOrigins = (app.node.tryGetContext("allowedOrigins") ?? "https://adm
   .split(",")
   .map((origin: string) => origin.trim())
   .filter(Boolean);
+const alertEmail = app.node.tryGetContext("alertEmail") ?? "alerts@ravelgo.example";
+const monthlyBudgetUsd = Number(app.node.tryGetContext("monthlyBudgetUsd") ?? 100);
 
-const network = new NetworkStack(app, "RavelGo-Network", { env });
-const auth = new AuthStack(app, "RavelGo-Auth", { env });
-const storage = new StorageStack(app, "RavelGo-Storage", { env });
-const data = new DataStack(app, "RavelGo-Data", { env, vpc: network.vpc });
+// IN-06: a second, independent environment in the same AWS account/region —
+// `cdk deploy --all --context envName=staging`. Defaults to "production" so
+// a plain `cdk deploy --all` behaves exactly as it always has (same stack
+// IDs, same resource names) — this is additive, not a breaking rename.
+const envName = app.node.tryGetContext("envName") ?? "production";
+const suffix = envName === "production" ? "" : `-${envName}`;
+const stackName = (base: string) => `${base}${suffix}`;
 
-const api = new ApiStack(app, "RavelGo-Api", {
+const network = new NetworkStack(app, stackName("RavelGo-Network"), { env });
+const auth = new AuthStack(app, stackName("RavelGo-Auth"), { env, envName });
+const storage = new StorageStack(app, stackName("RavelGo-Storage"), { env });
+const data = new DataStack(app, stackName("RavelGo-Data"), { env, vpc: network.vpc });
+
+const api = new ApiStack(app, stackName("RavelGo-Api"), {
   env,
   vpc: network.vpc,
   dbInstance: data.dbInstance,
@@ -38,13 +49,31 @@ const api = new ApiStack(app, "RavelGo-Api", {
   cognitoUserPoolId: auth.userPool.userPoolId,
   cognitoUserPoolClientId: auth.userPoolClient.userPoolClientId,
   allowedOrigins,
+  envName,
 });
 
-new CiStack(app, "RavelGo-CI", {
+new MonitoringStack(app, stackName("RavelGo-Monitoring"), {
   env,
-  repository: api.repository,
   service: api.service,
-  githubOrg,
-  githubRepo,
-  githubBranch,
+  dbInstance: data.dbInstance,
+  alertEmail,
+  monthlyBudgetUsd,
 });
+
+// CI/CD (GitHub OIDC + deploy role) stays production-only: AWS only allows
+// one OIDC provider per unique issuer URL per account, so a second CiStack
+// for staging would fail at actual `cdk deploy` time (not something `cdk
+// synth` alone would catch) unless it imported the existing provider
+// instead of creating a new one. Safer to keep staging deploys manual
+// (`cdk deploy --context envName=staging` from a developer machine with
+// real AWS credentials) than to get account-wide OIDC sharing wrong.
+if (envName === "production") {
+  new CiStack(app, stackName("RavelGo-CI"), {
+    env,
+    repository: api.repository,
+    service: api.service,
+    githubOrg,
+    githubRepo,
+    githubBranch,
+  });
+}

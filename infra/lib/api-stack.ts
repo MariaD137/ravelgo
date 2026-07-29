@@ -21,6 +21,11 @@ export interface ApiStackProps extends cdk.StackProps {
   // forgetting to pass this breaks the deploy loudly instead of quietly
   // leaving CORS wide open.
   allowedOrigins: string[];
+  // ECR repo names and App Runner service names *are* unique per
+  // account+region, unlike Cognito pool names — this suffix is what makes
+  // IN-06's staging deploy possible at all in the same AWS account as
+  // production, not just cosmetic.
+  envName?: string;
 }
 
 export class ApiStack extends cdk.Stack {
@@ -29,9 +34,11 @@ export class ApiStack extends cdk.Stack {
 
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
+    const envName = props.envName ?? "production";
+    const resourceName = envName === "production" ? "ravelgo-backend" : `ravelgo-backend-${envName}`;
 
     this.repository = new ecr.Repository(this, "BackendRepository", {
-      repositoryName: "ravelgo-backend",
+      repositoryName: resourceName,
       imageScanOnPush: true,
       lifecycleRules: [{ maxImageCount: 20 }],
     });
@@ -98,7 +105,7 @@ export class ApiStack extends cdk.Stack {
     stripeSecret.grantRead(instanceRole);
 
     this.service = new apprunner.CfnService(this, "BackendService", {
-      serviceName: "ravelgo-backend",
+      serviceName: resourceName,
       sourceConfiguration: {
         autoDeploymentsEnabled: true,
         authenticationConfiguration: { accessRoleArn: accessRole.roleArn },
