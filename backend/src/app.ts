@@ -8,6 +8,7 @@ import morgan from "morgan";
 import swaggerUi from "swagger-ui-express";
 import { load as loadYaml } from "js-yaml";
 import { env } from "./config/env";
+import { errorHandler } from "./middleware/error-handler";
 import { adminRouter } from "./routes/admin.routes";
 import { alertsRouter } from "./routes/alerts.routes";
 import { billingRouter } from "./routes/billing.routes";
@@ -88,11 +89,17 @@ app.use("/api", paymentsRouter);
 app.use("/api", loyaltyRouter);
 app.use("/api", pricingRouter);
 
+// 404 handler
 app.use((_req: Request, res: Response) => {
-  res.status(404).json({ error: "Not found" });
+  const timestamp = new Date().toISOString();
+  res.status(404).json({
+    error: {
+      code: "NOT_FOUND",
+      message: "Endpoint not found",
+      timestamp,
+    },
+  });
 });
 
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error(err);
-  res.status(500).json({ error: "Internal server error" });
-});
+// Global error handler (must be last)
+app.use(errorHandler);
