@@ -93,6 +93,14 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
 model User {
   id                String   @id @default(uuid())
   cognitoSub        String   @unique
@@ -113,6 +121,8 @@ model User {
   emergencyAlerts   EmergencyAlert[]
   payments          Payment[]
   promotionRedemptions PromotionRedemption[]
+  bankAccount       DriverBankAccount?
+  payouts           Payout[]
 }
 
 model Driver {
@@ -344,4 +354,38 @@ model SurgeZone {
   startsAt   DateTime?
   endsAt     DateTime?
   createdAt  DateTime  @default(now())
+}
+
+model DriverBankAccount {
+  id              String   @id @default(uuid())
+  driverId        String   @unique
+  driver          User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  accountHolderName String
+  bankName        String
+  accountNumber   String
+  routingNumber   String
+  accountType     String   @default("CHECKING") // CHECKING, SAVINGS
+  isVerified      Boolean  @default(false)
+  verificationToken String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Payout {
+  id              String      @id @default(uuid())
+  driverId        String
+  driver          User        @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  amount          Float
+  currency        String      @default("USD")
+  status          PayoutStatus @default(PENDING)
+  period          String      // e.g., "2024-07" for weekly/monthly payout period
+  transactionId   String?     // Stripe or payment provider transaction ID
+  failureReason   String?
+  completedAt     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([driverId])
+  @@index([status])
+  @@index([createdAt])
 }

@@ -19,6 +19,7 @@ import { driversRouter } from "./routes/drivers.routes";
 import { healthRouter } from "./routes/health.routes";
 import { loyaltyRouter } from "./routes/loyalty.routes";
 import { paymentsRouter } from "./routes/payments.routes";
+import { payoutsRouter } from "./routes/payouts.routes";
 import { pricingRouter } from "./routes/pricing.routes";
 import { rentalsRouter } from "./routes/rentals.routes";
 import { ridersRouter } from "./routes/riders.routes";
@@ -87,6 +88,7 @@ app.use("/api", alertsRouter);
 app.use("/api", subscriptionsRouter);
 app.use("/api", paymentsRouter);
 app.use("/api", loyaltyRouter);
+app.use("/api", payoutsRouter);
 app.use("/api", pricingRouter);
 
 // 404 handler
