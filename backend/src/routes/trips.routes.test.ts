@@ -29,6 +29,46 @@ test("POST /api/trips lets a Rider request a trip", async () => {
   assert.equal(res.body.status, "REQUESTED");
 });
 
+test("POST /api/trips auto-matches an available ACTIVE driver", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-6", role: "RIDER", firstName: "G", lastName: "H", email: "g@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-sub-6", role: "DRIVER", firstName: "I", lastName: "J", email: "i@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE" } });
+
+  const token = mockAuthAs({ sub: "rider-sub-6", groups: ["Rider"] });
+  const res = await request(app)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ pickup: "Home", destination: "Airport", estimatedFare: 25.5 });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.status, "MATCHED");
+  assert.equal(res.body.driverId, driver.id);
+});
+
+test("POST /api/trips leaves a trip REQUESTED when no ACTIVE driver is free", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-7", role: "RIDER", firstName: "K", lastName: "L", email: "k@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-sub-7", role: "DRIVER", firstName: "M", lastName: "N", email: "m@example.com" },
+  });
+  await prisma.driver.create({ data: { userId: driverUser.id, status: "PENDING_REVIEW" } });
+
+  const token = mockAuthAs({ sub: "rider-sub-7", groups: ["Rider"] });
+  const res = await request(app)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ pickup: "Home", destination: "Airport", estimatedFare: 25.5 });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.status, "REQUESTED");
+  assert.equal(res.body.driverId, null);
+});
+
 test("POST /api/trips rejects a Driver caller", async () => {
   const token = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
   const res = await request(app)

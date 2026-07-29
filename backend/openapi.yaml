@@ -6,7 +6,12 @@ info:
     Unified REST API for the RavelGo rider, driver, and admin apps.
     Authenticated with Amazon Cognito access tokens; role checks are enforced
     via Cognito group membership (`Rider`, `Driver`, `Admin`) — see
-    `src/middleware/auth.ts`.
+    `src/middleware/auth.ts`. There is also a WebSocket endpoint
+    (`wss://<host>/ws?token=<access token>`) for live trip-status and
+    driver-location push, not representable in OpenAPI 3.0 — see
+    `docs/realtime-architecture.md` for its wire protocol. Every REST
+    endpoint below has an HTTP-polling equivalent, so a client never
+    strictly needs the WebSocket connection.
 servers:
   - url: /api
 security:
@@ -460,6 +465,30 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Trip" }
+  /trips/{id}/driver-location:
+    get:
+      tags: [Trips]
+      summary: >-
+        Poll the assigned driver's last known location (HTTP fallback for a
+        client not holding a live WebSocket connection — see /docs on the
+        WS wire protocol for the live-push equivalent)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Last known location
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  driverId: { type: string }
+                  lat: { type: number }
+                  lng: { type: number }
+                  updatedAt: { type: string, format: date-time }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Trip not found, no driver assigned yet, or no location reported yet
   /trips/{id}/charge:
     post:
       tags: [Payments]

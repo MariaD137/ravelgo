@@ -12,7 +12,7 @@ TypeScript, PostgreSQL via Prisma, authenticated with Amazon Cognito JWTs.
 - `POST /api/rentals` (driver), `GET /api/rentals/mine` (driver), `GET /api/rentals` (any authenticated user, admin sees all statuses), `PATCH /api/rentals/:id/status` (admin)
 - `POST /api/support-tickets`, `GET /api/support-tickets/mine` (any authenticated user), `GET /api/support-tickets` (admin), `PATCH /api/support-tickets/:id/status` (admin)
 - `POST /api/uploads/presign` (any authenticated user) — returns a short-lived S3 PUT URL + `fileKey`; upload the file client-side, then send `fileKey` to `POST /api/documents`
-- `POST /api/trips`, `GET /api/trips/:id`, `PATCH /api/trips/:id/status`, `GET /api/trips` (admin)
+- `POST /api/trips` (rider — also attempts to auto-match an available driver, see Real-time below), `GET /api/trips/:id`, `PATCH /api/trips/:id/status`, `GET /api/trips` (admin), `GET /api/trips/:id/driver-location` (party to the trip — HTTP polling fallback for the WS location push)
 - `GET /api/documents/me`, `POST /api/documents` (driver), `PATCH /api/documents/:id/review` (admin)
 - `POST /api/car-paddy` (driver), `GET /api/car-paddy` (admin), `PATCH /api/car-paddy/:id` (admin)
 - `GET /api/admin/dashboard` (admin)
@@ -51,9 +51,32 @@ Cognito itself doesn't create a Postgres row for a new user — that's why
 own once, right after sign-up, to create the corresponding `Driver`/`User`
 record (an upsert, so calling it again is harmless).
 
-Real-time ride matching/tracking (driver location, live trip updates) is
-intentionally out of scope for this skeleton — add a WebSocket API or AWS
-AppSync subscription layer when you get there.
+## Real-time & ride matching
+
+`POST /api/trips` doesn't just create a trip — `src/services/matching.ts`
+runs synchronously right after, looking for one `ACTIVE` driver with no
+trip currently `MATCHED`/`IN_PROGRESS` and assigning them (highest-rated
+first). It's deliberately not location-aware (there's no driver location
+persisted in Postgres — see below), and deliberately synchronous rather
+than queued; see the file's own comment for why that's the right MVP
+starting point and the concrete trigger to move past it.
+
+Live updates are a `ws` WebSocket server attached to the same HTTP server
+Express listens on (`src/realtime/server.ts`, wired up in `src/index.ts`) —
+not AWS AppSync. See `docs/realtime-architecture.md` for the full reasoning
+and the wire protocol. In short: connect to `wss://<host>/ws?token=<Cognito
+access token>`, send `{"type":"subscribe","tripId":"..."}` to join a trip's
+room (rejected unless you're the rider, the assigned driver, or an Admin),
+and a driver can send `{"type":"location","lat":0,"lng":0}` to broadcast
+their position to everyone else subscribed to their active trip(s).
+`PATCH /api/trips/:id/status` also broadcasts a `trip:status` event to the
+trip's room the moment the Postgres write succeeds. Every one of these has
+an HTTP equivalent (`GET /api/trips/:id/driver-location`,
+`GET /api/trips/:id`) for a client that isn't holding a live connection.
+
+Real, tested code — `src/realtime/realtime.test.ts` drives an actual `ws`
+client against a real HTTP server (not a mock), covering auth rejection,
+subscribe authorization, and both broadcast paths end to end.
 
 ## Local development
 

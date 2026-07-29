@@ -3,6 +3,8 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { broadcastTripStatus, getLatestDriverLocation } from "../realtime/hub";
+import { matchDriverToTrip } from "../services/matching";
 
 export const tripsRouter = Router();
 
@@ -25,7 +27,9 @@ tripsRouter.post("/trips", requireAuth, requireRole("Rider"), async (req, res) =
   const trip = await prisma.trip.create({
     data: { ...parsed.data, riderId: rider.id },
   });
-  res.status(201).json(trip);
+
+  const matched = await matchDriverToTrip(trip.id);
+  res.status(201).json(matched ?? trip);
 });
 
 // Rider or Driver: view a trip they're party to
@@ -63,7 +67,32 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
       completedAt: parsed.data.status === "COMPLETED" ? new Date() : undefined,
     },
   });
+  broadcastTripStatus(trip.id, trip.status, trip.finalFare);
   res.json(trip);
+});
+
+// Rider or Driver: poll the assigned driver's last known location (a
+// fallback for clients not holding a live WebSocket connection — see
+// docs/realtime-architecture.md). 404s until the driver has sent at least
+// one location update over WS.
+tripsRouter.get("/trips/:id/driver-location", requireAuth, async (req, res) => {
+  const trip = await prisma.trip.findUnique({
+    where: { id: req.params.id },
+    include: { rider: true, driver: { include: { user: true } } },
+  });
+  if (!trip) return res.status(404).json({ error: "Trip not found" });
+
+  const groups = req.user!.groups;
+  const isOwner =
+    trip.rider.cognitoSub === req.user!.sub || trip.driver?.user.cognitoSub === req.user!.sub;
+  if (!isOwner && !groups.includes("Admin")) {
+    return res.status(403).json({ error: "Not authorized to view this trip" });
+  }
+
+  if (!trip.driverId) return res.status(404).json({ error: "No driver assigned yet" });
+  const location = getLatestDriverLocation(trip.driverId);
+  if (!location) return res.status(404).json({ error: "No location reported yet" });
+  res.json(location);
 });
 
 // Admin: monitor all trips
