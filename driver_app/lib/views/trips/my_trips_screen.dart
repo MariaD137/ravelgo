@@ -19,7 +19,7 @@ class MyTripsScreen extends StatelessWidget {
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               itemCount: mockTrips.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, i) {
                 final t = mockTrips[i];
                 final cancelled = t.status == TripStatus.cancelled;
