@@ -7,6 +7,7 @@ import { DataStack } from "../lib/data-stack";
 import { MonitoringStack } from "../lib/monitoring-stack";
 import { NetworkStack } from "../lib/network-stack";
 import { StorageStack } from "../lib/storage-stack";
+import { WebStack } from "../lib/web-stack";
 
 const app = new cdk.App();
 
@@ -52,6 +53,8 @@ const api = new ApiStack(app, stackName("RavelGo-Api"), {
   envName,
 });
 
+const web = new WebStack(app, stackName("RavelGo-Web"), { env });
+
 new MonitoringStack(app, stackName("RavelGo-Monitoring"), {
   env,
   service: api.service,
@@ -72,6 +75,11 @@ if (envName === "production") {
     env,
     repository: api.repository,
     service: api.service,
+    webApps: [
+      { name: "Admin", bucket: web.adminApp.bucket, distribution: web.adminApp.distribution },
+      { name: "Driver", bucket: web.driverApp.bucket, distribution: web.driverApp.distribution },
+      { name: "User", bucket: web.userApp.bucket, distribution: web.userApp.distribution },
+    ],
     githubOrg,
     githubRepo,
     githubBranch,

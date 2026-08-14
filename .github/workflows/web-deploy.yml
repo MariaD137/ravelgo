@@ -1,0 +1,70 @@
+name: Web Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "admin_app/**"
+      - "driver_app/**"
+      - "user_app/**"
+      - ".github/workflows/web-deploy.yml"
+
+permissions:
+  id-token: write # required to assume the AWS role via OIDC
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: admin_app
+            bucket_var: ADMIN_APP_BUCKET_NAME
+            distribution_var: ADMIN_APP_DISTRIBUTION_ID
+          - app: driver_app
+            bucket_var: DRIVER_APP_BUCKET_NAME
+            distribution_var: DRIVER_APP_DISTRIBUTION_ID
+          - app: user_app
+            bucket_var: USER_APP_BUCKET_NAME
+            distribution_var: USER_APP_DISTRIBUTION_ID
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      # These apps currently run on mock data end-to-end (see
+      # docs/ARCHITECTURE.md) — .env.example is the only env file that
+      # exists for any of them today. Swap this for a real per-environment
+      # .env once there's actual configuration to deploy with.
+      - name: Set up placeholder .env
+        run: cp .env.example .env
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build web
+        run: flutter build web
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Sync to S3
+        run: aws s3 sync build/web "s3://${{ vars[matrix.bucket_var] }}" --delete
+
+      - name: Invalidate CloudFront cache
+        run: >
+          aws cloudfront create-invalidation
+          --distribution-id "${{ vars[matrix.distribution_var] }}"
+          --paths "/*"
