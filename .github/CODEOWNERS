@@ -1,0 +1,19 @@
+# Replace placeholders with actual GitHub usernames or teams.
+# Each line assigns reviewers for pull requests touching those paths.
+
+# Backend API
+# /backend/ @backend-team
+
+# Flutter apps
+# /user_app/ @mobile-team
+# /driver_app/ @mobile-team
+# /admin_app/ @mobile-team
+
+# Infrastructure
+# /infra/ @devops-team
+
+# CI/CD and GitHub config
+# /.github/ @devops-team
+
+# Documentation
+# /docs/ @tech-lead
