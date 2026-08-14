@@ -12,7 +12,7 @@ if (localPropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.ravelgo.driver.ravelgo_driver"
+    namespace = "com.ravelgo.userapp"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -27,7 +27,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.ravelgo.driver.ravelgo_driver"
+        applicationId = "com.ravelgo.userapp"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

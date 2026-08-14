@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:ravelgo_driver/views/TexiModule/FindDriverScreen.dart';
+import 'package:ravelgo/views/TexiModule/FindDriverScreen.dart';
 
 class SelectRide extends StatefulWidget {
   const SelectRide({super.key});

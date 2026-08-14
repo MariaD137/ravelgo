@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/SplashScreen/SplashScreen.dart';
+import 'package:ravelgo/views/SplashScreen/SplashScreen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
@@ -12,6 +12,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      title: "RavelGo",
       debugShowCheckedModeBanner: false,
       home: SplashScreen(),
     );

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/Model/VehicleSelection.dart';
-import 'package:ravelgo_driver/components/basic_components.dart';
-import 'package:ravelgo_driver/views/Services/ColourPage.dart';
+import 'package:ravelgo/Model/VehicleSelection.dart';
+import 'package:ravelgo/components/basic_components.dart';
+import 'package:ravelgo/views/Services/ColourPage.dart';
 
 class BrandModelPage extends StatelessWidget {
   final String brand;

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/Model/VehicleSelection.dart';
-import 'package:ravelgo_driver/components/basic_components.dart';
-import 'package:ravelgo_driver/views/Services/PhotoLicensePage.dart';
+import 'package:ravelgo/Model/VehicleSelection.dart';
+import 'package:ravelgo/components/basic_components.dart';
+import 'package:ravelgo/views/Services/PhotoLicensePage.dart';
 
 import 'BrandPage.dart';
 import 'DriverLicensePage.dart';

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/AccountView/Account.dart';
-import 'package:ravelgo_driver/views/Driver_Portal/contact_us_screen.dart';
-import 'package:ravelgo_driver/views/Driver_Portal/faq_screen.dart';
-import 'package:ravelgo_driver/views/Driver_Portal/my_documents_view.dart';
-import 'package:ravelgo_driver/views/Driver_Portal/my_trips_view.dart';
-import 'package:ravelgo_driver/views/Driver_Portal/passenger_invoice_screen.dart';
-import 'package:ravelgo_driver/views/Driver_Portal/ravel_driver_portal_screen.dart';
-import 'package:ravelgo_driver/views/Driver_Portal/vehicle_list_screen.dart';
+import 'package:ravelgo/views/AccountView/Account.dart';
+import 'package:ravelgo/views/Driver_Portal/contact_us_screen.dart';
+import 'package:ravelgo/views/Driver_Portal/faq_screen.dart';
+import 'package:ravelgo/views/Driver_Portal/my_documents_view.dart';
+import 'package:ravelgo/views/Driver_Portal/my_trips_view.dart';
+import 'package:ravelgo/views/Driver_Portal/passenger_invoice_screen.dart';
+import 'package:ravelgo/views/Driver_Portal/ravel_driver_portal_screen.dart';
+import 'package:ravelgo/views/Driver_Portal/vehicle_list_screen.dart';
 class SideMenuDriver extends StatefulWidget {
   final String initialSelectedItem;
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 
-import 'package:ravelgo_driver/views/User/user_summary.dart';
+import 'package:ravelgo/views/User/user_summary.dart';
 
 
 class SideMenu extends StatelessWidget {

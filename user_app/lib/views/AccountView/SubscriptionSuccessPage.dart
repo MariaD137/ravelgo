@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/AccountView/EReceiptPage.dart';
+import 'package:ravelgo/views/AccountView/EReceiptPage.dart';
 
 import 'Account.dart';
 
