@@ -40,6 +40,11 @@ jobs:
       COGNITO_CLIENT_ID: ciclientid0000000000000
       STRIPE_SECRET_KEY: sk_test_ci_dummy
       STRIPE_WEBHOOK_SECRET: whsec_ci_dummy
+      # Dummy — presigning is offline crypto (no real S3 call), but the
+      # route now 500s on an unconfigured bucket name instead of silently
+      # signing a broken URL, so tests need these set to reach that path.
+      DOCUMENTS_BUCKET: ravelgo-ci-documents
+      ASSETS_BUCKET: ravelgo-ci-assets
     steps:
       - uses: actions/checkout@v4
 
