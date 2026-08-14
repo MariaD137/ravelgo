@@ -18,8 +18,6 @@ const ALLOWED_CONTENT_TYPES = [
   "application/pdf",
 ];
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
-
 const presignSchema = z.object({
   bucket: z.enum(["documents", "assets"]),
   fileName: z.string().min(1),
@@ -40,11 +38,16 @@ uploadsRouter.post("/uploads/presign", requireAuth, async (req, res) => {
 
   const fileKey = `${req.user!.sub}/${randomUUID()}-${parsed.data.fileName}`;
 
+  // A presigned PutObjectCommand's ContentLength pins the upload to that
+  // exact byte count (S3 rejects anything else), so it can't express a
+  // "max size" here. Enforcing a max upload size for this PUT-based flow
+  // needs a follow-up (e.g. switching to createPresignedPost with a
+  // content-length-range condition, or an S3 event notification that
+  // deletes/flags oversized objects after upload).
   const command = new PutObjectCommand({
     Bucket: bucketName,
     Key: fileKey,
     ContentType: parsed.data.contentType,
-    ContentLength: MAX_FILE_SIZE,
   });
   const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 300 });
 
