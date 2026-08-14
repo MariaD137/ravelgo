@@ -1,19 +1,24 @@
-# Replace placeholders with actual GitHub usernames or teams.
-# Each line assigns reviewers for pull requests touching those paths.
+# @MariaD137 is currently the only collaborator on this repo (verified via
+# the GitHub API, not assumed), so every path below routes to them for now.
+# Split these out by real path/team as soon as more people join — a
+# CODEOWNERS entry naming the repo's only collaborator adds no actual
+# review gate (GitHub can't request your own approval on your own PR), it
+# only becomes meaningful once someone else has push access and branch
+# protection's "Require review from Code Owners" is turned on.
 
 # Backend API
-# /backend/ @backend-team
+/backend/ @MariaD137
 
 # Flutter apps
-# /user_app/ @mobile-team
-# /driver_app/ @mobile-team
-# /admin_app/ @mobile-team
+/user_app/ @MariaD137
+/driver_app/ @MariaD137
+/admin_app/ @MariaD137
 
 # Infrastructure
-# /infra/ @devops-team
+/infra/ @MariaD137
 
 # CI/CD and GitHub config
-# /.github/ @devops-team
+/.github/ @MariaD137
 
 # Documentation
-# /docs/ @tech-lead
+/docs/ @MariaD137
