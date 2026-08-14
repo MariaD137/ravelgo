@@ -74,6 +74,18 @@ jobs:
       - name: Apply migrations
         run: npx prisma migrate deploy
 
+      # The postgres:16 image always makes POSTGRES_USER a superuser, and
+      # Postgres superusers bypass row-level security unconditionally —
+      # FORCE ROW LEVEL SECURITY only affects non-superuser table owners.
+      # Left as-is, every RLS policy in
+      # prisma/migrations/*_enable_rls_financial_tables would be silently
+      # inert for the rest of this job. Demoting after migrations run is
+      # safe: table ownership (which the policies don't depend on anyway)
+      # persists independently of the superuser attribute, and a superuser
+      # is allowed to strip its own superuser status.
+      - name: Drop superuser so RLS policies are actually enforced in CI
+        run: PGPASSWORD=ravelgo psql -h localhost -U ravelgo -d ravelgo_test -c "ALTER ROLE ravelgo NOSUPERUSER;"
+
       - name: Lint
         run: npm run lint
 

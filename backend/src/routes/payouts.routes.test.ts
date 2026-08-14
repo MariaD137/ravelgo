@@ -4,6 +4,7 @@ import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
 import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { withBypass } from "../lib/rls";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -42,7 +43,7 @@ test("POST /api/payouts/bank-account creates the account and masks the response"
   assert.equal(res.body.accountNumber, "****6789");
   assert.equal(res.body.routingNumber, "****0021");
 
-  const stored = await prisma.driverBankAccount.findFirst();
+  const stored = await withBypass((tx) => tx.driverBankAccount.findFirst());
   assert.ok(stored);
   assert.notEqual(stored!.accountNumber, bankAccountPayload.accountNumber);
   assert.notEqual(stored!.routingNumber, bankAccountPayload.routingNumber);
@@ -70,8 +71,8 @@ test("GET /api/payouts/bank-account finds the account the same driver just creat
 test("GET /api/payouts/history only returns the calling driver's own payouts", async () => {
   const { user: driverA } = await createDriver("driver-sub-3");
   const { user: driverB } = await createDriver("driver-sub-4");
-  await prisma.payout.create({ data: { driverId: driverA.id, amount: 100, period: "2026-07", status: "PENDING" } });
-  await prisma.payout.create({ data: { driverId: driverB.id, amount: 200, period: "2026-07", status: "PENDING" } });
+  await withBypass((tx) => tx.payout.create({ data: { driverId: driverA.id, amount: 100, period: "2026-07", status: "PENDING" } }));
+  await withBypass((tx) => tx.payout.create({ data: { driverId: driverB.id, amount: 200, period: "2026-07", status: "PENDING" } }));
 
   const token = mockAuthAs({ sub: "driver-sub-3", groups: ["Driver"] });
   const res = await request(app).get("/api/payouts/history").set("Authorization", `Bearer ${token}`);
