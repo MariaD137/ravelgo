@@ -13,7 +13,6 @@ import { paginate, paginationQuerySchema } from "../lib/pagination";
 import {
   calculatePayoutForPeriod,
   createPayout,
-  getPayoutHistory,
   processPayout,
   completePayout,
   failPayout,
@@ -227,7 +226,10 @@ payoutsRouter.get("/payouts", requireAuth, requireRole("Admin"), async (req, res
 
     const validStatuses = ["PENDING", "PROCESSING", "COMPLETED", "FAILED"] as const;
     const rawStatus = req.query.status ? String(req.query.status) : undefined;
-    const status = rawStatus && validStatuses.includes(rawStatus as any) ? rawStatus as typeof validStatuses[number] : undefined;
+    const status =
+      rawStatus && (validStatuses as readonly string[]).includes(rawStatus)
+        ? (rawStatus as (typeof validStatuses)[number])
+        : undefined;
     const driverId = req.query.driverId ? String(req.query.driverId) : undefined;
 
     const [payouts, total] = await Promise.all([
