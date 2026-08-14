@@ -7,6 +7,7 @@
 
 import type { Payout, Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
+import { decryptField, maskLast4 } from "../lib/encryption";
 
 type PayoutWithDriverBank = Prisma.PayoutGetPayload<{
   include: { driver: { include: { bankAccount: true } } };
@@ -100,6 +101,14 @@ export async function createPayout(calculation: PayoutCalculation): Promise<Payo
       },
     },
   });
+
+  // accountNumber/routingNumber are encrypted at rest — never surface the
+  // ciphertext or a decrypted full value over the API; decrypt only to
+  // compute the last-4 mask, like the driver-facing routes do.
+  if (payout.driver.bankAccount) {
+    payout.driver.bankAccount.accountNumber = maskLast4(decryptField(payout.driver.bankAccount.accountNumber));
+    payout.driver.bankAccount.routingNumber = maskLast4(decryptField(payout.driver.bankAccount.routingNumber));
+  }
 
   return payout;
 }

@@ -10,6 +10,7 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { validate } from "../lib/validate";
 import { Errors } from "../lib/errors";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { decryptField, encryptField, maskLast4 } from "../lib/encryption";
 import {
   calculatePayoutForPeriod,
   createPayout,
@@ -29,28 +30,61 @@ const bankAccountSchema = z.object({
   accountType: z.enum(["CHECKING", "SAVINGS"]).optional(),
 });
 
+// DriverBankAccount/Payout.driverId is a FK to User.id, not the Cognito
+// sub — every driver-facing route here needs to resolve the real User.id
+// first (an earlier version used req.user!.sub directly, which either
+// violated the FK constraint on create or silently matched nothing on
+// read, since no User row's id is ever equal to its own cognitoSub).
+async function requireOwnUserId(cognitoSub: string): Promise<string> {
+  const user = await prisma.user.findUnique({ where: { cognitoSub } });
+  if (!user) throw Errors.notFound("Driver profile");
+  return user.id;
+}
+
+// accountNumber/routingNumber are stored encrypted — decrypt only to
+// compute the last-4 mask, never return the ciphertext or a full value.
+function maskBankAccount<T extends { accountNumber: string; routingNumber: string }>(
+  account: T,
+): Omit<T, "accountNumber" | "routingNumber"> & { accountNumber: string; routingNumber: string } {
+  return {
+    ...account,
+    accountNumber: maskLast4(decryptField(account.accountNumber)),
+    routingNumber: maskLast4(decryptField(account.routingNumber)),
+  };
+}
+
 // Driver: register/update bank account for payouts
 payoutsRouter.post("/payouts/bank-account", requireAuth, requireRole("Driver"), async (req, res, next) => {
   try {
     const data = validate<typeof bankAccountSchema._output>(bankAccountSchema, req.body, "Request body");
+    const userId = await requireOwnUserId(req.user!.sub);
+    const encrypted = {
+      ...data,
+      accountNumber: encryptField(data.accountNumber),
+      routingNumber: encryptField(data.routingNumber),
+    };
 
     const existing = await prisma.driverBankAccount.findUnique({
-      where: { driverId: req.user!.sub },
+      where: { driverId: userId },
     });
 
     let bankAccount;
     if (existing) {
       bankAccount = await prisma.driverBankAccount.update({
-        where: { driverId: req.user!.sub },
-        data: { ...data, isVerified: false }, // Re-verify when updated
+        where: { driverId: userId },
+        data: { ...encrypted, isVerified: false }, // Re-verify when updated
       });
     } else {
       bankAccount = await prisma.driverBankAccount.create({
-        data: { driverId: req.user!.sub, ...data },
+        data: { driverId: userId, ...encrypted },
       });
     }
 
-    res.status(201).json(bankAccount);
+    res.status(201).json({
+      ...bankAccount,
+      accountNumber: maskLast4(data.accountNumber),
+      routingNumber: maskLast4(data.routingNumber),
+    });
   } catch (err) {
     next(err);
   }
@@ -59,11 +93,16 @@ payoutsRouter.post("/payouts/bank-account", requireAuth, requireRole("Driver"), 
 // Driver: get my bank account
 payoutsRouter.get("/payouts/bank-account", requireAuth, requireRole("Driver"), async (req, res, next) => {
   try {
+    const userId = await requireOwnUserId(req.user!.sub);
     const bankAccount = await prisma.driverBankAccount.findUnique({
-      where: { driverId: req.user!.sub },
+      where: { driverId: userId },
     });
     if (!bankAccount) throw Errors.notFound("Bank account");
-    res.json(bankAccount);
+    // Never return a decrypted full account/routing number over the API —
+    // last 4 digits is enough for the owner to confirm which account is on
+    // file; full numbers are only decrypted server-side when actually
+    // initiating a transfer.
+    res.json(maskBankAccount(bankAccount));
   } catch (err) {
     next(err);
   }
@@ -77,15 +116,16 @@ payoutsRouter.get("/payouts/history", requireAuth, requireRole("Driver"), async 
       req.query,
       "Query parameters",
     );
+    const userId = await requireOwnUserId(req.user!.sub);
 
     const [payouts, total] = await Promise.all([
       prisma.payout.findMany({
-        where: { driverId: req.user!.sub },
+        where: { driverId: userId },
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      prisma.payout.count({ where: { driverId: req.user!.sub } }),
+      prisma.payout.count({ where: { driverId: userId } }),
     ]);
 
     res.json(paginate(payouts, total, page, pageSize));
@@ -97,8 +137,9 @@ payoutsRouter.get("/payouts/history", requireAuth, requireRole("Driver"), async 
 // Driver: get a specific payout detail
 payoutsRouter.get("/payouts/:id", requireAuth, requireRole("Driver"), async (req, res, next) => {
   try {
+    const userId = await requireOwnUserId(req.user!.sub);
     const payout = await prisma.payout.findFirst({
-      where: { id: req.params.id, driverId: req.user!.sub },
+      where: { id: req.params.id, driverId: userId },
     });
     if (!payout) throw Errors.notFound("Payout");
     res.json(payout);
