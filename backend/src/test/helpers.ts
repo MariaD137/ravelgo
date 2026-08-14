@@ -1,7 +1,7 @@
 import { mock } from "node:test";
 import { verifier } from "../middleware/auth";
-import { prisma } from "../db/prisma";
 import { stripeClient } from "../billing/stripe";
+import { withBypass } from "../lib/rls";
 
 export interface MockCognitoUser {
   sub: string;
@@ -46,18 +46,26 @@ export function mockPaymentIntentCreate(id = `pi_test_${Date.now()}`) {
   return id;
 }
 
-// Delete in FK-safe order (children before parents).
+// Delete in FK-safe order (children before parents). Payment/Payout/
+// DriverBankAccount have FORCE ROW LEVEL SECURITY (see
+// prisma/migrations/*_enable_rls_financial_tables), which also governs
+// cascade deletes triggered from User/Driver — without bypass context this
+// would fail with a row-level security violation instead of cleaning up.
 export async function resetDb() {
-  await prisma.payment.deleteMany();
-  await prisma.emergencyAlert.deleteMany();
-  await prisma.courierRequest.deleteMany();
-  await prisma.driverSubscription.deleteMany();
-  await prisma.supportTicket.deleteMany();
-  await prisma.rentalListing.deleteMany();
-  await prisma.carPaddyRequest.deleteMany();
-  await prisma.driverDocument.deleteMany();
-  await prisma.trip.deleteMany();
-  await prisma.vehicle.deleteMany();
-  await prisma.driver.deleteMany();
-  await prisma.user.deleteMany();
+  await withBypass(async (tx) => {
+    await tx.payment.deleteMany();
+    await tx.payout.deleteMany();
+    await tx.driverBankAccount.deleteMany();
+    await tx.emergencyAlert.deleteMany();
+    await tx.courierRequest.deleteMany();
+    await tx.driverSubscription.deleteMany();
+    await tx.supportTicket.deleteMany();
+    await tx.rentalListing.deleteMany();
+    await tx.carPaddyRequest.deleteMany();
+    await tx.driverDocument.deleteMany();
+    await tx.trip.deleteMany();
+    await tx.vehicle.deleteMany();
+    await tx.driver.deleteMany();
+    await tx.user.deleteMany();
+  });
 }

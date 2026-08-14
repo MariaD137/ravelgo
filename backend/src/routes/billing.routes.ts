@@ -1,8 +1,8 @@
 import { Router } from "express";
 import type Stripe from "stripe";
-import { prisma } from "../db/prisma";
 import { env } from "../config/env";
 import { stripeClient } from "../billing/stripe";
+import { withBypass } from "../lib/rls";
 
 export const billingRouter = Router();
 
@@ -30,35 +30,44 @@ billingRouter.post("/", async (req, res) => {
     return res.status(400).json({ error: "Invalid webhook signature" });
   }
 
+  // A Stripe webhook has no authenticated end user to scope by — bypass is
+  // correct here since authorization already came from the signature
+  // check above, not from row ownership.
   if (event.type === "payment_intent.succeeded" || event.type === "payment_intent.payment_failed") {
     const intent = event.data.object as Stripe.PaymentIntent;
-    const payment = await prisma.payment.findFirst({ where: { providerReference: intent.id } });
-    if (payment) {
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: event.type === "payment_intent.succeeded" ? "SUCCEEDED" : "FAILED",
-          paidAt: event.type === "payment_intent.succeeded" ? new Date() : undefined,
-        },
-      });
-    }
+    await withBypass(async (tx) => {
+      const payment = await tx.payment.findFirst({ where: { providerReference: intent.id } });
+      if (payment) {
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: event.type === "payment_intent.succeeded" ? "SUCCEEDED" : "FAILED",
+            paidAt: event.type === "payment_intent.succeeded" ? new Date() : undefined,
+          },
+        });
+      }
+    });
   } else if (event.type === "charge.refunded") {
     const charge = event.data.object as Stripe.Charge;
     if (charge.payment_intent) {
       const intentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent.id;
-      await prisma.payment.updateMany({
-        where: { providerReference: intentId },
-        data: { status: "REFUNDED" },
-      });
+      await withBypass((tx) =>
+        tx.payment.updateMany({
+          where: { providerReference: intentId },
+          data: { status: "REFUNDED" },
+        }),
+      );
     }
   } else if (event.type === "charge.dispute.created") {
     const dispute = event.data.object as Stripe.Dispute;
     if (dispute.payment_intent) {
       const intentId = typeof dispute.payment_intent === "string" ? dispute.payment_intent : dispute.payment_intent.id;
-      await prisma.payment.updateMany({
-        where: { providerReference: intentId },
-        data: { status: "DISPUTED" },
-      });
+      await withBypass((tx) =>
+        tx.payment.updateMany({
+          where: { providerReference: intentId },
+          data: { status: "DISPUTED" },
+        }),
+      );
     }
   }
 

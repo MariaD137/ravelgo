@@ -11,6 +11,7 @@ import { validate } from "../lib/validate";
 import { Errors } from "../lib/errors";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { decryptField, encryptField, maskLast4 } from "../lib/encryption";
+import { withBypass, withUserContext } from "../lib/rls";
 import {
   calculatePayoutForPeriod,
   createPayout,
@@ -64,21 +65,20 @@ payoutsRouter.post("/payouts/bank-account", requireAuth, requireRole("Driver"), 
       routingNumber: encryptField(data.routingNumber),
     };
 
-    const existing = await prisma.driverBankAccount.findUnique({
-      where: { driverId: userId },
-    });
-
-    let bankAccount;
-    if (existing) {
-      bankAccount = await prisma.driverBankAccount.update({
+    const bankAccount = await withUserContext(userId, async (tx) => {
+      const existing = await tx.driverBankAccount.findUnique({
         where: { driverId: userId },
-        data: { ...encrypted, isVerified: false }, // Re-verify when updated
       });
-    } else {
-      bankAccount = await prisma.driverBankAccount.create({
+      if (existing) {
+        return tx.driverBankAccount.update({
+          where: { driverId: userId },
+          data: { ...encrypted, isVerified: false }, // Re-verify when updated
+        });
+      }
+      return tx.driverBankAccount.create({
         data: { driverId: userId, ...encrypted },
       });
-    }
+    });
 
     res.status(201).json({
       ...bankAccount,
@@ -94,9 +94,9 @@ payoutsRouter.post("/payouts/bank-account", requireAuth, requireRole("Driver"), 
 payoutsRouter.get("/payouts/bank-account", requireAuth, requireRole("Driver"), async (req, res, next) => {
   try {
     const userId = await requireOwnUserId(req.user!.sub);
-    const bankAccount = await prisma.driverBankAccount.findUnique({
-      where: { driverId: userId },
-    });
+    const bankAccount = await withUserContext(userId, (tx) =>
+      tx.driverBankAccount.findUnique({ where: { driverId: userId } }),
+    );
     if (!bankAccount) throw Errors.notFound("Bank account");
     // Never return a decrypted full account/routing number over the API —
     // last 4 digits is enough for the owner to confirm which account is on
@@ -118,15 +118,17 @@ payoutsRouter.get("/payouts/history", requireAuth, requireRole("Driver"), async 
     );
     const userId = await requireOwnUserId(req.user!.sub);
 
-    const [payouts, total] = await Promise.all([
-      prisma.payout.findMany({
-        where: { driverId: userId },
-        orderBy: { createdAt: "desc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-      prisma.payout.count({ where: { driverId: userId } }),
-    ]);
+    const [payouts, total] = await withUserContext(userId, (tx) =>
+      Promise.all([
+        tx.payout.findMany({
+          where: { driverId: userId },
+          orderBy: { createdAt: "desc" },
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+        }),
+        tx.payout.count({ where: { driverId: userId } }),
+      ]),
+    );
 
     res.json(paginate(payouts, total, page, pageSize));
   } catch (err) {
@@ -138,9 +140,9 @@ payoutsRouter.get("/payouts/history", requireAuth, requireRole("Driver"), async 
 payoutsRouter.get("/payouts/:id", requireAuth, requireRole("Driver"), async (req, res, next) => {
   try {
     const userId = await requireOwnUserId(req.user!.sub);
-    const payout = await prisma.payout.findFirst({
-      where: { id: req.params.id, driverId: userId },
-    });
+    const payout = await withUserContext(userId, (tx) =>
+      tx.payout.findFirst({ where: { id: req.params.id, driverId: userId } }),
+    );
     if (!payout) throw Errors.notFound("Payout");
     res.json(payout);
   } catch (err) {
@@ -193,24 +195,24 @@ payoutsRouter.post("/payouts/create", requireAuth, requireRole("Admin"), async (
       throw Errors.notFound("Driver");
     }
 
-    const existing = await prisma.payout.findFirst({
-      where: { driverId, period },
-    });
+    const existing = await withBypass((tx) => tx.payout.findFirst({ where: { driverId, period } }));
     if (existing) {
       return res.status(409).json({ error: `Payout already exists for ${period}`, payoutId: existing.id });
     }
 
     let payout;
     if (amount) {
-      payout = await prisma.payout.create({
-        data: {
-          driverId,
-          amount,
-          period,
-          status: "PENDING",
-          notes: `Manual override by ${req.user!.sub}: ${reason}`,
-        },
-      });
+      payout = await withBypass((tx) =>
+        tx.payout.create({
+          data: {
+            driverId,
+            amount,
+            period,
+            status: "PENDING",
+            notes: `Manual override by ${req.user!.sub}: ${reason}`,
+          },
+        }),
+      );
     } else {
       const calculation = await calculatePayoutForPeriod(driverId, period);
       payout = await createPayout(calculation);
@@ -273,26 +275,28 @@ payoutsRouter.get("/payouts", requireAuth, requireRole("Admin"), async (req, res
         : undefined;
     const driverId = req.query.driverId ? String(req.query.driverId) : undefined;
 
-    const [payouts, total] = await Promise.all([
-      prisma.payout.findMany({
-        where: {
-          ...(status && { status }),
-          ...(driverId && { driverId }),
-        },
-        orderBy: { createdAt: "desc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        include: {
-          driver: { select: { id: true, firstName: true, lastName: true, email: true } },
-        },
-      }),
-      prisma.payout.count({
-        where: {
-          ...(status && { status }),
-          ...(driverId && { driverId }),
-        },
-      }),
-    ]);
+    const [payouts, total] = await withBypass((tx) =>
+      Promise.all([
+        tx.payout.findMany({
+          where: {
+            ...(status && { status }),
+            ...(driverId && { driverId }),
+          },
+          orderBy: { createdAt: "desc" },
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+          include: {
+            driver: { select: { id: true, firstName: true, lastName: true, email: true } },
+          },
+        }),
+        tx.payout.count({
+          where: {
+            ...(status && { status }),
+            ...(driverId && { driverId }),
+          },
+        }),
+      ]),
+    );
 
     res.json(paginate(payouts, total, page, pageSize));
   } catch (err) {
