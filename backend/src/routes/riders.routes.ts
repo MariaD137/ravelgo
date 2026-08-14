@@ -58,7 +58,19 @@ ridersRouter.post("/riders/me", requireAuth, requireRole("Rider"), async (req, r
 
 ridersRouter.get("/riders/me", requireAuth, requireRole("Rider"), async (req, res, next) => {
   try {
-    const rider = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
+    const rider = await prisma.user.findUnique({
+      where: { cognitoSub: req.user!.sub },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phoneNumber: true,
+        role: true,
+        suspended: true,
+        createdAt: true,
+      },
+    });
     if (!rider) throw Errors.notFound("Rider profile");
     res.json(rider);
   } catch (err) {

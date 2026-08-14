@@ -42,6 +42,24 @@ billingRouter.post("/", async (req, res) => {
         },
       });
     }
+  } else if (event.type === "charge.refunded") {
+    const charge = event.data.object as Stripe.Charge;
+    if (charge.payment_intent) {
+      const intentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent.id;
+      await prisma.payment.updateMany({
+        where: { providerReference: intentId },
+        data: { status: "REFUNDED" },
+      });
+    }
+  } else if (event.type === "charge.dispute.created") {
+    const dispute = event.data.object as Stripe.Dispute;
+    if (dispute.payment_intent) {
+      const intentId = typeof dispute.payment_intent === "string" ? dispute.payment_intent : dispute.payment_intent.id;
+      await prisma.payment.updateMany({
+        where: { providerReference: intentId },
+        data: { status: "DISPUTED" },
+      });
+    }
   }
 
   res.json({ received: true });

@@ -16,7 +16,7 @@ const createCourierSchema = z.object({
   packageDescription: z.string().min(1),
   recipientName: z.string().min(1),
   recipientPhone: z.string().min(1),
-  estimatedFare: z.number().positive(),
+  estimatedFare: z.number().positive().max(10000),
 });
 
 // Rider: request a courier/package delivery
@@ -74,7 +74,7 @@ courierRouter.patch("/courier-requests/:id/accept", requireAuth, requireRole("Dr
 
 const updateStatusSchema = z.object({
   status: z.enum(["IN_TRANSIT", "DELIVERED", "CANCELLED"]),
-  finalFare: z.number().positive().optional(),
+  finalFare: z.number().positive().max(10000).optional(),
 });
 
 // Driver assigned to it, or Admin: advance courier status

@@ -91,6 +91,7 @@ enum PaymentStatus {
   SUCCEEDED
   FAILED
   REFUNDED
+  DISPUTED
 }
 
 enum PayoutStatus {

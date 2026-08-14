@@ -97,15 +97,25 @@ paymentsRouter.get("/payments/:id/receipt", requireAuth, async (req, res) => {
 
 // Rider: view my own payment history
 paymentsRouter.get("/payments/mine", requireAuth, async (req, res) => {
+  const parsed = paginationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { page, pageSize } = parsed.data;
+
   const user = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
   if (!user) return res.status(404).json({ error: "User profile not found" });
 
-  const payments = await prisma.payment.findMany({
-    where: { userId: user.id },
-    include: { trip: true },
-    orderBy: { createdAt: "desc" },
-  });
-  res.json(payments);
+  const where = { userId: user.id };
+  const [payments, total] = await Promise.all([
+    prisma.payment.findMany({
+      where,
+      include: { trip: true },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.payment.count({ where }),
+  ]);
+  res.json(paginate(payments, total, page, pageSize));
 });
 
 // Admin: view all payments

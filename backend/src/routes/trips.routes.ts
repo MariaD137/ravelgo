@@ -11,7 +11,7 @@ export const tripsRouter = Router();
 const createTripSchema = z.object({
   pickup: z.string().min(1),
   destination: z.string().min(1),
-  estimatedFare: z.number().positive(),
+  estimatedFare: z.number().positive().max(10000),
   category: z.string().default("Personal"),
   pickupNote: z.string().optional(),
 });
@@ -51,7 +51,7 @@ tripsRouter.get("/trips/:id", requireAuth, async (req, res) => {
 
 const updateStatusSchema = z.object({
   status: z.enum(["MATCHED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "DISPUTED"]),
-  finalFare: z.number().positive().optional(),
+  finalFare: z.number().positive().max(10000).optional(),
 });
 
 // Driver: advance trip status (accept, start, complete)
