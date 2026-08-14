@@ -101,13 +101,21 @@ of the FORCE setting — this is a hard Postgres rule, not a bug. AWS RDS's
 master user is *not* a real superuser (this is deliberate on AWS's part, for
 exactly this reason), so production is fine. Locally and in CI, the stock
 `postgres:16` Docker image's bootstrap `POSTGRES_USER` **is** a real
-superuser by default — `backend-ci.yml` has a step that runs
-`ALTER ROLE ravelgo NOSUPERUSER;` right after migrations apply, specifically
-so RLS is genuinely exercised in CI instead of silently bypassed. Do the same
-locally if you want to test RLS behavior against `prisma migrate dev` (see
-Development Database below) — without it, `backend/src/lib/rls.test.ts`'s
-"a query with no session context set sees zero rows" assertions will fail in
-the *other* direction (a superuser sees the rows regardless of policy).
+superuser by default — and it can't simply be demoted:
+`ALTER ROLE ravelgo NOSUPERUSER` fails with "the bootstrap user must have
+the SUPERUSER attribute" (confirmed against a real run), because Postgres
+specifically refuses to let the cluster's original bootstrap role ever lose
+SUPERUSER, no matter who issues the ALTER ROLE — including itself.
+`backend-ci.yml` instead creates a *second*, ordinary role
+(`ravelgo_app`) right after migrations apply, grants it the same table
+access, and points the rest of the job's queries at it via `DATABASE_URL` —
+a role that never ran `CREATE TABLE` is neither the owner nor a superuser,
+so RLS applies to it automatically, no FORCE or demotion needed. Do the
+same locally if you want to test RLS behavior against `prisma migrate dev`
+(see Development Database below) — without a second non-owner role,
+`backend/src/lib/rls.test.ts`'s "a query with no session context set sees
+zero rows" assertions will fail in the *other* direction (the owning
+superuser sees the rows regardless of policy).
 
 **How the app sets the session context:** see `backend/src/lib/rls.ts`.
 `withUserContext(userId, fn)` runs `fn` inside a transaction with
