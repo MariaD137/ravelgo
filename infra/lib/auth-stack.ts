@@ -36,6 +36,13 @@ export class AuthStack extends cdk.Stack {
       },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
+      // Compromised-credential checks + adaptive risk-based challenges on
+      // sign-in/sign-up — the closest native Cognito equivalent to bot
+      // protection, since this app has no login endpoint of its own for a
+      // CAPTCHA to sit in front of (clients authenticate directly against
+      // Cognito). Billed per MAU on top of the base Cognito price
+      // (AdvancedSecurityMode is the deprecated predecessor of this prop).
+      standardThreatProtectionMode: cognito.StandardThreatProtectionMode.FULL_FUNCTION,
     });
 
     // One client shared by the three Flutter apps; the group a user belongs
