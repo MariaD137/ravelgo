@@ -137,9 +137,14 @@ payoutsRouter.post("/payouts/create", requireAuth, requireRole("Admin"), async (
     const schema = z.object({
       driverId: z.string(),
       period: z.string().regex(/^\d{4}-\d{2}$/),
-      amount: z.number().positive().optional(), // Override calculated amount if needed
+      amount: z.number().positive().optional(),
+      reason: z.string().min(1).optional(),
     });
-    const { driverId, period, amount } = validate<typeof schema._output>(schema, req.body, "Request body");
+    const { driverId, period, amount, reason } = validate<typeof schema._output>(schema, req.body, "Request body");
+
+    if (amount && !reason) {
+      return res.status(400).json({ error: "reason is required when overriding amount" });
+    }
 
     const driver = await prisma.user.findUnique({
       where: { id: driverId },
@@ -148,19 +153,25 @@ payoutsRouter.post("/payouts/create", requireAuth, requireRole("Admin"), async (
       throw Errors.notFound("Driver");
     }
 
+    const existing = await prisma.payout.findFirst({
+      where: { driverId, period },
+    });
+    if (existing) {
+      return res.status(409).json({ error: `Payout already exists for ${period}`, payoutId: existing.id });
+    }
+
     let payout;
     if (amount) {
-      // Manual override amount
       payout = await prisma.payout.create({
         data: {
           driverId,
           amount,
           period,
           status: "PENDING",
+          notes: `Manual override by ${req.user!.sub}: ${reason}`,
         },
       });
     } else {
-      // Calculate based on trips
       const calculation = await calculatePayoutForPeriod(driverId, period);
       payout = await createPayout(calculation);
     }
@@ -214,13 +225,15 @@ payoutsRouter.get("/payouts", requireAuth, requireRole("Admin"), async (req, res
       "Query parameters",
     );
 
-    const status = req.query.status ? String(req.query.status) : undefined;
+    const validStatuses = ["PENDING", "PROCESSING", "COMPLETED", "FAILED"] as const;
+    const rawStatus = req.query.status ? String(req.query.status) : undefined;
+    const status = rawStatus && validStatuses.includes(rawStatus as any) ? rawStatus as typeof validStatuses[number] : undefined;
     const driverId = req.query.driverId ? String(req.query.driverId) : undefined;
 
     const [payouts, total] = await Promise.all([
       prisma.payout.findMany({
         where: {
-          ...(status && { status: status as any }),
+          ...(status && { status }),
           ...(driverId && { driverId }),
         },
         orderBy: { createdAt: "desc" },
@@ -232,7 +245,7 @@ payoutsRouter.get("/payouts", requireAuth, requireRole("Admin"), async (req, res
       }),
       prisma.payout.count({
         where: {
-          ...(status && { status: status as any }),
+          ...(status && { status }),
           ...(driverId && { driverId }),
         },
       }),

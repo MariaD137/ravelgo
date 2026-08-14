@@ -182,6 +182,11 @@ export async function generatePayoutsForPeriod(period: string): Promise<any[]> {
   const payouts = [];
   for (const driver of drivers) {
     try {
+      const existing = await prisma.payout.findFirst({
+        where: { driverId: driver.id, period },
+      });
+      if (existing) continue;
+
       const calculation = await calculatePayoutForPeriod(driver.id, period);
       if (calculation.netAmount > 0) {
         const payout = await createPayout(calculation);

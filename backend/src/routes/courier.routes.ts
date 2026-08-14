@@ -57,16 +57,18 @@ courierRouter.patch("/courier-requests/:id/accept", requireAuth, requireRole("Dr
   const driver = await findOwnDriver(req.user!.sub);
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
-  const existing = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
-  if (!existing) return res.status(404).json({ error: "Courier request not found" });
-  if (existing.status !== "REQUESTED" || existing.driverId) {
+  const result = await prisma.courierRequest.updateMany({
+    where: { id: req.params.id, status: "REQUESTED", driverId: null },
+    data: { driverId: driver.id, status: "MATCHED" },
+  });
+
+  if (result.count === 0) {
+    const existing = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: "Courier request not found" });
     return res.status(409).json({ error: "Request already matched" });
   }
 
-  const request = await prisma.courierRequest.update({
-    where: { id: req.params.id },
-    data: { driverId: driver.id, status: "MATCHED" },
-  });
+  const request = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
   res.json(request);
 });
 

@@ -10,10 +10,20 @@ export const uploadsRouter = Router();
 
 const s3 = new S3Client({ region: env.AWS_REGION });
 
+const ALLOWED_CONTENT_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "application/pdf",
+];
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
 const presignSchema = z.object({
   bucket: z.enum(["documents", "assets"]),
   fileName: z.string().min(1),
-  contentType: z.string().min(1),
+  contentType: z.enum(ALLOWED_CONTENT_TYPES as [string, ...string[]]),
 });
 
 // Any authenticated user: get a short-lived URL to upload a file straight to
@@ -34,6 +44,7 @@ uploadsRouter.post("/uploads/presign", requireAuth, async (req, res) => {
     Bucket: bucketName,
     Key: fileKey,
     ContentType: parsed.data.contentType,
+    ContentLength: MAX_FILE_SIZE,
   });
   const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 300 });
 

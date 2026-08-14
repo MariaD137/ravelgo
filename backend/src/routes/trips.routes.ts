@@ -59,6 +59,19 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
   const parsed = updateStatusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+  const existing = await prisma.trip.findUnique({
+    where: { id: req.params.id },
+    include: { driver: { include: { user: true } } },
+  });
+  if (!existing) return res.status(404).json({ error: "Trip not found" });
+
+  const isAdmin = req.user!.groups.includes("Admin");
+  if (!isAdmin) {
+    if (!existing.driver || existing.driver.user.cognitoSub !== req.user!.sub) {
+      return res.status(403).json({ error: "Not authorized to update this trip" });
+    }
+  }
+
   const trip = await prisma.trip.update({
     where: { id: req.params.id },
     data: {

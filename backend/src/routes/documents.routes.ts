@@ -25,6 +25,10 @@ documentsRouter.post("/documents", requireAuth, requireRole("Driver"), async (re
   const parsed = uploadSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+  if (!parsed.data.fileKey.startsWith(`${req.user!.sub}/`)) {
+    return res.status(403).json({ error: "fileKey does not belong to you" });
+  }
+
   const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 

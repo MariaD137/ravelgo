@@ -72,23 +72,32 @@ loyaltyRouter.post("/promotions/:code/redeem", requireAuth, async (req, res) => 
   const user = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
   if (!user) return res.status(404).json({ error: "User profile not found" });
 
-  const promotion = await prisma.promotion.findUnique({ where: { code: req.params.code } });
-  if (!promotion || !promotion.active) return res.status(404).json({ error: "Promotion not found" });
-  if (promotion.expiresAt && promotion.expiresAt < new Date()) {
-    return res.status(409).json({ error: "Promotion has expired" });
-  }
-  if (promotion.maxRedemptions != null && promotion.redemptionCount >= promotion.maxRedemptions) {
-    return res.status(409).json({ error: "Promotion has reached its redemption limit" });
-  }
+  const result = await prisma.$transaction(async (tx) => {
+    const promotion = await tx.promotion.findUnique({ where: { code: req.params.code } });
+    if (!promotion || !promotion.active) return { error: "Promotion not found", status: 404 };
+    if (promotion.expiresAt && promotion.expiresAt < new Date()) {
+      return { error: "Promotion has expired", status: 409 };
+    }
+    if (promotion.maxRedemptions != null && promotion.redemptionCount >= promotion.maxRedemptions) {
+      return { error: "Promotion has reached its redemption limit", status: 409 };
+    }
 
-  const alreadyRedeemed = await prisma.promotionRedemption.findUnique({
-    where: { promotionId_userId: { promotionId: promotion.id, userId: user.id } },
+    const alreadyRedeemed = await tx.promotionRedemption.findUnique({
+      where: { promotionId_userId: { promotionId: promotion.id, userId: user.id } },
+    });
+    if (alreadyRedeemed) return { error: "You've already redeemed this promotion", status: 409 };
+
+    const redemption = await tx.promotionRedemption.create({
+      data: { promotionId: promotion.id, userId: user.id },
+    });
+    await tx.promotion.update({
+      where: { id: promotion.id },
+      data: { redemptionCount: { increment: 1 } },
+    });
+
+    return { redemption, discountPercent: promotion.discountPercent };
   });
-  if (alreadyRedeemed) return res.status(409).json({ error: "You've already redeemed this promotion" });
 
-  const [redemption] = await prisma.$transaction([
-    prisma.promotionRedemption.create({ data: { promotionId: promotion.id, userId: user.id } }),
-    prisma.promotion.update({ where: { id: promotion.id }, data: { redemptionCount: { increment: 1 } } }),
-  ]);
-  res.status(201).json({ redemption, discountPercent: promotion.discountPercent });
+  if ("error" in result && result.status) return res.status(result.status).json({ error: result.error });
+  res.status(201).json(result);
 });
