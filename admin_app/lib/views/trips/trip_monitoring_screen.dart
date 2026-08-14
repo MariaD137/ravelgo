@@ -39,7 +39,7 @@ class TripMonitoringScreen extends StatelessWidget {
     final body = ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: mockTripRecords.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, i) {
         final t = mockTripRecords[i];
         return InkWell(
