@@ -1612,9 +1612,9 @@ components:
               items:
                 type: object
                 properties:
-                  field: { type: string, description: Field name or path (e.g., "email", "address.zipCode") }
+                  field: { type: string, description: 'Field name or path (e.g., "email", "address.zipCode")' }
                   message: { type: string, description: Error message for this field }
-                  code: { type: string, nullable: true, description: Error code (e.g., "too_small", "invalid_email") }
+                  code: { type: string, nullable: true, description: 'Error code (e.g., "too_small", "invalid_email")' }
             timestamp:
               type: string
               format: date-time
