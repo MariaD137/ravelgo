@@ -27,9 +27,9 @@ class Login extends StatelessWidget {
               Text(
                 'RavelGo',
                 style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.yellow[800],
+                  fontSize: 30,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.5,
                 ),
               ),
               SizedBox(height: 16),
