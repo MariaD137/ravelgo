@@ -124,6 +124,8 @@ model User {
   promotionRedemptions PromotionRedemption[]
   bankAccount       DriverBankAccount?
   payouts           Payout[]
+
+  @@index([role])
 }
 
 model Driver {
@@ -146,6 +148,8 @@ model Driver {
   rentalListings    RentalListing[]
   courierRequestsHandled CourierRequest[] @relation("CourierDriver")
   subscription      DriverSubscription?
+
+  @@index([status])
 }
 
 model Vehicle {
@@ -162,6 +166,8 @@ model Vehicle {
   createdAt        DateTime @default(now())
 
   rentalListings   RentalListing[]
+
+  @@index([driverId])
 }
 
 model Trip {
@@ -182,6 +188,10 @@ model Trip {
 
   payment       Payment?
   emergencyAlerts EmergencyAlert[]
+
+  @@index([riderId])
+  @@index([driverId])
+  @@index([status])
 }
 
 model DriverDocument {
@@ -193,6 +203,8 @@ model DriverDocument {
   fileKey    String?
   expiryDate DateTime?
   updatedAt  DateTime       @updatedAt
+
+  @@index([driverId])
 }
 
 model CarPaddyRequest {
@@ -203,6 +215,8 @@ model CarPaddyRequest {
   status       CarPaddyStatus @default(SUBMITTED)
   submittedAt  DateTime       @default(now())
   reviewedAt   DateTime?
+
+  @@index([driverId])
 }
 
 model RentalListing {
@@ -215,6 +229,9 @@ model RentalListing {
   location   String
   status     RentalListingStatus  @default(PENDING_APPROVAL)
   createdAt  DateTime             @default(now())
+
+  @@index([driverId])
+  @@index([vehicleId])
 }
 
 model SupportTicket {
@@ -225,6 +242,8 @@ model SupportTicket {
   category  String
   status    TicketStatus @default(OPEN)
   createdAt DateTime     @default(now())
+
+  @@index([userId])
 }
 
 model CourierRequest {
@@ -243,6 +262,10 @@ model CourierRequest {
   status               CourierStatus @default(REQUESTED)
   requestedAt          DateTime      @default(now())
   deliveredAt          DateTime?
+
+  @@index([senderId])
+  @@index([driverId])
+  @@index([status])
 }
 
 model EmergencyAlert {
@@ -256,6 +279,9 @@ model EmergencyAlert {
   status     AlertStatus @default(OPEN)
   createdAt  DateTime    @default(now())
   resolvedAt DateTime?
+
+  @@index([userId])
+  @@index([tripId])
 }
 
 model SubscriptionPlan {
@@ -278,6 +304,8 @@ model DriverSubscription {
   status           SubscriptionStatus @default(ACTIVE)
   startedAt        DateTime           @default(now())
   currentPeriodEnd DateTime
+
+  @@index([planId])
 }
 
 model Payment {
@@ -293,6 +321,9 @@ model Payment {
   providerReference  String?
   createdAt          DateTime      @default(now())
   paidAt             DateTime?
+
+  @@index([userId])
+  @@index([providerReference])
 }
 
 // A catalog of tiers, not a stored assignment on User — the caller's current
