@@ -1,8 +1,13 @@
+import * as path from "node:path";
 import * as cdk from "aws-cdk-lib";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
+import * as events from "aws-cdk-lib/aws-events";
+import * as eventsTargets from "aws-cdk-lib/aws-events-targets";
 import * as guardduty from "aws-cdk-lib/aws-guardduty";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import { NodejsFunction, OutputFormat } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import type { Construct } from "constructs";
 
@@ -21,6 +26,7 @@ export class StorageStack extends cdk.Stack {
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
       versioned: true,
+      eventBridgeEnabled: true,
       lifecycleRules: [{ noncurrentVersionExpiration: cdk.Duration.days(90) }],
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
@@ -31,6 +37,7 @@ export class StorageStack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
       enforceSSL: true,
+      eventBridgeEnabled: true,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
@@ -80,6 +87,9 @@ export class StorageStack extends cdk.Stack {
       malwareProtectionRole.addToPolicy(
         new iam.PolicyStatement({
           sid: `Bucket${bucket.node.id}`,
+          // Both buckets already declare eventBridgeEnabled below, so this
+          // notification-config grant is a no-op in steady state — kept as
+          // defense-in-depth in case GuardDuty needs to (re)assert it.
           actions: ["s3:ListBucket", "s3:GetBucketNotification", "s3:PutBucketNotification"],
           resources: [bucket.bucketArn],
         }),
@@ -111,6 +121,43 @@ export class StorageStack extends cdk.Stack {
         actions: { tagging: { status: "ENABLED" } },
       });
     }
+
+    // Post-upload validation: GuardDuty above catches malware, but a client
+    // can still upload arbitrary bytes under a false Content-Type (the
+    // presigned-upload endpoint only checks the declared header, not the
+    // real file). This Lambda re-derives the actual type from magic bytes
+    // after the object lands, deletes anything that doesn't match an
+    // allow-listed signature for its bucket, and strips EXIF/XMP metadata
+    // (GPS coordinates, camera serials) from images — most importantly in
+    // AssetsBucket, which serves straight to the public internet.
+    const uploadProcessor = new NodejsFunction(this, "UploadProcessorFunction", {
+      entry: path.join(__dirname, "..", "lambda", "upload-processor", "index.ts"),
+      handler: "handler",
+      runtime: lambda.Runtime.NODEJS_20_X,
+      architecture: lambda.Architecture.ARM_64,
+      memorySize: 512,
+      timeout: cdk.Duration.seconds(30),
+      bundling: { format: OutputFormat.ESM, minify: true },
+      environment: {
+        DOCUMENTS_BUCKET_NAME: this.documentsBucket.bucketName,
+        ASSETS_BUCKET_NAME: this.assetsBucket.bucketName,
+      },
+    });
+    this.documentsBucket.grantReadWrite(uploadProcessor);
+    this.documentsBucket.grantDelete(uploadProcessor);
+    this.assetsBucket.grantReadWrite(uploadProcessor);
+    this.assetsBucket.grantDelete(uploadProcessor);
+
+    new events.Rule(this, "UploadProcessorTrigger", {
+      eventPattern: {
+        source: ["aws.s3"],
+        detailType: ["Object Created"],
+        detail: {
+          bucket: { name: [this.documentsBucket.bucketName, this.assetsBucket.bucketName] },
+        },
+      },
+      targets: [new eventsTargets.LambdaFunction(uploadProcessor)],
+    });
 
     new cdk.CfnOutput(this, "DocumentsBucketName", { value: this.documentsBucket.bucketName });
     new cdk.CfnOutput(this, "AssetsBucketName", { value: this.assetsBucket.bucketName });
