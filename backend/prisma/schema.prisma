@@ -391,3 +391,13 @@ model Payout {
   @@index([status])
   @@index([createdAt])
 }
+
+// Idempotency ledger for Stripe webhooks. `id` is Stripe's own event.id, not
+// a generated uuid — inserting it is the idempotency check itself: a retried
+// or replayed delivery hits the unique constraint and is skipped without
+// re-applying its side effects.
+model WebhookEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now())
+}

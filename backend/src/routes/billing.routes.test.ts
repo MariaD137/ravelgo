@@ -121,6 +121,40 @@ test("an event for an unknown PaymentIntent id is accepted but updates nothing",
   assert.equal(res.status, 200);
 });
 
+test("a replayed event id is not reprocessed a second time", async () => {
+  const payment = await createChargedTrip("pi_test_replay_1");
+  const { body, signature } = signedWebhookRequest({
+    id: "evt_test_replay_1",
+    object: "event",
+    type: "payment_intent.succeeded",
+    data: { object: { id: "pi_test_replay_1", object: "payment_intent" } },
+  });
+
+  const first = await request(app)
+    .post("/api/billing/webhook")
+    .set("Content-Type", "application/json")
+    .set("stripe-signature", signature)
+    .send(body);
+  assert.equal(first.status, 200);
+  assert.equal(first.body.duplicate, undefined);
+
+  // Manually revert the side effect the first delivery caused, so a second
+  // (incorrect) processing pass would be observable — proves the replay is
+  // actually skipped, not just idempotent by coincidence.
+  await prisma.payment.update({ where: { id: payment.id }, data: { status: "PENDING", paidAt: null } });
+
+  const replay = await request(app)
+    .post("/api/billing/webhook")
+    .set("Content-Type", "application/json")
+    .set("stripe-signature", signature)
+    .send(body);
+  assert.equal(replay.status, 200);
+  assert.equal(replay.body.duplicate, true);
+
+  const stillPending = await prisma.payment.findUnique({ where: { id: payment.id } });
+  assert.equal(stillPending?.status, "PENDING");
+});
+
 test("mockAuthAs/restoreAuth still work normally for other routes after webhook tests run", async () => {
   const token = mockAuthAs({ sub: "rider-sub-9", groups: ["Rider"] });
   const res = await request(app).get("/api/riders/me").set("Authorization", `Bearer ${token}`);

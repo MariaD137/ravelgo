@@ -22,9 +22,25 @@ test("POST /api/uploads/presign returns a signed URL scoped to the caller", asyn
     .send({ bucket: "documents", fileName: "license.pdf", contentType: "application/pdf" });
 
   assert.equal(res.status, 200);
-  assert.match(res.body.uploadUrl, /^https:\/\//);
+  assert.match(res.body.url, /^https:\/\//);
+  assert.equal(typeof res.body.fields, "object");
+  assert.equal(res.body.fields.key, res.body.fileKey);
   assert.match(res.body.fileKey, /^user-sub-1\//);
   assert.equal(res.body.expiresIn, 300);
+  assert.equal(res.body.maxUploadBytes, 15 * 1024 * 1024);
+});
+
+test("POST /api/uploads/presign sanitizes a path-traversal filename", async () => {
+  const token = mockAuthAs({ sub: "user-sub-3", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/uploads/presign")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ bucket: "documents", fileName: "../../etc/passwd", contentType: "application/pdf" });
+
+  assert.equal(res.status, 200);
+  assert.doesNotMatch(res.body.fileKey, /\.\./);
+  assert.doesNotMatch(res.body.fileKey, /etc\/passwd/);
 });
 
 test("POST /api/uploads/presign rejects an invalid bucket", async () => {
