@@ -40,16 +40,32 @@ class AboutView extends StatelessWidget {
             title: Text('Where does Ravel Go operate',style: TextStyle(fontSize: 16, fontWeight: FontWeight.normal, color: Colors.black),),
             trailing: Icon(Icons.arrow_forward_ios),
             onTap: () {
-              // Action for tapping the first item
-              // Navigate to the corresponding screen or show details
+              showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Where does Ravel Go operate'),
+                  content: const Text('Ravel Go currently operates in major cities across Nigeria. We are expanding to more locations soon.'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+                  ],
+                ),
+              );
             },
           ),
           ListTile(
             title: Text('Where is Ravel Go office located',style: TextStyle(fontSize: 16, fontWeight: FontWeight.normal, color: Colors.black),),
             trailing: Icon(Icons.arrow_forward_ios),
             onTap: () {
-              // Action for tapping the second item
-              // Navigate to the corresponding screen or show details
+              showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Where is Ravel Go office located'),
+                  content: const Text('For office location and contact details, please reach out to support@ravelgo.com.'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+                  ],
+                ),
+              );
             },
           ),
         ],

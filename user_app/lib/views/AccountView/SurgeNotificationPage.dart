@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SurgeNotificationPage extends StatefulWidget {
   const SurgeNotificationPage({super.key});
@@ -116,8 +117,14 @@ class _SurgeNotificationPageState extends State<SurgeNotificationPage> {
                   width: double.infinity,
                   height: 48,
                   child: ElevatedButton(
-                    onPressed: () {
-                      // Save action
+                    onPressed: () async {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setBool('surge_push_enabled', isPushEnabled);
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Settings saved')),
+                      );
+                      Navigator.pop(context);
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFFD500),

@@ -31,7 +31,7 @@ class SupportView extends StatelessWidget {
                   BackButton(color: Colors.black),
                   Spacer(),
                   Text(
-                    'Payment',
+                    'Support',
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.normal, color: Colors.black),
                   ),
                   Spacer(),

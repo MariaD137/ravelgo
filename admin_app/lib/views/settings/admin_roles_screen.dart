@@ -6,6 +6,8 @@ class AdminRolesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Roles are defined statically as role management is configured at the infrastructure level.
+    // To modify roles or assignments, contact your system administrator.
     final roles = [
       ("Super Admin", "Full access to all modules", ["Ops Admin"]),
       ("Operations Manager", "Drivers, trips, pricing, support", ["Kunle Ade", "Bisi Adewale"]),
@@ -16,27 +18,38 @@ class AdminRolesScreen extends StatelessWidget {
       appBar: AppBar(title: const Text("Admin Roles")),
       body: ListView(
         padding: const EdgeInsets.all(20),
-        children: roles.map((r) {
-          return Container(
-            margin: const EdgeInsets.only(bottom: 10),
+        children: [
+          Container(
             padding: const EdgeInsets.all(14),
-            decoration: AppComponents.cardDecoration(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(r.$1, style: const TextStyle(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                Text(r.$2, style: const TextStyle(fontSize: 12, color: Colors.black54)),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: r.$3.map((n) => AppComponents.badge(n)).toList(),
-                ),
-              ],
+            margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
+            child: const Text(
+              "Role assignments are managed at the infrastructure level. Contact your system administrator to modify roles.",
+              style: TextStyle(fontSize: 12.5),
             ),
-          );
-        }).toList(),
+          ),
+          ...roles.map((r) {
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: AppComponents.cardDecoration(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(r.$1, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  Text(r.$2, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: r.$3.map((n) => AppComponents.badge(n)).toList(),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
       ),
     );
   }

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user/views/RideView/RideDetailsView.dart';
-import 'RideDetailsView.dart'; // adjust path if needed
 
 class Ride {
   final DateTime dateTime;

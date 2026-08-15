@@ -56,6 +56,55 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  void _forgotPassword() {
+    final resetEmailController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Reset password"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              "Enter your email address and we'll help you reset your password.",
+              style: TextStyle(fontSize: 14, color: Colors.black54),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: resetEmailController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              final email = resetEmailController.text.trim();
+              if (email.isNotEmpty) {
+                ScaffoldMessenger.of(this.context).showSnackBar(
+                  const SnackBar(
+                    content: Text('If an account exists with that email, you will receive password reset instructions. You can also contact support at drivers@ravelgo.com.'),
+                    duration: Duration(seconds: 5),
+                  ),
+                );
+              }
+            },
+            child: const Text("Send reset link"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -122,7 +171,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  onPressed: () {},
+                  onPressed: _forgotPassword,
                   child: Text('Forgot Password?', style: TextStyle(color: Colors.yellow[700])),
                 ),
               ),

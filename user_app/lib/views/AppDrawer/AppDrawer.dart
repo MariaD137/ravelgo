@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user/views/HomeView/scheduled_rides_screen.dart';
+import 'package:ravelgo_user/views/RideView/RidesView.dart';
 import 'package:ravelgo_user/views/User/invite_a_friend.dart';
 import 'package:ravelgo_user/views/bottommenu/BottomNavigationView.dart';
-import 'dart:io';
 
 import '../User/user_summary.dart';
 
@@ -128,7 +128,15 @@ class SideMenu extends StatelessWidget {
                 child: ListView(
                   padding: EdgeInsets.only(top: 0),
                   children: [
-                    _menuItem(assetsImg: "assets/trip_history.png", label: "Trip history", onTap: () {}),
+                    _menuItem(assetsImg: "assets/trip_history.png", label: "Trip history", onTap: () {
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => RidesView(),
+                        ),
+                      );
+                    }),
                     _menuItem(assetsImg: "assets/service.png", label: "Services", onTap: () {
                       BottomNavigationView.globalKey.currentState?.changeTab(1);
                       Navigator.pop(context);

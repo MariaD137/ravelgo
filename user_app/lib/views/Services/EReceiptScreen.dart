@@ -66,7 +66,9 @@ class EReceiptScreen extends StatelessWidget {
           height: 50,
           child: ElevatedButton(
             onPressed: () {
-              // Download PDF or share receipt
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Feature coming soon')),
+              );
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.yellow,

@@ -213,7 +213,11 @@ class _RequestDetailsViewState extends State<RequestDetailsView> {
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  onPressed: () {},
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Feature coming soon')),
+                    );
+                  },
                   child: const Text(
                     "Accept",
                     style: TextStyle(
@@ -241,7 +245,11 @@ class _RequestDetailsViewState extends State<RequestDetailsView> {
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  onPressed: () {},
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Feature coming soon')),
+                    );
+                  },
                   child: const Text(
                     "Decline",
                     style: TextStyle(

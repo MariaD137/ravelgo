@@ -1,6 +1,5 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'RidesView.dart'; // adjust path if needed; this imports the Ride class
+import 'RidesView.dart';
 
 class RideDetailsScreen extends StatelessWidget {
   final Ride ride;
@@ -166,10 +165,4 @@ class RideDetailsScreen extends StatelessWidget {
     );
   }
 
-  Widget _localImage(String path, {BoxFit fit = BoxFit.cover}) {
-    final file = File(path);
-    return file.existsSync()
-        ? Image.file(file, fit: fit)
-        : Container(color: Colors.grey.shade200, child: const Center(child: Icon(Icons.map, size: 48)));
-  }
 }

@@ -3,7 +3,8 @@ import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/auth/driver_information_screen.dart';
 
 class AddPhotoScreen extends StatelessWidget {
-  const AddPhotoScreen({super.key});
+  final String email;
+  const AddPhotoScreen({super.key, required this.email});
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +45,7 @@ class AddPhotoScreen extends StatelessWidget {
               AppComponents.primaryButton(
                 text: "Continue",
                 onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const DriverInformationScreen()));
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => DriverInformationScreen(email: email)));
                 },
               ),
             ],

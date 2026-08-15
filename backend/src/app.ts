@@ -9,7 +9,7 @@ import swaggerUi from "swagger-ui-express";
 import { load as loadYaml } from "js-yaml";
 import { env } from "./config/env";
 import { errorHandler } from "./middleware/error-handler";
-import { checkSuspended } from "./middleware/check-suspended";
+
 import { adminRouter } from "./routes/admin.routes";
 import { alertsRouter } from "./routes/alerts.routes";
 import { billingRouter } from "./routes/billing.routes";
@@ -74,7 +74,6 @@ app.get("/openapi.json", (_req, res) => res.json(openapiDocument));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiDocument));
 
 app.use(healthRouter);
-app.use("/api", checkSuspended);
 app.use("/api", driversRouter);
 app.use("/api", ridersRouter);
 app.use("/api", vehiclesRouter);

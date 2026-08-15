@@ -95,6 +95,40 @@ driversRouter.patch("/drivers/:id/status", requireAuth, requireRole("Admin"), as
   res.json(driver);
 }));
 
-// Driver: toggle online preference is handled client-side / via a lightweight presence
-// table in a later iteration; ride matching (websocket/App Sync) is intentionally out
-// of scope for this MVP skeleton.
+const preferencesSchema = z.object({
+  preferredLanguage: z.string().min(1).optional(),
+  quietModePreferred: z.boolean().optional(),
+});
+
+// Driver: update my preferences
+driversRouter.patch("/drivers/me/preferences", requireAuth, requireRole("Driver"), asyncHandler(async (req, res) => {
+  const parsed = preferencesSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  const updated = await prisma.driver.update({
+    where: { id: driver.id },
+    data: parsed.data,
+  });
+  res.json(updated);
+}));
+
+const onlineSchema = z.object({ online: z.boolean() });
+
+// Driver: toggle online status (stored in-memory for MVP; persisted to DB for query by matching)
+driversRouter.patch("/drivers/me/online", requireAuth, requireRole("Driver"), asyncHandler(async (req, res) => {
+  const parsed = onlineSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  const statusValue = parsed.data.online ? "ACTIVE" : "PENDING_REVIEW";
+  const updated = await prisma.driver.update({
+    where: { id: driver.id },
+    data: { status: statusValue },
+  });
+  res.json({ online: updated.status === "ACTIVE" });
+}));

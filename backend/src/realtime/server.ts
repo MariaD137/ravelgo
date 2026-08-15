@@ -2,7 +2,7 @@ import type { Server as HttpServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import { verifier } from "../middleware/auth";
 import { prisma } from "../db/prisma";
-import { broadcastDriverLocation, joinTripRoom, leaveAllRooms, recordDriverLocation } from "./hub";
+import { broadcastDriverLocation, joinTripRoom, leaveAllRooms, recordDriverLocation, registerDriverSocket, unregisterDriverSocket } from "./hub";
 
 interface ConnectionUser {
   sub: string;
@@ -92,6 +92,11 @@ export function attachRealtime(server: HttpServer) {
         groups: Array.isArray(payload["cognito:groups"]) ? (payload["cognito:groups"] as string[]) : [],
       };
       connectionUsers.set(socket, user);
+
+      const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: user.sub } } });
+      if (driver) {
+        registerDriverSocket(driver.id, socket);
+      }
     } catch {
       socket.close(4401, "Invalid or expired token");
       return;
@@ -124,8 +129,13 @@ export function attachRealtime(server: HttpServer) {
       }
     });
 
-    socket.on("close", () => {
+    socket.on("close", async () => {
       leaveAllRooms(socket);
+      const closingUser = connectionUsers.get(socket);
+      if (closingUser) {
+        const closingDriver = await prisma.driver.findFirst({ where: { user: { cognitoSub: closingUser.sub } } });
+        if (closingDriver) unregisterDriverSocket(closingDriver.id, socket);
+      }
       connectionUsers.delete(socket);
     });
   });

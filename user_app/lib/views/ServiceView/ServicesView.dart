@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user/components/RideOptionCard.dart';
-import 'package:ravelgo_user/views//Services/CarRentalScreen.dart';
+import 'package:ravelgo_user/views/Services/CarRentalScreen.dart';
 import 'package:ravelgo_user/views/Services/IdelivaOnboardingScreen.dart';
 import 'package:ravelgo_user/views/TexiModule/FindRoute.dart';
 

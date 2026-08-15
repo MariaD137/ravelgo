@@ -1,16 +1,58 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user/services/api_client.dart';
+import 'package:ravelgo_user/services/auth_service.dart';
 import 'package:ravelgo_user/views/AccountView/AppSettingsPage.dart';
 import 'package:ravelgo_user/views/AccountView/CommunicationsPage.dart';
 import 'package:ravelgo_user/views/AccountView/Subscription.dart';
 import 'package:ravelgo_user/views/Driver_Portal/ravel_driver_portal_screen.dart';
+import 'package:ravelgo_user/views/Login/login.dart';
 import 'package:ravelgo_user/views/OtherViews/AboutView.dart';
+import 'package:ravelgo_user/views/OtherViews/DeleteAccountScreen.dart';
 import 'package:ravelgo_user/views/OtherViews/PrivacyScreen.dart';
 
-class Accountview extends StatelessWidget {
+class Accountview extends StatefulWidget {
   const Accountview({Key? key}) : super(key: key);
 
-  
+  @override
+  State<Accountview> createState() => _AccountviewState();
+}
+
+class _AccountviewState extends State<Accountview> {
+  String _userName = '';
+  String _rating = '';
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final data = await ApiClient().get('/riders/me');
+      if (!mounted) return;
+      setState(() {
+        final firstName = data['firstName'] ?? '';
+        final lastName = data['lastName'] ?? '';
+        _userName = '$firstName $lastName'.trim();
+        final ratingValue = data['rating'];
+        _rating = ratingValue != null ? '${double.tryParse(ratingValue.toString())?.toStringAsFixed(2) ?? ratingValue} Rating' : '';
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _logout() async {
+    await AuthService().signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => Login()),
+      (Route<dynamic> route) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,22 +75,23 @@ class Accountview extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    'Thelma Ibeh',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  Text(
+                    _loading ? '...' : (_userName.isNotEmpty ? _userName : 'User'),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 6),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.star, color: Color(0xFF00B14B), size: 18),
-                      SizedBox(width: 6),
-                      Text(
-                        '5.00 Rating',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
+                  if (_rating.isNotEmpty)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.star, color: Color(0xFF00B14B), size: 18),
+                        const SizedBox(width: 6),
+                        Text(
+                          _rating,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
                   const SizedBox(height: 18),
                 ],
               ),
@@ -149,12 +192,19 @@ class Accountview extends StatelessWidget {
                   _menuRow(
                     icon: Icons.logout,
                     label: 'Log out',
+                    onTap: () => _logout(),
                   ),
                   _divider(),
                   _menuRow(
                     icon: Icons.delete_outline,
                     label: 'Delete account',
                     labelColor: Colors.red,
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const DeleteAccountScreen()),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -205,11 +255,4 @@ class Accountview extends StatelessWidget {
     );
   }
 
-  /// Helper to load local preview image
-  Widget _localImage(String path, {BoxFit fit = BoxFit.cover}) {
-    final file = File(path);
-    return file.existsSync()
-        ? Image.file(file, fit: fit)
-        : Container(color: Colors.grey.shade300, child: const Icon(Icons.person, size: 40));
-  }
 }

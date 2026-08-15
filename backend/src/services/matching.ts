@@ -1,4 +1,5 @@
 import { prisma } from "../db/prisma";
+import { notifyDriverNewTrip } from "../realtime/hub";
 
 /**
  * Synchronous, best-effort matching: find one ACTIVE driver with no trip
@@ -30,9 +31,18 @@ export async function matchDriverToTrip(tripId: string) {
     });
     if (!driver) return null;
 
-    return tx.trip.update({
+    const matched = await tx.trip.update({
       where: { id: tripId },
       data: { driverId: driver.id, status: "MATCHED" },
     });
+
+    notifyDriverNewTrip(driver.id, {
+      id: matched.id,
+      pickup: matched.pickup,
+      destination: matched.destination,
+      estimatedFare: matched.estimatedFare,
+    });
+
+    return matched;
   }, { isolationLevel: 'Serializable' });
 }

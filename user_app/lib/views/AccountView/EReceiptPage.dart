@@ -77,7 +77,11 @@ class EReceiptPage extends StatelessWidget {
             ),
 
             /// BUTTON
-            _bottomButton("Download E-receipt", () {}),
+            _bottomButton("Download E-receipt", () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Feature coming soon')),
+              );
+            }),
           ],
         ),
       ),

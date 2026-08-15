@@ -78,7 +78,11 @@ class _MyTripsScreenState extends State<MyTripsScreen> {
               /// DOWNLOAD BUTTON
               if (hasTrips)
                 OutlinedButton.icon(
-                  onPressed: () {},
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Feature coming soon')),
+                    );
+                  },
                   icon: const Icon(Icons.picture_as_pdf_outlined),
                   label: const Text("Download"),
                   style: OutlinedButton.styleFrom(

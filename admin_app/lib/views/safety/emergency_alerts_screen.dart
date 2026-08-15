@@ -138,7 +138,11 @@ class _EmergencyAlertsScreenState extends State<EmergencyAlertsScreen> {
                           AppComponents.badge("Resolved", color: AppColors.success)
                         else
                           ElevatedButton(
-                            onPressed: () {},
+                            onPressed: () {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Dispatch help: Feature coming soon')),
+                              );
+                            },
                             style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger, foregroundColor: Colors.white),
                             child: const Text("Dispatch help"),
                           ),

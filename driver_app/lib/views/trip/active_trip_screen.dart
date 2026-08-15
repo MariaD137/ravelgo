@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_driver_app/models/ride_request.dart';
+import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/safety/emergency_screen.dart';
 import 'package:ravelgo_driver_app/views/trip/trip_complete_screen.dart';
@@ -8,7 +10,8 @@ enum _TripStage { toPickup, arrivedPickup, inProgress, arrivedDestination }
 
 class ActiveTripScreen extends StatefulWidget {
   final RideRequest request;
-  const ActiveTripScreen({super.key, required this.request});
+  final String? tripId;
+  const ActiveTripScreen({super.key, required this.request, this.tripId});
 
   @override
   State<ActiveTripScreen> createState() => _ActiveTripScreenState();
@@ -16,6 +19,7 @@ class ActiveTripScreen extends StatefulWidget {
 
 class _ActiveTripScreenState extends State<ActiveTripScreen> {
   _TripStage _stage = _TripStage.toPickup;
+  bool _isLoading = false;
 
   String get _stageLabel {
     switch (_stage) {
@@ -43,51 +47,122 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
     }
   }
 
-  void _advance() {
+  Future<void> _advance() async {
     if (_stage == _TripStage.arrivedDestination) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => TripCompleteScreen(request: widget.request)),
-      );
+      await _completeTrip();
       return;
     }
+
+    final nextStage = _TripStage.values[_stage.index + 1];
+
+    if (widget.tripId != null) {
+      setState(() => _isLoading = true);
+      try {
+        String status;
+        Map<String, dynamic> body;
+        switch (nextStage) {
+          case _TripStage.arrivedPickup:
+            status = 'ARRIVED_AT_PICKUP';
+            body = {'status': status};
+            break;
+          case _TripStage.inProgress:
+            status = 'IN_PROGRESS';
+            body = {'status': status};
+            break;
+          case _TripStage.arrivedDestination:
+            status = 'ARRIVED_AT_DESTINATION';
+            body = {'status': status};
+            break;
+          default:
+            body = {};
+        }
+        await ApiClient().patch('/trips/${widget.tripId}/status', body: body);
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to update trip status. Please try again.')),
+        );
+        return;
+      }
+    }
+
+    if (!mounted) return;
     setState(() {
-      _stage = _TripStage.values[_stage.index + 1];
+      _stage = nextStage;
+      _isLoading = false;
     });
   }
 
-  void _message() {
-    const presets = [
-      "I'm on my way",
-      "I've arrived, look out for a yellow-plate vehicle",
-      "Running 2 minutes late",
-      "Please come down, I'm outside",
-    ];
-    showModalBottomSheet(
+  Future<void> _completeTrip() async {
+    if (widget.tripId != null) {
+      setState(() => _isLoading = true);
+      try {
+        await ApiClient().patch('/trips/${widget.tripId}/status', body: {
+          'status': 'COMPLETED',
+          'finalFare': widget.request.estimatedFare,
+        });
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to complete trip. Please try again.')),
+        );
+        return;
+      }
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => TripCompleteScreen(request: widget.request, tripId: widget.tripId)),
+    );
+  }
+
+  Future<void> _cancelTrip() async {
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(padding: EdgeInsets.all(16), child: Text("Message rider", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16))),
-            ...presets.map((m) => ListTile(title: Text(m), onTap: () => Navigator.pop(context))),
-            ListTile(
-              leading: const Icon(Icons.edit_outlined),
-              title: const TextField(decoration: InputDecoration(hintText: "Write your own message")),
-            ),
-          ],
-        ),
+      builder: (context) => AlertDialog(
+        title: const Text("Cancel trip?"),
+        content: const Text("Are you sure you want to cancel this trip? Frequent cancellations may affect your rating."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("No, keep trip")),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Yes, cancel", style: TextStyle(color: AppColors.danger)),
+          ),
+        ],
       ),
+    );
+
+    if (confirmed != true) return;
+
+    if (widget.tripId != null) {
+      setState(() => _isLoading = true);
+      try {
+        await ApiClient().patch('/trips/${widget.tripId}/status', body: {'status': 'CANCELLED'});
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to cancel trip. Please try again.')),
+        );
+        return;
+      }
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
+  void _message() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('In-app messaging coming soon')),
     );
   }
 
   void _call() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Calling rider"),
-        content: Text("Connecting an in-app voice call with ${widget.request.riderName}. Your phone number stays private."),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("End call"))],
-      ),
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Voice calling coming soon')),
     );
   }
 
@@ -101,7 +176,20 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
           children: [
             Stack(
               children: [
-                Image.asset('assets/fake_map.png', width: double.infinity, height: 280, fit: BoxFit.cover),
+                const SizedBox(
+                  width: double.infinity,
+                  height: 280,
+                  child: GoogleMap(
+                    initialCameraPosition: CameraPosition(
+                      target: LatLng(6.5244, 3.3792),
+                      zoom: 14.0,
+                    ),
+                    myLocationEnabled: true,
+                    myLocationButtonEnabled: false,
+                    compassEnabled: false,
+                    zoomControlsEnabled: false,
+                  ),
+                ),
                 Positioned(
                   top: 12,
                   left: 12,
@@ -110,6 +198,17 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
                     child: IconButton(icon: const Icon(Icons.shield_outlined, color: Colors.red), onPressed: () {
                       Navigator.push(context, MaterialPageRoute(builder: (_) => const EmergencyScreen()));
                     }),
+                  ),
+                ),
+                Positioned(
+                  top: 12,
+                  right: 12,
+                  child: CircleAvatar(
+                    backgroundColor: Colors.white,
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.red),
+                      onPressed: _isLoading ? null : _cancelTrip,
+                    ),
                   ),
                 ),
               ],
@@ -141,7 +240,10 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
                     ),
                     const SizedBox(height: 20),
                     const Spacer(),
-                    AppComponents.primaryButton(text: _actionLabel, onPressed: _advance),
+                    if (_isLoading)
+                      const Center(child: CircularProgressIndicator())
+                    else
+                      AppComponents.primaryButton(text: _actionLabel, onPressed: _advance),
                   ],
                 ),
               ),

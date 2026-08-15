@@ -124,7 +124,48 @@ class _LoginState extends State<Login> {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   child: Text('Forgot Password?', style: TextStyle(color: Colors.yellow[700])),
-                  onPressed: () {},
+                  onPressed: () {
+                    final emailController = TextEditingController(text: _emailController.text);
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Forgot Password'),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('Enter your email address and we\'ll help you reset your password.'),
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: emailController,
+                              keyboardType: TextInputType.emailAddress,
+                              decoration: const InputDecoration(
+                                labelText: 'Email',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              final email = emailController.text.trim();
+                              if (email.isNotEmpty) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('If this email is registered, you will receive a password reset link. Please also contact support@ravelgo.com for assistance.')),
+                                );
+                              }
+                            },
+                            child: const Text('Submit'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ),
               SizedBox(height: 32),

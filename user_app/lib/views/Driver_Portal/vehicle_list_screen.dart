@@ -64,7 +64,9 @@ class VehicleListScreen extends StatelessWidget {
               /// ADD NEW VEHICLE BUTTON
               ElevatedButton(
                 onPressed: () {
-                  // Navigate to Add Vehicle Screen
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Feature coming soon')),
+                  );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFFFD500),

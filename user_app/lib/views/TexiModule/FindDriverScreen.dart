@@ -37,7 +37,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
     return List.generate(
       10,
           (i) => Marker(
-        markerId: MarkerId('car_\$i'),
+        markerId: MarkerId('car_$i'),
         position: LatLng(6.524 + i * 0.001, 3.379 + i * 0.001),
         icon: icon,
       ),
@@ -158,7 +158,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
               height: 24,
             ),
             SizedBox(width: 8),
-            Text("Destiation ", style: TextStyle(fontWeight: FontWeight.normal,fontSize: 16)),
+            Text("Destination", style: TextStyle(fontWeight: FontWeight.normal,fontSize: 16)),
           ],
         ),
         const SizedBox(height: 15),

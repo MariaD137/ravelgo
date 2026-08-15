@@ -47,7 +47,7 @@ class PassengerInvoiceScreen extends StatelessWidget {
               const SizedBox(height: 28),
 
               const Text(
-                "My Trips",
+                "Invoices",
                 style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700),
               ),
 
@@ -65,7 +65,11 @@ class PassengerInvoiceScreen extends StatelessWidget {
               const SizedBox(height: 14),
 
               OutlinedButton.icon(
-                onPressed: () {},
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Feature coming soon')),
+                  );
+                },
                 icon: const Icon(Icons.picture_as_pdf_outlined),
                 label: const Text("Download"),
                 style: OutlinedButton.styleFrom(

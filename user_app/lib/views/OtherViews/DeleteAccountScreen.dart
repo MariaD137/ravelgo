@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user/services/auth_service.dart';
+import 'package:ravelgo_user/views/Login/login.dart';
 
 class DeleteAccountScreen extends StatefulWidget {
   const DeleteAccountScreen({super.key});
@@ -66,8 +68,34 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               child: ElevatedButton(
                 onPressed: _selectedReasonIndex == null
                     ? null
-                    : () {
-                  // Handle account deletion logic
+                    : () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Delete Account'),
+                      content: const Text(
+                        'Are you sure you want to delete your account? This action cannot be undone.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Delete', style: TextStyle(color: Colors.red)),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed == true) {
+                    await AuthService().signOut();
+                    if (!mounted) return;
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => Login()),
+                      (Route<dynamic> route) => false,
+                    );
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.yellow[700],

@@ -15,6 +15,7 @@ class _EditPersonalInfoState extends State<EditPersonalInfo> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   bool _loading = true;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -35,6 +36,30 @@ class _EditPersonalInfoState extends State<EditPersonalInfo> {
       });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    setState(() => _saving = true);
+    try {
+      await ApiClient().patch('/riders/me', body: {
+        'firstName': _firstNameController.text.trim(),
+        'lastName': _lastNameController.text.trim(),
+        'phoneNumber': _phoneController.text.trim(),
+        'email': _emailController.text.trim(),
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile updated successfully')),
+      );
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update profile: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -82,6 +107,22 @@ class _EditPersonalInfoState extends State<EditPersonalInfo> {
             _buildLabel("Email address"),
             _buildTextField(controller: _emailController, icon: Icons.email_outlined, keyboardType: TextInputType.emailAddress),
             const SizedBox(height: 40),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                onPressed: _saving ? null : _saveProfile,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.yellow[700],
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: _saving
+                    ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                    : const Text("Save", style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+              ),
+            ),
+            const SizedBox(height: 20),
           ],
         ),
       ),

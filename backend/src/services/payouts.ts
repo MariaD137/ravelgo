@@ -8,6 +8,7 @@
 import type { Payout, Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { decryptField, maskLast4 } from "../lib/encryption";
+import { env } from "../config/env";
 
 type PayoutWithDriverBank = Prisma.PayoutGetPayload<{
   include: { driver: { include: { bankAccount: true } } };
@@ -56,7 +57,7 @@ export async function calculatePayoutForPeriod(
     return sum + (trip.payment?.status === "SUCCEEDED" ? trip.payment.amount : 0);
   }, 0);
 
-  const platformFeePercent = Number(process.env.PLATFORM_FEE_PERCENT ?? "0.2");
+  const platformFeePercent = env.PLATFORM_FEE_PERCENT;
   const platformFee = grossAmount * platformFeePercent;
 
   // Check if driver has active subscription (subscription fee offset)

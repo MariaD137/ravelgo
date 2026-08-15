@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/models/ride_request.dart';
+import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
 
 class TripCompleteScreen extends StatefulWidget {
   final RideRequest request;
-  const TripCompleteScreen({super.key, required this.request});
+  final String? tripId;
+  const TripCompleteScreen({super.key, required this.request, this.tripId});
 
   @override
   State<TripCompleteScreen> createState() => _TripCompleteScreenState();
@@ -13,6 +15,29 @@ class TripCompleteScreen extends StatefulWidget {
 
 class _TripCompleteScreenState extends State<TripCompleteScreen> {
   int _rating = 0;
+  bool _isSubmitting = false;
+
+  Future<void> _submitAndFinish() async {
+    if (_rating > 0 && widget.tripId != null) {
+      setState(() => _isSubmitting = true);
+      try {
+        await ApiClient().post('/trips/${widget.tripId}/rating', body: {
+          'rating': _rating,
+        });
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to submit rating, but your trip is complete.')),
+        );
+      }
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const DriverShell()),
+      (route) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -38,10 +63,10 @@ class _TripCompleteScreenState extends State<TripCompleteScreen> {
                 decoration: AppComponents.cardDecoration(),
                 child: Column(
                   children: [
-                    _fareRow("Trip fare", "₦${r.estimatedFare.toStringAsFixed(0)}"),
-                    _fareRow("RavelGo service fee", "- ₦${platformFee.toStringAsFixed(0)}"),
+                    _fareRow("Trip fare", "N${r.estimatedFare.toStringAsFixed(0)}"),
+                    _fareRow("RavelGo service fee", "- N${platformFee.toStringAsFixed(0)}"),
                     AppComponents.divider(),
-                    _fareRow("You earned", "₦${earnings.toStringAsFixed(0)}", bold: true),
+                    _fareRow("You earned", "N${earnings.toStringAsFixed(0)}", bold: true),
                   ],
                 ),
               ),
@@ -60,15 +85,12 @@ class _TripCompleteScreenState extends State<TripCompleteScreen> {
                 }),
               ),
               const Spacer(),
-              AppComponents.primaryButton(
-                text: "Done",
-                onPressed: () {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const DriverShell()),
-                    (route) => false,
-                  );
-                },
-              ),
+              _isSubmitting
+                  ? const Center(child: CircularProgressIndicator())
+                  : AppComponents.primaryButton(
+                      text: "Done",
+                      onPressed: _submitAndFinish,
+                    ),
             ],
           ),
         ),

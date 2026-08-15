@@ -222,7 +222,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
               height: 24,
             ),
             SizedBox(width: 8),
-            Text("Destiation ", style: TextStyle(fontWeight: FontWeight.normal,fontSize: 16)),
+            Text("Destination", style: TextStyle(fontWeight: FontWeight.normal,fontSize: 16)),
           ],
         ),
         const SizedBox(height: 15),
@@ -273,39 +273,6 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
               ),
             ),
           ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActionRow() {
-    return Row(
-      children: [
-        ElevatedButton(
-          onPressed: null,
-          style: ElevatedButton.styleFrom(
-            disabledBackgroundColor: Colors.yellow[100],
-          ),
-          child: const Text("+ 100", style: TextStyle(color: Colors.black38)),
-        ),
-        const SizedBox(width: 12),
-        ElevatedButton(
-          onPressed: () {
-            setState(() => offerAmount += 100);
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.yellow[700],
-            foregroundColor: Colors.black,
-          ),
-          child: const Text("+ 100"),
-        ),
-        const Spacer(),
-        const Text("Auto-accept offer"),
-        Switch(
-          value: autoAccept,
-          onChanged: (val) {
-            setState(() => autoAccept = val);
-          },
         ),
       ],
     );

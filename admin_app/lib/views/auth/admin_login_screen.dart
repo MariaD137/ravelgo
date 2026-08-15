@@ -113,7 +113,23 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
-                    onPressed: () {},
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Forgot Password'),
+                          content: const Text(
+                            'Please contact your system administrator to reset your password.\n\nEmail: support@ravelgo.com',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('OK'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                     child: Text("Forgot Password?", style: TextStyle(color: Colors.yellow[700])),
                   ),
                 ),

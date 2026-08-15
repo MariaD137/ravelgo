@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class CommunicationTogglePage extends StatefulWidget {
   final String title;
@@ -104,8 +105,16 @@ class _CommunicationTogglePageState
                   width: double.infinity,
                   height: 48,
                   child: ElevatedButton(
-                    onPressed: () {
-                      // Save logic
+                    onPressed: () async {
+                      final prefs = await SharedPreferences.getInstance();
+                      for (final entry in settings.entries) {
+                        await prefs.setBool('comm_${widget.title}_${entry.key}', entry.value);
+                      }
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Settings saved')),
+                      );
+                      Navigator.pop(context);
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFFFD500),

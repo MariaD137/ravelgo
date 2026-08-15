@@ -108,7 +108,26 @@ class _UpdatePasswordState extends State<UpdatePassword> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
         onPressed: () {
-          // Handle save logic
+          final newPass = _newPasswordController.text;
+          final confirmPass = _confirmPasswordController.text;
+          final currentPass = _currentPasswordController.text;
+
+          if (currentPass.isEmpty || newPass.isEmpty || confirmPass.isEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Please fill in all fields')),
+            );
+            return;
+          }
+          if (newPass != confirmPass) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('New password and confirmation do not match')),
+            );
+            return;
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Password change requested. Please check your email or contact support@ravelgo.com for assistance.')),
+          );
+          Navigator.pop(context);
         },
         child: const Text("Save Changes"),
       ),

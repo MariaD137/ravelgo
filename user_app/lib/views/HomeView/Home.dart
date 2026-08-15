@@ -99,7 +99,23 @@ class _HomePageState extends State<HomePage> {
                     top: 12,
                     right: 12,
                     child: _circleIconButton(
-                        icon: Icons.shield_outlined, onTap: () {}),
+                        icon: Icons.shield_outlined, onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Safety & Emergency'),
+                          content: const Text(
+                            'In case of emergency, please call 112 or your local emergency number.\n\nFor ride-related safety concerns, contact support@ravelgo.com.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('OK'),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
                   ),
 
 
@@ -263,7 +279,7 @@ class _HomePageState extends State<HomePage> {
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   leading: const Icon(Icons.card_giftcard_outlined),
                   title: const Text(
-                    "Earn ₹20,000",
+                    "Earn with referrals",
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: const Text("Invite friends to drive"),

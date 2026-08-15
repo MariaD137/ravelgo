@@ -1,11 +1,48 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user/services/api_client.dart';
 import 'package:ravelgo_user/views/OtherViews/EditProfileInfo.dart';
 
-class PersonalInfo extends StatelessWidget {
+class PersonalInfo extends StatefulWidget {
   const PersonalInfo({super.key});
 
   @override
+  State<PersonalInfo> createState() => _PersonalInfoState();
+}
+
+class _PersonalInfoState extends State<PersonalInfo> {
+  String _fullName = '';
+  String _phone = '';
+  String _email = '';
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final data = await ApiClient().get('/riders/me');
+      if (!mounted) return;
+      setState(() {
+        final firstName = data['firstName'] ?? '';
+        final lastName = data['lastName'] ?? '';
+        _fullName = '$firstName $lastName'.trim();
+        _phone = data['phoneNumber'] ?? '';
+        _email = data['email'] ?? '';
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return Scaffold(
       appBar: AppBar(
         leading: const BackButton(color: Colors.black),
@@ -18,27 +55,27 @@ class PersonalInfo extends StatelessWidget {
         ),
       ),
       body: Container(
-    color: Colors.white, // 👈 Set background color here
+    color: Colors.white,
     child: Column(
         children: [
 
           _ProfileSection(),
           const SizedBox(height: 30),
-          const InfoTile(
+          InfoTile(
             icon: Icons.person_outline,
-            text: 'Thelma Ibeh',
+            text: _fullName.isNotEmpty ? _fullName : 'Not set',
           ),
-          const InfoTile(
+          InfoTile(
             icon: Icons.phone_outlined,
-            text: '+2348130006677',
+            text: _phone.isNotEmpty ? _phone : 'Not set',
           ),
-          const InfoTile(
+          InfoTile(
             icon: Icons.email_outlined,
-            text: 'user@gmail.com',
+            text: _email.isNotEmpty ? _email : 'Not set',
           ),
           const InfoTile(
             icon: Icons.lock_outline,
-            text: 'John50c',
+            text: '********',
           ),
         ],
       ),
@@ -55,7 +92,7 @@ class _ProfileSection extends StatelessWidget {
     return Container(
       color: Color(0xFFF8F8F8),
       height: 180,
-      width: double.infinity,// 👈 Set background color here
+      width: double.infinity,
       child: Column(
       children: [
         const SizedBox(height: 20),

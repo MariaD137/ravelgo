@@ -87,7 +87,12 @@ class _AddBankAccountPageState extends State<AddBankAccountPage> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: isValid ? () {} : null,
+                      onPressed: isValid ? () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Bank account saved successfully')),
+                        );
+                        Navigator.pop(context);
+                      } : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFFFD500),
                         foregroundColor: Colors.black,

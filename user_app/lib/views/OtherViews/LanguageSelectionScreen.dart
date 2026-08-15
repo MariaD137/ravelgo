@@ -80,7 +80,7 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
                   leading: Text(lang["flag"]!, style: const TextStyle(fontSize: 20)),
                   title: Text(lang["name"]!),
                   onTap: () {
-                    // Handle language selection
+                    Navigator.pop(context, lang["name"]);
                   },
                 );
               },

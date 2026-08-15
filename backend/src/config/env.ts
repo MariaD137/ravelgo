@@ -37,6 +37,7 @@ const rawEnvSchema = z.object({
   // production, enforced below rather than by zod so the error names the
   // real cause. Generate with: openssl rand -base64 32
   FIELD_ENCRYPTION_KEY: z.string().optional(),
+  PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(1).default(0.2),
 });
 
 export interface Env {
@@ -52,6 +53,7 @@ export interface Env {
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
   FIELD_ENCRYPTION_KEY?: string;
+  PLATFORM_FEE_PERCENT: number;
 }
 
 function loadEnv(): Env {
@@ -102,6 +104,7 @@ function loadEnv(): Env {
     STRIPE_SECRET_KEY: data.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: data.STRIPE_WEBHOOK_SECRET,
     FIELD_ENCRYPTION_KEY: data.FIELD_ENCRYPTION_KEY,
+    PLATFORM_FEE_PERCENT: data.PLATFORM_FEE_PERCENT,
   };
 }
 

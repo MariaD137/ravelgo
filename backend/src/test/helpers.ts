@@ -48,16 +48,24 @@ export function mockPaymentIntentCreate(id = `pi_test_${Date.now()}`) {
 
 // Delete in FK-safe order (children before parents).
 export async function resetDb() {
+  await prisma.payout.deleteMany();
+  await prisma.promotionRedemption.deleteMany();
+  await prisma.promotion.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.emergencyAlert.deleteMany();
   await prisma.courierRequest.deleteMany();
   await prisma.driverSubscription.deleteMany();
+  await prisma.subscriptionPlan.deleteMany();
   await prisma.supportTicket.deleteMany();
   await prisma.rentalListing.deleteMany();
   await prisma.carPaddyRequest.deleteMany();
   await prisma.driverDocument.deleteMany();
+  await prisma.driverBankAccount.deleteMany();
   await prisma.trip.deleteMany();
   await prisma.vehicle.deleteMany();
   await prisma.driver.deleteMany();
+  await prisma.surgeZone.deleteMany();
+  await prisma.pricingRule.deleteMany();
+  await prisma.loyaltyTier.deleteMany();
   await prisma.user.deleteMany();
 }

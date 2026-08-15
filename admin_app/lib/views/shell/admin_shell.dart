@@ -35,7 +35,14 @@ class _AdminShellState extends State<AdminShell> {
         foregroundColor: Colors.black,
         elevation: 0,
         actions: [
-          IconButton(icon: const Icon(Icons.notifications_none), onPressed: () {}),
+          IconButton(
+            icon: const Icon(Icons.notifications_none),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Notifications: Feature coming soon')),
+              );
+            },
+          ),
         ],
       ),
       body: pages[_index],
