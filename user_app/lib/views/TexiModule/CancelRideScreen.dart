@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/HomeView/Home.dart';
+import 'package:ravelgo_user/views/HomeView/Home.dart';
 
 class CancelRideScreen extends StatefulWidget {
   const CancelRideScreen({super.key});

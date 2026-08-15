@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/components/basic_components.dart';
+import 'package:ravelgo_user/components/basic_components.dart';
 
 class ColourPage extends StatelessWidget {
   const ColourPage({super.key});

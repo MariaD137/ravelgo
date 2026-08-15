@@ -11,6 +11,10 @@ permissions:
   id-token: write # required to assume the AWS role via OIDC
   contents: read
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest

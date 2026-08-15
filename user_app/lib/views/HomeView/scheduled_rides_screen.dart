@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/components/ride_controller.dart';
+import 'package:ravelgo_user/components/ride_controller.dart';
 
 class ScheduledRidesRequestsScreen extends StatefulWidget {
   const ScheduledRidesRequestsScreen({Key? key}) : super(key: key);

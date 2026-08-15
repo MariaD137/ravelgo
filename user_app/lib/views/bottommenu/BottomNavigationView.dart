@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/AccountView/Account.dart';
-import 'package:ravelgo_driver/views/HomeView/Home.dart';
-import 'package:ravelgo_driver/views/RideView/RidesView.dart';
-import 'package:ravelgo_driver/views/ServiceView/ServicesView.dart';
+import 'package:ravelgo_user/views/AccountView/Account.dart';
+import 'package:ravelgo_user/views/HomeView/Home.dart';
+import 'package:ravelgo_user/views/RideView/RidesView.dart';
+import 'package:ravelgo_user/views/ServiceView/ServicesView.dart';
 
 
 class BottomNavigationView extends StatefulWidget {

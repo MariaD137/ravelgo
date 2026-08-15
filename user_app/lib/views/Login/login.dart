@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Signup/CreateAccount.dart';
-import 'package:ravelgo_driver/views/bottommenu/BottomNavigationView.dart';
+import 'package:ravelgo_user/views/Signup/CreateAccount.dart';
+import 'package:ravelgo_user/views/bottommenu/BottomNavigationView.dart';
 
 
 class Login extends StatelessWidget {

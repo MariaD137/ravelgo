@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/OtherViews/EditProfileInfo.dart';
+import 'package:ravelgo_user/views/OtherViews/EditProfileInfo.dart';
 
 class PersonalInfo extends StatelessWidget {
   const PersonalInfo({super.key});

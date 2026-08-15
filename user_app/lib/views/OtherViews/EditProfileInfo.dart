@@ -15,6 +15,15 @@ class _EditPersonalInfoState extends State<EditPersonalInfo> {
   final TextEditingController _emailController = TextEditingController(text: 'user@gmail.com');
 
   @override
+  void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(

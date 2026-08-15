@@ -1,9 +1,11 @@
 name: Security
 
 on:
-  pull_request:
-    branches: [main, develop]
+  schedule:
+    - cron: '0 8 * * 1'
   push:
+    branches: [main, develop]
+  pull_request:
     branches: [main, develop]
 
 permissions:
@@ -20,13 +22,17 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Backend audit
+      - name: Audit backend dependencies
         working-directory: backend
-        run: npm audit --audit-level=high || true
+        run: |
+          npm install --package-lock-only --ignore-scripts 2>/dev/null
+          npm audit --audit-level=critical
 
-      - name: Infra audit
+      - name: Audit infra dependencies
         working-directory: infra
-        run: npm audit --audit-level=high || true
+        run: |
+          npm install --package-lock-only --ignore-scripts 2>/dev/null
+          npm audit --audit-level=critical
 
   secret-scan:
     name: Secret Scan
@@ -44,11 +50,33 @@ jobs:
           fi
           echo "No .env files in tracked files"
 
-      - name: Scan for high-entropy strings
+      - name: Scan for leaked secrets
         run: |
-          PATTERNS='(sk_live_|sk_test_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA|EC|DSA) PRIVATE KEY-----)'
-          if grep -rE "$PATTERNS" --include='*.ts' --include='*.js' --include='*.dart' --include='*.yaml' --include='*.yml' --include='*.json' --exclude-dir=node_modules --exclude-dir=.git --exclude='*.lock' .; then
-            echo "::warning::Potential secrets found — review above matches"
-          else
-            echo "No obvious secrets found"
+          echo "=== Scanning for high-risk patterns ==="
+          FAIL=0
+
+          # Live Stripe keys
+          if git log --all -p | grep -qE 'sk_live_[a-zA-Z0-9]{24,}'; then
+            echo "CRITICAL: Live Stripe secret key found in history"
+            FAIL=1
           fi
+
+          # AWS access keys
+          if git log --all -p | grep -qE 'AKIA[0-9A-Z]{16}'; then
+            echo "CRITICAL: AWS access key found in history"
+            FAIL=1
+          fi
+
+          # Private keys
+          if git log --all -p | grep -q 'BEGIN RSA PRIVATE KEY\|BEGIN EC PRIVATE KEY\|BEGIN OPENSSH PRIVATE KEY'; then
+            echo "CRITICAL: Private key found in history"
+            FAIL=1
+          fi
+
+          if [ $FAIL -eq 1 ]; then
+            echo ""
+            echo "Run: git filter-repo or BFG Repo Cleaner to purge secrets"
+            exit 1
+          fi
+
+          echo "No high-risk secrets detected"

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/RideView/RideDetailsView.dart';
+import 'package:ravelgo_user/views/RideView/RideDetailsView.dart';
 import 'RideDetailsView.dart'; // adjust path if needed
 
 class Ride {

@@ -38,7 +38,7 @@ export class DataStack extends cdk.Stack {
       storageEncrypted: true,
       multiAz: false,
       backupRetention: cdk.Duration.days(7),
-      deletionProtection: false, // flip to true once this is a real production database
+      deletionProtection: true,
       removalPolicy: cdk.RemovalPolicy.SNAPSHOT,
     });
 

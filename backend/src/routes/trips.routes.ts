@@ -2,11 +2,20 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { asyncHandler } from "../middleware/async-handler";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { broadcastTripStatus, getLatestDriverLocation } from "../realtime/hub";
 import { matchDriverToTrip } from "../services/matching";
 
 export const tripsRouter = Router();
+
+const VALID_TRIP_TRANSITIONS: Record<string, string[]> = {
+  MATCHED: ["IN_PROGRESS", "CANCELLED"],
+  IN_PROGRESS: ["COMPLETED", "CANCELLED", "DISPUTED"],
+  COMPLETED: ["DISPUTED"],
+  CANCELLED: [],
+  DISPUTED: ["COMPLETED", "CANCELLED"],
+};
 
 const createTripSchema = z.object({
   pickup: z.string().min(1),
@@ -17,7 +26,7 @@ const createTripSchema = z.object({
 });
 
 // Rider: request a trip
-tripsRouter.post("/trips", requireAuth, requireRole("Rider"), async (req, res) => {
+tripsRouter.post("/trips", requireAuth, requireRole("Rider"), asyncHandler(async (req, res) => {
   const parsed = createTripSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -30,10 +39,10 @@ tripsRouter.post("/trips", requireAuth, requireRole("Rider"), async (req, res) =
 
   const matched = await matchDriverToTrip(trip.id);
   res.status(201).json(matched ?? trip);
-});
+}));
 
 // Rider or Driver: view a trip they're party to
-tripsRouter.get("/trips/:id", requireAuth, async (req, res) => {
+tripsRouter.get("/trips/:id", requireAuth, asyncHandler(async (req, res) => {
   const trip = await prisma.trip.findUnique({
     where: { id: req.params.id },
     include: { rider: true, driver: { include: { user: true } } },
@@ -47,7 +56,7 @@ tripsRouter.get("/trips/:id", requireAuth, async (req, res) => {
     return res.status(403).json({ error: "Not authorized to view this trip" });
   }
   res.json(trip);
-});
+}));
 
 const updateStatusSchema = z.object({
   status: z.enum(["MATCHED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "DISPUTED"]),
@@ -55,7 +64,7 @@ const updateStatusSchema = z.object({
 });
 
 // Driver: advance trip status (accept, start, complete)
-tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin"), async (req, res) => {
+tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin"), asyncHandler(async (req, res) => {
   const parsed = updateStatusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -72,6 +81,13 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
     }
   }
 
+  const allowed = VALID_TRIP_TRANSITIONS[existing.status] ?? [];
+  if (!allowed.includes(parsed.data.status)) {
+    return res.status(400).json({
+      error: { code: "INVALID_STATUS_TRANSITION", message: `Cannot transition from ${existing.status} to ${parsed.data.status}` },
+    });
+  }
+
   const trip = await prisma.trip.update({
     where: { id: req.params.id },
     data: {
@@ -82,13 +98,13 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
   });
   broadcastTripStatus(trip.id, trip.status, trip.finalFare);
   res.json(trip);
-});
+}));
 
 // Rider or Driver: poll the assigned driver's last known location (a
 // fallback for clients not holding a live WebSocket connection — see
 // docs/realtime-architecture.md). 404s until the driver has sent at least
 // one location update over WS.
-tripsRouter.get("/trips/:id/driver-location", requireAuth, async (req, res) => {
+tripsRouter.get("/trips/:id/driver-location", requireAuth, asyncHandler(async (req, res) => {
   const trip = await prisma.trip.findUnique({
     where: { id: req.params.id },
     include: { rider: true, driver: { include: { user: true } } },
@@ -106,10 +122,10 @@ tripsRouter.get("/trips/:id/driver-location", requireAuth, async (req, res) => {
   const location = getLatestDriverLocation(trip.driverId);
   if (!location) return res.status(404).json({ error: "No location reported yet" });
   res.json(location);
-});
+}));
 
 // Admin: monitor all trips
-tripsRouter.get("/trips", requireAuth, requireRole("Admin"), async (req, res) => {
+tripsRouter.get("/trips", requireAuth, requireRole("Admin"), asyncHandler(async (req, res) => {
   const parsed = paginationQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { page, pageSize } = parsed.data;
@@ -124,4 +140,4 @@ tripsRouter.get("/trips", requireAuth, requireRole("Admin"), async (req, res) =>
     prisma.trip.count(),
   ]);
   res.json(paginate(trips, total, page, pageSize));
-});
+}));

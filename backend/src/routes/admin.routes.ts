@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { asyncHandler } from "../middleware/async-handler";
 
 export const adminRouter = Router();
 
 // Admin: dashboard KPIs
-adminRouter.get("/admin/dashboard", requireAuth, requireRole("Admin"), async (_req, res) => {
+adminRouter.get("/admin/dashboard", requireAuth, requireRole("Admin"), asyncHandler(async (_req, res) => {
   const [activeTrips, onlineDrivers, pendingDocs, pendingCarPaddy] = await Promise.all([
     prisma.trip.count({ where: { status: { in: ["MATCHED", "IN_PROGRESS"] } } }),
     prisma.driver.count({ where: { status: "ACTIVE" } }),
@@ -18,4 +19,4 @@ adminRouter.get("/admin/dashboard", requireAuth, requireRole("Admin"), async (_r
     onlineDrivers,
     pendingApprovals: pendingDocs + pendingCarPaddy,
   });
-});
+}));

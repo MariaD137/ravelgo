@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { prisma } from "../db/prisma";
 import { env } from "../config/env";
 import { stripeClient } from "../billing/stripe";
+import { asyncHandler } from "../middleware/async-handler";
 
 export const billingRouter = Router();
 
@@ -14,7 +15,7 @@ export const billingRouter = Router();
 // Mounted at the exact path "/api/billing/webhook" in app.ts (not under a
 // shared "/api" prefix router like the other routes) — see the comment
 // there for why the raw-body middleware must be scoped this narrowly.
-billingRouter.post("/", async (req, res) => {
+billingRouter.post("/", asyncHandler(async (req, res) => {
   const signature = req.headers["stripe-signature"];
   if (typeof signature !== "string") {
     return res.status(400).json({ error: "Missing stripe-signature header" });
@@ -34,10 +35,15 @@ billingRouter.post("/", async (req, res) => {
     const intent = event.data.object as Stripe.PaymentIntent;
     const payment = await prisma.payment.findFirst({ where: { providerReference: intent.id } });
     if (payment) {
+      const targetStatus = event.type === "payment_intent.succeeded" ? "SUCCEEDED" : "FAILED";
+      // Idempotency guard: skip if the payment already has the target status
+      if (payment.status === targetStatus) {
+        return res.json({ received: true });
+      }
       await prisma.payment.update({
         where: { id: payment.id },
         data: {
-          status: event.type === "payment_intent.succeeded" ? "SUCCEEDED" : "FAILED",
+          status: targetStatus,
           paidAt: event.type === "payment_intent.succeeded" ? new Date() : undefined,
         },
       });
@@ -63,4 +69,4 @@ billingRouter.post("/", async (req, res) => {
   }
 
   res.json({ received: true });
-});
+}));

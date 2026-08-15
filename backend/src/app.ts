@@ -9,6 +9,7 @@ import swaggerUi from "swagger-ui-express";
 import { load as loadYaml } from "js-yaml";
 import { env } from "./config/env";
 import { errorHandler } from "./middleware/error-handler";
+import { checkSuspended } from "./middleware/check-suspended";
 import { adminRouter } from "./routes/admin.routes";
 import { alertsRouter } from "./routes/alerts.routes";
 import { billingRouter } from "./routes/billing.routes";
@@ -71,6 +72,8 @@ if (env.NODE_ENV !== "test") {
 const openapiDocument = loadYaml(readFileSync(join(__dirname, "..", "openapi.yaml"), "utf-8")) as object;
 app.get("/openapi.json", (_req, res) => res.json(openapiDocument));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiDocument));
+
+app.use("/api", checkSuspended);
 
 app.use(healthRouter);
 app.use("/api", driversRouter);

@@ -34,5 +34,5 @@ export async function matchDriverToTrip(tripId: string) {
       where: { id: tripId },
       data: { driverId: driver.id, status: "MATCHED" },
     });
-  });
+  }, { isolationLevel: 'Serializable' });
 }

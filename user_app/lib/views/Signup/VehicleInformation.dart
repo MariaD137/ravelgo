@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:ravelgo_driver/views/Popup/ColourPicker.dart';
-import 'package:ravelgo_driver/views/bottommenu/BottomNavigationView.dart';
+import 'package:ravelgo_user/views/Popup/ColourPicker.dart';
+import 'package:ravelgo_user/views/bottommenu/BottomNavigationView.dart';
 import 'AddPhoto.dart';
 
 class VehicleInformationScreen extends StatefulWidget {

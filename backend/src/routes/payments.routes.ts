@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { asyncHandler } from "../middleware/async-handler";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { stripeClient } from "../billing/stripe";
 
@@ -18,7 +19,7 @@ const chargeSchema = z.object({
 // (confirming it is a client-side/mobile-SDK step, out of scope for this
 // backend route). CASH/WALLET charges skip Stripe entirely and settle
 // immediately, since there's no card to authorize.
-paymentsRouter.post("/trips/:id/charge", requireAuth, requireRole("Driver", "Admin"), async (req, res) => {
+paymentsRouter.post("/trips/:id/charge", requireAuth, requireRole("Driver", "Admin"), asyncHandler(async (req, res) => {
   const parsed = chargeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -66,10 +67,10 @@ paymentsRouter.post("/trips/:id/charge", requireAuth, requireRole("Driver", "Adm
     },
   });
   res.status(201).json(payment);
-});
+}));
 
 // Rider (who owns the payment) or Admin: a receipt for a charged trip
-paymentsRouter.get("/payments/:id/receipt", requireAuth, async (req, res) => {
+paymentsRouter.get("/payments/:id/receipt", requireAuth, asyncHandler(async (req, res) => {
   const payment = await prisma.payment.findUnique({
     where: { id: req.params.id },
     include: { trip: true, user: true },
@@ -93,10 +94,10 @@ paymentsRouter.get("/payments/:id/receipt", requireAuth, async (req, res) => {
     paidAt: payment.paidAt,
     issuedAt: payment.createdAt,
   });
-});
+}));
 
 // Rider: view my own payment history
-paymentsRouter.get("/payments/mine", requireAuth, async (req, res) => {
+paymentsRouter.get("/payments/mine", requireAuth, asyncHandler(async (req, res) => {
   const parsed = paginationQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { page, pageSize } = parsed.data;
@@ -116,10 +117,10 @@ paymentsRouter.get("/payments/mine", requireAuth, async (req, res) => {
     prisma.payment.count({ where }),
   ]);
   res.json(paginate(payments, total, page, pageSize));
-});
+}));
 
 // Admin: view all payments
-paymentsRouter.get("/payments", requireAuth, requireRole("Admin"), async (req, res) => {
+paymentsRouter.get("/payments", requireAuth, requireRole("Admin"), asyncHandler(async (req, res) => {
   const parsed = paginationQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { page, pageSize } = parsed.data;
@@ -134,4 +135,4 @@ paymentsRouter.get("/payments", requireAuth, requireRole("Admin"), async (req, r
     prisma.payment.count(),
   ]);
   res.json(paginate(payments, total, page, pageSize));
-});
+}));

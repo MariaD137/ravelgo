@@ -11,6 +11,13 @@ class AddressSearch extends StatefulWidget {
 
 class _AddressSearchState extends State<AddressSearch> {
   final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   final List<String> _suggestions = [
     "Denco court 1",
     "Denco court 1",

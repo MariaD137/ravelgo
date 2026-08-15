@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/AccountView/AppSettingsPage.dart';
-import 'package:ravelgo_driver/views/AccountView/CommunicationsPage.dart';
-import 'package:ravelgo_driver/views/AccountView/Subscription.dart';
-import 'package:ravelgo_driver/views/Driver_Portal/ravel_driver_portal_screen.dart';
-import 'package:ravelgo_driver/views/OtherViews/AboutView.dart';
-import 'package:ravelgo_driver/views/OtherViews/PrivacyScreen.dart';
+import 'package:ravelgo_user/views/AccountView/AppSettingsPage.dart';
+import 'package:ravelgo_user/views/AccountView/CommunicationsPage.dart';
+import 'package:ravelgo_user/views/AccountView/Subscription.dart';
+import 'package:ravelgo_user/views/Driver_Portal/ravel_driver_portal_screen.dart';
+import 'package:ravelgo_user/views/OtherViews/AboutView.dart';
+import 'package:ravelgo_user/views/OtherViews/PrivacyScreen.dart';
 
 class Accountview extends StatelessWidget {
   const Accountview({Key? key}) : super(key: key);

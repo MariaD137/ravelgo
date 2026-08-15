@@ -1,9 +1,7 @@
-import 'dart:ffi';
-
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:ravelgo_driver/views/TexiModule/CancelRideScreen.dart';
-import 'package:ravelgo_driver/views/TexiModule/RequestDriverScreen.dart';
+import 'package:ravelgo_user/views/TexiModule/CancelRideScreen.dart';
+import 'package:ravelgo_user/views/TexiModule/RequestDriverScreen.dart';
 
 class SearchDriverScreen extends StatefulWidget {
   const SearchDriverScreen({super.key});

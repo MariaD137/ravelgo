@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Services/AddBankAccountPage.dart';
+import 'package:ravelgo_user/views/Services/AddBankAccountPage.dart';
 import 'IdelivaPickUpDeliveryScreen.dart';
 
 class IdelivaProfileScreen extends StatefulWidget {

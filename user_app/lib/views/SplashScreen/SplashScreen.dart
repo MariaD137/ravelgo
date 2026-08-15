@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Login/login.dart';
-import 'package:ravelgo_driver/views/Signup/CreateAccount.dart';
+import 'package:ravelgo_user/views/Login/login.dart';
 
 class SplashScreen extends StatefulWidget {
   @override
@@ -13,6 +12,7 @@ class _SplashScreenState extends State<SplashScreen> {
     super.initState();
     // Simulate a delay for the splash screen
     Future.delayed(Duration(seconds: 5), () {
+      if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => Login()),
       );

@@ -148,7 +148,13 @@ export async function processPayout(payoutId: string): Promise<Payout> {
  * Mark a payout as completed (successful transfer to driver's bank).
  * Called from webhook handler when Stripe confirms delivery.
  */
-export async function completePayout(payoutId: string, transactionId?: string): Promise<Payout> {
+export async function completePayout(payoutId: string, transactionId?: string): Promise<Payout | { error: string }> {
+  const payout = await prisma.payout.findUnique({ where: { id: payoutId } });
+  if (!payout) return { error: "Payout not found" };
+  if (payout.status !== "PROCESSING") {
+    return { error: `Payout must be PROCESSING to complete, currently ${payout.status}` };
+  }
+
   return prisma.payout.update({
     where: { id: payoutId },
     data: {
@@ -162,7 +168,13 @@ export async function completePayout(payoutId: string, transactionId?: string): 
 /**
  * Mark a payout as failed with reason.
  */
-export async function failPayout(payoutId: string, reason: string): Promise<Payout> {
+export async function failPayout(payoutId: string, reason: string): Promise<Payout | { error: string }> {
+  const payout = await prisma.payout.findUnique({ where: { id: payoutId } });
+  if (!payout) return { error: "Payout not found" };
+  if (payout.status !== "PROCESSING") {
+    return { error: `Payout must be PROCESSING to fail, currently ${payout.status}` };
+  }
+
   return prisma.payout.update({
     where: { id: payoutId },
     data: {

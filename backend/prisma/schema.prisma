@@ -182,6 +182,11 @@ model Trip {
 
   payment       Payment?
   emergencyAlerts EmergencyAlert[]
+
+  @@index([riderId])
+  @@index([driverId])
+  @@index([status])
+  @@index([completedAt])
 }
 
 model DriverDocument {
@@ -225,6 +230,8 @@ model SupportTicket {
   category  String
   status    TicketStatus @default(OPEN)
   createdAt DateTime     @default(now())
+
+  @@index([userId])
 }
 
 model CourierRequest {
@@ -243,6 +250,9 @@ model CourierRequest {
   status               CourierStatus @default(REQUESTED)
   requestedAt          DateTime      @default(now())
   deliveredAt          DateTime?
+
+  @@index([senderId])
+  @@index([status])
 }
 
 model EmergencyAlert {
@@ -256,6 +266,8 @@ model EmergencyAlert {
   status     AlertStatus @default(OPEN)
   createdAt  DateTime    @default(now())
   resolvedAt DateTime?
+
+  @@index([userId])
 }
 
 model SubscriptionPlan {
@@ -293,6 +305,9 @@ model Payment {
   providerReference  String?
   createdAt          DateTime      @default(now())
   paidAt             DateTime?
+
+  @@index([userId])
+  @@index([providerReference])
 }
 
 // A catalog of tiers, not a stored assignment on User — the caller's current

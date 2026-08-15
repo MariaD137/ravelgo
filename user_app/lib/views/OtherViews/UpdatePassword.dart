@@ -17,6 +17,14 @@ class _UpdatePasswordState extends State<UpdatePassword> {
   bool _obscureConfirm = true;
 
   @override
+  void dispose() {
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
