@@ -15,6 +15,9 @@ on:
       - "driver_app/**"
       - "admin_app/**"
 
+permissions:
+  contents: read
+
 jobs:
   analyze-and-test:
     runs-on: ubuntu-latest

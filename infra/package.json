@@ -18,5 +18,8 @@
   "dependencies": {
     "aws-cdk-lib": "^2.170.0",
     "constructs": "^10.4.2"
+  },
+  "overrides": {
+    "brace-expansion": "^5.0.9"
   }
 }

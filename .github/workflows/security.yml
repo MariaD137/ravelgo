@@ -22,11 +22,11 @@ jobs:
 
       - name: Backend audit
         working-directory: backend
-        run: npm audit --audit-level=high || true
+        run: npm audit --audit-level=high
 
       - name: Infra audit
         working-directory: infra
-        run: npm audit --audit-level=high || true
+        run: npm audit --audit-level=high
 
   secret-scan:
     name: Secret Scan
@@ -46,9 +46,13 @@ jobs:
 
       - name: Scan for high-entropy strings
         run: |
-          PATTERNS='(sk_live_|sk_test_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA|EC|DSA) PRIVATE KEY-----)'
-          if grep -rE "$PATTERNS" --include='*.ts' --include='*.js' --include='*.dart' --include='*.yaml' --include='*.yml' --include='*.json' --exclude-dir=node_modules --exclude-dir=.git --exclude='*.lock' .; then
-            echo "::warning::Potential secrets found — review above matches"
-          else
-            echo "No obvious secrets found"
+          # sk_live_/sk_test_ require 20+ trailing alnum chars, matching a real
+          # Stripe key's shape — this deliberately doesn't match placeholders
+          # like "sk_live_REPLACE_ME" (an underscore breaks the alnum run
+          # well short of 20 chars), so those stay usable in infra code.
+          PATTERNS='(sk_live_[A-Za-z0-9]{20,}|sk_test_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA|EC|DSA) PRIVATE KEY-----)'
+          if grep -rE "$PATTERNS" --include='*.ts' --include='*.js' --include='*.dart' --include='*.yaml' --include='*.yml' --include='*.json' --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude-dir=cdk.out --exclude='*.lock' .; then
+            echo "::error::Potential secret found — see matches above"
+            exit 1
           fi
+          echo "No obvious secrets found"
