@@ -198,6 +198,8 @@ model DriverDocument {
   fileKey    String?
   expiryDate DateTime?
   updatedAt  DateTime       @updatedAt
+
+  @@index([driverId])
 }
 
 model CarPaddyRequest {
@@ -208,6 +210,8 @@ model CarPaddyRequest {
   status       CarPaddyStatus @default(SUBMITTED)
   submittedAt  DateTime       @default(now())
   reviewedAt   DateTime?
+
+  @@index([driverId])
 }
 
 model RentalListing {
@@ -220,6 +224,9 @@ model RentalListing {
   location   String
   status     RentalListingStatus  @default(PENDING_APPROVAL)
   createdAt  DateTime             @default(now())
+
+  @@index([driverId])
+  @@index([vehicleId])
 }
 
 model SupportTicket {

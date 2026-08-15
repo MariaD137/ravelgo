@@ -26,7 +26,19 @@ class AuthService {
 
   Future<bool> isLoggedIn() async {
     final token = await getAccessToken();
-    return token != null;
+    if (token == null) return false;
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return false;
+      final payload = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+      );
+      final exp = payload['exp'] as int?;
+      if (exp == null) return false;
+      return DateTime.fromMillisecondsSinceEpoch(exp * 1000).isAfter(DateTime.now());
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<Map<String, dynamic>> signIn(String email, String password) async {

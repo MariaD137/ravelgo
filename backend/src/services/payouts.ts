@@ -56,8 +56,7 @@ export async function calculatePayoutForPeriod(
     return sum + (trip.payment?.status === "SUCCEEDED" ? trip.payment.amount : 0);
   }, 0);
 
-  // Platform takes 20% commission (configurable)
-  const platformFeePercent = 0.2;
+  const platformFeePercent = Number(process.env.PLATFORM_FEE_PERCENT ?? "0.2");
   const platformFee = grossAmount * platformFeePercent;
 
   // Check if driver has active subscription (subscription fee offset)
@@ -148,11 +147,11 @@ export async function processPayout(payoutId: string): Promise<Payout> {
  * Mark a payout as completed (successful transfer to driver's bank).
  * Called from webhook handler when Stripe confirms delivery.
  */
-export async function completePayout(payoutId: string, transactionId?: string): Promise<Payout | { error: string }> {
+export async function completePayout(payoutId: string, transactionId?: string): Promise<Payout> {
   const payout = await prisma.payout.findUnique({ where: { id: payoutId } });
-  if (!payout) return { error: "Payout not found" };
+  if (!payout) throw new Error("Payout not found");
   if (payout.status !== "PROCESSING") {
-    return { error: `Payout must be PROCESSING to complete, currently ${payout.status}` };
+    throw new Error(`Payout must be PROCESSING to complete, currently ${payout.status}`);
   }
 
   return prisma.payout.update({
@@ -168,11 +167,11 @@ export async function completePayout(payoutId: string, transactionId?: string): 
 /**
  * Mark a payout as failed with reason.
  */
-export async function failPayout(payoutId: string, reason: string): Promise<Payout | { error: string }> {
+export async function failPayout(payoutId: string, reason: string): Promise<Payout> {
   const payout = await prisma.payout.findUnique({ where: { id: payoutId } });
-  if (!payout) return { error: "Payout not found" };
+  if (!payout) throw new Error("Payout not found");
   if (payout.status !== "PROCESSING") {
-    return { error: `Payout must be PROCESSING to fail, currently ${payout.status}` };
+    throw new Error(`Payout must be PROCESSING to fail, currently ${payout.status}`);
   }
 
   return prisma.payout.update({

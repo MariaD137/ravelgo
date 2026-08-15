@@ -10,6 +10,24 @@ interface ConnectionUser {
 }
 
 const connectionUsers = new WeakMap<WebSocket, ConnectionUser>();
+const messageTimestamps = new WeakMap<WebSocket, number[]>();
+const WS_RATE_LIMIT = 30;
+const WS_RATE_WINDOW_MS = 10_000;
+
+function isRateLimited(socket: WebSocket): boolean {
+  const now = Date.now();
+  let timestamps = messageTimestamps.get(socket);
+  if (!timestamps) {
+    timestamps = [];
+    messageTimestamps.set(socket, timestamps);
+  }
+  while (timestamps.length > 0 && timestamps[0] < now - WS_RATE_WINDOW_MS) {
+    timestamps.shift();
+  }
+  if (timestamps.length >= WS_RATE_LIMIT) return true;
+  timestamps.push(now);
+  return false;
+}
 
 function send(socket: WebSocket, payload: unknown) {
   if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(payload));
@@ -82,6 +100,9 @@ export function attachRealtime(server: HttpServer) {
     socket.on("message", (raw) => {
       const user = connectionUsers.get(socket);
       if (!user) return;
+      if (isRateLimited(socket)) {
+        return send(socket, { type: "error", message: "Rate limit exceeded" });
+      }
 
       let parsed: unknown;
       try {

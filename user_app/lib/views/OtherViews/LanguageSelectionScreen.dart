@@ -9,6 +9,13 @@ class LanguageSelectionScreen extends StatefulWidget {
 
 class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
   final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   final List<Map<String, String>> _allLanguages = [
     {"name": "Arabic", "flag": "🇸🇦"},
     {"name": "Bengali", "flag": "🇧🇩"},

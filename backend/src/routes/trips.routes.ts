@@ -10,6 +10,7 @@ import { matchDriverToTrip } from "../services/matching";
 export const tripsRouter = Router();
 
 const VALID_TRIP_TRANSITIONS: Record<string, string[]> = {
+  REQUESTED: ["MATCHED", "CANCELLED"],
   MATCHED: ["IN_PROGRESS", "CANCELLED"],
   IN_PROGRESS: ["COMPLETED", "CANCELLED", "DISPUTED"],
   COMPLETED: ["DISPUTED"],

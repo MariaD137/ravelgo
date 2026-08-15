@@ -33,4 +33,4 @@ jobs:
         run: npx tsc --noEmit
 
       - name: CDK synth (no AWS credentials needed — stacks are environment-agnostic)
-        run: npx cdk synth
+        run: npx cdk synth --context alertEmail=ci@ravelgo.example.com

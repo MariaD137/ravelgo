@@ -17,21 +17,10 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isOnline = false;
-  int _selectedIndex = 0;
 
-  // Mock values, replace with live data
-  final String _earnText = "Earn #20,000";
-  final String _rating = "80%";
-  final String _dailyEarnings = "#0";
-  final String _acceptance = "20%";
   late GoogleMapController _controller;
   Position? _currentPosition;
 
-  void _onMenuSelect(int index) {
-    setState(() {
-      // widget.onTabRequested?.call(index); // e.g., switch to tab index 2
-    });
-  }
   void _onMapCreated(GoogleMapController controller) {
     _controller = controller;
   }
@@ -56,7 +45,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
   static const CameraPosition _initialCameraPosition = CameraPosition(
-    target: LatLng(20.5937, 78.9629), // Default center (India in this case)
+    target: LatLng(6.5244, 3.3792), // Default center (Lagos, Nigeria)
     zoom: 5.0,
   );
 
@@ -207,31 +196,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// Statistic row with label and value aligned like design
-  Widget _statRow(String label, String value) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: TextStyle(fontSize: 15)),
-              SizedBox(height: 2),
-              Text(value, style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFB08A00))),
-            ],
-          ),
-          Spacer(),
-          Icon(Icons.chevron_right, size: 18, color: Colors.grey[400]),
-        ],
-      ),
-    );
-  }
-
-  Widget _divider() => Divider(height: 1, thickness: 1, color: Colors.grey[300]);
-
   Widget _buildHomeSheet(ScrollController scrollController) {
     return Container(
       decoration: const BoxDecoration(
@@ -318,22 +282,6 @@ class _HomePageState extends State<HomePage> {
             ),
 
             const SizedBox(height: 12),
-
-            /// Stats Card
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: _cardContainer(
-                child: Column(
-                  children: [
-                    _statRow("Driver Rating / Score", _rating),
-                    _divider(),
-                    _statRow("Daily Earnings", "₹0"),
-                    _divider(),
-                    _statRow("Acceptance Rate", _acceptance),
-                  ],
-                ),
-              ),
-            ),
           ],
         ),
       ),

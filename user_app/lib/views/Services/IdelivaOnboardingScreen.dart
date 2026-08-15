@@ -13,6 +13,12 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
   final TextEditingController _pinController = TextEditingController();
 
   @override
+  void dispose() {
+    _pinController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return  SafeArea(
         child: Padding(
@@ -52,7 +58,7 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: const [
-                          Text('hhh',
+                          Text('Become a Courier',
                               style: TextStyle(
                                   fontSize: 18, fontWeight: FontWeight.bold)),
                           SizedBox(height: 5),

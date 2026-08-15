@@ -73,9 +73,8 @@ const openapiDocument = loadYaml(readFileSync(join(__dirname, "..", "openapi.yam
 app.get("/openapi.json", (_req, res) => res.json(openapiDocument));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiDocument));
 
-app.use("/api", checkSuspended);
-
 app.use(healthRouter);
+app.use("/api", checkSuspended);
 app.use("/api", driversRouter);
 app.use("/api", ridersRouter);
 app.use("/api", vehiclesRouter);

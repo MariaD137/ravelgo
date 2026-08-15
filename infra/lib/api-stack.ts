@@ -64,7 +64,7 @@ export class ApiStack extends cdk.Stack {
     });
 
     const vpcConnector = new apprunner.CfnVpcConnector(this, "VpcConnector", {
-      subnets: props.vpc.selectSubnets({ subnetType: ec2.SubnetType.PRIVATE_ISOLATED }).subnetIds,
+      subnets: props.vpc.selectSubnets({ subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS }).subnetIds,
       securityGroups: [connectorSecurityGroup.securityGroupId],
     });
 

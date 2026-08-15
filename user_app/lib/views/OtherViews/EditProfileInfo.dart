@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user/services/api_client.dart';
 
 
 class EditPersonalInfo extends StatefulWidget {
@@ -9,10 +10,33 @@ class EditPersonalInfo extends StatefulWidget {
 }
 
 class _EditPersonalInfoState extends State<EditPersonalInfo> {
-  final TextEditingController _firstNameController = TextEditingController(text: 'Thelma');
-  final TextEditingController _lastNameController = TextEditingController(text: 'Ibeh');
-  final TextEditingController _phoneController = TextEditingController(text: '+2348130006677');
-  final TextEditingController _emailController = TextEditingController(text: 'user@gmail.com');
+  final TextEditingController _firstNameController = TextEditingController();
+  final TextEditingController _lastNameController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final data = await ApiClient().get('/riders/me');
+      if (!mounted) return;
+      setState(() {
+        _firstNameController.text = data['firstName'] ?? '';
+        _lastNameController.text = data['lastName'] ?? '';
+        _phoneController.text = data['phoneNumber'] ?? '';
+        _emailController.text = data['email'] ?? '';
+        _loading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -25,6 +49,9 @@ class _EditPersonalInfoState extends State<EditPersonalInfo> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return Scaffold(
       appBar: AppBar(
         leading: const BackButton(color: Colors.black),

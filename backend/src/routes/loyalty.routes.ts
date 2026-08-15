@@ -2,14 +2,15 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { asyncHandler } from "../middleware/async-handler";
 
 export const loyaltyRouter = Router();
 
 // Any authenticated user: browse the tier ladder
-loyaltyRouter.get("/loyalty-tiers", requireAuth, async (_req, res) => {
+loyaltyRouter.get("/loyalty-tiers", requireAuth, asyncHandler(async (_req, res) => {
   const tiers = await prisma.loyaltyTier.findMany({ orderBy: { minCompletedTrips: "asc" } });
   res.json(tiers);
-});
+}));
 
 const createTierSchema = z.object({
   name: z.string().min(1),
@@ -19,17 +20,17 @@ const createTierSchema = z.object({
 });
 
 // Admin: define a tier
-loyaltyRouter.post("/loyalty-tiers", requireAuth, requireRole("Admin"), async (req, res) => {
+loyaltyRouter.post("/loyalty-tiers", requireAuth, requireRole("Admin"), asyncHandler(async (req, res) => {
   const parsed = createTierSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const tier = await prisma.loyaltyTier.create({ data: parsed.data });
   res.status(201).json(tier);
-});
+}));
 
 // Rider: my current tier, computed from completed trips (not stored, so it
 // can never drift out of sync with actual ride history)
-loyaltyRouter.get("/riders/me/loyalty", requireAuth, requireRole("Rider"), async (req, res) => {
+loyaltyRouter.get("/riders/me/loyalty", requireAuth, requireRole("Rider"), asyncHandler(async (req, res) => {
   const rider = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
   if (!rider) return res.status(404).json({ error: "Rider profile not found" });
 
@@ -39,16 +40,16 @@ loyaltyRouter.get("/riders/me/loyalty", requireAuth, requireRole("Rider"), async
   const currentTier = tiers.find((tier) => completedTrips >= tier.minCompletedTrips) ?? null;
 
   res.json({ completedTrips, currentTier });
-});
+}));
 
 // Any authenticated user: browse redeemable promotions
-loyaltyRouter.get("/promotions", requireAuth, async (_req, res) => {
+loyaltyRouter.get("/promotions", requireAuth, asyncHandler(async (_req, res) => {
   const promotions = await prisma.promotion.findMany({
     where: { active: true, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
     orderBy: { createdAt: "desc" },
   });
   res.json(promotions);
-});
+}));
 
 const createPromotionSchema = z.object({
   code: z.string().min(1),
@@ -59,16 +60,16 @@ const createPromotionSchema = z.object({
 });
 
 // Admin: create a promotion code
-loyaltyRouter.post("/promotions", requireAuth, requireRole("Admin"), async (req, res) => {
+loyaltyRouter.post("/promotions", requireAuth, requireRole("Admin"), asyncHandler(async (req, res) => {
   const parsed = createPromotionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const promotion = await prisma.promotion.create({ data: parsed.data });
   res.status(201).json(promotion);
-});
+}));
 
 // Any authenticated user: redeem a promotion code, once
-loyaltyRouter.post("/promotions/:code/redeem", requireAuth, async (req, res) => {
+loyaltyRouter.post("/promotions/:code/redeem", requireAuth, asyncHandler(async (req, res) => {
   const user = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
   if (!user) return res.status(404).json({ error: "User profile not found" });
 
@@ -100,4 +101,4 @@ loyaltyRouter.post("/promotions/:code/redeem", requireAuth, async (req, res) => 
 
   if ("error" in result && result.status) return res.status(result.status).json({ error: result.error });
   res.status(201).json(result);
-});
+}));

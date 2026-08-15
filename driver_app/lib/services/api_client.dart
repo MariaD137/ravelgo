@@ -20,7 +20,13 @@ class ApiClient {
   ApiClient._();
 
   final HttpClient _http = HttpClient();
-  String get _baseUrl => dotenv.env['API_BASE_URL'] ?? 'http://localhost:8080';
+  String get _baseUrl {
+    final url = dotenv.env['API_BASE_URL'];
+    if (url == null || url.isEmpty) {
+      throw StateError('API_BASE_URL is not set in .env');
+    }
+    return url;
+  }
 
   Future<Map<String, String>> _authHeaders() async {
     final token = await AuthService().getAccessToken();

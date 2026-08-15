@@ -26,13 +26,13 @@ jobs:
         working-directory: backend
         run: |
           npm install --package-lock-only --ignore-scripts 2>/dev/null
-          npm audit --audit-level=critical
+          npm audit --audit-level=high
 
       - name: Audit infra dependencies
         working-directory: infra
         run: |
           npm install --package-lock-only --ignore-scripts 2>/dev/null
-          npm audit --audit-level=critical
+          npm audit --audit-level=high
 
   secret-scan:
     name: Secret Scan
