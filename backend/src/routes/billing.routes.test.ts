@@ -6,6 +6,7 @@ import { prisma } from "../db/prisma";
 import { env } from "../config/env";
 import { stripeClient } from "../billing/stripe";
 import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { withBypass } from "../lib/rls";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -42,9 +43,11 @@ async function createChargedTrip(providerReference: string) {
   const trip = await prisma.trip.create({
     data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 10, status: "COMPLETED" },
   });
-  const payment = await prisma.payment.create({
-    data: { tripId: trip.id, userId: rider.id, amount: 10, status: "PENDING", providerReference },
-  });
+  const payment = await withBypass((tx) =>
+    tx.payment.create({
+      data: { tripId: trip.id, userId: rider.id, amount: 10, status: "PENDING", providerReference },
+    }),
+  );
   return payment;
 }
 
@@ -78,7 +81,7 @@ test("payment_intent.succeeded marks the matching Payment SUCCEEDED", async () =
     .send(body);
 
   assert.equal(res.status, 200);
-  const updated = await prisma.payment.findUnique({ where: { id: payment.id } });
+  const updated = await withBypass((tx) => tx.payment.findUnique({ where: { id: payment.id } }));
   assert.equal(updated?.status, "SUCCEEDED");
   assert.ok(updated?.paidAt);
 });
@@ -99,7 +102,7 @@ test("payment_intent.payment_failed marks the matching Payment FAILED", async ()
     .send(body);
 
   assert.equal(res.status, 200);
-  const updated = await prisma.payment.findUnique({ where: { id: payment.id } });
+  const updated = await withBypass((tx) => tx.payment.findUnique({ where: { id: payment.id } }));
   assert.equal(updated?.status, "FAILED");
   assert.equal(updated?.paidAt, null);
 });

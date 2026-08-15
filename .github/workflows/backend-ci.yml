@@ -74,6 +74,24 @@ jobs:
       - name: Apply migrations
         run: npx prisma migrate deploy
 
+      # The postgres:16 image's POSTGRES_USER becomes the cluster's
+      # bootstrap role, and Postgres refuses to ever let the bootstrap role
+      # lose its SUPERUSER attribute (ALTER ROLE ravelgo NOSUPERUSER fails
+      # with "permission denied to alter role" / "The bootstrap user must
+      # have the SUPERUSER attribute" — confirmed against a real run, not
+      # assumed), and superusers bypass row-level security unconditionally
+      # regardless of FORCE. So instead of demoting ravelgo, create a
+      # second, ordinary role that owns nothing and isn't a superuser —
+      # RLS applies to it with no special-casing needed — grant it the
+      # same table access, and point the rest of this job's queries at it.
+      - name: Create non-superuser app role so RLS is actually enforced in CI
+        run: |
+          PGPASSWORD=ravelgo psql -h localhost -U ravelgo -d ravelgo_test \
+            -c "CREATE ROLE ravelgo_app LOGIN PASSWORD 'ravelgo_app';" \
+            -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ravelgo_app;" \
+            -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO ravelgo_app;"
+          echo "DATABASE_URL=postgresql://ravelgo_app:ravelgo_app@localhost:5432/ravelgo_test" >> "$GITHUB_ENV"
+
       - name: Lint
         run: npm run lint
 

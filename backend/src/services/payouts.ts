@@ -8,6 +8,7 @@
 import type { Payout, Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { decryptField, maskLast4 } from "../lib/encryption";
+import { withBypass } from "../lib/rls";
 
 type PayoutWithDriverBank = Prisma.PayoutGetPayload<{
   include: { driver: { include: { bankAccount: true } } };
@@ -36,20 +37,25 @@ export async function calculatePayoutForPeriod(
   const endDate = new Date(startDate);
   endDate.setMonth(endDate.getMonth() + 1);
 
-  // Get all completed trips for this driver in the period
-  const trips = await prisma.trip.findMany({
-    where: {
-      driverId,
-      status: "COMPLETED",
-      completedAt: {
-        gte: startDate,
-        lt: endDate,
+  // Get all completed trips for this driver in the period. The `payment`
+  // include is a join into the RLS-protected Payment table, so this needs
+  // bypass context — without it, RLS wouldn't error, it would just make
+  // trip.payment silently come back null for every trip.
+  const trips = await withBypass((tx) =>
+    tx.trip.findMany({
+      where: {
+        driverId,
+        status: "COMPLETED",
+        completedAt: {
+          gte: startDate,
+          lt: endDate,
+        },
       },
-    },
-    include: {
-      payment: true,
-    },
-  });
+      include: {
+        payment: true,
+      },
+    }),
+  );
 
   // Sum up all successful payments from these trips
   const grossAmount = trips.reduce((sum, trip) => {
@@ -87,20 +93,22 @@ export async function calculatePayoutForPeriod(
  * Separate service handles actual Stripe/payment provider integration.
  */
 export async function createPayout(calculation: PayoutCalculation): Promise<PayoutWithDriverBank> {
-  const payout = await prisma.payout.create({
-    data: {
-      driverId: calculation.driverId,
-      amount: calculation.netAmount,
-      currency: "USD",
-      status: "PENDING",
-      period: calculation.period,
-    },
-    include: {
-      driver: {
-        include: { bankAccount: true },
+  const payout = await withBypass((tx) =>
+    tx.payout.create({
+      data: {
+        driverId: calculation.driverId,
+        amount: calculation.netAmount,
+        currency: "USD",
+        status: "PENDING",
+        period: calculation.period,
       },
-    },
-  });
+      include: {
+        driver: {
+          include: { bankAccount: true },
+        },
+      },
+    }),
+  );
 
   // accountNumber/routingNumber are encrypted at rest — never surface the
   // ciphertext or a decrypted full value over the API; decrypt only to
@@ -118,30 +126,30 @@ export async function createPayout(calculation: PayoutCalculation): Promise<Payo
  * In production, integrate with Stripe Connect for ACH transfers.
  */
 export async function processPayout(payoutId: string): Promise<Payout> {
-  const payout = await prisma.payout.findUnique({
-    where: { id: payoutId },
-    include: {
-      driver: {
-        include: { bankAccount: true },
+  return withBypass(async (tx) => {
+    const payout = await tx.payout.findUnique({
+      where: { id: payoutId },
+      include: {
+        driver: {
+          include: { bankAccount: true },
+        },
       },
-    },
+    });
+
+    if (!payout) throw new Error("Payout not found");
+    if (payout.status !== "PENDING") throw new Error("Payout must be PENDING to process");
+
+    // TODO: Integrate with Stripe Connect or other payment provider
+    // For now, simulate successful processing
+    return tx.payout.update({
+      where: { id: payoutId },
+      data: {
+        status: "PROCESSING",
+        // In production, set transactionId from Stripe response
+        transactionId: `stripe_payout_${Date.now()}`,
+      },
+    });
   });
-
-  if (!payout) throw new Error("Payout not found");
-  if (payout.status !== "PENDING") throw new Error("Payout must be PENDING to process");
-
-  // TODO: Integrate with Stripe Connect or other payment provider
-  // For now, simulate successful processing
-  const processed = await prisma.payout.update({
-    where: { id: payoutId },
-    data: {
-      status: "PROCESSING",
-      // In production, set transactionId from Stripe response
-      transactionId: `stripe_payout_${Date.now()}`,
-    },
-  });
-
-  return processed;
 }
 
 /**
@@ -149,38 +157,44 @@ export async function processPayout(payoutId: string): Promise<Payout> {
  * Called from webhook handler when Stripe confirms delivery.
  */
 export async function completePayout(payoutId: string, transactionId?: string): Promise<Payout> {
-  return prisma.payout.update({
-    where: { id: payoutId },
-    data: {
-      status: "COMPLETED",
-      completedAt: new Date(),
-      transactionId: transactionId || undefined,
-    },
-  });
+  return withBypass((tx) =>
+    tx.payout.update({
+      where: { id: payoutId },
+      data: {
+        status: "COMPLETED",
+        completedAt: new Date(),
+        transactionId: transactionId || undefined,
+      },
+    }),
+  );
 }
 
 /**
  * Mark a payout as failed with reason.
  */
 export async function failPayout(payoutId: string, reason: string): Promise<Payout> {
-  return prisma.payout.update({
-    where: { id: payoutId },
-    data: {
-      status: "FAILED",
-      failureReason: reason,
-    },
-  });
+  return withBypass((tx) =>
+    tx.payout.update({
+      where: { id: payoutId },
+      data: {
+        status: "FAILED",
+        failureReason: reason,
+      },
+    }),
+  );
 }
 
 /**
  * Get payout history for a driver.
  */
 export async function getPayoutHistory(driverId: string, limit: number = 10): Promise<Payout[]> {
-  return prisma.payout.findMany({
-    where: { driverId },
-    orderBy: { createdAt: "desc" },
-    take: limit,
-  });
+  return withBypass((tx) =>
+    tx.payout.findMany({
+      where: { driverId },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+    }),
+  );
 }
 
 /**
@@ -196,9 +210,7 @@ export async function generatePayoutsForPeriod(period: string): Promise<PayoutWi
   const payouts: PayoutWithDriverBank[] = [];
   for (const driver of drivers) {
     try {
-      const existing = await prisma.payout.findFirst({
-        where: { driverId: driver.id, period },
-      });
+      const existing = await withBypass((tx) => tx.payout.findFirst({ where: { driverId: driver.id, period } }));
       if (existing) continue;
 
       const calculation = await calculatePayoutForPeriod(driver.id, period);
