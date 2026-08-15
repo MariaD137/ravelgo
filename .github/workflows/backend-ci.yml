@@ -2,11 +2,12 @@ name: Backend CI
 
 on:
   pull_request:
+    branches: [main, develop]
     paths:
       - "backend/**"
       - ".github/workflows/backend-ci.yml"
   push:
-    branches: [main]
+    branches: [main, develop]
     paths:
       - "backend/**"
 
@@ -39,6 +40,22 @@ jobs:
       COGNITO_CLIENT_ID: ciclientid0000000000000
       STRIPE_SECRET_KEY: sk_test_ci_dummy
       STRIPE_WEBHOOK_SECRET: whsec_ci_dummy
+      # Dummy — presigning is offline crypto (no real S3 call), but the
+      # route now 500s on an unconfigured bucket name instead of silently
+      # signing a broken URL, so tests need these set to reach that path.
+      DOCUMENTS_BUCKET: ravelgo-ci-documents
+      ASSETS_BUCKET: ravelgo-ci-assets
+      # Dummy — SigV4 presigning still has to resolve *some* credentials to
+      # compute the signature, even though it makes no real S3 call. With
+      # none set, the SDK's default provider chain falls through to probing
+      # the EC2 instance-metadata service (169.254.169.254), which is a
+      # real but unreachable link-local address on a GitHub Actions runner
+      # (not an EC2 instance) — it times out per provider instead of
+      # failing fast, stalling the test run for minutes. Setting static
+      # keys short-circuits straight to them. Production uses the App
+      # Runner instance role instead; this is CI-only.
+      AWS_ACCESS_KEY_ID: ci-dummy-access-key-id
+      AWS_SECRET_ACCESS_KEY: ci-dummy-secret-access-key
     steps:
       - uses: actions/checkout@v4
 

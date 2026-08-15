@@ -100,8 +100,12 @@ test("PATCH /api/trips/:id/status lets a Driver or Admin advance trip status", a
   const rider = await prisma.user.create({
     data: { cognitoSub: "rider-sub-4", role: "RIDER", firstName: "E", lastName: "F", email: "e@example.com" },
   });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-sub-2", role: "DRIVER", firstName: "O", lastName: "P", email: "o@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE" } });
   const trip = await prisma.trip.create({
-    data: { riderId: rider.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "MATCHED" },
+    data: { riderId: rider.id, driverId: driver.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "MATCHED" },
   });
 
   const token = mockAuthAs({ sub: "driver-sub-2", groups: ["Driver"] });
@@ -113,6 +117,40 @@ test("PATCH /api/trips/:id/status lets a Driver or Admin advance trip status", a
   assert.equal(res.status, 200);
   assert.equal(res.body.status, "COMPLETED");
   assert.ok(res.body.completedAt);
+});
+
+test("PATCH /api/trips/:id/status denies a Driver who isn't assigned to the trip", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-8", role: "RIDER", firstName: "Q", lastName: "R", email: "q@example.com" },
+  });
+  const assignedDriverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-sub-8", role: "DRIVER", firstName: "S", lastName: "T", email: "s@example.com" },
+  });
+  const assignedDriver = await prisma.driver.create({ data: { userId: assignedDriverUser.id, status: "ACTIVE" } });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: assignedDriver.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "MATCHED" },
+  });
+
+  await prisma.user.create({
+    data: { cognitoSub: "driver-sub-9", role: "DRIVER", firstName: "U", lastName: "V", email: "u@example.com" },
+  });
+  const otherToken = mockAuthAs({ sub: "driver-sub-9", groups: ["Driver"] });
+  const otherRes = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${otherToken}`)
+    .send({ status: "COMPLETED", finalFare: 14 });
+  assert.equal(otherRes.status, 403);
+
+  restoreAuth();
+  const unassignedTrip = await prisma.trip.create({
+    data: { riderId: rider.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "REQUESTED" },
+  });
+  const noDriverToken = mockAuthAs({ sub: "driver-sub-9", groups: ["Driver"] });
+  const noDriverRes = await request(app)
+    .patch(`/api/trips/${unassignedTrip.id}/status`)
+    .set("Authorization", `Bearer ${noDriverToken}`)
+    .send({ status: "IN_PROGRESS" });
+  assert.equal(noDriverRes.status, 403);
 });
 
 test("GET /api/trips (Admin monitor) rejects a Rider caller", async () => {

@@ -2,6 +2,7 @@ name: Infra CI
 
 on:
   pull_request:
+    branches: [main, develop]
     paths:
       - "infra/**"
       - ".github/workflows/infra-ci.yml"

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:ravelgo_driver/views/TexiModule/SearchDriverScreen.dart';
+import 'package:ravelgo/views/TexiModule/SearchDriverScreen.dart';
 
 class FindDriverScreen extends StatefulWidget {
   const FindDriverScreen({super.key});

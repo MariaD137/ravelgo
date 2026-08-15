@@ -31,6 +31,12 @@ const rawEnvSchema = z.object({
   // real cause.
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  // 32-byte AES-256-GCM key (base64), used to encrypt bank account/routing
+  // numbers at rest — see src/lib/encryption.ts. Optional in dev/test
+  // (encryption.ts falls back to a fixed dev-only key there); required in
+  // production, enforced below rather than by zod so the error names the
+  // real cause. Generate with: openssl rand -base64 32
+  FIELD_ENCRYPTION_KEY: z.string().optional(),
 });
 
 export interface Env {
@@ -45,6 +51,7 @@ export interface Env {
   ALLOWED_ORIGINS: string[];
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  FIELD_ENCRYPTION_KEY?: string;
 }
 
 function loadEnv(): Env {
@@ -78,6 +85,9 @@ function loadEnv(): Env {
   if (data.NODE_ENV === "production" && (!data.STRIPE_SECRET_KEY || !data.STRIPE_WEBHOOK_SECRET)) {
     throw new Error("STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required in production");
   }
+  if (data.NODE_ENV === "production" && !data.FIELD_ENCRYPTION_KEY) {
+    throw new Error("FIELD_ENCRYPTION_KEY is required in production (32-byte base64 key)");
+  }
 
   return {
     NODE_ENV: data.NODE_ENV,
@@ -91,6 +101,7 @@ function loadEnv(): Env {
     ALLOWED_ORIGINS: allowedOrigins,
     STRIPE_SECRET_KEY: data.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: data.STRIPE_WEBHOOK_SECRET,
+    FIELD_ENCRYPTION_KEY: data.FIELD_ENCRYPTION_KEY,
   };
 }
 

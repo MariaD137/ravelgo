@@ -32,7 +32,6 @@ subscriptionsRouter.post("/subscription-plans", requireAuth, requireRole("Admin"
 
 const subscribeSchema = z.object({
   planId: z.string().min(1),
-  currentPeriodEnd: z.coerce.date(),
 });
 
 // Driver: subscribe (or switch) to a plan
@@ -46,18 +45,20 @@ subscriptionsRouter.post("/drivers/me/subscription", requireAuth, requireRole("D
   const plan = await prisma.subscriptionPlan.findUnique({ where: { id: parsed.data.planId } });
   if (!plan || !plan.active) return res.status(404).json({ error: "Plan not found" });
 
+  const currentPeriodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
   const subscription = await prisma.driverSubscription.upsert({
     where: { driverId: driver.id },
     update: {
       planId: plan.id,
       status: "ACTIVE",
       startedAt: new Date(),
-      currentPeriodEnd: parsed.data.currentPeriodEnd,
+      currentPeriodEnd,
     },
     create: {
       driverId: driver.id,
       planId: plan.id,
-      currentPeriodEnd: parsed.data.currentPeriodEnd,
+      currentPeriodEnd,
     },
   });
   await prisma.driver.update({ where: { id: driver.id }, data: { subscriptionActive: true } });

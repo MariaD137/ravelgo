@@ -1,6 +1,6 @@
 
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/bottommenu/BottomNavigationView.dart';
+import 'package:ravelgo/views/bottommenu/BottomNavigationView.dart';
 
 class UserSummary extends StatelessWidget {
   const UserSummary({Key? key}) : super(key: key);

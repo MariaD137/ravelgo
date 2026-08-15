@@ -1,0 +1,54 @@
+name: Security
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Backend audit
+        working-directory: backend
+        run: npm audit --audit-level=high || true
+
+      - name: Infra audit
+        working-directory: infra
+        run: npm audit --audit-level=high || true
+
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for committed env files
+        run: |
+          if git ls-files | grep -E '(^|/)\.env$' | grep -v '.example'; then
+            echo "::error::Real .env file found in tracked files"
+            exit 1
+          fi
+          echo "No .env files in tracked files"
+
+      - name: Scan for high-entropy strings
+        run: |
+          PATTERNS='(sk_live_|sk_test_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN (RSA|EC|DSA) PRIVATE KEY-----)'
+          if grep -rE "$PATTERNS" --include='*.ts' --include='*.js' --include='*.dart' --include='*.yaml' --include='*.yml' --include='*.json' --exclude-dir=node_modules --exclude-dir=.git --exclude='*.lock' .; then
+            echo "::warning::Potential secrets found — review above matches"
+          else
+            echo "No obvious secrets found"
+          fi

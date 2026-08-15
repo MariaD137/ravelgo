@@ -91,6 +91,7 @@ enum PaymentStatus {
   SUCCEEDED
   FAILED
   REFUNDED
+  DISPUTED
 }
 
 enum PayoutStatus {
@@ -381,6 +382,7 @@ model Payout {
   period          String      // e.g., "2024-07" for weekly/monthly payout period
   transactionId   String?     // Stripe or payment provider transaction ID
   failureReason   String?
+  notes           String?
   completedAt     DateTime?
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt

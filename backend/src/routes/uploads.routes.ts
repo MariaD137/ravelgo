@@ -10,10 +10,18 @@ export const uploadsRouter = Router();
 
 const s3 = new S3Client({ region: env.AWS_REGION });
 
+const ALLOWED_CONTENT_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "application/pdf",
+];
+
 const presignSchema = z.object({
   bucket: z.enum(["documents", "assets"]),
   fileName: z.string().min(1),
-  contentType: z.string().min(1),
+  contentType: z.enum(ALLOWED_CONTENT_TYPES as [string, ...string[]]),
 });
 
 // Any authenticated user: get a short-lived URL to upload a file straight to
@@ -30,6 +38,12 @@ uploadsRouter.post("/uploads/presign", requireAuth, async (req, res) => {
 
   const fileKey = `${req.user!.sub}/${randomUUID()}-${parsed.data.fileName}`;
 
+  // A presigned PutObjectCommand's ContentLength pins the upload to that
+  // exact byte count (S3 rejects anything else), so it can't express a
+  // "max size" here. Enforcing a max upload size for this PUT-based flow
+  // needs a follow-up (e.g. switching to createPresignedPost with a
+  // content-length-range condition, or an S3 event notification that
+  // deletes/flags oversized objects after upload).
   const command = new PutObjectCommand({
     Bucket: bucketName,
     Key: fileKey,

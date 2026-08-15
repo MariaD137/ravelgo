@@ -133,7 +133,8 @@ test("GET /api/payments/mine only returns the caller's own payments", async () =
   const res = await request(app).get("/api/payments/mine").set("Authorization", `Bearer ${token}`);
 
   assert.equal(res.status, 200);
-  assert.equal(res.body.length, 1);
+  assert.equal(res.body.data.length, 1);
+  assert.equal(res.body.total, 1);
 });
 
 test("GET /api/payments rejects a non-Admin caller", async () => {

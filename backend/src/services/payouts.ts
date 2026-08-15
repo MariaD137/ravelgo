@@ -5,7 +5,13 @@
  * application fees, and driver subscription status.
  */
 
+import type { Payout, Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
+import { decryptField, maskLast4 } from "../lib/encryption";
+
+type PayoutWithDriverBank = Prisma.PayoutGetPayload<{
+  include: { driver: { include: { bankAccount: true } } };
+}>;
 
 interface PayoutCalculation {
   driverId: string;
@@ -80,7 +86,7 @@ export async function calculatePayoutForPeriod(
  * Create a payout record (does not actually process payment to bank).
  * Separate service handles actual Stripe/payment provider integration.
  */
-export async function createPayout(calculation: PayoutCalculation): Promise<any> {
+export async function createPayout(calculation: PayoutCalculation): Promise<PayoutWithDriverBank> {
   const payout = await prisma.payout.create({
     data: {
       driverId: calculation.driverId,
@@ -96,6 +102,14 @@ export async function createPayout(calculation: PayoutCalculation): Promise<any>
     },
   });
 
+  // accountNumber/routingNumber are encrypted at rest — never surface the
+  // ciphertext or a decrypted full value over the API; decrypt only to
+  // compute the last-4 mask, like the driver-facing routes do.
+  if (payout.driver.bankAccount) {
+    payout.driver.bankAccount.accountNumber = maskLast4(decryptField(payout.driver.bankAccount.accountNumber));
+    payout.driver.bankAccount.routingNumber = maskLast4(decryptField(payout.driver.bankAccount.routingNumber));
+  }
+
   return payout;
 }
 
@@ -103,7 +117,7 @@ export async function createPayout(calculation: PayoutCalculation): Promise<any>
  * Process a pending payout (mark as PROCESSING, send to Stripe, etc).
  * In production, integrate with Stripe Connect for ACH transfers.
  */
-export async function processPayout(payoutId: string): Promise<any> {
+export async function processPayout(payoutId: string): Promise<Payout> {
   const payout = await prisma.payout.findUnique({
     where: { id: payoutId },
     include: {
@@ -134,7 +148,7 @@ export async function processPayout(payoutId: string): Promise<any> {
  * Mark a payout as completed (successful transfer to driver's bank).
  * Called from webhook handler when Stripe confirms delivery.
  */
-export async function completePayout(payoutId: string, transactionId?: string): Promise<any> {
+export async function completePayout(payoutId: string, transactionId?: string): Promise<Payout> {
   return prisma.payout.update({
     where: { id: payoutId },
     data: {
@@ -148,7 +162,7 @@ export async function completePayout(payoutId: string, transactionId?: string): 
 /**
  * Mark a payout as failed with reason.
  */
-export async function failPayout(payoutId: string, reason: string): Promise<any> {
+export async function failPayout(payoutId: string, reason: string): Promise<Payout> {
   return prisma.payout.update({
     where: { id: payoutId },
     data: {
@@ -161,7 +175,7 @@ export async function failPayout(payoutId: string, reason: string): Promise<any>
 /**
  * Get payout history for a driver.
  */
-export async function getPayoutHistory(driverId: string, limit: number = 10): Promise<any[]> {
+export async function getPayoutHistory(driverId: string, limit: number = 10): Promise<Payout[]> {
   return prisma.payout.findMany({
     where: { driverId },
     orderBy: { createdAt: "desc" },
@@ -173,15 +187,20 @@ export async function getPayoutHistory(driverId: string, limit: number = 10): Pr
  * Calculate and create pending payouts for all active drivers for a given period.
  * Typically run weekly/monthly via scheduled job.
  */
-export async function generatePayoutsForPeriod(period: string): Promise<any[]> {
+export async function generatePayoutsForPeriod(period: string): Promise<PayoutWithDriverBank[]> {
   // Get all active drivers
   const drivers = await prisma.user.findMany({
     where: { role: "DRIVER", suspended: false },
   });
 
-  const payouts = [];
+  const payouts: PayoutWithDriverBank[] = [];
   for (const driver of drivers) {
     try {
+      const existing = await prisma.payout.findFirst({
+        where: { driverId: driver.id, period },
+      });
+      if (existing) continue;
+
       const calculation = await calculatePayoutForPeriod(driver.id, period);
       if (calculation.netAmount > 0) {
         const payout = await createPayout(calculation);

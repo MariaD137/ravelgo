@@ -11,7 +11,7 @@ export const tripsRouter = Router();
 const createTripSchema = z.object({
   pickup: z.string().min(1),
   destination: z.string().min(1),
-  estimatedFare: z.number().positive(),
+  estimatedFare: z.number().positive().max(10000),
   category: z.string().default("Personal"),
   pickupNote: z.string().optional(),
 });
@@ -51,13 +51,26 @@ tripsRouter.get("/trips/:id", requireAuth, async (req, res) => {
 
 const updateStatusSchema = z.object({
   status: z.enum(["MATCHED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "DISPUTED"]),
-  finalFare: z.number().positive().optional(),
+  finalFare: z.number().positive().max(10000).optional(),
 });
 
 // Driver: advance trip status (accept, start, complete)
 tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin"), async (req, res) => {
   const parsed = updateStatusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const existing = await prisma.trip.findUnique({
+    where: { id: req.params.id },
+    include: { driver: { include: { user: true } } },
+  });
+  if (!existing) return res.status(404).json({ error: "Trip not found" });
+
+  const isAdmin = req.user!.groups.includes("Admin");
+  if (!isAdmin) {
+    if (!existing.driver || existing.driver.user.cognitoSub !== req.user!.sub) {
+      return res.status(403).json({ error: "Not authorized to update this trip" });
+    }
+  }
 
   const trip = await prisma.trip.update({
     where: { id: req.params.id },

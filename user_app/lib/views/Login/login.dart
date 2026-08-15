@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Signup/CreateAccount.dart';
-import 'package:ravelgo_driver/views/bottommenu/BottomNavigationView.dart';
+import 'package:ravelgo/views/Signup/CreateAccount.dart';
+import 'package:ravelgo/views/bottommenu/BottomNavigationView.dart';
 
 
 class Login extends StatelessWidget {
@@ -24,6 +24,15 @@ class Login extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              Text(
+                'RavelGo',
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              SizedBox(height: 16),
               Text(
                 'Sign in',
                 style: TextStyle(
