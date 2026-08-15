@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user/services/payment_service.dart';
 
 class PaymentView extends StatefulWidget {
   @override
@@ -6,8 +7,30 @@ class PaymentView extends StatefulWidget {
 }
 
 class _PaymentScreenState extends State<PaymentView> {
-  bool isCashSelected = true;
-  int selectedIndex = 0;
+  String _selectedMethod = 'CARD';
+  List<dynamic> _paymentHistory = [];
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPaymentHistory();
+  }
+
+  Future<void> _loadPaymentHistory() async {
+    setState(() => _isLoading = true);
+    try {
+      final history = await PaymentService().getPaymentHistory();
+      if (!mounted) return;
+      setState(() {
+        _paymentHistory = history;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,13 +45,7 @@ class _PaymentScreenState extends State<PaymentView> {
               bottomLeft: Radius.circular(24),
               bottomRight: Radius.circular(24),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black12,
-                blurRadius: 4,
-                offset: Offset(0, 2),
-              ),
-            ],
+            boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
           ),
           child: SafeArea(
             child: Padding(
@@ -37,185 +54,99 @@ class _PaymentScreenState extends State<PaymentView> {
                 children: const [
                   BackButton(color: Colors.black),
                   Spacer(),
-                  Text(
-                    'Payment',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.normal, color: Colors.black),
-                  ),
+                  Text('Payment', style: TextStyle(fontSize: 20, fontWeight: FontWeight.normal, color: Colors.black)),
                   Spacer(),
-                  SizedBox(width: 64)
+                  SizedBox(width: 64),
                 ],
               ),
             ),
           ),
         ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(0.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(0.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               const SizedBox(height: 12),
               Container(
-              padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(25),
-              ),
-              child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text("Trip profile", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 12),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(25),
-                            border: Border.all(color: Colors.grey.shade400),
-                          ),
-                          child: Row(
-                            children: [
-                              _buildOption("Personal", 0, isSelected: selectedIndex == 0),
-                              _buildOption("Work", 1, isSelected: selectedIndex == 1),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-             ),
-              const SizedBox(height: 12),
-              Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
-                  decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(25),
-              ),
-              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(25),
+                ),
+                child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Payment methods', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      ListTile(
-                        leading: Image.asset('assets/ic_cash.png'),
-                        title: Text('Cash'),
-                        trailing: Checkbox(
-                          activeColor:Colors.yellow,
-                          value: isCashSelected,
-                          onChanged: (bool? value) {
-                            setState(() {
-                              isCashSelected = value!;
-                            });
-                          },
-                        ),
-                      ),
-                      ListTile(
-                        leading: Image.asset('assets/ic_transfer.png'),
-                        title: Text('Transfer'),
-                        trailing: Checkbox(
-                          activeColor:Colors.yellow,
-                          value: !isCashSelected,
-                          onChanged: (bool? value) {
-                            setState(() {
-                              isCashSelected = !value!;
-                                  });
-                                },
-                              ),
-                            ),
-                         ],
-                        ),
-                      ),
-                    ),
-                SizedBox(height: 20),
-                Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(25),
-                      ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                              GestureDetector(
-                                  child:ListTile(
-                                            title: Text('Communication preferences',style: TextStyle(fontSize: 18, fontWeight: FontWeight.normal)),
-                                            trailing: Image.asset('assets/ic_arrow_right.png')
-                                        ),
-                                 onTap: () {
-
-                                  },
-                                ),
-                              ],
-                        ),
-                      ),
-                ),
-                SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(25),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          GestureDetector(
-                            child:ListTile(
-                                leading:Image.asset('assets/ic_manage_work_profile.png'),
-                                title: Text('Manage work profile',style: TextStyle(fontSize: 18, fontWeight: FontWeight.normal)),
-                                trailing: Image.asset('assets/ic_arrow_right.png')
-                            ),
-                            onTap: () {
-
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
+                      const Text("Payment method", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 12),
+                      _buildMethodTile('Cash', 'CASH', Icons.money),
+                      _buildMethodTile('Card (Stripe)', 'CARD', Icons.credit_card),
+                      _buildMethodTile('Wallet', 'WALLET', Icons.account_balance_wallet),
+                    ],
                   ),
-          ],
-        ),
-      ),
-    );
-  }
-  Expanded _buildOption(String label, int index, {required bool isSelected}) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          setState(() {
-            selectedIndex = index;
-          });
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 250),
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          decoration: BoxDecoration(
-            color: isSelected ? Colors.amber : Colors.transparent,
-            borderRadius: BorderRadius.horizontal(
-              left: index == 0 ? const Radius.circular(30) : Radius.zero,
-              right: index == 1 ? const Radius.circular(30) : Radius.zero,
-            ),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontWeight: FontWeight.w500,
-                color: isSelected ? Colors.black : Colors.grey.shade600,
+                ),
               ),
-            ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(25),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text("Payment history", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 12),
+                      if (_isLoading)
+                        const Center(child: CircularProgressIndicator())
+                      else if (_paymentHistory.isEmpty)
+                        const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Text("No payment history yet", style: TextStyle(color: Colors.grey)),
+                          ),
+                        )
+                      else
+                        ...(_paymentHistory.map((payment) => ListTile(
+                          title: Text('${payment['trip']?['pickup'] ?? 'Trip'} → ${payment['trip']?['destination'] ?? ''}'),
+                          subtitle: Text('${payment['method']} - ${payment['status']}'),
+                          trailing: Text(
+                            '\$${(payment['amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                        ))),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
+  Widget _buildMethodTile(String label, String method, IconData icon) {
+    final isSelected = _selectedMethod == method;
+    return ListTile(
+      leading: Icon(icon, color: isSelected ? Colors.amber : Colors.grey),
+      title: Text(label),
+      trailing: Radio<String>(
+        value: method,
+        groupValue: _selectedMethod,
+        activeColor: Colors.amber,
+        onChanged: (value) {
+          if (value != null) setState(() => _selectedMethod = value);
+        },
+      ),
+      onTap: () => setState(() => _selectedMethod = method),
+    );
+  }
 }

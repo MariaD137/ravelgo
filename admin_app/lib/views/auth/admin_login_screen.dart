@@ -1,9 +1,59 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_admin/services/auth_service.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/views/shell/admin_shell.dart';
 
-class AdminLoginScreen extends StatelessWidget {
+class AdminLoginScreen extends StatefulWidget {
   const AdminLoginScreen({super.key});
+
+  @override
+  State<AdminLoginScreen> createState() => _AdminLoginScreenState();
+}
+
+class _AdminLoginScreenState extends State<AdminLoginScreen> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _isLoading = false;
+  bool _obscurePassword = true;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _signIn() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      setState(() => _errorMessage = 'Please enter your email and password');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    final result = await AuthService().signIn(email, password);
+
+    if (!mounted) return;
+
+    if (result['success'] == true) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const AdminShell()),
+        (route) => false,
+      );
+    } else {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = result['error'] as String?;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,32 +69,65 @@ class AdminLoginScreen extends StatelessWidget {
                 const SizedBox(height: 40),
                 const Text("RavelGo Admin", style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                const Text("Sign in to manage drivers, riders, trips and operations", style: TextStyle(fontSize: 14, color: Colors.black54)),
+                const Text(
+                  "Sign in to manage drivers, riders, trips and operations",
+                  style: TextStyle(fontSize: 14, color: Colors.black54),
+                ),
                 const SizedBox(height: 32),
-                const TextField(decoration: InputDecoration(labelText: "Work email", border: OutlineInputBorder())),
+                if (_errorMessage != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red[50],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red[200]!),
+                    ),
+                    child: Text(
+                      _errorMessage!,
+                      style: TextStyle(color: Colors.red[800], fontSize: 14),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                TextField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  decoration: const InputDecoration(labelText: "Work email", border: OutlineInputBorder()),
+                ),
                 const SizedBox(height: 16),
-                const TextField(
-                  obscureText: true,
-                  decoration: InputDecoration(labelText: "Password", border: OutlineInputBorder(), suffixIcon: Icon(Icons.visibility_off)),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    labelText: "Password",
+                    border: const OutlineInputBorder(),
+                    suffixIcon: IconButton(
+                      icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
+                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerRight,
-                  child: TextButton(onPressed: () {}, child: Text("Forgot Password?", style: TextStyle(color: Colors.yellow[700]))),
+                  child: TextButton(
+                    onPressed: () {},
+                    child: Text("Forgot Password?", style: TextStyle(color: Colors.yellow[700])),
+                  ),
                 ),
                 const SizedBox(height: 20),
                 AppComponents.primaryButton(
-                  text: "Sign in",
-                  onPressed: () {
-                    Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (context) => const AdminShell()),
-                      (route) => false,
-                    );
-                  },
+                  text: _isLoading ? 'Signing in...' : 'Sign in',
+                  onPressed: _isLoading ? null : _signIn,
                 ),
                 const SizedBox(height: 16),
                 const Center(
-                  child: Text("Access is restricted to authorized RavelGo staff.", style: TextStyle(fontSize: 12, color: Colors.black45)),
+                  child: Text(
+                    "Access is restricted to authorized RavelGo staff.",
+                    style: TextStyle(fontSize: 12, color: Colors.black45),
+                  ),
                 ),
               ],
             ),

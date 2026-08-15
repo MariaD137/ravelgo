@@ -107,7 +107,7 @@ export class ApiStack extends cdk.Stack {
     this.service = new apprunner.CfnService(this, "BackendService", {
       serviceName: resourceName,
       sourceConfiguration: {
-        autoDeploymentsEnabled: true,
+        autoDeploymentsEnabled: false,
         authenticationConfiguration: { accessRoleArn: accessRole.roleArn },
         imageRepository: {
           imageRepositoryType: "ECR",

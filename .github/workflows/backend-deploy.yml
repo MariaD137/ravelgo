@@ -22,11 +22,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Run database migrations
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          npm ci --ignore-scripts
+          npx prisma migrate deploy
 
       - name: Log in to Amazon ECR
         id: ecr-login
@@ -45,3 +59,23 @@ jobs:
       - name: Trigger App Runner deployment
         run: |
           aws apprunner start-deployment --service-arn "${{ vars.APP_RUNNER_SERVICE_ARN }}"
+
+      - name: Wait for deployment to stabilize
+        run: |
+          echo "Waiting for App Runner service to become RUNNING..."
+          for i in $(seq 1 30); do
+            STATUS=$(aws apprunner describe-service \
+              --service-arn "${{ vars.APP_RUNNER_SERVICE_ARN }}" \
+              --query 'Service.Status' --output text)
+            echo "  Attempt $i: $STATUS"
+            if [ "$STATUS" = "RUNNING" ]; then
+              echo "Deployment successful"
+              exit 0
+            fi
+            if [ "$STATUS" = "CREATE_FAILED" ] || [ "$STATUS" = "DELETE_FAILED" ]; then
+              echo "::error::Deployment failed with status: $STATUS"
+              exit 1
+            fi
+            sleep 20
+          done
+          echo "::warning::Deployment did not stabilize within 10 minutes"

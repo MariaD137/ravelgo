@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_user/views/SplashScreen/SplashScreen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:ravelgo_user/views/SplashScreen/SplashScreen.dart';
 
 void main() async {
-  WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
+
+  final stripeKey = dotenv.env['STRIPE_PUBLISHABLE_KEY'];
+  if (stripeKey != null && stripeKey.startsWith('pk_')) {
+    Stripe.publishableKey = stripeKey;
+  }
+
   runApp(MyApp());
 }
 

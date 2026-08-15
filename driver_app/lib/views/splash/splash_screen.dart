@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/services/auth_service.dart';
 import 'package:ravelgo_driver_app/views/auth/login_screen.dart';
+import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -12,12 +14,21 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(seconds: 3), () {
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-      );
-    });
+    _checkAuthAndNavigate();
+  }
+
+  Future<void> _checkAuthAndNavigate() async {
+    await Future.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+
+    final isLoggedIn = await AuthService().isLoggedIn();
+    if (!mounted) return;
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => isLoggedIn ? const DriverShell() : const LoginScreen(),
+      ),
+    );
   }
 
   @override
