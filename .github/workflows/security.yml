@@ -5,6 +5,10 @@ on:
     branches: [main, develop]
   push:
     branches: [main, develop]
+  schedule:
+    # CodeQL's query packs get new checks over time independent of code
+    # changes — catch those against develop without waiting on the next PR.
+    - cron: "23 3 * * 1"
 
 permissions:
   contents: read
@@ -52,3 +56,62 @@ jobs:
           else
             echo "No obvious secrets found"
           fi
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    # NOTE: SARIF upload (the last step of github/codeql-action/analyze)
+    # needs GitHub Advanced Security enabled on this repo — it's private,
+    # and GHAS isn't on by default there the way it is for public repos.
+    # If this job goes red with an "Advanced Security must be enabled"
+    # error, turn it on under Settings > Code security and analysis rather
+    # than treating it as a real finding.
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v4
+        with:
+          # One analysis covers backend/, infra/ (including infra/lambda),
+          # and any other TS/JS in the repo — CodeQL's JS/TS extractor
+          # doesn't need a build step, unlike compiled-language analysis.
+          languages: javascript-typescript
+
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:javascript-typescript"
+
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Scoped to backend/ and infra/ — the same npm-based, dependency-audited
+      # surface as the dependency-audit job above. The three Flutter apps
+      # don't have equivalent SBOM tooling wired up yet.
+      - name: Generate backend SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: backend
+          format: cyclonedx-json
+          output-file: sbom-backend.cdx.json
+          upload-artifact: false
+
+      - name: Generate infra SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: infra
+          format: cyclonedx-json
+          output-file: sbom-infra.cdx.json
+          upload-artifact: false
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sboms
+          path: |
+            sbom-backend.cdx.json
+            sbom-infra.cdx.json
+          retention-days: 90
