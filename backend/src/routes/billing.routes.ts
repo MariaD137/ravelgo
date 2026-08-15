@@ -1,8 +1,11 @@
 import { Router } from "express";
 import type Stripe from "stripe";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { env } from "../config/env";
 import { stripeClient } from "../billing/stripe";
+
+const PRISMA_UNIQUE_CONSTRAINT_VIOLATION = "P2002";
 
 export const billingRouter = Router();
 
@@ -28,6 +31,19 @@ billingRouter.post("/", async (req, res) => {
     event = stripeClient.webhooks.constructEvent(req.body as Buffer, signature, env.STRIPE_WEBHOOK_SECRET);
   } catch {
     return res.status(400).json({ error: "Invalid webhook signature" });
+  }
+
+  // Recording the event id is the idempotency check: a unique-constraint
+  // violation means Stripe already delivered (or retried) this exact event,
+  // so its side effects below must not run a second time. Stripe treats any
+  // 2xx as "delivered" and won't retry, so this still returns 200.
+  try {
+    await prisma.webhookEvent.create({ data: { id: event.id, type: event.type } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === PRISMA_UNIQUE_CONSTRAINT_VIOLATION) {
+      return res.json({ received: true, duplicate: true });
+    }
+    throw err;
   }
 
   if (event.type === "payment_intent.succeeded" || event.type === "payment_intent.payment_failed") {
