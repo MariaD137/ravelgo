@@ -6,6 +6,7 @@ import { asyncHandler } from "../middleware/async-handler";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { broadcastTripStatus, getLatestDriverLocation } from "../realtime/hub";
 import { matchDriverToTrip } from "../services/matching";
+import { calculateFinalFare, MAX_TRIP_DISTANCE_KM, MAX_TRIP_DURATION_MINUTES, NoPricingRuleError } from "../services/fare";
 
 export const tripsRouter = Router();
 
@@ -59,10 +60,26 @@ tripsRouter.get("/trips/:id", requireAuth, asyncHandler(async (req, res) => {
   res.json(trip);
 }));
 
-const updateStatusSchema = z.object({
-  status: z.enum(["MATCHED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "DISPUTED"]),
-  finalFare: z.number().positive().max(10000).optional(),
-});
+const updateStatusSchema = z
+  .object({
+    status: z.enum(["MATCHED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "DISPUTED"]),
+    // Driver-reported completion metrics — the *inputs* to the server-side
+    // fare calculation (services/fare.ts), never a dollar amount. The
+    // client/driver has no way to submit a fare directly: finalFare is
+    // always computed server-side from these against the active
+    // PricingRule, so a driver cannot charge more (or less) than the rate
+    // card says a trip of this distance/duration costs.
+    distanceKm: z.number().positive().max(MAX_TRIP_DISTANCE_KM).optional(),
+    durationMinutes: z.number().positive().max(MAX_TRIP_DURATION_MINUTES).optional(),
+  })
+  .refine((data) => data.status !== "COMPLETED" || data.distanceKm !== undefined, {
+    message: "distanceKm is required to complete a trip",
+    path: ["distanceKm"],
+  })
+  .refine((data) => data.status !== "COMPLETED" || data.durationMinutes !== undefined, {
+    message: "durationMinutes is required to complete a trip",
+    path: ["durationMinutes"],
+  });
 
 // Driver: advance trip status (accept, start, complete)
 tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin"), asyncHandler(async (req, res) => {
@@ -89,22 +106,50 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
     });
   }
 
-  const trip = await prisma.trip.update({
-    where: { id: req.params.id },
+  let finalFare: number | undefined;
+  if (parsed.data.status === "COMPLETED") {
+    try {
+      finalFare = await calculateFinalFare(parsed.data.distanceKm!, parsed.data.durationMinutes!);
+    } catch (err) {
+      if (err instanceof NoPricingRuleError) {
+        return res.status(409).json({ error: err.message });
+      }
+      throw err;
+    }
+  }
+
+  // Conditional update: only applies if the trip's status is still exactly
+  // what we read above. Two concurrent requests against the same trip
+  // (double-tap, or a driver and an Admin racing) will both pass the
+  // checks above, but only the first UPDATE to actually commit satisfies
+  // this WHERE clause — Postgres serializes the second one behind the
+  // first's row lock, and by the time it re-evaluates, `status` has
+  // already moved, so it matches zero rows instead of double-applying the
+  // transition (and, for COMPLETED, double-incrementing totalTrips below).
+  const { count } = await prisma.trip.updateMany({
+    where: { id: req.params.id, status: existing.status },
     data: {
       status: parsed.data.status,
-      finalFare: parsed.data.finalFare,
+      finalFare,
+      distanceKm: parsed.data.distanceKm,
+      durationMinutes: parsed.data.durationMinutes,
       completedAt: parsed.data.status === "COMPLETED" ? new Date() : undefined,
     },
   });
+  if (count === 0) {
+    return res.status(409).json({
+      error: { code: "TRIP_STATUS_CHANGED", message: "Trip status changed before this update could apply — reload and retry" },
+    });
+  }
 
-  if (parsed.data.status === "COMPLETED" && trip.driverId) {
+  if (parsed.data.status === "COMPLETED" && existing.driverId) {
     await prisma.driver.update({
-      where: { id: trip.driverId },
+      where: { id: existing.driverId },
       data: { totalTrips: { increment: 1 } },
     });
   }
 
+  const trip = await prisma.trip.findUniqueOrThrow({ where: { id: req.params.id } });
   broadcastTripStatus(trip.id, trip.status, trip.finalFare);
   res.json(trip);
 }));
