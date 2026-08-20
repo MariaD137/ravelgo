@@ -34,7 +34,7 @@ class _DriverPreferencesScreenState extends State<DriverPreferencesScreen> {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   child: DropdownButtonFormField<String>(
-                    value: _language,
+                    initialValue: _language,
                     decoration: const InputDecoration(labelText: "Preferred language", border: InputBorder.none),
                     items: const ["English", "French", "Yoruba", "Igbo", "Hausa"]
                         .map((e) => DropdownMenuItem(value: e, child: Text(e)))

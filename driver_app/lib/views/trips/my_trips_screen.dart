@@ -120,7 +120,7 @@ class _MyTripsScreenState extends State<MyTripsScreen> {
                         : ListView.separated(
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                             itemCount: _trips.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 10),
+                            separatorBuilder: (_, _) => const SizedBox(height: 10),
                             itemBuilder: (context, i) {
                               final t = _trips[i];
                               final cancelled = t.status == TripStatus.cancelled;

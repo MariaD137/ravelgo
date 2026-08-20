@@ -159,7 +159,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                                       style: const TextStyle(fontWeight: FontWeight.w600),
                                     ),
                                   ),
-                                  Switch(value: profile.isOnline, activeColor: AppColors.primaryDark, onChanged: widget.onOnlineToggle),
+                                  Switch(value: profile.isOnline, activeThumbColor: AppColors.primaryDark, onChanged: widget.onOnlineToggle),
                                 ],
                               ),
                             ),
