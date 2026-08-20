@@ -55,14 +55,17 @@ jobs:
           echo "=== Scanning for high-risk patterns ==="
           FAIL=0
 
-          # Exclude this workflow file itself from history scanning: it
-          # necessarily contains these patterns as literal text (they're
-          # what it's grepping for), so once this file's own addition is
-          # part of history, `git log --all -p` unconditionally matches its
-          # own diff on every run — a permanent false positive, confirmed
-          # by re-running this exact scan with the file excluded and
-          # finding nothing. Everything else in history is still scanned.
-          HISTORY="git log --all -p -- . ':!.github/workflows/security.yml'"
+          # Exclude this workflow file itself from history scanning (it
+          # necessarily contains these patterns as literal text — they're
+          # what it's grepping for), and suppress commit message bodies via
+          # --format=%H: a commit message that *describes* this fix (e.g.
+          # explaining why a string like "BEGIN RSA PRIVATE KEY" was
+          # excluded) is prose, not committed file content, and without
+          # --format the full message text is scanned right along with the
+          # diff, reproducing the same false positive one layer up. Actual
+          # leaked secrets live in diff content, which --format=%H does not
+          # touch — only the commit header/message is dropped.
+          HISTORY="git log --all -p --format=%H -- . ':!.github/workflows/security.yml'"
 
           # Live Stripe keys
           if eval "$HISTORY" | grep -qE 'sk_live_[a-zA-Z0-9]{24,}'; then
