@@ -1,9 +1,9 @@
 
 import 'package:flutter/material.dart';
-import 'package:ravelgo_user/views/bottommenu/BottomNavigationView.dart';
+import 'package:ravelgo_user/views/bottommenu/bottom_navigation_view.dart';
 
 class UserSummary extends StatelessWidget {
-  const UserSummary({Key? key}) : super(key: key);
+  const UserSummary({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -126,9 +126,9 @@ class SummaryCard extends StatelessWidget {
   final String title;
 
   const SummaryCard({
-    Key? key,
+    super.key,
     required this.title,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

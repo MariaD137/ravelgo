@@ -15,7 +15,6 @@ class AuthService {
 
   String get _cognitoUrl {
     final region = dotenv.env['AWS_REGION'] ?? 'us-east-1';
-    final poolId = dotenv.env['COGNITO_USER_POOL_ID'] ?? '';
     return 'https://cognito-idp.$region.amazonaws.com';
   }
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class RequestDetailsView extends StatefulWidget {
-  const RequestDetailsView({Key? key}) : super(key: key);
+  const RequestDetailsView({super.key});
 
   @override
   State<RequestDetailsView> createState() => _RequestDetailsViewState();

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_user/views/Driver_Portal/side_menu_driver.dart';
 
 class VehicleListScreen extends StatelessWidget {
-  const VehicleListScreen({Key? key}) : super(key: key);
+  const VehicleListScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

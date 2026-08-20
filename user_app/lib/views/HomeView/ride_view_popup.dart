@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 class RideViewPopup extends StatefulWidget {
   final VoidCallback onClose;
 
-  const RideViewPopup({Key? key, required this.onClose}) : super(key: key);
+  const RideViewPopup({super.key, required this.onClose});
 
   @override
   State<RideViewPopup> createState() => _RideViewPopupState();

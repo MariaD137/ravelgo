@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_user/views/Driver_Portal/side_menu_driver.dart';
 
 class MyDocumentsScreen extends StatefulWidget {
-  const MyDocumentsScreen({Key? key}) : super(key: key);
+  const MyDocumentsScreen({super.key});
 
   @override
   State<MyDocumentsScreen> createState() => _MyDocumentsScreenState();
@@ -273,7 +273,7 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
             const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: value,
+          initialValue: value,
           hint: Text(hint),
           decoration: const InputDecoration(
             border: OutlineInputBorder(),

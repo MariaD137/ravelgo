@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_user/views/Driver_Portal/side_menu_driver.dart';
 
 class ContactUsScreen extends StatelessWidget {
-  const ContactUsScreen({Key? key}) : super(key: key);
+  const ContactUsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +61,7 @@ class ContactUsScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                        color: Colors.black12.withOpacity(0.05),
+                        color: Colors.black12.withValues(alpha: 0.05),
                         blurRadius: 6)
                   ],
                 ),

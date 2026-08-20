@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_user/views/Driver_Portal/side_menu_driver.dart';
 
 class PassengerInvoiceScreen extends StatelessWidget {
-  const PassengerInvoiceScreen({Key? key}) : super(key: key);
+  const PassengerInvoiceScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -166,7 +166,7 @@ class _HeaderCell extends StatelessWidget {
   final String text;
   final double width;
 
-  const _HeaderCell(this.text, this.width, {Key? key}) : super(key: key);
+  const _HeaderCell(this.text, this.width);
 
   @override
   Widget build(BuildContext context) {
@@ -186,7 +186,7 @@ class _DataCell extends StatelessWidget {
   final String text;
   final double width;
 
-  const _DataCell(this.text, this.width, {Key? key}) : super(key: key);
+  const _DataCell(this.text, this.width);
 
   @override
   Widget build(BuildContext context) {

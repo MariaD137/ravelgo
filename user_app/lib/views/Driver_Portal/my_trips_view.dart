@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_user/views/Driver_Portal/side_menu_driver.dart';
 
 class MyTripsScreen extends StatefulWidget {
-  const MyTripsScreen({Key? key}) : super(key: key);
+  const MyTripsScreen({super.key});
 
   @override
   State<MyTripsScreen> createState() => _MyTripsScreenState();

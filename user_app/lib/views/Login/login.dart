@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user/services/auth_service.dart';
-import 'package:ravelgo_user/views/Signup/CreateAccount.dart';
-import 'package:ravelgo_user/views/bottommenu/BottomNavigationView.dart';
+import 'package:ravelgo_user/views/Signup/create_account.dart';
+import 'package:ravelgo_user/views/bottommenu/bottom_navigation_view.dart';
 
 class Login extends StatefulWidget {
+  const Login({super.key});
+
   @override
   State<Login> createState() => _LoginState();
 }
@@ -173,14 +175,14 @@ class _LoginState extends State<Login> {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : _signIn,
-                  child: _isLoading
-                      ? SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                      : Text('Sign in'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.yellow[700],
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                     textStyle: TextStyle(fontSize: 18),
                   ),
+                  child: _isLoading
+                      ? SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                      : Text('Sign in'),
                 ),
               ),
               SizedBox(height: 32),

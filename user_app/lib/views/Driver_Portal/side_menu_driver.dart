@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_user/views/AccountView/Account.dart';
+import 'package:ravelgo_user/views/AccountView/account.dart';
 import 'package:ravelgo_user/views/Driver_Portal/contact_us_screen.dart';
 import 'package:ravelgo_user/views/Driver_Portal/faq_screen.dart';
 import 'package:ravelgo_user/views/Driver_Portal/my_documents_view.dart';
@@ -11,9 +11,9 @@ class SideMenuDriver extends StatefulWidget {
   final String initialSelectedItem;
 
   const SideMenuDriver({
-    Key? key,
+    super.key,
     this.initialSelectedItem = "My Profile",
-  }) : super(key: key);
+  });
 
   @override
   State<SideMenuDriver> createState() => _SideMenuDriverState();

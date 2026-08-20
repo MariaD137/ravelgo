@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:dotted_border/dotted_border.dart';
 
 class InviteFriendsView extends StatelessWidget {
-  const InviteFriendsView({Key? key}) : super(key: key);
+  const InviteFriendsView({super.key});
 
   final String referralCode = "HKPY8HGC5DET2";
 
@@ -77,7 +77,7 @@ class InviteFriendsView extends StatelessWidget {
                 borderRadius: BorderRadius.circular(22),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
+                    color: Colors.black.withValues(alpha: 0.3),
                     blurRadius: 12,
                     offset: const Offset(1, 6),
                   ),
