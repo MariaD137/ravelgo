@@ -18,6 +18,7 @@ const ALLOWED_CONTENT_TYPES = [
   "image/png",
   "image/webp",
   "image/heic",
+  "image/heif",
   "application/pdf",
 ];
 

@@ -22,12 +22,14 @@ const ASSETS_BUCKET = process.env.ASSETS_BUCKET ?? "";
 // upload arbitrary bytes under a false Content-Type. This is the backstop:
 // inspect the real magic bytes after the object lands in S3, independent of
 // whatever the uploader claimed. Kept in sync with uploads.routes.ts's
-// ALLOWED_CONTENT_TYPES — HEIC/HEIF was previously accepted at presign time
-// but missing here, so a real HEIC upload (the default format on recent
-// iPhones) was silently deleted by this function; fixed by allow-listing it
-// for the assets path, the only one that accepted it at presign time.
+// ALLOWED_CONTENT_TYPES, which is one shared list for both bucket choices
+// (a driver's license photo taken in HEIC is just as plausible as a HEIC
+// vehicle photo) — HEIC/HEIF was previously accepted at presign time for
+// *both* buckets but missing from both allowlists here, so a real HEIC
+// upload (the default format on recent iPhones) was silently deleted by
+// this function regardless of which bucket it targeted.
 const ALLOWED_MIME_BY_BUCKET: Record<string, ReadonlySet<string>> = {
-  [DOCUMENTS_BUCKET]: new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]),
+  [DOCUMENTS_BUCKET]: new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "application/pdf"]),
   [PENDING_ASSETS_BUCKET]: new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]),
 };
 
