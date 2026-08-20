@@ -94,19 +94,23 @@ courierRouter.patch("/courier-requests/:id/status", requireAuth, requireRole("Dr
   const existing = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: "Courier request not found" });
 
-  const allowed = VALID_COURIER_TRANSITIONS[existing.status] ?? [];
-  if (!allowed.includes(parsed.data.status)) {
-    return res.status(400).json({
-      error: { code: "INVALID_STATUS_TRANSITION", message: `Cannot transition from ${existing.status} to ${parsed.data.status}` },
-    });
-  }
-
+  // Authorization before transition validity — matches trips.routes.ts's
+  // ordering. A caller with no claim on this request shouldn't learn
+  // anything about its current status or which transitions are valid from
+  // it (even via a 400 vs. 403 distinction); check who they are first.
   const isAdmin = req.user!.groups.includes("Admin");
   if (!isAdmin) {
     const driver = await findOwnDriver(req.user!.sub);
     if (!driver || existing.driverId !== driver.id) {
       return res.status(403).json({ error: "Not authorized to update this request" });
     }
+  }
+
+  const allowed = VALID_COURIER_TRANSITIONS[existing.status] ?? [];
+  if (!allowed.includes(parsed.data.status)) {
+    return res.status(400).json({
+      error: { code: "INVALID_STATUS_TRANSITION", message: `Cannot transition from ${existing.status} to ${parsed.data.status}` },
+    });
   }
 
   const request = await prisma.courierRequest.update({
