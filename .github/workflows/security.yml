@@ -55,20 +55,29 @@ jobs:
           echo "=== Scanning for high-risk patterns ==="
           FAIL=0
 
+          # Exclude this workflow file itself from history scanning: it
+          # necessarily contains these patterns as literal text (they're
+          # what it's grepping for), so once this file's own addition is
+          # part of history, `git log --all -p` unconditionally matches its
+          # own diff on every run — a permanent false positive, confirmed
+          # by re-running this exact scan with the file excluded and
+          # finding nothing. Everything else in history is still scanned.
+          HISTORY="git log --all -p -- . ':!.github/workflows/security.yml'"
+
           # Live Stripe keys
-          if git log --all -p | grep -qE 'sk_live_[a-zA-Z0-9]{24,}'; then
+          if eval "$HISTORY" | grep -qE 'sk_live_[a-zA-Z0-9]{24,}'; then
             echo "CRITICAL: Live Stripe secret key found in history"
             FAIL=1
           fi
 
           # AWS access keys
-          if git log --all -p | grep -qE 'AKIA[0-9A-Z]{16}'; then
+          if eval "$HISTORY" | grep -qE 'AKIA[0-9A-Z]{16}'; then
             echo "CRITICAL: AWS access key found in history"
             FAIL=1
           fi
 
           # Private keys
-          if git log --all -p | grep -q 'BEGIN RSA PRIVATE KEY\|BEGIN EC PRIVATE KEY\|BEGIN OPENSSH PRIVATE KEY'; then
+          if eval "$HISTORY" | grep -q 'BEGIN RSA PRIVATE KEY\|BEGIN EC PRIVATE KEY\|BEGIN OPENSSH PRIVATE KEY'; then
             echo "CRITICAL: Private key found in history"
             FAIL=1
           fi

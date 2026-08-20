@@ -95,12 +95,18 @@ test("subscribe rejects a user who isn't party to the trip", async () => {
   const token = mockAuthAs({ sub: "stranger-sub", groups: ["Rider"] });
 
   const socket = new WebSocket(`${wsUrl}?token=${token}`);
-  await waitForOpen(socket);
-  socket.send(JSON.stringify({ type: "subscribe", tripId: trip.id }));
-  const reply = await waitForMessage(socket);
-
-  assert.equal(reply.type, "error");
-  socket.close();
+  try {
+    await waitForOpen(socket);
+    socket.send(JSON.stringify({ type: "subscribe", tripId: trip.id }));
+    const reply = await waitForMessage(socket);
+    assert.equal(reply.type, "error");
+  } finally {
+    // A failed assertion above must not skip this: an open socket keeps
+    // the http.Server "busy", so after()'s server.close() would hang
+    // waiting for it forever instead of failing the run — one bad
+    // assertion should not turn into an unbounded CI job.
+    socket.close();
+  }
 });
 
 test("subscribe accepts the rider on the trip, and PATCH .../status broadcasts trip:status", async () => {
@@ -108,26 +114,28 @@ test("subscribe accepts the rider on the trip, and PATCH .../status broadcasts t
   const token = mockAuthAs({ sub: rider.cognitoSub, groups: ["Rider"] });
 
   const socket = new WebSocket(`${wsUrl}?token=${token}`);
-  await waitForOpen(socket);
-  socket.send(JSON.stringify({ type: "subscribe", tripId: trip.id }));
-  const subAck = await waitForMessage(socket);
-  assert.equal(subAck.type, "subscribed");
+  try {
+    await waitForOpen(socket);
+    socket.send(JSON.stringify({ type: "subscribe", tripId: trip.id }));
+    const subAck = await waitForMessage(socket);
+    assert.equal(subAck.type, "subscribed");
 
-  const statusPromise = waitForMessage(socket);
-  restoreAuth();
-  const driverToken = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
-  const res = await request(baseUrl)
-    .patch(`/api/trips/${trip.id}/status`)
-    .set("Authorization", `Bearer ${driverToken}`)
-    .send({ status: "IN_PROGRESS" });
-  assert.equal(res.status, 200);
+    const statusPromise = waitForMessage(socket);
+    restoreAuth();
+    const driverToken = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
+    const res = await request(baseUrl)
+      .patch(`/api/trips/${trip.id}/status`)
+      .set("Authorization", `Bearer ${driverToken}`)
+      .send({ status: "IN_PROGRESS" });
+    assert.equal(res.status, 200);
 
-  const broadcast = await statusPromise;
-  assert.equal(broadcast.type, "trip:status");
-  assert.equal(broadcast.tripId, trip.id);
-  assert.equal(broadcast.status, "IN_PROGRESS");
-
-  socket.close();
+    const broadcast = await statusPromise;
+    assert.equal(broadcast.type, "trip:status");
+    assert.equal(broadcast.tripId, trip.id);
+    assert.equal(broadcast.status, "IN_PROGRESS");
+  } finally {
+    socket.close();
+  }
 });
 
 test("a driver's location message broadcasts to a subscribed rider, and the HTTP fallback reflects it", async () => {
@@ -135,38 +143,41 @@ test("a driver's location message broadcasts to a subscribed rider, and the HTTP
   const riderToken = mockAuthAs({ sub: rider.cognitoSub, groups: ["Rider"] });
 
   const riderSocket = new WebSocket(`${wsUrl}?token=${riderToken}`);
-  await waitForOpen(riderSocket);
-  riderSocket.send(JSON.stringify({ type: "subscribe", tripId: trip.id }));
-  await waitForMessage(riderSocket); // "subscribed" ack
+  let driverSocket: WebSocket | undefined;
+  try {
+    await waitForOpen(riderSocket);
+    riderSocket.send(JSON.stringify({ type: "subscribe", tripId: trip.id }));
+    await waitForMessage(riderSocket); // "subscribed" ack
 
-  restoreAuth();
-  const driverToken = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
-  const driverSocket = new WebSocket(`${wsUrl}?token=${driverToken}`);
-  await waitForOpen(driverSocket);
+    restoreAuth();
+    const driverToken = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
+    driverSocket = new WebSocket(`${wsUrl}?token=${driverToken}`);
+    await waitForOpen(driverSocket);
 
-  const locationPromise = waitForMessage(riderSocket);
-  driverSocket.send(JSON.stringify({ type: "location", lat: 6.5, lng: 3.4 }));
-  const broadcast = await locationPromise;
+    const locationPromise = waitForMessage(riderSocket);
+    driverSocket.send(JSON.stringify({ type: "location", lat: 6.5, lng: 3.4 }));
+    const broadcast = await locationPromise;
 
-  assert.equal(broadcast.type, "location");
-  assert.equal(broadcast.tripId, trip.id);
-  assert.equal(broadcast.driverId, driver.id);
-  assert.equal(broadcast.lat, 6.5);
+    assert.equal(broadcast.type, "location");
+    assert.equal(broadcast.tripId, trip.id);
+    assert.equal(broadcast.driverId, driver.id);
+    assert.equal(broadcast.lat, 6.5);
 
-  // The WS connections above already authenticated at connect time — but
-  // the HTTP fallback call below re-verifies on every request, so the mock
-  // has to be switched back to accept riderToken (same underlying token
-  // string, since mockAuthAs is deterministic per sub).
-  restoreAuth();
-  mockAuthAs({ sub: rider.cognitoSub, groups: ["Rider"] });
-  const fallback = await request(baseUrl)
-    .get(`/api/trips/${trip.id}/driver-location`)
-    .set("Authorization", `Bearer ${riderToken}`);
-  assert.equal(fallback.status, 200);
-  assert.equal(fallback.body.lat, 6.5);
-
-  riderSocket.close();
-  driverSocket.close();
+    // The WS connections above already authenticated at connect time — but
+    // the HTTP fallback call below re-verifies on every request, so the mock
+    // has to be switched back to accept riderToken (same underlying token
+    // string, since mockAuthAs is deterministic per sub).
+    restoreAuth();
+    mockAuthAs({ sub: rider.cognitoSub, groups: ["Rider"] });
+    const fallback = await request(baseUrl)
+      .get(`/api/trips/${trip.id}/driver-location`)
+      .set("Authorization", `Bearer ${riderToken}`);
+    assert.equal(fallback.status, 200);
+    assert.equal(fallback.body.lat, 6.5);
+  } finally {
+    riderSocket.close();
+    driverSocket?.close();
+  }
 });
 
 test("GET /trips/:id/driver-location 404s before any location has been reported", async () => {

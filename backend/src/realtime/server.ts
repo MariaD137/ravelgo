@@ -77,7 +77,7 @@ async function handleLocation(socket: WebSocket, user: ConnectionUser, lat: unkn
 export function attachRealtime(server: HttpServer) {
   const wss = new WebSocketServer({ server, path: "/ws" });
 
-  wss.on("connection", async (socket, request) => {
+  wss.on("connection", (socket, request) => {
     const url = new URL(request.url ?? "", "http://localhost");
     const token = url.searchParams.get("token");
     if (!token) {
@@ -85,53 +85,68 @@ export function attachRealtime(server: HttpServer) {
       return;
     }
 
-    try {
-      const payload = await verifier.verify(token);
-      const user: ConnectionUser = {
-        sub: payload.sub,
-        groups: Array.isArray(payload["cognito:groups"]) ? (payload["cognito:groups"] as string[]) : [],
-      };
-      connectionUsers.set(socket, user);
+    // Verifying the token and looking up the caller's Driver row are both
+    // async (a JWT verify round-trip and a DB query), but `message`/`close`
+    // must be attached synchronously, before either starts — `ws` doesn't
+    // buffer events for listeners registered after they fire, so a message
+    // the client sends right after the socket opens (immediately following
+    // `waitForOpen`, well before this resolves) would otherwise be silently
+    // and permanently dropped instead of merely delayed. Every handler
+    // below awaits this same promise instead of reading connectionUsers
+    // directly, so a message that arrives mid-auth now correctly waits for
+    // it rather than racing it.
+    const authPromise = (async (): Promise<ConnectionUser | null> => {
+      try {
+        const payload = await verifier.verify(token);
+        const user: ConnectionUser = {
+          sub: payload.sub,
+          groups: Array.isArray(payload["cognito:groups"]) ? (payload["cognito:groups"] as string[]) : [],
+        };
+        connectionUsers.set(socket, user);
 
-      const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: user.sub } } });
-      if (driver) {
-        registerDriverSocket(driver.id, socket);
+        const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: user.sub } } });
+        if (driver) {
+          registerDriverSocket(driver.id, socket);
+        }
+        return user;
+      } catch {
+        socket.close(4401, "Invalid or expired token");
+        return null;
       }
-    } catch {
-      socket.close(4401, "Invalid or expired token");
-      return;
-    }
+    })();
 
     socket.on("message", (raw) => {
-      const user = connectionUsers.get(socket);
-      if (!user) return;
-      if (isRateLimited(socket)) {
-        return send(socket, { type: "error", message: "Rate limit exceeded" });
-      }
+      void (async () => {
+        const user = await authPromise;
+        if (!user) return;
+        if (isRateLimited(socket)) {
+          return send(socket, { type: "error", message: "Rate limit exceeded" });
+        }
 
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(raw.toString());
-      } catch {
-        return send(socket, { type: "error", message: "Invalid JSON" });
-      }
-      if (typeof parsed !== "object" || parsed === null || !("type" in parsed)) {
-        return send(socket, { type: "error", message: "Message must have a type" });
-      }
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(raw.toString());
+        } catch {
+          return send(socket, { type: "error", message: "Invalid JSON" });
+        }
+        if (typeof parsed !== "object" || parsed === null || !("type" in parsed)) {
+          return send(socket, { type: "error", message: "Message must have a type" });
+        }
 
-      const message = parsed as Record<string, unknown>;
-      if (message.type === "subscribe") {
-        void handleSubscribe(socket, user, message.tripId);
-      } else if (message.type === "location") {
-        void handleLocation(socket, user, message.lat, message.lng);
-      } else {
-        send(socket, { type: "error", message: `Unknown message type: ${String(message.type)}` });
-      }
+        const message = parsed as Record<string, unknown>;
+        if (message.type === "subscribe") {
+          void handleSubscribe(socket, user, message.tripId);
+        } else if (message.type === "location") {
+          void handleLocation(socket, user, message.lat, message.lng);
+        } else {
+          send(socket, { type: "error", message: `Unknown message type: ${String(message.type)}` });
+        }
+      })();
     });
 
     socket.on("close", async () => {
       leaveAllRooms(socket);
-      const closingUser = connectionUsers.get(socket);
+      const closingUser = await authPromise.catch(() => null);
       if (closingUser) {
         const closingDriver = await prisma.driver.findFirst({ where: { user: { cognitoSub: closingUser.sub } } });
         if (closingDriver) unregisterDriverSocket(closingDriver.id, socket);
