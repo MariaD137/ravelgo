@@ -134,7 +134,7 @@ class _DriverListScreenState extends State<DriverListScreen> {
           : ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: _drivers.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, i) {
                 final d = _toDriverRecord(_drivers[i]);
                 return InkWell(

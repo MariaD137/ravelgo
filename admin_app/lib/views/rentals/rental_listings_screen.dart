@@ -134,7 +134,7 @@ class _RentalListingsScreenState extends State<RentalListingsScreen> {
             : ListView.separated(
                 padding: const EdgeInsets.all(16),
                 itemCount: _listings.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
                 itemBuilder: (context, i) {
                   final l = _listings[i];
                   final status = l['status'] as String?;

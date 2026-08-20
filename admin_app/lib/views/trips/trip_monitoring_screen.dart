@@ -152,7 +152,7 @@ class _TripMonitoringScreenState extends State<TripMonitoringScreen> {
           : ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: _trips.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, i) {
                 final t = _toTripRecord(_trips[i]);
                 return InkWell(

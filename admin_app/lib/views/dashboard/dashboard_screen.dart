@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
-import 'package:ravelgo_admin/utils/date_utils.dart';
 
 class DashboardScreen extends StatefulWidget {
   final bool embedded;
@@ -18,8 +17,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _activeTrips = 0;
   int _onlineDrivers = 0;
   int _pendingApprovals = 0;
-  int _totalRiders = 0;
-  int _totalDrivers = 0;
   int _totalTrips = 0;
   List<Map<String, dynamic>> _recentTrips = [];
 
@@ -36,23 +33,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final results = await Future.wait([
         ApiClient().get('/admin/dashboard'),
-        ApiClient().get('/riders', queryParams: {'pageSize': '1'}),
-        ApiClient().get('/drivers', queryParams: {'pageSize': '1'}),
         ApiClient().get('/trips', queryParams: {'pageSize': '5'}),
       ]);
 
       final dashboard = results[0] as Map<String, dynamic>;
-      final ridersPage = results[1] as Map<String, dynamic>;
-      final driversPage = results[2] as Map<String, dynamic>;
-      final tripsPage = results[3] as Map<String, dynamic>;
+      final tripsPage = results[1] as Map<String, dynamic>;
 
       if (!mounted) return;
       setState(() {
         _activeTrips = dashboard['activeTrips'] ?? 0;
         _onlineDrivers = dashboard['onlineDrivers'] ?? 0;
         _pendingApprovals = dashboard['pendingApprovals'] ?? 0;
-        _totalRiders = ridersPage['total'] ?? 0;
-        _totalDrivers = driversPage['total'] ?? 0;
         _totalTrips = tripsPage['total'] ?? 0;
         _recentTrips = List<Map<String, dynamic>>.from(tripsPage['data'] ?? []);
         _loading = false;

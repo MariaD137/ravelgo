@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_admin/models/support_ticket.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/utils/date_utils.dart';
@@ -110,7 +109,7 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen> {
           : ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: _tickets.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, i) {
                 final t = _tickets[i];
                 final status = t['status'] as String? ?? 'OPEN';

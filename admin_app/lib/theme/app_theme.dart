@@ -21,7 +21,7 @@ class AppComponents {
           GestureDetector(onTap: () => Navigator.pop(context), child: const Icon(Icons.arrow_back)),
           const SizedBox(width: 12),
           Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
-          if (trailing != null) trailing,
+          ?trailing,
         ],
       ),
     );
@@ -48,7 +48,7 @@ class AppComponents {
       child: Row(
         children: [
           Expanded(child: Text(text, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700))),
-          if (trailing != null) trailing,
+          ?trailing,
         ],
       ),
     );

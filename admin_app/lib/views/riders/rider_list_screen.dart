@@ -94,7 +94,7 @@ class _RiderListScreenState extends State<RiderListScreen> {
             : ListView.separated(
                 padding: const EdgeInsets.all(16),
                 itemCount: _riders.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
                 itemBuilder: (context, i) {
                   final r = _toRiderRecord(_riders[i]);
                   return InkWell(
