@@ -18,6 +18,11 @@ const rawEnvSchema = z.object({
   AWS_REGION: z.string().default("us-east-1"),
   DOCUMENTS_BUCKET: z.string().optional(),
   ASSETS_BUCKET: z.string().optional(),
+  // Uploads land here first, never here in AssetsBucket directly — the
+  // upload-processor Lambda (infra/lambda/upload-processor) only copies an
+  // object into AssetsBucket (the one CloudFront actually serves) after it
+  // passes MIME/magic-byte validation. See infra/lib/storage-stack.ts.
+  PENDING_ASSETS_BUCKET: z.string().optional(),
   // Comma-separated list of allowed origins for CORS, e.g.
   // "https://app.ravelgo.com,https://admin.ravelgo.com". Empty in
   // development so local Flutter/web dev builds on arbitrary ports aren't
@@ -49,6 +54,7 @@ export interface Env {
   AWS_REGION: string;
   DOCUMENTS_BUCKET?: string;
   ASSETS_BUCKET?: string;
+  PENDING_ASSETS_BUCKET?: string;
   ALLOWED_ORIGINS: string[];
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
@@ -100,6 +106,7 @@ function loadEnv(): Env {
     AWS_REGION: data.AWS_REGION,
     DOCUMENTS_BUCKET: data.DOCUMENTS_BUCKET,
     ASSETS_BUCKET: data.ASSETS_BUCKET,
+    PENDING_ASSETS_BUCKET: data.PENDING_ASSETS_BUCKET,
     ALLOWED_ORIGINS: allowedOrigins,
     STRIPE_SECRET_KEY: data.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: data.STRIPE_WEBHOOK_SECRET,
