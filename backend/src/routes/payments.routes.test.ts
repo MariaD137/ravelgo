@@ -4,6 +4,7 @@ import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
 import { mockAuthAs, mockPaymentIntentCreate, restoreAuth, resetDb } from "../test/helpers";
+import { withBypass } from "../lib/rls";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -127,7 +128,9 @@ test("GET /api/payments/mine only returns the caller's own payments", async () =
   const trip = await prisma.trip.create({
     data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 10, status: "COMPLETED" },
   });
-  await prisma.payment.create({ data: { tripId: trip.id, userId: rider.id, amount: 10, status: "SUCCEEDED", paidAt: new Date() } });
+  await withBypass((tx) =>
+    tx.payment.create({ data: { tripId: trip.id, userId: rider.id, amount: 10, status: "SUCCEEDED", paidAt: new Date() } }),
+  );
 
   const token = mockAuthAs({ sub: "rider-sub-1", groups: ["Rider"] });
   const res = await request(app).get("/api/payments/mine").set("Authorization", `Bearer ${token}`);
@@ -148,9 +151,11 @@ test("GET /api/payments/:id/receipt is visible to the paying rider, denied to a 
   const trip = await prisma.trip.create({
     data: { riderId: rider.id, driverId: driver.id, pickup: "Home", destination: "Work", estimatedFare: 10, finalFare: 10, status: "COMPLETED" },
   });
-  const payment = await prisma.payment.create({
-    data: { tripId: trip.id, userId: rider.id, amount: 10, status: "SUCCEEDED", paidAt: new Date() },
-  });
+  const payment = await withBypass((tx) =>
+    tx.payment.create({
+      data: { tripId: trip.id, userId: rider.id, amount: 10, status: "SUCCEEDED", paidAt: new Date() },
+    }),
+  );
 
   const ownerToken = mockAuthAs({ sub: "rider-sub-1", groups: ["Rider"] });
   const ownerRes = await request(app).get(`/api/payments/${payment.id}/receipt`).set("Authorization", `Bearer ${ownerToken}`);
@@ -158,8 +163,16 @@ test("GET /api/payments/:id/receipt is visible to the paying rider, denied to a 
   assert.equal(ownerRes.body.pickup, "Home");
   assert.equal(ownerRes.body.amount, 10);
 
+  // A real user, just not this payment's owner — exercises the RLS path
+  // itself, not just the "no such user profile" 404 branch.
+  await prisma.user.create({
+    data: { cognitoSub: "stranger-sub", role: "RIDER", firstName: "S", lastName: "T", email: "s@example.com" },
+  });
   restoreAuth();
   const strangerToken = mockAuthAs({ sub: "stranger-sub", groups: ["Rider"] });
   const strangerRes = await request(app).get(`/api/payments/${payment.id}/receipt`).set("Authorization", `Bearer ${strangerToken}`);
-  assert.equal(strangerRes.status, 403);
+  // Row-level security scopes this query to the caller's own payments, so a
+  // payment that exists but isn't theirs is indistinguishable from one that
+  // doesn't exist — 404, not 403, so existence isn't leaked to a stranger.
+  assert.equal(strangerRes.status, 404);
 });

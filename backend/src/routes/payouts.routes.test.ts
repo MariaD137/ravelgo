@@ -4,6 +4,7 @@ import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
 import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { withBypass } from "../lib/rls";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -42,7 +43,7 @@ test("POST /api/payouts/bank-account creates the account and masks the response"
   assert.equal(res.body.accountNumber, "****6789");
   assert.equal(res.body.routingNumber, "****0021");
 
-  const stored = await prisma.driverBankAccount.findFirst();
+  const stored = await withBypass((tx) => tx.driverBankAccount.findFirst());
   assert.ok(stored);
   assert.notEqual(stored!.accountNumber, bankAccountPayload.accountNumber);
   assert.notEqual(stored!.routingNumber, bankAccountPayload.routingNumber);
@@ -70,8 +71,8 @@ test("GET /api/payouts/bank-account finds the account the same driver just creat
 test("GET /api/payouts/history only returns the calling driver's own payouts", async () => {
   const { user: driverA } = await createDriver("driver-sub-3");
   const { user: driverB } = await createDriver("driver-sub-4");
-  await prisma.payout.create({ data: { driverId: driverA.id, amount: 100, period: "2026-07", status: "PENDING" } });
-  await prisma.payout.create({ data: { driverId: driverB.id, amount: 200, period: "2026-07", status: "PENDING" } });
+  await withBypass((tx) => tx.payout.create({ data: { driverId: driverA.id, amount: 100, period: "2026-07", status: "PENDING" } }));
+  await withBypass((tx) => tx.payout.create({ data: { driverId: driverB.id, amount: 200, period: "2026-07", status: "PENDING" } }));
 
   const token = mockAuthAs({ sub: "driver-sub-3", groups: ["Driver"] });
   const res = await request(app).get("/api/payouts/history").set("Authorization", `Bearer ${token}`);
@@ -98,4 +99,64 @@ test("Admin: POST /api/payouts/create with an override amount masks bank details
 
   assert.equal(res.status, 201);
   assert.equal(res.body.amount, 150);
+});
+
+test("Admin: POST /api/payouts/create rejects a duplicate (driverId, period) via the fast-path check", async () => {
+  const { user: driver } = await createDriver("driver-sub-6");
+  const adminToken = mockAuthAs({ sub: "admin-sub-2", groups: ["Admin"] });
+
+  const first = await request(app)
+    .post("/api/payouts/create")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ driverId: driver.id, period: "2026-08", amount: 100, reason: "first" });
+  assert.equal(first.status, 201);
+
+  const second = await request(app)
+    .post("/api/payouts/create")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ driverId: driver.id, period: "2026-08", amount: 200, reason: "duplicate attempt" });
+  assert.equal(second.status, 409);
+
+  const payouts = await withBypass((tx) => tx.payout.findMany({ where: { driverId: driver.id, period: "2026-08" } }));
+  assert.equal(payouts.length, 1);
+  assert.equal(payouts[0].amount, 100);
+});
+
+test("Admin: two concurrent POST /api/payouts/create for the same (driverId, period) only create one payout", async () => {
+  const { user: driver } = await createDriver("driver-sub-7");
+  const adminToken = mockAuthAs({ sub: "admin-sub-3", groups: ["Admin"] });
+
+  const send = () =>
+    request(app)
+      .post("/api/payouts/create")
+      .set("Authorization", `Bearer ${adminToken}`)
+      .send({ driverId: driver.id, period: "2026-09", amount: 100, reason: "race" });
+
+  // Both requests pass the fast-path findFirst check before either commits
+  // its create — this is exactly the race the @@unique([driverId, period])
+  // constraint exists for, not just the friendly-error fast path above.
+  const [first, second] = await Promise.all([send(), send()]);
+  const statuses = [first.status, second.status].sort();
+  assert.deepEqual(statuses, [201, 409]);
+
+  const payouts = await withBypass((tx) => tx.payout.findMany({ where: { driverId: driver.id, period: "2026-09" } }));
+  assert.equal(payouts.length, 1);
+});
+
+test("A repeated payout-batch run for the same period does not create a second payout for a driver who already has one", async () => {
+  const { user: driver } = await createDriver("driver-sub-8");
+  // Reaching in past the route layer to exercise generatePayoutsForPeriod
+  // directly — the "repeated batch-job execution" / "retry after timeout"
+  // scenario the audit called out, which the route-level tests above don't
+  // cover (they only exercise the single-payout /payouts/create path).
+  const { generatePayoutsForPeriod } = await import("../services/payouts");
+
+  await withBypass((tx) => tx.payout.create({ data: { driverId: driver.id, amount: 42, period: "2026-06", status: "PENDING" } }));
+
+  const created = await generatePayoutsForPeriod("2026-06");
+  assert.equal(created.length, 0); // this driver already has one; nothing new for them
+
+  const payouts = await withBypass((tx) => tx.payout.findMany({ where: { driverId: driver.id, period: "2026-06" } }));
+  assert.equal(payouts.length, 1);
+  assert.equal(payouts[0].amount, 42); // the pre-existing one, untouched
 });
