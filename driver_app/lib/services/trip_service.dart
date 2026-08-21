@@ -17,10 +17,9 @@ class TripService {
     return Map<String, dynamic>.from(response);
   }
 
-  Future<Map<String, dynamic>> completeTrip(String tripId, double finalFare) async {
+  Future<Map<String, dynamic>> completeTrip(String tripId) async {
     final response = await _api.patch('/trips/$tripId/status', body: {
       'status': 'COMPLETED',
-      'finalFare': finalFare,
     });
     return Map<String, dynamic>.from(response);
   }

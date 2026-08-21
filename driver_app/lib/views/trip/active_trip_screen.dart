@@ -80,6 +80,8 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
         // Only make API call if we have status to send
         if (body.containsKey('status')) {
           await ApiClient().patch('/trips/${widget.tripId}/status', body: body);
+        } else if (nextStage == _TripStage.arrivedDestination && _stage == _TripStage.inProgress) {
+          // Don't send a status update for local-only stages
         }
       } catch (e) {
         if (!mounted) return;
@@ -104,7 +106,6 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
       try {
         await ApiClient().patch('/trips/${widget.tripId}/status', body: {
           'status': 'COMPLETED',
-          'finalFare': widget.request.estimatedFare,
         });
       } catch (e) {
         if (!mounted) return;

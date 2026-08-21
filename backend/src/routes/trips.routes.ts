@@ -6,6 +6,7 @@ import { asyncHandler } from "../middleware/async-handler";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { broadcastTripStatus, getLatestDriverLocation } from "../realtime/hub";
 import { matchDriverToTrip } from "../services/matching";
+import { calculateFare } from "../services/fare-calculator";
 
 export const tripsRouter = Router();
 
@@ -61,7 +62,9 @@ tripsRouter.get("/trips/:id", requireAuth, asyncHandler(async (req, res) => {
 
 const updateStatusSchema = z.object({
   status: z.enum(["MATCHED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "DISPUTED"]),
-  finalFare: z.number().positive().max(10000).optional(),
+  distanceKm: z.number().nonnegative().optional(),
+  durationMinutes: z.number().nonnegative().optional(),
+  zone: z.string().optional(),
 });
 
 // Driver: advance trip status (accept, start, complete)
@@ -89,11 +92,20 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
     });
   }
 
+  let finalFare: number | undefined;
+  if (parsed.data.status === "COMPLETED") {
+    if (parsed.data.distanceKm !== undefined && parsed.data.durationMinutes !== undefined) {
+      finalFare = await calculateFare(parsed.data.distanceKm, parsed.data.durationMinutes, parsed.data.zone);
+    } else {
+      finalFare = existing.estimatedFare;
+    }
+  }
+
   const trip = await prisma.trip.update({
     where: { id: req.params.id },
     data: {
       status: parsed.data.status,
-      finalFare: parsed.data.finalFare,
+      finalFare,
       completedAt: parsed.data.status === "COMPLETED" ? new Date() : undefined,
     },
   });
