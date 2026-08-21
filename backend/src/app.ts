@@ -1,5 +1,5 @@
 import cors from "cors";
-import express, { type Request, type Response } from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import helmet from "helmet";
 import { readFileSync } from "node:fs";
@@ -37,7 +37,36 @@ export const app = express();
 // callers. Reflect any origin in dev/test for convenience; in production,
 // only ALLOWED_ORIGINS (env.ts throws at boot if that's unset) is allowed.
 app.use(
-  helmet(),
+  helmet({
+    // 'unsafe-inline' on script/style is required by swagger-ui-express's
+    // default /docs page, which injects an inline bootstrap <script> and
+    // <style> block with no nonce support. Every other route on this API
+    // returns JSON only, so it never executes anything this CSP governs.
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:"],
+        connectSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        baseUri: ["'self'"],
+      },
+    },
+    // swagger-ui-express's bundled assets don't set Cross-Origin-Resource-Policy,
+    // so a strict COEP would break /docs; the API itself embeds nothing cross-origin.
+    crossOriginEmbedderPolicy: false,
+  }),
+  // Helmet 8 doesn't ship a Permissions-Policy middleware; this is a pure JSON
+  // API with no legitimate use of any browser feature it gates, so deny all.
+  (_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader(
+      "Permissions-Policy",
+      "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()",
+    );
+    next();
+  },
   cors({ origin: env.NODE_ENV === "production" ? env.ALLOWED_ORIGINS : true }),
 );
 
@@ -49,7 +78,10 @@ app.use(
 // gets a chance to parse it.
 app.use("/api/billing/webhook", express.raw({ type: "application/json" }), billingRouter);
 
-app.use(express.json());
+// No route accepts a body anywhere near this size — uploads go client-to-S3
+// via presigned POST, never through this JSON body parser. 256kb is a
+// deliberate ceiling, not the implicit 100kb default.
+app.use(express.json({ limit: "256kb" }));
 app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
 
 // Skipped in tests so a suite that fires many requests at one endpoint
@@ -60,6 +92,28 @@ if (env.NODE_ENV !== "test") {
     rateLimit({
       windowMs: 15 * 60 * 1000,
       limit: 300,
+      standardHeaders: true,
+      legacyHeaders: false,
+    }),
+  );
+
+  // Tighter limits on endpoints that are cheap to call but expensive/abusable
+  // if hammered: presigning costs an S3 API call per request, and promo
+  // redemption is a guessable-code brute-force target.
+  app.use(
+    "/api/uploads/presign",
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      limit: 30,
+      standardHeaders: true,
+      legacyHeaders: false,
+    }),
+  );
+  app.use(
+    /^\/api\/promotions\/[^/]+\/redeem$/,
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      limit: 10,
       standardHeaders: true,
       legacyHeaders: false,
     }),

@@ -697,7 +697,7 @@ paths:
   /uploads/presign:
     post:
       tags: [Uploads]
-      summary: Get a short-lived S3 upload URL (any authenticated user)
+      summary: Get short-lived, size-capped S3 POST-upload credentials (any authenticated user)
       requestBody:
         required: true
         content:
@@ -708,17 +708,24 @@ paths:
               properties:
                 bucket: { type: string, enum: [documents, assets] }
                 fileName: { type: string }
-                contentType: { type: string }
+                contentType: { type: string, enum: [image/jpeg, image/png, image/webp, image/heic, image/heif, application/pdf] }
       responses:
         "200":
-          description: Presigned URL
+          description: >
+            Presigned POST fields. Upload by POSTing multipart/form-data to `url`,
+            with every entry in `fields` as a form field and the file itself as the
+            last field. S3 rejects the upload if its size exceeds `maxBytes`.
+            "assets" uploads land in a private staging bucket and only become
+            publicly served after validation passes.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  uploadUrl: { type: string }
+                  url: { type: string }
+                  fields: { type: object, additionalProperties: { type: string } }
                   fileKey: { type: string }
+                  maxBytes: { type: integer }
                   expiresIn: { type: integer }
 
   /car-paddy:
