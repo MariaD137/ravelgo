@@ -106,6 +106,8 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
       try {
         await ApiClient().patch('/trips/${widget.tripId}/status', body: {
           'status': 'COMPLETED',
+          'distanceKm': widget.request.distanceKm,
+          'durationMinutes': widget.request.etaMinutes,
         });
       } catch (e) {
         if (!mounted) return;

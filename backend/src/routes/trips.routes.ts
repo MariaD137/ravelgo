@@ -65,7 +65,10 @@ const updateStatusSchema = z.object({
   distanceKm: z.number().nonnegative().optional(),
   durationMinutes: z.number().nonnegative().optional(),
   zone: z.string().optional(),
-});
+}).refine(
+  (data) => data.status !== "COMPLETED" || (data.distanceKm !== undefined && data.durationMinutes !== undefined),
+  { message: "distanceKm and durationMinutes are required to complete a trip" }
+);
 
 // Driver: advance trip status (accept, start, complete)
 tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin"), asyncHandler(async (req, res) => {
@@ -94,11 +97,9 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
 
   let finalFare: number | undefined;
   if (parsed.data.status === "COMPLETED") {
-    if (parsed.data.distanceKm !== undefined && parsed.data.durationMinutes !== undefined) {
-      finalFare = await calculateFare(parsed.data.distanceKm, parsed.data.durationMinutes, parsed.data.zone);
-    } else {
-      finalFare = existing.estimatedFare;
-    }
+    if (parsed.data.distanceKm! > 1000) return res.status(400).json({ error: "Distance exceeds maximum (1000 km)" });
+    if (parsed.data.durationMinutes! > 86400) return res.status(400).json({ error: "Duration exceeds maximum (86400 minutes / 24 hours)" });
+    finalFare = await calculateFare(parsed.data.distanceKm!, parsed.data.durationMinutes!, parsed.data.zone);
   }
 
   const trip = await prisma.trip.update({
