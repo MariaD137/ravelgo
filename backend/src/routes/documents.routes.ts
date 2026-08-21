@@ -2,17 +2,18 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { asyncHandler } from "../middleware/async-handler";
 
 export const documentsRouter = Router();
 
 // Driver: view my own documents
-documentsRouter.get("/documents/me", requireAuth, requireRole("Driver"), async (req, res) => {
+documentsRouter.get("/documents/me", requireAuth, requireRole("Driver"), asyncHandler(async (req, res) => {
   const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
   const documents = await prisma.driverDocument.findMany({ where: { driverId: driver.id } });
   res.json(documents);
-});
+}));
 
 const uploadSchema = z.object({
   title: z.string().min(1),
@@ -21,9 +22,13 @@ const uploadSchema = z.object({
 
 // Driver: register an uploaded document (the file itself goes straight to S3
 // via a presigned URL obtained separately; this just records the metadata)
-documentsRouter.post("/documents", requireAuth, requireRole("Driver"), async (req, res) => {
+documentsRouter.post("/documents", requireAuth, requireRole("Driver"), asyncHandler(async (req, res) => {
   const parsed = uploadSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  if (!parsed.data.fileKey.startsWith(`${req.user!.sub}/`)) {
+    return res.status(403).json({ error: "fileKey does not belong to you" });
+  }
 
   const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
@@ -32,14 +37,14 @@ documentsRouter.post("/documents", requireAuth, requireRole("Driver"), async (re
     data: { driverId: driver.id, title: parsed.data.title, fileKey: parsed.data.fileKey, status: "PENDING" },
   });
   res.status(201).json(doc);
-});
+}));
 
 const reviewSchema = z.object({
   status: z.enum(["APPROVED", "REJECTED"]),
 });
 
 // Admin: approve/reject a document
-documentsRouter.patch("/documents/:id/review", requireAuth, requireRole("Admin"), async (req, res) => {
+documentsRouter.patch("/documents/:id/review", requireAuth, requireRole("Admin"), asyncHandler(async (req, res) => {
   const parsed = reviewSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -48,4 +53,4 @@ documentsRouter.patch("/documents/:id/review", requireAuth, requireRole("Admin")
     data: { status: parsed.data.status },
   });
   res.json(doc);
-});
+}));

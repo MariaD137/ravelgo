@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
+import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/account/account_screen.dart';
 import 'package:ravelgo_driver_app/views/earnings/earnings_screen.dart';
@@ -18,8 +19,17 @@ class _DriverShellState extends State<DriverShell> {
   int _index = 0;
   DriverProfile _profile = const DriverProfile();
 
-  void _setOnline(bool value) {
+  Future<void> _setOnline(bool value) async {
     setState(() => _profile = _profile.copyWith(isOnline: value));
+    try {
+      await ApiClient().patch('/drivers/me/online', body: {'online': value});
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _profile = _profile.copyWith(isOnline: !value));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to update online status. Please try again.')),
+      );
+    }
   }
 
   @override

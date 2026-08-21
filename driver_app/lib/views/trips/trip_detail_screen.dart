@@ -1,11 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/models/trip.dart';
+import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/utils/date_utils.dart';
 
 class TripDetailScreen extends StatelessWidget {
   final Trip trip;
   const TripDetailScreen({super.key, required this.trip});
+
+  Future<void> _reportLostItem(BuildContext context) async {
+    try {
+      await ApiClient().post('/support-tickets', body: {
+        'subject': 'Lost Item',
+        'category': 'LOST_ITEM',
+        'tripId': trip.id,
+      });
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lost item report submitted. Our support team will follow up.')),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to submit report. Please try again or contact support.')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +74,7 @@ class TripDetailScreen extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text("Fare", style: TextStyle(fontWeight: FontWeight.w700)),
-                      Text(cancelled ? "₦0" : "₦${trip.fare.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.w700)),
+                      Text(cancelled ? "N0" : "N${trip.fare.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ],
@@ -62,12 +83,14 @@ class TripDetailScreen extends StatelessWidget {
             const SizedBox(height: 20),
             AppComponents.outlineButton(
               text: "Download receipt",
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Receipt saved to device"))),
+              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Feature coming soon")),
+              ),
             ),
             const SizedBox(height: 12),
             AppComponents.outlineButton(
               text: "Report a lost item",
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lost item report submitted"))),
+              onPressed: () => _reportLostItem(context),
             ),
           ],
         ),

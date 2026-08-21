@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/models/driver_record.dart';
+import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 
 class DriverDetailScreen extends StatefulWidget {
@@ -12,6 +13,7 @@ class DriverDetailScreen extends StatefulWidget {
 
 class _DriverDetailScreenState extends State<DriverDetailScreen> {
   late DriverStatus _status;
+  bool _togglingStatus = false;
 
   static const _documents = [
     ("Driver's License", true),
@@ -25,6 +27,28 @@ class _DriverDetailScreenState extends State<DriverDetailScreen> {
   void initState() {
     super.initState();
     _status = widget.driver.status;
+  }
+
+  Future<void> _toggleStatus() async {
+    final newStatus = _status == DriverStatus.suspended ? 'ACTIVE' : 'SUSPENDED';
+    setState(() => _togglingStatus = true);
+    try {
+      await ApiClient().patch('/drivers/${widget.driver.id}/status', body: {'status': newStatus});
+      if (!mounted) return;
+      setState(() {
+        _status = newStatus == 'SUSPENDED' ? DriverStatus.suspended : DriverStatus.active;
+        _togglingStatus = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Driver ${newStatus == "SUSPENDED" ? "suspended" : "reactivated"} successfully')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _togglingStatus = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update status: $e')),
+      );
+    }
   }
 
   @override
@@ -95,7 +119,14 @@ class _DriverDetailScreenState extends State<DriverDetailScreen> {
                       const SizedBox(width: 10),
                       Expanded(child: Text(doc.$1, style: const TextStyle(fontSize: 13.5))),
                       if (!doc.$2)
-                        TextButton(onPressed: () {}, child: const Text("Review")),
+                        TextButton(
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Feature coming soon')),
+                            );
+                          },
+                          child: const Text("Review"),
+                        ),
                     ],
                   ),
                 ),
@@ -105,11 +136,11 @@ class _DriverDetailScreenState extends State<DriverDetailScreen> {
             children: [
               Expanded(
                 child: AppComponents.outlineButton(
-                  text: _status == DriverStatus.suspended ? "Reactivate" : "Suspend driver",
+                  text: _togglingStatus
+                      ? 'Updating...'
+                      : (_status == DriverStatus.suspended ? "Reactivate" : "Suspend driver"),
                   color: _status == DriverStatus.suspended ? AppColors.success : AppColors.danger,
-                  onPressed: () => setState(() {
-                    _status = _status == DriverStatus.suspended ? DriverStatus.active : DriverStatus.suspended;
-                  }),
+                  onPressed: _togglingStatus ? null : _toggleStatus,
                 ),
               ),
               const SizedBox(width: 12),

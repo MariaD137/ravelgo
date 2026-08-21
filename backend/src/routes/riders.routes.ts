@@ -56,11 +56,68 @@ ridersRouter.post("/riders/me", requireAuth, requireRole("Rider"), async (req, r
   }
 });
 
+const updateMeSchema = z.object({
+  firstName: z.string().min(1).optional(),
+  lastName: z.string().min(1).optional(),
+  phoneNumber: z.string().optional(),
+});
+
+ridersRouter.patch("/riders/me", requireAuth, requireRole("Rider"), async (req, res, next) => {
+  try {
+    const data = validate<typeof updateMeSchema._output>(updateMeSchema, req.body, "Request body");
+    const rider = await prisma.user.update({
+      where: { cognitoSub: req.user!.sub },
+      data,
+    });
+    res.json(rider);
+  } catch (err) {
+    next(err);
+  }
+});
+
 ridersRouter.get("/riders/me", requireAuth, requireRole("Rider"), async (req, res, next) => {
   try {
-    const rider = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
+    const rider = await prisma.user.findUnique({
+      where: { cognitoSub: req.user!.sub },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phoneNumber: true,
+        role: true,
+        suspended: true,
+        createdAt: true,
+      },
+    });
     if (!rider) throw Errors.notFound("Rider profile");
     res.json(rider);
+  } catch (err) {
+    next(err);
+  }
+});
+
+ridersRouter.get("/riders/me/trips", requireAuth, requireRole("Rider"), async (req, res, next) => {
+  try {
+    const { page, pageSize } = validate<{ page: number; pageSize: number }>(
+      paginationQuerySchema,
+      req.query,
+      "Query parameters",
+    );
+    const rider = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
+    if (!rider) throw Errors.notFound("Rider profile");
+
+    const [trips, total] = await Promise.all([
+      prisma.trip.findMany({
+        where: { riderId: rider.id },
+        orderBy: { requestedAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: { driver: { include: { user: { select: { firstName: true, lastName: true } } } } },
+      }),
+      prisma.trip.count({ where: { riderId: rider.id } }),
+    ]);
+    res.json(paginate(trips, total, page, pageSize));
   } catch (err) {
     next(err);
   }

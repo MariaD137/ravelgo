@@ -14,7 +14,6 @@ class IncomingRequestSheet extends StatefulWidget {
 class _IncomingRequestSheetState extends State<IncomingRequestSheet> {
   int _secondsLeft = 15;
   Timer? _timer;
-  double? _counterOffer;
 
   @override
   void initState() {
@@ -35,27 +34,10 @@ class _IncomingRequestSheetState extends State<IncomingRequestSheet> {
     super.dispose();
   }
 
-  Future<void> _negotiateFare() async {
-    final controller = TextEditingController(text: widget.request.estimatedFare.toStringAsFixed(0));
-    final result = await showDialog<double>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Propose a fare"),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(prefixText: "₦ ", border: OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, double.tryParse(controller.text)),
-            child: const Text("Send to rider"),
-          ),
-        ],
-      ),
+  void _negotiateFare() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Fare negotiation coming soon')),
     );
-    if (result != null) setState(() => _counterOffer = result);
   }
 
   @override
@@ -118,7 +100,7 @@ class _IncomingRequestSheetState extends State<IncomingRequestSheet> {
             children: [
               Text("${r.distanceKm} km · ${r.etaMinutes} min away", style: const TextStyle(fontSize: 13, color: Colors.black54)),
               Text(
-                _counterOffer != null ? "₦${_counterOffer!.toStringAsFixed(0)} (proposed)" : "₦${r.estimatedFare.toStringAsFixed(0)}",
+                "₦${r.estimatedFare.toStringAsFixed(0)}",
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],

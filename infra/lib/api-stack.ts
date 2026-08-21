@@ -64,7 +64,7 @@ export class ApiStack extends cdk.Stack {
     });
 
     const vpcConnector = new apprunner.CfnVpcConnector(this, "VpcConnector", {
-      subnets: props.vpc.selectSubnets({ subnetType: ec2.SubnetType.PRIVATE_ISOLATED }).subnetIds,
+      subnets: props.vpc.selectSubnets({ subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS }).subnetIds,
       securityGroups: [connectorSecurityGroup.securityGroupId],
     });
 
@@ -107,7 +107,7 @@ export class ApiStack extends cdk.Stack {
     this.service = new apprunner.CfnService(this, "BackendService", {
       serviceName: resourceName,
       sourceConfiguration: {
-        autoDeploymentsEnabled: true,
+        autoDeploymentsEnabled: false,
         authenticationConfiguration: { accessRoleArn: accessRole.roleArn },
         imageRepository: {
           imageRepositoryType: "ECR",

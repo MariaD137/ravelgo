@@ -2,12 +2,13 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { asyncHandler } from "../middleware/async-handler";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const driversRouter = Router();
 
 // Admin: list all drivers
-driversRouter.get("/drivers", requireAuth, requireRole("Admin"), async (req, res) => {
+driversRouter.get("/drivers", requireAuth, requireRole("Admin"), asyncHandler(async (req, res) => {
   const parsed = paginationQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { page, pageSize } = parsed.data;
@@ -22,7 +23,7 @@ driversRouter.get("/drivers", requireAuth, requireRole("Admin"), async (req, res
     prisma.driver.count(),
   ]);
   res.json(paginate(drivers, total, page, pageSize));
-});
+}));
 
 const createDriverSchema = z.object({
   firstName: z.string().min(1),
@@ -34,7 +35,7 @@ const createDriverSchema = z.object({
 
 // Driver: create my profile (called once, right after Cognito sign-up completes
 // the driver onboarding flow — Cognito itself has no Postgres row for the user)
-driversRouter.post("/drivers/me", requireAuth, requireRole("Driver"), async (req, res) => {
+driversRouter.post("/drivers/me", requireAuth, requireRole("Driver"), asyncHandler(async (req, res) => {
   const parsed = createDriverSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -53,37 +54,37 @@ driversRouter.post("/drivers/me", requireAuth, requireRole("Driver"), async (req
   });
 
   res.status(201).json(driver);
-});
+}));
 
 // Driver: get my own profile
-driversRouter.get("/drivers/me", requireAuth, requireRole("Driver"), async (req, res) => {
+driversRouter.get("/drivers/me", requireAuth, requireRole("Driver"), asyncHandler(async (req, res) => {
   const driver = await prisma.driver.findFirst({
     where: { user: { cognitoSub: req.user!.sub } },
     include: { vehicles: true, documents: true },
   });
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
   res.json(driver);
-});
+}));
 
 // Admin: get a single driver with documents.
 // Registered after the literal "/drivers/me" routes above — Express matches
 // path segments in registration order, so ":id" would otherwise swallow
 // "me" and shadow the driver's own-profile routes with this Admin check.
-driversRouter.get("/drivers/:id", requireAuth, requireRole("Admin"), async (req, res) => {
+driversRouter.get("/drivers/:id", requireAuth, requireRole("Admin"), asyncHandler(async (req, res) => {
   const driver = await prisma.driver.findUnique({
     where: { id: req.params.id },
     include: { user: true, vehicles: true, documents: true },
   });
   if (!driver) return res.status(404).json({ error: "Driver not found" });
   res.json(driver);
-});
+}));
 
 const statusSchema = z.object({
   status: z.enum(["ACTIVE", "PENDING_REVIEW", "SUSPENDED"]),
 });
 
 // Admin: suspend / reactivate a driver
-driversRouter.patch("/drivers/:id/status", requireAuth, requireRole("Admin"), async (req, res) => {
+driversRouter.patch("/drivers/:id/status", requireAuth, requireRole("Admin"), asyncHandler(async (req, res) => {
   const parsed = statusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -92,8 +93,42 @@ driversRouter.patch("/drivers/:id/status", requireAuth, requireRole("Admin"), as
     data: { status: parsed.data.status },
   });
   res.json(driver);
+}));
+
+const preferencesSchema = z.object({
+  preferredLanguage: z.string().min(1).optional(),
+  quietModePreferred: z.boolean().optional(),
 });
 
-// Driver: toggle online preference is handled client-side / via a lightweight presence
-// table in a later iteration; ride matching (websocket/App Sync) is intentionally out
-// of scope for this MVP skeleton.
+// Driver: update my preferences
+driversRouter.patch("/drivers/me/preferences", requireAuth, requireRole("Driver"), asyncHandler(async (req, res) => {
+  const parsed = preferencesSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  const updated = await prisma.driver.update({
+    where: { id: driver.id },
+    data: parsed.data,
+  });
+  res.json(updated);
+}));
+
+const onlineSchema = z.object({ online: z.boolean() });
+
+// Driver: toggle online status (stored in-memory for MVP; persisted to DB for query by matching)
+driversRouter.patch("/drivers/me/online", requireAuth, requireRole("Driver"), asyncHandler(async (req, res) => {
+  const parsed = onlineSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  const statusValue = parsed.data.online ? "ACTIVE" : "PENDING_REVIEW";
+  const updated = await prisma.driver.update({
+    where: { id: driver.id },
+    data: { status: statusValue },
+  });
+  res.json({ online: updated.status === "ACTIVE" });
+}));

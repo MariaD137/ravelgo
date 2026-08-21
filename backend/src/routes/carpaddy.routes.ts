@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { asyncHandler } from "../middleware/async-handler";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const carPaddyRouter = Router();
@@ -11,7 +12,7 @@ const submitSchema = z.object({
 });
 
 // Driver: submit a Car Paddy (vehicle license renewal) request
-carPaddyRouter.post("/car-paddy", requireAuth, requireRole("Driver"), async (req, res) => {
+carPaddyRouter.post("/car-paddy", requireAuth, requireRole("Driver"), asyncHandler(async (req, res) => {
   const parsed = submitSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -22,10 +23,10 @@ carPaddyRouter.post("/car-paddy", requireAuth, requireRole("Driver"), async (req
     data: { driverId: driver.id, plateNumber: parsed.data.plateNumber },
   });
   res.status(201).json(request);
-});
+}));
 
 // Admin: list all Car Paddy requests
-carPaddyRouter.get("/car-paddy", requireAuth, requireRole("Admin"), async (req, res) => {
+carPaddyRouter.get("/car-paddy", requireAuth, requireRole("Admin"), asyncHandler(async (req, res) => {
   const parsed = paginationQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { page, pageSize } = parsed.data;
@@ -40,14 +41,14 @@ carPaddyRouter.get("/car-paddy", requireAuth, requireRole("Admin"), async (req, 
     prisma.carPaddyRequest.count(),
   ]);
   res.json(paginate(requests, total, page, pageSize));
-});
+}));
 
 const decisionSchema = z.object({
   status: z.enum(["APPROVED", "REJECTED"]),
 });
 
 // Admin: approve/reject a Car Paddy request
-carPaddyRouter.patch("/car-paddy/:id", requireAuth, requireRole("Admin"), async (req, res) => {
+carPaddyRouter.patch("/car-paddy/:id", requireAuth, requireRole("Admin"), asyncHandler(async (req, res) => {
   const parsed = decisionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -56,4 +57,4 @@ carPaddyRouter.patch("/car-paddy/:id", requireAuth, requireRole("Admin"), async 
     data: { status: parsed.data.status, reviewedAt: new Date() },
   });
   res.json(request);
-});
+}));

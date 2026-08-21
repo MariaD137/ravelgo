@@ -1,4 +1,5 @@
 import { prisma } from "../db/prisma";
+import { notifyDriverNewTrip } from "../realtime/hub";
 
 /**
  * Synchronous, best-effort matching: find one ACTIVE driver with no trip
@@ -17,20 +18,31 @@ import { prisma } from "../db/prisma";
  * is itself persisted somewhere queryable.
  */
 export async function matchDriverToTrip(tripId: string) {
-  const trip = await prisma.trip.findUnique({ where: { id: tripId } });
-  if (!trip || trip.status !== "REQUESTED") return null;
+  return prisma.$transaction(async (tx) => {
+    const trip = await tx.trip.findUnique({ where: { id: tripId } });
+    if (!trip || trip.status !== "REQUESTED") return null;
 
-  const driver = await prisma.driver.findFirst({
-    where: {
-      status: "ACTIVE",
-      tripsAsDriver: { none: { status: { in: ["MATCHED", "IN_PROGRESS"] } } },
-    },
-    orderBy: { rating: "desc" },
-  });
-  if (!driver) return null;
+    const driver = await tx.driver.findFirst({
+      where: {
+        status: "ACTIVE",
+        tripsAsDriver: { none: { status: { in: ["MATCHED", "IN_PROGRESS"] } } },
+      },
+      orderBy: { rating: "desc" },
+    });
+    if (!driver) return null;
 
-  return prisma.trip.update({
-    where: { id: tripId },
-    data: { driverId: driver.id, status: "MATCHED" },
-  });
+    const matched = await tx.trip.update({
+      where: { id: tripId },
+      data: { driverId: driver.id, status: "MATCHED" },
+    });
+
+    notifyDriverNewTrip(driver.id, {
+      id: matched.id,
+      pickup: matched.pickup,
+      destination: matched.destination,
+      estimatedFare: matched.estimatedFare,
+    });
+
+    return matched;
+  }, { isolationLevel: 'Serializable' });
 }

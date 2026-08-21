@@ -13,7 +13,7 @@ test("POST /api/uploads/presign requires auth", async () => {
   assert.equal(res.status, 401);
 });
 
-test("POST /api/uploads/presign returns a signed URL scoped to the caller", async () => {
+test("POST /api/uploads/presign returns a signed POST policy scoped to the caller, for documents", async () => {
   const token = mockAuthAs({ sub: "user-sub-1", groups: ["Driver"] });
 
   const res = await request(app)
@@ -22,9 +22,50 @@ test("POST /api/uploads/presign returns a signed URL scoped to the caller", asyn
     .send({ bucket: "documents", fileName: "license.pdf", contentType: "application/pdf" });
 
   assert.equal(res.status, 200);
-  assert.match(res.body.uploadUrl, /^https:\/\//);
+  assert.match(res.body.url, /^https:\/\//);
   assert.match(res.body.fileKey, /^user-sub-1\//);
+  assert.match(res.body.fileKey, /license\.pdf$/);
+  assert.ok(res.body.fields);
   assert.equal(res.body.expiresIn, 300);
+});
+
+// Regression test: ALLOWED_CONTENT_TYPES here is one shared list for both
+// bucket choices, so a HEIC document (a driver's license photo shot on an
+// iPhone is exactly as plausible as a HEIC vehicle photo) must presign
+// successfully — the infra/lambda/upload-processor allowlist for
+// DOCUMENTS_BUCKET has to include image/heic too, or a presign that
+// succeeds here would have its upload silently deleted moments later by
+// the validator. This only proves the presign side; the Lambda side isn't
+// exercised by these tests (it runs on AWS, not in this Express app), so
+// keeping the two allowlists in sync is a manual invariant across this
+// file and infra/lambda/upload-processor/index.ts's ALLOWED_MIME_BY_BUCKET.
+test("POST /api/uploads/presign accepts a HEIC document, not just images/PDF headed to assets", async () => {
+  const token = mockAuthAs({ sub: "user-sub-6", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/uploads/presign")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ bucket: "documents", fileName: "license.heic", contentType: "image/heic" });
+
+  assert.equal(res.status, 200);
+  assert.match(res.body.fileKey, /license\.heic$/);
+});
+
+// "assets" uploads must land in PENDING_ASSETS_BUCKET, never directly in
+// the CloudFront-served AssetsBucket — see uploads.routes.ts and
+// docs/UPLOAD-VALIDATION.md. This is the one thing this test actually
+// needs to prove: that an "assets" presign targets the staging bucket and
+// not the public one.
+test("POST /api/uploads/presign routes assets uploads to the pending bucket, not the public one", async () => {
+  const token = mockAuthAs({ sub: "user-sub-3", groups: ["Rider"] });
+
+  const res = await request(app)
+    .post("/api/uploads/presign")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ bucket: "assets", fileName: "avatar.jpg", contentType: "image/jpeg" });
+
+  assert.equal(res.status, 200);
+  assert.match(res.body.url, new RegExp(`^https://${process.env.PENDING_ASSETS_BUCKET}\\.`));
 });
 
 test("POST /api/uploads/presign rejects an invalid bucket", async () => {
@@ -34,6 +75,33 @@ test("POST /api/uploads/presign rejects an invalid bucket", async () => {
     .post("/api/uploads/presign")
     .set("Authorization", `Bearer ${token}`)
     .send({ bucket: "not-a-real-bucket", fileName: "x.pdf", contentType: "application/pdf" });
+
+  assert.equal(res.status, 400);
+});
+
+test("POST /api/uploads/presign strips path separators from fileName so it can't escape the caller's key prefix", async () => {
+  const token = mockAuthAs({ sub: "user-sub-4", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/uploads/presign")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ bucket: "documents", fileName: "../../etc/passwd", contentType: "application/pdf" });
+
+  assert.equal(res.status, 200);
+  assert.match(res.body.fileKey, /^user-sub-4\/[0-9a-f-]+-passwd$/);
+});
+
+test("POST /api/uploads/presign rejects a fileName that sanitizes to nothing", async () => {
+  const token = mockAuthAs({ sub: "user-sub-5", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/uploads/presign")
+    .set("Authorization", `Bearer ${token}`)
+    // A trailing "/" is the one input sanitizeFileName's own splitting logic
+    // reduces to an empty string, rather than just replacing characters —
+    // "***" would sanitize to "___", which is truthy and not what this test
+    // means to exercise.
+    .send({ bucket: "documents", fileName: "/", contentType: "application/pdf" });
 
   assert.equal(res.status, 400);
 });

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_admin/services/auth_service.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/views/auth/admin_login_screen.dart';
 import 'package:ravelgo_admin/views/carpaddy/car_paddy_requests_screen.dart';
@@ -16,6 +17,15 @@ import 'package:ravelgo_admin/views/subscriptions/driver_subscriptions_screen.da
 
 class SideMenuAdmin extends StatelessWidget {
   const SideMenuAdmin({super.key});
+
+  Future<void> _handleLogout(BuildContext context) async {
+    await AuthService().signOut();
+    if (!context.mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const AdminLoginScreen()),
+      (route) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,22 +69,37 @@ class SideMenuAdmin extends StatelessWidget {
             _item(context, Icons.bar_chart_outlined, "Reports & Analytics", () => const AnalyticsScreen()),
             _item(context, Icons.manage_accounts_outlined, "Admin Roles", () => const AdminRolesScreen()),
             _item(context, Icons.person_outline, "My Profile", () => const AdminProfileScreen()),
-            _item(context, Icons.logout, "Log out", () => const AdminLoginScreen(), replace: true),
+            _logoutItem(context),
           ],
         ),
       ),
     );
   }
 
-  Widget _item(BuildContext context, IconData icon, String label, Widget Function() builder, {bool replace = false}) {
+  Widget _logoutItem(BuildContext context) {
     return InkWell(
       onTap: () {
         Navigator.pop(context);
-        if (replace) {
-          Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => builder()), (route) => false);
-        } else {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => builder()));
-        }
+        _handleLogout(context);
+      },
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          children: [
+            Icon(Icons.logout, size: 21, color: Colors.black87),
+            SizedBox(width: 16),
+            Expanded(child: Text("Log out", style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _item(BuildContext context, IconData icon, String label, Widget Function() builder) {
+    return InkWell(
+      onTap: () {
+        Navigator.pop(context);
+        Navigator.push(context, MaterialPageRoute(builder: (_) => builder()));
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),

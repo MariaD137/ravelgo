@@ -2,17 +2,21 @@ name: Flutter CI
 
 on:
   pull_request:
+    branches: [main, develop]
     paths:
       - "user_app/**"
       - "driver_app/**"
       - "admin_app/**"
       - ".github/workflows/flutter-ci.yml"
   push:
-    branches: [main]
+    branches: [main, develop]
     paths:
       - "user_app/**"
       - "driver_app/**"
       - "admin_app/**"
+
+permissions:
+  contents: read
 
 jobs:
   analyze-and-test:

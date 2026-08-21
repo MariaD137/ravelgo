@@ -6,6 +6,7 @@ import { prisma } from "../db/prisma";
 import { env } from "../config/env";
 import { stripeClient } from "../billing/stripe";
 import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { withBypass } from "../lib/rls";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -42,9 +43,11 @@ async function createChargedTrip(providerReference: string) {
   const trip = await prisma.trip.create({
     data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 10, status: "COMPLETED" },
   });
-  const payment = await prisma.payment.create({
-    data: { tripId: trip.id, userId: rider.id, amount: 10, status: "PENDING", providerReference },
-  });
+  const payment = await withBypass((tx) =>
+    tx.payment.create({
+      data: { tripId: trip.id, userId: rider.id, amount: 10, status: "PENDING", providerReference },
+    }),
+  );
   return payment;
 }
 
@@ -78,7 +81,7 @@ test("payment_intent.succeeded marks the matching Payment SUCCEEDED", async () =
     .send(body);
 
   assert.equal(res.status, 200);
-  const updated = await prisma.payment.findUnique({ where: { id: payment.id } });
+  const updated = await withBypass((tx) => tx.payment.findUnique({ where: { id: payment.id } }));
   assert.equal(updated?.status, "SUCCEEDED");
   assert.ok(updated?.paidAt);
 });
@@ -99,9 +102,53 @@ test("payment_intent.payment_failed marks the matching Payment FAILED", async ()
     .send(body);
 
   assert.equal(res.status, 200);
-  const updated = await prisma.payment.findUnique({ where: { id: payment.id } });
+  const updated = await withBypass((tx) => tx.payment.findUnique({ where: { id: payment.id } }));
   assert.equal(updated?.status, "FAILED");
   assert.equal(updated?.paidAt, null);
+});
+
+test("a replayed webhook delivery (same event.id) does not re-apply its side effect, and RLS doesn't block the legitimate update", async () => {
+  const payment = await createChargedTrip("pi_test_replay_1");
+  const { body, signature } = signedWebhookRequest({
+    id: "evt_test_replay",
+    object: "event",
+    type: "payment_intent.succeeded",
+    data: { object: { id: "pi_test_replay_1", object: "payment_intent" } },
+  });
+
+  const first = await request(app)
+    .post("/api/billing/webhook")
+    .set("Content-Type", "application/json")
+    .set("stripe-signature", signature)
+    .send(body);
+  assert.equal(first.status, 200);
+  assert.equal(first.body.duplicate, undefined);
+
+  const afterFirst = await withBypass((tx) => tx.payment.findUnique({ where: { id: payment.id } }));
+  assert.equal(afterFirst?.status, "SUCCEEDED");
+  const paidAtAfterFirst = afterFirst?.paidAt?.getTime();
+  assert.ok(paidAtAfterFirst);
+
+  // Same event.id, same payload — Stripe's own retry behavior (and, just as
+  // plausibly here, a literal duplicate delivery) on a delivery it didn't
+  // get an acknowledged 2xx for in time.
+  const replay = await request(app)
+    .post("/api/billing/webhook")
+    .set("Content-Type", "application/json")
+    .set("stripe-signature", signature)
+    .send(body);
+  assert.equal(replay.status, 200);
+  assert.equal(replay.body.duplicate, true);
+
+  const afterReplay = await withBypass((tx) => tx.payment.findUnique({ where: { id: payment.id } }));
+  assert.equal(afterReplay?.status, "SUCCEEDED");
+  // Not just "still SUCCEEDED" — paidAt must be the exact same timestamp,
+  // proving the update genuinely didn't run a second time rather than
+  // running again and coincidentally landing on an equivalent state.
+  assert.equal(afterReplay?.paidAt?.getTime(), paidAtAfterFirst);
+
+  const events = await prisma.webhookEvent.findMany({ where: { id: "evt_test_replay" } });
+  assert.equal(events.length, 1);
 });
 
 test("an event for an unknown PaymentIntent id is accepted but updates nothing", async () => {

@@ -240,7 +240,7 @@ class AppComponents {
     );
   }
   /// ================= SectionTitle =================
-  static Widget SectionTitle(String text) {
+  static Widget sectionTitle(String text) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
       child: Align(
@@ -251,7 +251,7 @@ class AppComponents {
     );
   }
   /// ================= Item =================
-  static Widget Item(
+  static Widget item(
       String title, {
         bool done = false,
         VoidCallback? onTap,
@@ -283,7 +283,7 @@ class AppComponents {
     );
   }
   /// ================= UploadSection =================
-  static Widget UploadSection(String title) {
+  static Widget uploadSection(String title) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

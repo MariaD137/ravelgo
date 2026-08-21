@@ -16,6 +16,7 @@ export interface MonitoringStackProps extends cdk.StackProps {
   //   cdk deploy --context alertEmail=you@example.com --context monthlyBudgetUsd=150
   alertEmail: string;
   monthlyBudgetUsd: number;
+  envName: string;
 }
 
 // IN-04: nothing alerted on cost or error spikes before this — a runaway
@@ -37,7 +38,7 @@ export class MonitoringStack extends cdk.Stack {
     const serviceId = props.service.attrServiceId;
 
     new cloudwatch.Alarm(this, "AppRunner5xxAlarm", {
-      alarmName: "ravelgo-backend-5xx-errors",
+      alarmName: `${props.envName}-ravelgo-backend-5xx-errors`,
       alarmDescription: "More than 10 5xx responses from the backend in 5 minutes",
       metric: new cloudwatch.Metric({
         namespace: "AWS/AppRunner",
@@ -53,7 +54,7 @@ export class MonitoringStack extends cdk.Stack {
     }).addAlarmAction(new cwActions.SnsAction(alertTopic));
 
     new cloudwatch.Alarm(this, "RdsCpuAlarm", {
-      alarmName: "ravelgo-db-high-cpu",
+      alarmName: `${props.envName}-ravelgo-db-high-cpu`,
       alarmDescription: "RDS CPU above 80% for 15 minutes straight",
       metric: props.dbInstance.metricCPUUtilization({ period: cdk.Duration.minutes(5) }),
       threshold: 80,
@@ -62,7 +63,7 @@ export class MonitoringStack extends cdk.Stack {
     }).addAlarmAction(new cwActions.SnsAction(alertTopic));
 
     new cloudwatch.Alarm(this, "RdsFreeStorageAlarm", {
-      alarmName: "ravelgo-db-low-storage",
+      alarmName: `${props.envName}-ravelgo-db-low-storage`,
       alarmDescription: "RDS free storage below 2 GiB",
       metric: props.dbInstance.metricFreeStorageSpace({ period: cdk.Duration.minutes(15) }),
       threshold: 2 * 1024 * 1024 * 1024,

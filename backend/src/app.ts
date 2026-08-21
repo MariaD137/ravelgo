@@ -1,5 +1,5 @@
 import cors from "cors";
-import express, { type NextFunction, type Request, type Response } from "express";
+import express, { type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import helmet from "helmet";
 import { readFileSync } from "node:fs";
@@ -9,6 +9,7 @@ import swaggerUi from "swagger-ui-express";
 import { load as loadYaml } from "js-yaml";
 import { env } from "./config/env";
 import { errorHandler } from "./middleware/error-handler";
+
 import { adminRouter } from "./routes/admin.routes";
 import { alertsRouter } from "./routes/alerts.routes";
 import { billingRouter } from "./routes/billing.routes";

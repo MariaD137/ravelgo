@@ -1,6 +1,7 @@
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../config/env";
+import { prisma } from "../db/prisma";
 
 export interface AuthenticatedUser {
   sub: string;
@@ -37,6 +38,12 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       email: typeof payload.email === "string" ? payload.email : undefined,
       groups: Array.isArray(payload["cognito:groups"]) ? (payload["cognito:groups"] as string[]) : [],
     };
+
+    const user = await prisma.user.findUnique({ where: { cognitoSub: req.user.sub }, select: { suspended: true } });
+    if (user?.suspended) {
+      return res.status(403).json({ error: { code: "ACCOUNT_SUSPENDED", message: "Your account has been suspended" } });
+    }
+
     next();
   } catch {
     return res.status(401).json({ error: "Invalid or expired token" });
