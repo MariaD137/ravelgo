@@ -112,11 +112,12 @@ test("PATCH /api/trips/:id/status lets a Driver or Admin advance trip status", a
   const res = await request(app)
     .patch(`/api/trips/${trip.id}/status`)
     .set("Authorization", `Bearer ${token}`)
-    .send({ status: "COMPLETED", finalFare: 14 });
+    .send({ status: "COMPLETED", distanceKm: 5.5, durationMinutes: 15 });
 
   assert.equal(res.status, 200);
   assert.equal(res.body.status, "COMPLETED");
   assert.ok(res.body.completedAt);
+  assert.ok(res.body.finalFare, "finalFare should be calculated by server");
 });
 
 test("PATCH /api/trips/:id/status denies a Driver who isn't assigned to the trip", async () => {
@@ -138,7 +139,7 @@ test("PATCH /api/trips/:id/status denies a Driver who isn't assigned to the trip
   const otherRes = await request(app)
     .patch(`/api/trips/${trip.id}/status`)
     .set("Authorization", `Bearer ${otherToken}`)
-    .send({ status: "COMPLETED", finalFare: 14 });
+    .send({ status: "COMPLETED", distanceKm: 5.5, durationMinutes: 15 });
   assert.equal(otherRes.status, 403);
 
   restoreAuth();
@@ -157,4 +158,75 @@ test("GET /api/trips (Admin monitor) rejects a Rider caller", async () => {
   const token = mockAuthAs({ sub: "rider-sub-5", groups: ["Rider"] });
   const res = await request(app).get("/api/trips").set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 403);
+});
+
+test("PATCH /api/trips/:id/status rejects COMPLETED without distanceKm/durationMinutes (security: prevent estimatedFare fallback)", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-10", role: "RIDER", firstName: "X", lastName: "Y", email: "x@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-sub-10", role: "DRIVER", firstName: "Z", lastName: "A", email: "z@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE" } });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "X", destination: "Y", estimatedFare: 1, status: "MATCHED" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-10", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "COMPLETED" });
+
+  assert.equal(res.status, 400);
+  assert.match(res.body.error.issues?.[0]?.message || "", /distanceKm and durationMinutes are required/);
+
+  // Verify trip was NOT updated
+  const tripAfter = await prisma.trip.findUnique({ where: { id: trip.id } });
+  assert.equal(tripAfter?.status, "MATCHED");
+  assert.equal(tripAfter?.finalFare, null);
+});
+
+test("PATCH /api/trips/:id/status calculates finalFare from server pricing, not from estimatedFare", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-11", role: "RIDER", firstName: "B", lastName: "C", email: "b@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-sub-11", role: "DRIVER", firstName: "D", lastName: "E", email: "d@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE" } });
+
+  // Create a pricing rule for calculation
+  const pricingRule = await prisma.pricingRule.create({
+    data: { name: "test-rule", baseFare: 100, perKm: 50, perMinute: 10, active: true },
+  });
+
+  // Create trip with LOW estimatedFare (attacker's attempt to underpay)
+  const trip = await prisma.trip.create({
+    data: {
+      riderId: rider.id,
+      driverId: driver.id,
+      pickup: "X",
+      destination: "Y",
+      estimatedFare: 1,  // Rider's malicious estimate: $1
+      status: "MATCHED"
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-11", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "COMPLETED", distanceKm: 10, durationMinutes: 30 });
+
+  assert.equal(res.status, 200);
+
+  // Verify finalFare is calculated from server pricing, NOT from estimatedFare
+  const expectedFare = 100 + (50 * 10) + (10 * 30); // 100 + 500 + 300 = 900
+  assert.equal(res.body.finalFare, expectedFare);
+  assert.notEqual(res.body.finalFare, trip.estimatedFare, "finalFare must not equal estimatedFare");
+
+  // Verify database also has calculated value
+  const tripAfter = await prisma.trip.findUnique({ where: { id: trip.id } });
+  assert.equal(tripAfter?.finalFare, expectedFare);
 });
