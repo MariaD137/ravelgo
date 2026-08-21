@@ -104,6 +104,77 @@ test("payment_intent.payment_failed marks the matching Payment FAILED", async ()
   assert.equal(updated?.paidAt, null);
 });
 
+test("a replayed payment_intent.succeeded event is idempotent (second delivery is a no-op)", async () => {
+  const payment = await createChargedTrip("pi_test_replay_1");
+  const { body, signature } = signedWebhookRequest({
+    id: "evt_test_replay_1",
+    object: "event",
+    type: "payment_intent.succeeded",
+    data: { object: { id: "pi_test_replay_1", object: "payment_intent" } },
+  });
+
+  const first = await request(app)
+    .post("/api/billing/webhook")
+    .set("Content-Type", "application/json")
+    .set("stripe-signature", signature)
+    .send(body);
+  assert.equal(first.status, 200);
+
+  const afterFirst = await prisma.payment.findUnique({ where: { id: payment.id } });
+  const paidAtAfterFirst = afterFirst?.paidAt;
+
+  // Stripe doesn't guarantee exactly-once delivery — the same event can be
+  // redelivered. Send the identical webhook again.
+  const second = await request(app)
+    .post("/api/billing/webhook")
+    .set("Content-Type", "application/json")
+    .set("stripe-signature", signature)
+    .send(body);
+  assert.equal(second.status, 200);
+
+  const afterSecond = await prisma.payment.findUnique({ where: { id: payment.id } });
+  assert.equal(afterSecond?.status, "SUCCEEDED");
+  // The conditional update only matches rows still PENDING, so the replay
+  // is a true no-op — paidAt isn't bumped to a second, later timestamp.
+  assert.equal(afterSecond?.paidAt?.getTime(), paidAtAfterFirst?.getTime());
+});
+
+test("an out-of-order payment_intent.payment_failed cannot downgrade an already-SUCCEEDED payment", async () => {
+  const payment = await createChargedTrip("pi_test_order_1");
+
+  const succeeded = signedWebhookRequest({
+    id: "evt_test_order_1",
+    object: "event",
+    type: "payment_intent.succeeded",
+    data: { object: { id: "pi_test_order_1", object: "payment_intent" } },
+  });
+  const succeededRes = await request(app)
+    .post("/api/billing/webhook")
+    .set("Content-Type", "application/json")
+    .set("stripe-signature", succeeded.signature)
+    .send(succeeded.body);
+  assert.equal(succeededRes.status, 200);
+
+  // A stale/out-of-order "failed" event for the same PaymentIntent (e.g.
+  // from an earlier retry attempt) arrives after the "succeeded" one.
+  const failed = signedWebhookRequest({
+    id: "evt_test_order_2",
+    object: "event",
+    type: "payment_intent.payment_failed",
+    data: { object: { id: "pi_test_order_1", object: "payment_intent" } },
+  });
+  const failedRes = await request(app)
+    .post("/api/billing/webhook")
+    .set("Content-Type", "application/json")
+    .set("stripe-signature", failed.signature)
+    .send(failed.body);
+  assert.equal(failedRes.status, 200); // webhook is still acknowledged, just no-ops
+
+  const final = await prisma.payment.findUnique({ where: { id: payment.id } });
+  assert.equal(final?.status, "SUCCEEDED"); // not flipped back to FAILED
+  assert.ok(final?.paidAt);
+});
+
 test("an event for an unknown PaymentIntent id is accepted but updates nothing", async () => {
   const { body, signature } = signedWebhookRequest({
     id: "evt_test_3",

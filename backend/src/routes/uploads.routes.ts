@@ -10,11 +10,34 @@ export const uploadsRouter = Router();
 
 const s3 = new S3Client({ region: env.AWS_REGION });
 
-const presignSchema = z.object({
-  bucket: z.enum(["documents", "assets"]),
-  fileName: z.string().min(1),
-  contentType: z.string().min(1),
-});
+// documents: driver license/insurance/registration scans (PDF or photo).
+// assets: vehicle/rental photos and avatars, served publicly through
+// CloudFront (see infra/lib/storage-stack.ts) — an unrestricted contentType
+// here would let a client store e.g. "text/html" or "image/svg+xml" against
+// what's meant to be an image and have CloudFront serve it back with that
+// Content-Type, a stored-XSS vector if anyone ever navigates to the asset
+// URL directly rather than only embedding it as `<img>`. Restricted to a
+// fixed image allowlist for that reason; documents additionally allows PDF.
+const ALLOWED_CONTENT_TYPES = {
+  documents: ["application/pdf", "image/jpeg", "image/png", "image/webp"],
+  assets: ["image/jpeg", "image/png", "image/webp"],
+} as const satisfies Record<string, readonly string[]>;
+
+// Letters/digits/spaces/`.`/`-`/`_` only, capped length — S3 keys have no
+// real path-traversal risk (a key is an opaque string, not a filesystem
+// path), but this keeps the stored key sane and rejects control characters.
+const SAFE_FILE_NAME = /^[\w.\- ]{1,200}$/;
+
+const presignSchema = z
+  .object({
+    bucket: z.enum(["documents", "assets"]),
+    fileName: z.string().min(1).max(200).regex(SAFE_FILE_NAME, "fileName contains unsupported characters"),
+    contentType: z.string().min(1),
+  })
+  .refine((data) => (ALLOWED_CONTENT_TYPES[data.bucket] as readonly string[]).includes(data.contentType), {
+    message: "Unsupported contentType for this bucket",
+    path: ["contentType"],
+  });
 
 // Any authenticated user: get a short-lived URL to upload a file straight to
 // S3. The client PUTs the file bytes to `uploadUrl`, then sends `fileKey`

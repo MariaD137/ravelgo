@@ -424,6 +424,27 @@ test("POST /api/trips still accepts a plain client estimatedFare when no pricing
   assert.equal(res.body.estimatedFare, 25.5);
 });
 
+test("KNOWN GAP (documented, not a code defect): with no active PricingRule, a wildly inflated client estimatedFare is still accepted", async () => {
+  // This is the direct consequence of the back-compat fallback above: fare
+  // validation at creation depends on an active PricingRule existing to
+  // validate against. Operationally, staging/production must seed at least
+  // one active PricingRule before accepting real trip traffic — see
+  // FINAL_AWS_STAGING_READINESS.md. This test exists so that behavior
+  // change here is deliberate, not silent.
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-fare-gap", role: "RIDER", firstName: "F", lastName: "G", email: "fare-gap@example.com" },
+  });
+  const token = mockAuthAs({ sub: "rider-sub-fare-gap", groups: ["Rider"] });
+
+  const res = await request(app)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ pickup: "Home", destination: "Airport", estimatedFare: 99999999 });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.estimatedFare, 99999999);
+});
+
 test("POST /api/trips rejects missing estimatedFare when no distance/duration is given either", async () => {
   await prisma.user.create({
     data: { cognitoSub: "rider-sub-fare-5", role: "RIDER", firstName: "F", lastName: "5", email: "fare5@example.com" },

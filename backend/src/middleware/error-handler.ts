@@ -21,6 +21,29 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
     return res.status(err.statusCode).json(response);
   }
 
+  // Body-parser (and similar middleware) throw HTTP-error-shaped objects
+  // for client-input problems — e.g. malformed JSON — with .statusCode/
+  // .status in the 4xx range and .expose=true (their own signal that the
+  // error is safe to report, as opposed to an internal failure). Without
+  // this, those fall through to the generic 500 below: a malformed request
+  // body would incorrectly count as a server error against
+  // MonitoringStack's 5xx alarm, and misreport a client mistake as ours.
+  // The underlying err.message (which can echo raw request bytes, e.g.
+  // body-parser's parse error) is never sent to the client — only a fixed,
+  // generic message.
+  const httpErr = err as { statusCode?: number; status?: number; expose?: boolean };
+  const httpStatus = httpErr.statusCode ?? httpErr.status;
+  if (typeof httpStatus === "number" && httpStatus >= 400 && httpStatus < 500 && httpErr.expose) {
+    const response: ErrorResponse = {
+      error: {
+        code: ErrorCodes.BAD_REQUEST,
+        message: "Malformed request",
+        timestamp: new Date().toISOString(),
+      },
+    };
+    return res.status(httpStatus).json(response);
+  }
+
   // Handle Prisma errors
   if (err.name === "PrismaClientKnownRequestError") {
     const prismaErr = err as any;

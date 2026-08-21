@@ -38,3 +38,70 @@ test("POST /api/uploads/presign rejects an invalid bucket", async () => {
 
   assert.equal(res.status, 400);
 });
+
+test("POST /api/uploads/presign rejects text/html contentType (stored-XSS-via-asset prevention)", async () => {
+  const token = mockAuthAs({ sub: "user-sub-3", groups: ["Rider"] });
+
+  const res = await request(app)
+    .post("/api/uploads/presign")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ bucket: "assets", fileName: "avatar.png", contentType: "text/html" });
+
+  assert.equal(res.status, 400);
+});
+
+test("POST /api/uploads/presign rejects image/svg+xml (can embed <script>)", async () => {
+  const token = mockAuthAs({ sub: "user-sub-4", groups: ["Rider"] });
+
+  const res = await request(app)
+    .post("/api/uploads/presign")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ bucket: "assets", fileName: "avatar.svg", contentType: "image/svg+xml" });
+
+  assert.equal(res.status, 400);
+});
+
+test("POST /api/uploads/presign rejects a PDF contentType against the assets bucket (images only)", async () => {
+  const token = mockAuthAs({ sub: "user-sub-5", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/uploads/presign")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ bucket: "assets", fileName: "doc.pdf", contentType: "application/pdf" });
+
+  assert.equal(res.status, 400);
+});
+
+test("POST /api/uploads/presign accepts an allowed image contentType against the assets bucket", async () => {
+  const token = mockAuthAs({ sub: "user-sub-6", groups: ["Driver"] });
+  mockPresignedUrl();
+
+  const res = await request(app)
+    .post("/api/uploads/presign")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ bucket: "assets", fileName: "car.jpg", contentType: "image/jpeg" });
+
+  assert.equal(res.status, 200);
+});
+
+test("POST /api/uploads/presign rejects a fileName with path/control characters", async () => {
+  const token = mockAuthAs({ sub: "user-sub-7", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/uploads/presign")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ bucket: "documents", fileName: "../../etc/passwd", contentType: "application/pdf" });
+
+  assert.equal(res.status, 400);
+});
+
+test("POST /api/uploads/presign rejects an overlong fileName", async () => {
+  const token = mockAuthAs({ sub: "user-sub-8", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/uploads/presign")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ bucket: "documents", fileName: `${"a".repeat(201)}.pdf`, contentType: "application/pdf" });
+
+  assert.equal(res.status, 400);
+});

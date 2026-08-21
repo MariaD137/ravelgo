@@ -99,6 +99,36 @@ test("POST /api/trips/:id/charge (CASH) settles immediately, no Stripe call invo
   assert.ok(res.body.paidAt);
 });
 
+test("POST /api/trips/:id/charge ignores a client-injected amount field — the charged amount is always trip.finalFare", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: {
+      riderId: rider.id,
+      driverId: driver.id,
+      pickup: "A",
+      destination: "B",
+      estimatedFare: 10,
+      finalFare: 22,
+      status: "COMPLETED",
+    },
+  });
+
+  mockPaymentIntentCreate();
+  const token = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
+  // chargeSchema only accepts `method` — a malicious client trying to smuggle
+  // an "amount" field to control what gets charged must be ignored entirely.
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/charge`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ method: "CARD", amount: 1, amountCents: 1 });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.amount, 22); // trip.finalFare, never the injected fields
+
+  const payment = await prisma.payment.findUnique({ where: { tripId: trip.id } });
+  assert.equal(payment?.amount, 22);
+});
+
 test("POST /api/trips/:id/charge rejects a driver who wasn't on the trip", async () => {
   const { rider, driver } = await createRiderAndDriver();
   const trip = await prisma.trip.create({
