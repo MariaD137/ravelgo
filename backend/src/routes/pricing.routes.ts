@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { computeFare, getActivePricingRule, getSurgeMultiplier } from "../services/pricing";
 
 export const pricingRouter = Router();
 
@@ -92,26 +93,11 @@ pricingRouter.get("/pricing/quote", requireAuth, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { distanceKm, durationMinutes, zone } = parsed.data;
 
-  const rule = await prisma.pricingRule.findFirst({ where: { active: true }, orderBy: { createdAt: "desc" } });
+  const rule = await getActivePricingRule();
   if (!rule) return res.status(409).json({ error: "No active pricing rule configured" });
 
-  let multiplier = 1;
-  let surgeZone = null;
-  if (zone) {
-    const now = new Date();
-    surgeZone = await prisma.surgeZone.findFirst({
-      where: {
-        name: { equals: zone, mode: "insensitive" },
-        active: true,
-        OR: [{ startsAt: null }, { startsAt: { lte: now } }],
-        AND: [{ OR: [{ endsAt: null }, { endsAt: { gte: now } }] }],
-      },
-    });
-    if (surgeZone) multiplier = surgeZone.multiplier;
-  }
+  const { multiplier, surgeZoneName } = await getSurgeMultiplier(zone);
+  const estimatedFare = computeFare(rule, distanceKm, durationMinutes, multiplier);
 
-  const baseEstimate = rule.baseFare + rule.perKm * distanceKm + rule.perMinute * durationMinutes;
-  const estimatedFare = Math.round(baseEstimate * multiplier * 100) / 100;
-
-  res.json({ estimatedFare, pricingRule: rule.name, surgeMultiplier: multiplier, surgeZone: surgeZone?.name ?? null });
+  res.json({ estimatedFare, pricingRule: rule.name, surgeMultiplier: multiplier, surgeZone: surgeZoneName });
 });

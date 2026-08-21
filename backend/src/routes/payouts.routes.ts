@@ -21,6 +21,18 @@ import {
 
 export const payoutsRouter = Router();
 
+// Payout.driverId and DriverBankAccount.driverId are foreign keys to
+// User.id (see prisma/schema.prisma), not the Cognito sub — resolve the
+// caller's own User row first, the same cognitoSub -> User.id pattern used
+// everywhere else in the app (e.g. findOwnDriver() in vehicles.routes.ts,
+// riders.routes.ts's /riders/me). Also confirms the caller actually has a
+// User row and a DRIVER role, not just the Driver Cognito group.
+async function findOwnDriverUser(cognitoSub: string) {
+  const user = await prisma.user.findUnique({ where: { cognitoSub } });
+  if (!user || user.role !== "DRIVER") return null;
+  return user;
+}
+
 // Bank account schemas
 const bankAccountSchema = z.object({
   accountHolderName: z.string().min(1),
@@ -35,19 +47,22 @@ payoutsRouter.post("/payouts/bank-account", requireAuth, requireRole("Driver"), 
   try {
     const data = validate<typeof bankAccountSchema._output>(bankAccountSchema, req.body, "Request body");
 
+    const user = await findOwnDriverUser(req.user!.sub);
+    if (!user) throw Errors.notFound("Driver profile");
+
     const existing = await prisma.driverBankAccount.findUnique({
-      where: { driverId: req.user!.sub },
+      where: { driverId: user.id },
     });
 
     let bankAccount;
     if (existing) {
       bankAccount = await prisma.driverBankAccount.update({
-        where: { driverId: req.user!.sub },
+        where: { driverId: user.id },
         data: { ...data, isVerified: false }, // Re-verify when updated
       });
     } else {
       bankAccount = await prisma.driverBankAccount.create({
-        data: { driverId: req.user!.sub, ...data },
+        data: { driverId: user.id, ...data },
       });
     }
 
@@ -60,8 +75,11 @@ payoutsRouter.post("/payouts/bank-account", requireAuth, requireRole("Driver"), 
 // Driver: get my bank account
 payoutsRouter.get("/payouts/bank-account", requireAuth, requireRole("Driver"), async (req, res, next) => {
   try {
+    const user = await findOwnDriverUser(req.user!.sub);
+    if (!user) throw Errors.notFound("Driver profile");
+
     const bankAccount = await prisma.driverBankAccount.findUnique({
-      where: { driverId: req.user!.sub },
+      where: { driverId: user.id },
     });
     if (!bankAccount) throw Errors.notFound("Bank account");
     res.json(bankAccount);
@@ -79,14 +97,17 @@ payoutsRouter.get("/payouts/history", requireAuth, requireRole("Driver"), async 
       "Query parameters",
     );
 
+    const user = await findOwnDriverUser(req.user!.sub);
+    if (!user) throw Errors.notFound("Driver profile");
+
     const [payouts, total] = await Promise.all([
       prisma.payout.findMany({
-        where: { driverId: req.user!.sub },
+        where: { driverId: user.id },
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      prisma.payout.count({ where: { driverId: req.user!.sub } }),
+      prisma.payout.count({ where: { driverId: user.id } }),
     ]);
 
     res.json(paginate(payouts, total, page, pageSize));
@@ -98,8 +119,11 @@ payoutsRouter.get("/payouts/history", requireAuth, requireRole("Driver"), async 
 // Driver: get a specific payout detail
 payoutsRouter.get("/payouts/:id", requireAuth, requireRole("Driver"), async (req, res, next) => {
   try {
+    const user = await findOwnDriverUser(req.user!.sub);
+    if (!user) throw Errors.notFound("Driver profile");
+
     const payout = await prisma.payout.findFirst({
-      where: { id: req.params.id, driverId: req.user!.sub },
+      where: { id: req.params.id, driverId: user.id },
     });
     if (!payout) throw Errors.notFound("Payout");
     res.json(payout);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
-import { mockAuthAs, restoreAuth } from "../test/helpers";
+import { mockAuthAs, mockPresignedUrl, restoreAuth } from "../test/helpers";
 
 afterEach(() => {
   restoreAuth();
@@ -15,6 +15,7 @@ test("POST /api/uploads/presign requires auth", async () => {
 
 test("POST /api/uploads/presign returns a signed URL scoped to the caller", async () => {
   const token = mockAuthAs({ sub: "user-sub-1", groups: ["Driver"] });
+  mockPresignedUrl();
 
   const res = await request(app)
     .post("/api/uploads/presign")

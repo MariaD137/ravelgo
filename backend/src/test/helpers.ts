@@ -1,4 +1,12 @@
 import { mock } from "node:test";
+// `import x = require(...)` (not `import * as x`) on purpose: TS's
+// `__importStar` helper used for namespace imports copies this package's
+// exports onto a fresh object with non-configurable accessor properties,
+// which mock.method() cannot redefine ("must be a method. Received
+// undefined"). This form gives the actual module.exports object, whose
+// getSignedUrl is a plain, configurable, mockable data property.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import s3Presigner = require("@aws-sdk/s3-request-presigner");
 import { verifier } from "../middleware/auth";
 import { prisma } from "../db/prisma";
 import { stripeClient } from "../billing/stripe";
@@ -44,6 +52,19 @@ export function mockPaymentIntentCreate(id = `pi_test_${Date.now()}`) {
     client_secret: `${id}_secret_test`,
   }));
   return id;
+}
+
+/**
+ * Stubs @aws-sdk/s3-request-presigner's getSignedUrl so route tests never
+ * ask the real AWS SDK to resolve credentials — with none configured (as in
+ * CI, and as intended: no AWS credentials belong in this repo or its CI
+ * config), the SDK's default credential provider chain hangs trying IMDS/
+ * ECS endpoints that don't exist on a GitHub Actions runner, rather than
+ * failing fast. Same pattern as mockPaymentIntentCreate() for Stripe.
+ */
+export function mockPresignedUrl(url = "https://ravelgo-test-bucket.s3.amazonaws.com/fake-signed-url") {
+  mock.method(s3Presigner, "getSignedUrl", async () => url);
+  return url;
 }
 
 // Delete in FK-safe order (children before parents).

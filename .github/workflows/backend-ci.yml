@@ -39,6 +39,14 @@ jobs:
       COGNITO_CLIENT_ID: ciclientid0000000000000
       STRIPE_SECRET_KEY: sk_test_ci_dummy
       STRIPE_WEBHOOK_SECRET: whsec_ci_dummy
+      # Dummy bucket names only — no AWS credentials. uploads.routes.ts
+      # 500s if these are unset before ever reaching the AWS SDK, and the
+      # SDK call itself (getSignedUrl) is mocked in
+      # uploads.routes.test.ts (see mockPresignedUrl() in
+      # src/test/helpers.ts), so no real AWS credentials are needed to run
+      # these tests here.
+      DOCUMENTS_BUCKET: ravelgo-ci-documents
+      ASSETS_BUCKET: ravelgo-ci-assets
     steps:
       - uses: actions/checkout@v4
 

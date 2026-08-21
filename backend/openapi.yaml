@@ -35,6 +35,7 @@ tags:
   - name: Payments
   - name: Loyalty & Promotions
   - name: Pricing
+  - name: Payouts
 
 paths:
   /health:
@@ -398,17 +399,29 @@ paths:
     post:
       tags: [Trips]
       summary: Request a trip (Rider)
+      description: >-
+        The fare is server-authoritative wherever possible: if distanceKm
+        and durationMinutes are both given, estimatedFare is computed
+        server-side from the active PricingRule/SurgeZone (same engine as
+        GET /pricing/quote) and any client-supplied estimatedFare is
+        ignored. Otherwise estimatedFare is required and, when a
+        PricingRule is active, must be at least its base fare.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [pickup, destination, estimatedFare]
+              required: [pickup, destination]
               properties:
                 pickup: { type: string }
                 destination: { type: string }
-                estimatedFare: { type: number }
+                estimatedFare:
+                  type: number
+                  description: Required only when distanceKm/durationMinutes are omitted.
+                distanceKm: { type: number }
+                durationMinutes: { type: number }
+                zone: { type: string, description: "Surge zone name to check, same as GET /pricing/quote's zone param." }
                 category: { type: string, default: Personal }
                 pickupNote: { type: string }
       responses:
@@ -417,6 +430,9 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Trip" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409":
+          description: No active pricing rule configured
     get:
       tags: [Trips]
       summary: Monitor all trips (Admin)
@@ -446,7 +462,12 @@ paths:
   /trips/{id}/status:
     patch:
       tags: [Trips]
-      summary: Advance trip status (Driver or Admin)
+      summary: >-
+        Advance trip status (the trip's assigned Driver, or Admin). A Driver
+        who is not the trip's assigned driver gets 403, even if they have no
+        Driver profile at all. When status=COMPLETED, a given finalFare must
+        be within 0.5x-2x the trip's own estimatedFare or the request is
+        rejected with 400.
       parameters:
         - $ref: "#/components/parameters/id"
       requestBody:
@@ -458,13 +479,36 @@ paths:
               required: [status]
               properties:
                 status: { type: string, enum: [MATCHED, IN_PROGRESS, COMPLETED, CANCELLED, DISPUTED] }
-                finalFare: { type: number }
+                finalFare: { type: number, description: "Only validated (0.5x-2x estimatedFare) when status=COMPLETED." }
       responses:
         "200":
           description: Updated trip
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Trip" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /trips/{id}/cancel:
+    patch:
+      tags: [Trips]
+      summary: >-
+        Cancel my own trip (Rider). Only allowed while the trip is still
+        REQUESTED or MATCHED — once a driver has started it (IN_PROGRESS),
+        it's COMPLETED/DISPUTED, or already CANCELLED, this returns 409.
+        Admin cancellation is unchanged and still goes through
+        PATCH /trips/{id}/status with status=CANCELLED.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Cancelled trip
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Trip" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Trip is no longer in a cancellable state
   /trips/{id}/driver-location:
     get:
       tags: [Trips]
@@ -1248,6 +1292,219 @@ paths:
         "409":
           description: No active pricing rule configured
 
+  /payouts/bank-account:
+    post:
+      tags: [Payouts]
+      summary: Register or update my own bank account for payouts (Driver)
+      description: >-
+        Upserts the caller's bank account. Re-registering flips isVerified
+        back to false, pending re-verification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DriverBankAccountInput" }
+      responses:
+        "201":
+          description: Created or updated bank account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverBankAccount" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Caller has no User row with role DRIVER
+    get:
+      tags: [Payouts]
+      summary: My own bank account (Driver)
+      responses:
+        "200":
+          description: Bank account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverBankAccount" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Caller has no User row with role DRIVER, or no bank account registered yet
+  /payouts/history:
+    get:
+      tags: [Payouts]
+      summary: My own payout history (Driver)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated payouts
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedPayout" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: Caller has no User row with role DRIVER
+  /payouts/{id}:
+    get:
+      tags: [Payouts]
+      summary: One of my own payouts (Driver)
+      description: 404s (not 403) for a payout belonging to a different driver.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Payout
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payout" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /payouts/calculate:
+    post:
+      tags: [Payouts]
+      summary: Calculate (without creating) a driver's payout for a period (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [driverId, period]
+              properties:
+                driverId: { type: string, description: A User.id with role DRIVER. }
+                period: { type: string, description: "YYYY-MM", example: "2026-07" }
+      responses:
+        "200":
+          description: Payout calculation (gross/platform fee/subscription fee/net) — not persisted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PayoutCalculation" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No User with that id and role DRIVER
+  /payouts/create:
+    post:
+      tags: [Payouts]
+      summary: Create a pending payout for a driver (Admin)
+      description: >-
+        With `amount` omitted, the payout is calculated the same way as
+        POST /payouts/calculate; `amount` overrides the calculation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [driverId, period]
+              properties:
+                driverId: { type: string }
+                period: { type: string, example: "2026-07" }
+                amount: { type: number, description: Manual override of the calculated amount. }
+      responses:
+        "201":
+          description: Created payout (status PENDING)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payout" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No User with that id and role DRIVER
+  /payouts/{id}/process:
+    post:
+      tags: [Payouts]
+      summary: Mark a PENDING payout PROCESSING (Admin)
+      description: >-
+        Stripe Connect / actual bank transfer integration is not yet
+        wired up (see services/payouts.ts) — this only advances status and
+        stamps a placeholder transactionId.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Updated payout
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payout" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Payout is not currently PENDING
+  /payouts/{id}/complete:
+    post:
+      tags: [Payouts]
+      summary: Mark a payout COMPLETED (Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                transactionId: { type: string }
+      responses:
+        "200":
+          description: Updated payout
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payout" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /payouts/{id}/fail:
+    post:
+      tags: [Payouts]
+      summary: Mark a payout FAILED with a reason (Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [failureReason]
+              properties:
+                failureReason: { type: string }
+      responses:
+        "200":
+          description: Updated payout
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payout" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /payouts:
+    get:
+      tags: [Payouts]
+      summary: List all payouts, optionally filtered (Admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+        - name: status
+          in: query
+          schema: { type: string, enum: [PENDING, PROCESSING, COMPLETED, FAILED, CANCELLED] }
+        - name: driverId
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Paginated payouts, each with the driver's id/name/email
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedPayout" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1465,6 +1722,51 @@ components:
         method: { type: string, enum: [CARD, CASH, WALLET] }
         status: { type: string, enum: [PENDING, SUCCEEDED, FAILED, REFUNDED] }
 
+    DriverBankAccountInput:
+      type: object
+      properties:
+        accountHolderName: { type: string }
+        bankName: { type: string }
+        accountNumber: { type: string, minLength: 8 }
+        routingNumber: { type: string, minLength: 9 }
+        accountType: { type: string, enum: [CHECKING, SAVINGS], default: CHECKING }
+
+    DriverBankAccount:
+      allOf:
+        - $ref: "#/components/schemas/DriverBankAccountInput"
+        - type: object
+          properties:
+            id: { type: string }
+            driverId: { type: string, description: A User.id (not the Cognito sub). }
+            isVerified: { type: boolean }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+
+    Payout:
+      type: object
+      properties:
+        id: { type: string }
+        driverId: { type: string, description: A User.id (not the Cognito sub). }
+        amount: { type: number }
+        currency: { type: string }
+        status: { type: string, enum: [PENDING, PROCESSING, COMPLETED, FAILED, CANCELLED] }
+        period: { type: string, example: "2026-07" }
+        transactionId: { type: string, nullable: true }
+        failureReason: { type: string, nullable: true }
+        completedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    PayoutCalculation:
+      type: object
+      properties:
+        driverId: { type: string }
+        grossAmount: { type: number, description: Sum of SUCCEEDED payments on this driver's COMPLETED trips in the period. }
+        platformFee: { type: number }
+        subscriptionFee: { type: number, description: The driver's active subscription's monthly price, if any. }
+        netAmount: { type: number, description: grossAmount - platformFee - subscriptionFee, floored at 0. }
+        tripsIncluded: { type: integer }
+        period: { type: string }
+
     LoyaltyTier:
       type: object
       properties:
@@ -1578,6 +1880,13 @@ components:
         page: { type: integer }
         pageSize: { type: integer }
         total: { type: integer }
+    PaginatedPayout:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Payout" } }
+        page: { type: integer }
+        pageSize: { type: integer }
+        total: { type: integer }
 
     # Standardized error response (PL-01)
     ErrorResponse:
@@ -1612,9 +1921,9 @@ components:
               items:
                 type: object
                 properties:
-                  field: { type: string, description: Field name or path (e.g., "email", "address.zipCode") }
+                  field: { type: string, description: "Field name or path (e.g., \"email\", \"address.zipCode\")" }
                   message: { type: string, description: Error message for this field }
-                  code: { type: string, nullable: true, description: Error code (e.g., "too_small", "invalid_email") }
+                  code: { type: string, nullable: true, description: "Error code (e.g., \"too_small\", \"invalid_email\")" }
             timestamp:
               type: string
               format: date-time

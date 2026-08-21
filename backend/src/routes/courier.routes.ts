@@ -59,14 +59,21 @@ courierRouter.patch("/courier-requests/:id/accept", requireAuth, requireRole("Dr
 
   const existing = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: "Courier request not found" });
-  if (existing.status !== "REQUESTED" || existing.driverId) {
+
+  // Atomic conditional update: the "still REQUESTED and unassigned" check
+  // and the assignment happen in one statement, so two drivers racing to
+  // accept the same request can't both succeed — only the update that
+  // actually matches the WHERE clause changes any rows; the loser's
+  // updateMany matches zero and falls through to the 409 below.
+  const { count } = await prisma.courierRequest.updateMany({
+    where: { id: req.params.id, status: "REQUESTED", driverId: null },
+    data: { driverId: driver.id, status: "MATCHED" },
+  });
+  if (count === 0) {
     return res.status(409).json({ error: "Request already matched" });
   }
 
-  const request = await prisma.courierRequest.update({
-    where: { id: req.params.id },
-    data: { driverId: driver.id, status: "MATCHED" },
-  });
+  const request = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
   res.json(request);
 });
 

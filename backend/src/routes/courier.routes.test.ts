@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { after, afterEach, beforeEach, test } from "node:test";
+import { after, afterEach, beforeEach, mock, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
+import { verifier } from "../middleware/auth";
 import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
 
 beforeEach(resetDb);
@@ -117,6 +118,46 @@ test("PATCH /api/courier-requests/:id/status rejects a driver not assigned to th
     .send({ status: "DELIVERED" });
 
   assert.equal(res.status, 403);
+});
+
+test("PATCH /api/courier-requests/:id/accept: two drivers racing for the same request — exactly one wins", async () => {
+  const sender = await createRider("rider-sub-race-1");
+  await createDriver("driver-sub-race-a");
+  await createDriver("driver-sub-race-b");
+  const courierReq = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  // Both drivers need a simultaneously-valid token for this test, which
+  // mockAuthAs() (one active mock at a time) doesn't support — mock the
+  // verifier directly to accept either.
+  const tokenA = `mock.driver-sub-race-a`;
+  const tokenB = `mock.driver-sub-race-b`;
+  mock.method(verifier, "verify", async (candidate: string) => {
+    if (candidate === tokenA) return { sub: "driver-sub-race-a", "cognito:groups": ["Driver"] } as never;
+    if (candidate === tokenB) return { sub: "driver-sub-race-b", "cognito:groups": ["Driver"] } as never;
+    throw new Error("invalid token");
+  });
+
+  const [resA, resB] = await Promise.all([
+    request(app).patch(`/api/courier-requests/${courierReq.id}/accept`).set("Authorization", `Bearer ${tokenA}`),
+    request(app).patch(`/api/courier-requests/${courierReq.id}/accept`).set("Authorization", `Bearer ${tokenB}`),
+  ]);
+
+  const statuses = [resA.status, resB.status].sort();
+  assert.deepEqual(statuses, [200, 409]);
+
+  const final = await prisma.courierRequest.findUnique({ where: { id: courierReq.id } });
+  assert.equal(final?.status, "MATCHED");
+  assert.ok(final?.driverId);
 });
 
 test("GET /api/courier-requests/:id denies a stranger and allows the sender", async () => {

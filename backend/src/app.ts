@@ -31,6 +31,19 @@ import { vehiclesRouter } from "./routes/vehicles.routes";
 
 export const app = express();
 
+// AWS App Runner terminates the client connection and forwards each request
+// to this container as a single extra hop, setting X-Forwarded-For to the
+// real client address. Without this, Express's default (`trust proxy` off)
+// makes every request look like it came from App Runner's own proxy, so
+// express-rate-limit below would key its whole 300-req/15min budget off one
+// shared address instead of per caller. `1` (not `true`) trusts exactly
+// that one hop — the minimum needed for X-Forwarded-For to be read
+// correctly — without trusting an attacker-supplied header chain of
+// arbitrary length. Harmless locally: with no proxy in front in dev/test,
+// there's no X-Forwarded-For header to trust, so req.ip still falls back to
+// the direct socket address exactly as before.
+app.set("trust proxy", 1);
+
 // Mobile clients (the rider/driver/admin apps) don't send an Origin header at
 // all, so CORS never applies to them — this only matters for browser-based
 // callers. Reflect any origin in dev/test for convenience; in production,
