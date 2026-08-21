@@ -62,21 +62,25 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
         Map<String, dynamic> body;
         switch (nextStage) {
           case _TripStage.arrivedPickup:
-            status = 'ARRIVED_AT_PICKUP';
-            body = {'status': status};
+            // Local UI stage: don't send to backend, just update local state
+            body = {};
             break;
           case _TripStage.inProgress:
             status = 'IN_PROGRESS';
             body = {'status': status};
             break;
           case _TripStage.arrivedDestination:
-            status = 'ARRIVED_AT_DESTINATION';
-            body = {'status': status};
+            // Local UI stage: don't send to backend, just update local state
+            body = {};
             break;
           default:
             body = {};
         }
-        await ApiClient().patch('/trips/${widget.tripId}/status', body: body);
+
+        // Only make API call if we have status to send
+        if (body.containsKey('status')) {
+          await ApiClient().patch('/trips/${widget.tripId}/status', body: body);
+        }
       } catch (e) {
         if (!mounted) return;
         setState(() => _isLoading = false);
