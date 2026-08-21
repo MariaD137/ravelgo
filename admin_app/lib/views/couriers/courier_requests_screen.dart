@@ -22,7 +22,7 @@ class _CourierRequestsScreenState extends State<CourierRequestsScreen> {
 
   Future<void> _loadData() async {
     try {
-      final response = await ApiClient().get('/couriers');
+      final response = await ApiClient().get('/courier-requests');
       final page = response as Map<String, dynamic>;
       if (!mounted) return;
       setState(() {

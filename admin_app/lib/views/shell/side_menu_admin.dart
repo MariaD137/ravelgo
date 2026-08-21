@@ -13,7 +13,7 @@ import 'package:ravelgo_admin/views/safety/emergency_alerts_screen.dart';
 import 'package:ravelgo_admin/views/safety/fraud_alerts_screen.dart';
 import 'package:ravelgo_admin/views/settings/admin_profile_screen.dart';
 import 'package:ravelgo_admin/views/settings/admin_roles_screen.dart';
-import 'package:ravelgo_admin/views/subscriptions/driver_subscriptions_screen.dart';
+// import 'package:ravelgo_admin/views/subscriptions/driver_subscriptions_screen.dart';
 
 class SideMenuAdmin extends StatelessWidget {
   const SideMenuAdmin({super.key});
@@ -60,7 +60,8 @@ class SideMenuAdmin extends StatelessWidget {
             _item(context, Icons.badge_outlined, "Car Paddy Requests", () => const CarPaddyRequestsScreen()),
             _item(context, Icons.key_outlined, "Luxury Rental Listings", () => const RentalListingsScreen()),
             _item(context, Icons.tune_outlined, "Pricing & Surge", () => const PricingSurgeScreen()),
-            _item(context, Icons.workspace_premium_outlined, "Driver Subscriptions", () => const DriverSubscriptionsScreen()),
+            // TODO: Implement GET /subscriptions backend endpoint for admin subscriptions view
+            // _item(context, Icons.workspace_premium_outlined, "Driver Subscriptions", () => const DriverSubscriptionsScreen()),
             AppComponents.divider(),
             _item(context, Icons.warning_amber_outlined, "Fraud Alerts", () => const FraudAlertsScreen()),
             _item(context, Icons.sos, "Emergency Alerts", () => const EmergencyAlertsScreen()),
