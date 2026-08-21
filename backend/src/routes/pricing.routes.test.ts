@@ -105,3 +105,47 @@ test("GET /api/pricing/quote 409s when no pricing rule is active", async () => {
     .set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 409);
 });
+
+// Mirrors exactly what prisma/seed.ts creates (same name, same values) so
+// this proves the pricing engine works end-to-end against the actual
+// staging seed data shape, not a re-implementation of it. If the seed's
+// placeholder values ever change, this test's literals must be updated to
+// match — that's intentional, not an oversight: it keeps the seed and this
+// proof from silently drifting apart.
+const SEEDED_STAGING_RULE = {
+  name: "Staging Default (PLACEHOLDER — replace before production)",
+  baseFare: 2.0,
+  perKm: 1.0,
+  perMinute: 0.25,
+};
+
+test("the seeded staging PricingRule lets GET /api/pricing/quote compute a real fare", async () => {
+  await prisma.pricingRule.create({ data: { ...SEEDED_STAGING_RULE, active: true } });
+  const token = mockAuthAs({ sub: "rider-sub-seed-check", groups: ["Rider"] });
+
+  const res = await request(app)
+    .get("/api/pricing/quote")
+    .query({ distanceKm: 10, durationMinutes: 20 })
+    .set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  // 2.00 + 1.00*10 + 0.25*20 = 17.00
+  assert.equal(res.body.estimatedFare, 17);
+  assert.equal(res.body.pricingRule, SEEDED_STAGING_RULE.name);
+});
+
+test("the seeded staging PricingRule lets POST /api/trips compute a server-authoritative fare", async () => {
+  await prisma.pricingRule.create({ data: { ...SEEDED_STAGING_RULE, active: true } });
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-seed-check-2", role: "RIDER", firstName: "S", lastName: "C", email: "seedcheck2@example.com" },
+  });
+  const token = mockAuthAs({ sub: "rider-sub-seed-check-2", groups: ["Rider"] });
+
+  const res = await request(app)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ pickup: "Home", destination: "Airport", distanceKm: 10, durationMinutes: 20 });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.estimatedFare, 17);
+});
