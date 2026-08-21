@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/models/ride_request.dart';
 import 'package:ravelgo_driver_app/services/api_client.dart';
+import 'package:ravelgo_driver_app/services/trip_service.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
 
@@ -18,8 +19,9 @@ class _TripCompleteScreenState extends State<TripCompleteScreen> {
   bool _isSubmitting = false;
 
   Future<void> _submitAndFinish() async {
+    setState(() => _isSubmitting = true);
+
     if (_rating > 0 && widget.tripId != null) {
-      setState(() => _isSubmitting = true);
       try {
         await ApiClient().post('/trips/${widget.tripId}/rating', body: {
           'rating': _rating,
@@ -29,6 +31,19 @@ class _TripCompleteScreenState extends State<TripCompleteScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Failed to submit rating, but your trip is complete.')),
         );
+      }
+    }
+
+    if (widget.tripId != null) {
+      try {
+        await TripService().chargeTrip(widget.tripId!, method: 'CASH');
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to charge rider: ${e.toString()}')),
+        );
+        return;
       }
     }
 
