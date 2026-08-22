@@ -394,6 +394,147 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RentalListing" }
+  /rentals/{id}/bookings:
+    post:
+      tags: [Rentals]
+      summary: Book an APPROVED rental listing for a date range (any authenticated user)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startAt, endAt]
+              properties:
+                startAt: { type: string, format: date-time }
+                endAt: { type: string, format: date-time }
+      responses:
+        "201":
+          description: Booking
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RentalBooking" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >-
+            Overlaps an existing booking on this listing (code
+            RENTAL_OVERLAP), or the listing isn't APPROVED
+    get:
+      tags: [Rentals]
+      summary: View bookings for one of my listings (listing owner Driver, or Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Bookings
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RentalBooking" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /rentals/bookings/mine:
+    get:
+      tags: [Rentals]
+      summary: My own bookings (renter)
+      responses:
+        "200":
+          description: Bookings
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RentalBooking" }
+  /rentals/bookings/{id}/decision:
+    patch:
+      tags: [Rentals]
+      summary: Confirm or reject a REQUESTED booking (listing owner Driver)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [CONFIRMED, REJECTED] }
+      responses:
+        "200":
+          description: Updated booking
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RentalBooking" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Booking is not in a state this decision can apply to
+  /rentals/bookings/{id}/activate:
+    patch:
+      tags: [Rentals]
+      summary: >-
+        Mark a CONFIRMED booking ACTIVE — handover done (listing owner
+        Driver). This is the transition that actually reserves the driver
+        via DriverAssignment; a driver already holding an active Ride/
+        Courier/Rental assignment gets a 409 DRIVER_BUSY here instead.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Updated booking
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RentalBooking" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: >-
+            Booking is not CONFIRMED (RentalBookingStateError), or the
+            driver already holds an active assignment (code DRIVER_BUSY)
+  /rentals/bookings/{id}/end:
+    patch:
+      tags: [Rentals]
+      summary: >-
+        Mark a booking COMPLETED (vehicle returned) or CANCELLED, releasing
+        the driver's active RENTAL assignment if one exists (listing owner
+        Driver)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [COMPLETED, CANCELLED] }
+      responses:
+        "200":
+          description: Updated booking
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RentalBooking" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Booking is not in a state this transition can apply to
+  /rentals/bookings/{id}/cancel:
+    patch:
+      tags: [Rentals]
+      summary: Cancel my own booking before it becomes ACTIVE (renter)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Updated booking
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RentalBooking" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Booking is no longer REQUESTED or CONFIRMED
 
   /trips:
     post:
@@ -1657,6 +1798,25 @@ components:
         dailyRate: { type: number }
         location: { type: string }
         status: { type: string, enum: [PENDING_APPROVAL, APPROVED, REJECTED] }
+
+    RentalBooking:
+      type: object
+      properties:
+        id: { type: string }
+        rentalListingId: { type: string }
+        renterId: { type: string }
+        vehicleId: { type: string }
+        startAt: { type: string, format: date-time }
+        endAt: { type: string, format: date-time }
+        price: { type: number }
+        status: { type: string, enum: [REQUESTED, CONFIRMED, ACTIVE, COMPLETED, CANCELLED, REJECTED] }
+        paymentStatus:
+          type: string
+          enum: [NOT_CONFIGURED]
+          description: >-
+            No Stripe/payment-processor integration exists yet — this is
+            always NOT_CONFIGURED, an explicit non-payment state rather than
+            a faked success.
 
     Trip:
       type: object
