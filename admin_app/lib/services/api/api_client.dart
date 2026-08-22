@@ -34,14 +34,26 @@ class ApiException implements Exception {
 /// user_app's ApiClient (same shape, kept in sync across all 3 apps rather
 /// than sharing a package, since the apps stay fully independent).
 class ApiClient {
-  ApiClient({AuthProvider? authProvider, http.Client? httpClient, Duration? timeout})
-    : _authProvider = authProvider ?? DevOnlyAuthProvider.instance,
+  // The default here is [createDefaultAuthProvider], never
+  // DevOnlyAuthProvider directly — a bare ApiClient() must be safe to
+  // construct in every build mode, in every app (see driver_app's
+  // PRE_AWS_AUTH_ARCHITECTURE_REMEDIATION.md for the release-build crash
+  // this exact default caused there).
+  ApiClient({AuthProvider? authProvider, http.Client? httpClient, Duration? timeout, this.onUnauthorized})
+    : _authProvider = authProvider ?? createDefaultAuthProvider(),
       _http = httpClient ?? http.Client(),
       _timeout = timeout ?? const Duration(seconds: 20);
 
   final AuthProvider _authProvider;
   final http.Client _http;
   final Duration _timeout;
+
+  /// Invoked whenever a request comes back 401, before the [ApiException]
+  /// is thrown — wire this to whatever clears local auth state once a
+  /// screen actually depends on a signed-in session, so an expired/revoked
+  /// token drops the app back to signed-out instead of continuing to show
+  /// screens that need a session that no longer exists.
+  final void Function()? onUnauthorized;
 
   // dotenv.env throws NotInitializedError if dotenv.load() was never
   // called (e.g. a unit test that constructs ApiClient directly without
@@ -118,6 +130,7 @@ class ApiClient {
       return decoded;
     }
     final map = decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+    if (res.statusCode == 401) onUnauthorized?.call();
     throw ApiException(
       statusCode: res.statusCode,
       code: map['code'] as String?,

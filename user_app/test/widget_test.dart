@@ -1,11 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ravelgo_rider_app/main.dart';
+import 'package:ravelgo_rider_app/services/api/auth_provider.dart';
 import 'package:ravelgo_rider_app/views/Login/login.dart';
 import 'package:ravelgo_rider_app/views/SplashScreen/SplashScreen.dart';
 
 void main() {
   testWidgets('app boots to the splash screen, then navigates to Login', (WidgetTester tester) async {
-    await tester.pumpWidget(MyApp());
+    await tester.pumpWidget(MyApp(authProvider: DevOnlyAuthProvider.instance));
     expect(find.byType(SplashScreen), findsOneWidget);
 
     // Flush the splash screen's 5-second navigation timer instead of

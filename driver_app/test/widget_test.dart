@@ -1,10 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ravelgo_driver_app/services/api/api_client.dart';
+import 'package:ravelgo_driver_app/services/api/auth_provider.dart';
+import 'package:ravelgo_driver_app/services/driver_session.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/auth/login_screen.dart';
 import 'package:ravelgo_driver_app/views/splash/splash_screen.dart';
 
 void main() {
+  // LoginScreen (reached via the splash-navigation test below) reads
+  // DriverSession.instance to render its auth state — main.dart's
+  // composition root normally sets this up before runApp(); tests stand in
+  // for that with a DevOnlyAuthProvider.
+  setUp(() {
+    DriverSession.resetForTesting(
+      authProvider: DevOnlyAuthProvider.instance,
+      apiClient: ApiClient(authProvider: DevOnlyAuthProvider.instance),
+    );
+  });
+
   testWidgets('primary button renders with given label', (WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(

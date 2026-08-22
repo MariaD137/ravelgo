@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:ravelgo_admin/services/api/auth_provider.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/views/auth/admin_login_screen.dart';
 import 'package:ravelgo_admin/views/splash/splash_screen.dart';
@@ -18,7 +19,7 @@ void main() {
   });
 
   testWidgets('splash screen navigates to admin login after its timer', (WidgetTester tester) async {
-    await tester.pumpWidget(const MaterialApp(home: SplashScreen()));
+    await tester.pumpWidget(MaterialApp(home: SplashScreen(authProvider: DevOnlyAuthProvider.instance)));
     expect(find.byType(SplashScreen), findsOneWidget);
 
     // Flush the navigation Timer and let the route transition settle. An
@@ -30,7 +31,7 @@ void main() {
   });
 
   testWidgets('splash screen disposed before its timer fires does not throw', (WidgetTester tester) async {
-    await tester.pumpWidget(const MaterialApp(home: SplashScreen()));
+    await tester.pumpWidget(MaterialApp(home: SplashScreen(authProvider: DevOnlyAuthProvider.instance)));
     // Replace the tree before the 2-second timer fires — dispose() must
     // cancel it; otherwise the callback runs against a deactivated context.
     await tester.pumpWidget(const MaterialApp(home: Scaffold(body: Text('elsewhere'))));

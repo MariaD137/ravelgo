@@ -32,14 +32,28 @@ class ApiException implements Exception {
 /// turns a non-2xx response into an [ApiException]. Auth, base URL
 /// resolution, and error handling all live in exactly this one place.
 class ApiClient {
-  ApiClient({AuthProvider? authProvider, http.Client? httpClient, Duration? timeout})
-    : _authProvider = authProvider ?? DevOnlyAuthProvider.instance,
+  // The default here is [createDefaultAuthProvider], never
+  // DevOnlyAuthProvider directly — a bare ApiClient() must be safe to
+  // construct in every build mode. DriverSession (and the equivalent
+  // composition point in every other app) still passes an explicit
+  // [AuthProvider] rather than relying on this default; it exists so no
+  // *other* accidental bare construction can crash a release build either.
+  ApiClient({AuthProvider? authProvider, http.Client? httpClient, Duration? timeout, this.onUnauthorized})
+    : _authProvider = authProvider ?? createDefaultAuthProvider(),
       _http = httpClient ?? http.Client(),
       _timeout = timeout ?? const Duration(seconds: 20);
 
   final AuthProvider _authProvider;
   final http.Client _http;
   final Duration _timeout;
+
+  /// Invoked whenever a request comes back 401, before the [ApiException]
+  /// is thrown — the composition root wires this to the session's sign-out
+  /// path so an expired/revoked token clears local auth state instead of
+  /// leaving the UI showing a session that no longer exists server-side.
+  /// Token ownership stays inside this layer either way: callers only ever
+  /// see [ApiException], never the token itself.
+  final void Function()? onUnauthorized;
 
   // dotenv.env throws NotInitializedError if dotenv.load() was never
   // called (e.g. a unit test that constructs ApiClient directly without
@@ -116,6 +130,7 @@ class ApiClient {
       return decoded;
     }
     final map = decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+    if (res.statusCode == 401) onUnauthorized?.call();
     throw ApiException(
       statusCode: res.statusCode,
       code: map['code'] as String?,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
+import 'package:ravelgo_driver_app/services/driver_session.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/assistance/driver_assistance_screen.dart';
 import 'package:ravelgo_driver_app/views/auth/login_screen.dart';
@@ -66,7 +67,35 @@ class SideMenuDriver extends StatelessWidget {
             AppComponents.divider(),
             _item(context, Icons.help_outline, "FAQ", () => const FAQScreen()),
             _item(context, Icons.phone_outlined, "Contact Support", () => const ContactUsScreen()),
-            _item(context, Icons.logout, "Log out", () => const LoginScreen(), replace: true),
+            _logoutItem(context),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Unlike the other menu items, this can't just navigate — it must clear
+  /// the session first ([DriverSession.signOut]) so the token this app was
+  /// using is actually invalidated locally, not just hidden behind a route
+  /// change. A prior version of this screen skipped that call entirely.
+  Widget _logoutItem(BuildContext context) {
+    return InkWell(
+      onTap: () async {
+        Navigator.pop(context);
+        await DriverSession.instance.signOut();
+        if (!context.mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          (route) => false,
+        );
+      },
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          children: [
+            Icon(Icons.logout, size: 21, color: Colors.black87),
+            SizedBox(width: 16),
+            Expanded(child: Text("Log out", style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500))),
           ],
         ),
       ),

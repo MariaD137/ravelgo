@@ -1,12 +1,22 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ravelgo_driver_app/models/driver_operational_state.dart';
+import 'package:ravelgo_driver_app/services/api/api_client.dart';
+import 'package:ravelgo_driver_app/services/api/auth_provider.dart';
 import 'package:ravelgo_driver_app/services/driver_session.dart';
 
 void main() {
   // DriverSession is a singleton (DriverSession.instance) shared across the
   // whole app on purpose (see its own doc comment) — reset it to a known
   // state before each test so tests don't leak state into one another.
+  // DriverSession.instance now requires DriverSession.initialize() (or, in
+  // tests, resetForTesting()) to have run first — production's main.dart
+  // does this with a real AuthProvider; here a DevOnlyAuthProvider stands
+  // in, since these tests only exercise operational-state behavior.
   setUp(() {
+    DriverSession.resetForTesting(
+      authProvider: DevOnlyAuthProvider.instance,
+      apiClient: ApiClient(authProvider: DevOnlyAuthProvider.instance),
+    );
     DriverSession.instance.goOffline();
   });
 

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ravelgo_driver_app/models/driver_operational_state.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
+import 'package:ravelgo_driver_app/services/api/api_client.dart';
+import 'package:ravelgo_driver_app/services/api/auth_provider.dart';
 import 'package:ravelgo_driver_app/services/driver_session.dart';
 import 'package:ravelgo_driver_app/views/home/driver_home_screen.dart';
 
@@ -14,6 +16,10 @@ import 'package:ravelgo_driver_app/views/home/driver_home_screen.dart';
 /// specific screen it might otherwise navigate to.
 void main() {
   setUp(() {
+    DriverSession.resetForTesting(
+      authProvider: DevOnlyAuthProvider.instance,
+      apiClient: ApiClient(authProvider: DevOnlyAuthProvider.instance),
+    );
     DriverSession.instance.goOffline();
   });
 

@@ -1,10 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:ravelgo_rider_app/services/api/auth_provider.dart';
 import 'package:ravelgo_rider_app/views/Login/login.dart';
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+  const SplashScreen({super.key, required this.authProvider});
+
+  final AuthProvider authProvider;
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -24,7 +27,7 @@ class _SplashScreenState extends State<SplashScreen> {
     _navigateTimer = Timer(const Duration(seconds: 5), () {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => Login()),
+        MaterialPageRoute(builder: (context) => Login(authProvider: widget.authProvider)),
       );
     });
   }

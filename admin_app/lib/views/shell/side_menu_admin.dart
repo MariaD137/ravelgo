@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_admin/services/api/auth_provider.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/views/auth/admin_login_screen.dart';
 import 'package:ravelgo_admin/views/carpaddy/car_paddy_requests_screen.dart';
@@ -15,7 +16,9 @@ import 'package:ravelgo_admin/views/settings/admin_roles_screen.dart';
 import 'package:ravelgo_admin/views/subscriptions/driver_subscriptions_screen.dart';
 
 class SideMenuAdmin extends StatelessWidget {
-  const SideMenuAdmin({super.key});
+  const SideMenuAdmin({super.key, required this.authProvider});
+
+  final AuthProvider authProvider;
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +62,35 @@ class SideMenuAdmin extends StatelessWidget {
             _item(context, Icons.bar_chart_outlined, "Reports & Analytics", () => const AnalyticsScreen()),
             _item(context, Icons.manage_accounts_outlined, "Admin Roles", () => const AdminRolesScreen()),
             _item(context, Icons.person_outline, "My Profile", () => const AdminProfileScreen()),
-            _item(context, Icons.logout, "Log out", () => const AdminLoginScreen(), replace: true),
+            _logoutItem(context),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Unlike the other menu items, this can't just navigate — it must clear
+  /// the session first ([AuthProvider.logout]) so the token this app was
+  /// using is actually invalidated locally, not just hidden behind a route
+  /// change. A prior version of this screen skipped that call entirely.
+  Widget _logoutItem(BuildContext context) {
+    return InkWell(
+      onTap: () async {
+        Navigator.pop(context);
+        await authProvider.logout();
+        if (!context.mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => AdminLoginScreen(authProvider: authProvider)),
+          (route) => false,
+        );
+      },
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        child: Row(
+          children: [
+            Icon(Icons.logout, size: 21, color: Colors.black87),
+            SizedBox(width: 16),
+            Expanded(child: Text("Log out", style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500))),
           ],
         ),
       ),

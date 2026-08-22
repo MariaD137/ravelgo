@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_admin/services/api/auth_provider.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/views/dashboard/dashboard_screen.dart';
 import 'package:ravelgo_admin/views/drivers/driver_list_screen.dart';
@@ -7,7 +8,9 @@ import 'package:ravelgo_admin/views/support/support_tickets_screen.dart';
 import 'package:ravelgo_admin/views/trips/trip_monitoring_screen.dart';
 
 class AdminShell extends StatefulWidget {
-  const AdminShell({super.key});
+  const AdminShell({super.key, required this.authProvider});
+
+  final AuthProvider authProvider;
 
   @override
   State<AdminShell> createState() => _AdminShellState();
@@ -28,7 +31,7 @@ class _AdminShellState extends State<AdminShell> {
     ];
 
     return Scaffold(
-      drawer: const SideMenuAdmin(),
+      drawer: SideMenuAdmin(authProvider: widget.authProvider),
       appBar: AppBar(
         title: Text(_titles[_index]),
         backgroundColor: Colors.white,
