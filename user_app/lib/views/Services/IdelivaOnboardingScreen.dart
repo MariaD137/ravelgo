@@ -13,6 +13,12 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
   final TextEditingController _pinController = TextEditingController();
 
   @override
+  void dispose() {
+    _pinController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return  SafeArea(
         child: Padding(

@@ -22,6 +22,15 @@ class _AddBankAccountPageState extends State<AddBankAccountPage> {
           currencyController.text.isNotEmpty;
 
   @override
+  void dispose() {
+    accountNameController.dispose();
+    accountNumberController.dispose();
+    bankNameController.dispose();
+    currencyController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFFFFFFF),

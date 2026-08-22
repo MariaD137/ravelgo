@@ -20,6 +20,25 @@ alertsRouter.post("/emergency-alerts", requireAuth, async (req, res) => {
   const user = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
   if (!user) return res.status(404).json({ error: "User profile not found" });
 
+  // An alert's tripId isn't just a label — Admin's alert feed (GET
+  // /emergency-alerts below) includes the full referenced trip, so
+  // accepting any tripId here would let a caller attach an SOS/fraud alert
+  // to a trip they have nothing to do with, surfacing that trip's details
+  // in the Admin dashboard under a bogus alert. Require the caller be the
+  // trip's rider or its assigned driver, same ownership check every other
+  // trip-scoped route in this codebase applies.
+  if (parsed.data.tripId) {
+    const trip = await prisma.trip.findUnique({
+      where: { id: parsed.data.tripId },
+      include: { rider: true, driver: { include: { user: true } } },
+    });
+    const isParty =
+      trip && (trip.rider.cognitoSub === req.user!.sub || trip.driver?.user.cognitoSub === req.user!.sub);
+    if (!isParty) {
+      return res.status(403).json({ error: "Not authorized to raise an alert for this trip" });
+    }
+  }
+
   const alert = await prisma.emergencyAlert.create({
     data: { ...parsed.data, userId: user.id },
   });

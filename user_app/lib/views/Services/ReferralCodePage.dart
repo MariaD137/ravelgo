@@ -15,6 +15,12 @@ class _ReferralCodePageState extends State<ReferralCodePage> {
   bool get isValid => controller.text.trim().isNotEmpty;
 
   @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF6F6F6),

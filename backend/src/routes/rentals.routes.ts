@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import type { RentalListingStatus } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
@@ -91,15 +92,33 @@ rentalsRouter.get("/rentals", requireAuth, async (req, res) => {
 
 const decisionSchema = z.object({ status: z.enum(["APPROVED", "REJECTED"]) });
 
+// Legal predecessor statuses for each decision an Admin can make: a listing
+// only moves out of PENDING once — re-approving an already-APPROVED listing
+// or flipping an already-REJECTED one is not a legal transition, matching
+// the terminal-state protection every other status-patch endpoint in this
+// codebase already enforces (trips, courier requests, rental bookings).
+const RENTAL_LISTING_ALLOWED_FROM: Record<"APPROVED" | "REJECTED", readonly RentalListingStatus[]> = {
+  APPROVED: ["PENDING_APPROVAL"],
+  REJECTED: ["PENDING_APPROVAL"],
+};
+
 // Admin: approve/reject a rental listing
 rentalsRouter.patch("/rentals/:id/status", requireAuth, requireRole("Admin"), async (req, res) => {
   const parsed = decisionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const listing = await prisma.rentalListing.update({
-    where: { id: req.params.id },
+  const { count } = await prisma.rentalListing.updateMany({
+    where: { id: req.params.id, status: { in: [...RENTAL_LISTING_ALLOWED_FROM[parsed.data.status]] } },
     data: { status: parsed.data.status },
   });
+  if (count === 0) {
+    const existing = await prisma.rentalListing.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: "Rental listing not found" });
+    return res
+      .status(409)
+      .json({ error: `Rental listing cannot move to ${parsed.data.status} from status ${existing.status}` });
+  }
+  const listing = await prisma.rentalListing.findUniqueOrThrow({ where: { id: req.params.id } });
   res.json(listing);
 });
 
@@ -185,6 +204,9 @@ rentalsRouter.patch("/rentals/bookings/:id/decision", requireAuth, requireRole("
   try {
     res.json(await decideBooking(req.params.id, parsed.data.status));
   } catch (err) {
+    if (err instanceof RentalOverlapConflict) {
+      return res.status(409).json({ code: "RENTAL_OVERLAP", message: err.message });
+    }
     if (err instanceof RentalBookingStateError) return res.status(409).json({ error: err.message });
     throw err;
   }
@@ -231,6 +253,11 @@ rentalsRouter.patch("/rentals/bookings/:id/end", requireAuth, requireRole("Drive
   }
 });
 
+// Cancellable by the renter only before the handover has actually happened —
+// once a booking is ACTIVE it's the driver's /end route (which also releases
+// the driver's assignment) that applies, not this one.
+const RENTER_CANCELLABLE_BOOKING_STATUSES = ["REQUESTED", "CONFIRMED"] as const;
+
 // Renter: cancel my own booking before it becomes ACTIVE
 rentalsRouter.patch("/rentals/bookings/:id/cancel", requireAuth, async (req, res) => {
   const renter = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
@@ -238,13 +265,21 @@ rentalsRouter.patch("/rentals/bookings/:id/cancel", requireAuth, async (req, res
   if (!renter || !booking || booking.renterId !== renter.id) {
     return res.status(404).json({ error: "Booking not found" });
   }
-  if (booking.status !== "REQUESTED" && booking.status !== "CONFIRMED") {
-    return res.status(409).json({ error: `Booking cannot be cancelled from status ${booking.status}` });
-  }
 
-  const cancelled = await prisma.rentalBooking.update({
-    where: { id: req.params.id },
+  // Atomic conditional update: the "still REQUESTED/CONFIRMED" check and the
+  // write happen in one statement, so a concurrent activate() (driver marks
+  // the handover done, which is CONFIRMED -> ACTIVE and reserves the
+  // driver) between this route's read above and this write can't be
+  // silently clobbered — if activation won the race, this update matches 0
+  // rows and correctly 409s instead of overwriting ACTIVE with CANCELLED
+  // and leaving the driver's fresh assignment orphaned.
+  const { count } = await prisma.rentalBooking.updateMany({
+    where: { id: req.params.id, status: { in: [...RENTER_CANCELLABLE_BOOKING_STATUSES] } },
     data: { status: "CANCELLED" },
   });
+  if (count === 0) {
+    return res.status(409).json({ error: `Booking cannot be cancelled from status ${booking.status}` });
+  }
+  const cancelled = await prisma.rentalBooking.findUniqueOrThrow({ where: { id: req.params.id } });
   res.json(cancelled);
 });

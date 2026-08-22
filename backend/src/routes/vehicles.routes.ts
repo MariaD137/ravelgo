@@ -32,8 +32,20 @@ vehiclesRouter.post("/vehicles", requireAuth, requireRole("Driver"), async (req,
   const driver = await findOwnDriver(req.user!.sub);
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
-  const vehicle = await prisma.vehicle.create({
-    data: { ...parsed.data, driverId: driver.id },
+  const vehicle = await prisma.$transaction(async (tx) => {
+    // "Primary vehicle" is meant to be exclusive per driver (matching.ts
+    // picks a vehicle by `orderBy: { isPrimary: "desc" }`, which only means
+    // anything if at most one vehicle can be primary at a time) — unset any
+    // existing primary on this driver's other vehicles in the same
+    // transaction as setting this one, so it's never possible to end up
+    // with two.
+    if (parsed.data.isPrimary) {
+      await tx.vehicle.updateMany({
+        where: { driverId: driver.id, isPrimary: true },
+        data: { isPrimary: false },
+      });
+    }
+    return tx.vehicle.create({ data: { ...parsed.data, driverId: driver.id } });
   });
   res.status(201).json(vehicle);
 });
@@ -53,9 +65,16 @@ vehiclesRouter.patch("/vehicles/:id", requireAuth, requireRole("Driver"), async 
     return res.status(404).json({ error: "Vehicle not found" });
   }
 
-  const updated = await prisma.vehicle.update({
-    where: { id: req.params.id },
-    data: parsed.data,
+  const updated = await prisma.$transaction(async (tx) => {
+    // Same exclusivity as POST /vehicles above — setting this vehicle
+    // primary unsets it on every other vehicle this driver owns.
+    if (parsed.data.isPrimary) {
+      await tx.vehicle.updateMany({
+        where: { driverId: driver.id, isPrimary: true, id: { not: req.params.id } },
+        data: { isPrimary: false },
+      });
+    }
+    return tx.vehicle.update({ where: { id: req.params.id }, data: parsed.data });
   });
   res.json(updated);
 });

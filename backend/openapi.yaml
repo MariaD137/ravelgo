@@ -640,8 +640,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Trip" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /trips/{id}/cancel:
     patch:
       tags: [Trips]
@@ -1082,7 +1084,10 @@ paths:
   /courier-requests/{id}/status:
     patch:
       tags: [Courier]
-      summary: Advance courier status (assigned Driver, or Admin)
+      summary: >-
+        Advance courier status (assigned Driver, or Admin). When
+        status=DELIVERED, a given finalFare must be within 0.5x-2x the
+        request's own estimatedFare or the request is rejected with 400.
       parameters:
         - $ref: "#/components/parameters/id"
       requestBody:
@@ -1094,14 +1099,17 @@ paths:
               required: [status]
               properties:
                 status: { type: string, enum: [IN_TRANSIT, DELIVERED, CANCELLED] }
-                finalFare: { type: number }
+                finalFare: { type: number, description: "Only validated (0.5x-2x estimatedFare) when status=DELIVERED." }
       responses:
         "200":
           description: Updated request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CourierRequest" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /emergency-alerts:
     post:
@@ -1550,7 +1558,7 @@ paths:
               required: [driverId, period]
               properties:
                 driverId: { type: string, description: A User.id with role DRIVER. }
-                period: { type: string, description: "YYYY-MM", example: "2026-07" }
+                period: { type: string, pattern: "^\\d{4}-\\d{2}$", description: "YYYY-MM", example: "2026-07" }
       responses:
         "200":
           description: Payout calculation (gross/platform fee/subscription fee/net) — not persisted
@@ -1578,7 +1586,7 @@ paths:
               required: [driverId, period]
               properties:
                 driverId: { type: string }
-                period: { type: string, example: "2026-07" }
+                period: { type: string, pattern: "^\\d{4}-\\d{2}$", example: "2026-07" }
                 amount: { type: number, description: Manual override of the calculated amount. }
       responses:
         "201":
@@ -1859,6 +1867,7 @@ components:
 
     CourierRequestInput:
       type: object
+      required: [pickupAddress, dropoffAddress, packageDescription, recipientName, recipientPhone, estimatedFare]
       properties:
         pickupAddress: { type: string }
         dropoffAddress: { type: string }

@@ -38,6 +38,12 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
     _filteredLanguages = _allLanguages;
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   void _filterLanguages(String query) {
     final lowerQuery = query.toLowerCase();
     setState(() {

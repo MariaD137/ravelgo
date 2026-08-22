@@ -427,3 +427,98 @@ test("PATCH /api/rentals/bookings/:id/activate 404s cleanly on a malformed/garba
 
   assert.equal(res.status, 404);
 });
+
+// Regression: decideBooking() used to confirm a REQUESTED booking with no
+// re-check against other bookings for the same vehicle/dates. Since
+// REQUESTED bookings are deliberately allowed to overlap each other (see
+// createBooking's own doc comment), two renters could both get a REQUESTED
+// booking for the same overlapping dates, and the driver confirming both
+// (one after another, no concurrency needed to hit this) used to produce
+// two CONFIRMED bookings for the same vehicle on the same dates — the exact
+// double-booking this table's overlap protection exists to prevent.
+test("PATCH /api/rentals/bookings/:id/decision rejects confirming a REQUESTED booking that overlaps an already-CONFIRMED one", async () => {
+  const { listing } = await createApprovedListing("driver-sub-decide-overlap", 100);
+  const renter1 = await createRider("rider-sub-decide-overlap-a");
+  const renter2 = await createRider("rider-sub-decide-overlap-b");
+
+  const bookingA = await prisma.rentalBooking.create({
+    data: {
+      rentalListingId: listing.id,
+      renterId: renter1.id,
+      vehicleId: listing.vehicleId,
+      startAt: new Date("2027-07-01T00:00:00.000Z"),
+      endAt: new Date("2027-07-05T00:00:00.000Z"),
+      status: "REQUESTED",
+      price: 400,
+    },
+  });
+  const bookingB = await prisma.rentalBooking.create({
+    data: {
+      rentalListingId: listing.id,
+      renterId: renter2.id,
+      vehicleId: listing.vehicleId,
+      // Overlaps bookingA's date range.
+      startAt: new Date("2027-07-03T00:00:00.000Z"),
+      endAt: new Date("2027-07-08T00:00:00.000Z"),
+      status: "REQUESTED",
+      price: 400,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-decide-overlap", groups: ["Driver"] });
+
+  const confirmA = await request(app)
+    .patch(`/api/rentals/bookings/${bookingA.id}/decision`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "CONFIRMED" });
+  assert.equal(confirmA.status, 200);
+  assert.equal(confirmA.body.status, "CONFIRMED");
+
+  const confirmB = await request(app)
+    .patch(`/api/rentals/bookings/${bookingB.id}/decision`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "CONFIRMED" });
+  assert.equal(confirmB.status, 409);
+  assert.equal(confirmB.body.code, "RENTAL_OVERLAP");
+
+  const stored = await prisma.rentalBooking.findUniqueOrThrow({ where: { id: bookingB.id } });
+  assert.equal(stored.status, "REQUESTED");
+});
+
+// Regression: the renter-cancel route used to read the booking's status
+// once, then unconditionally overwrite it to CANCELLED — a concurrent
+// activate() (driver marks the handover done, CONFIRMED -> ACTIVE, reserves
+// the driver) between that read and the write would get silently clobbered
+// back to CANCELLED, leaving the driver's freshly-reserved assignment
+// orphaned as ACTIVE forever. The conditional update now closes that
+// window: if activation wins the race, cancel 409s instead of overwriting.
+test("PATCH /api/rentals/bookings/:id/cancel 409s (does not clobber) once the booking has already been activated", async () => {
+  const { listing, driver } = await createApprovedListing("driver-sub-cancel-race", 100);
+  const renter = await createRider("rider-sub-cancel-race");
+  const booking = await prisma.rentalBooking.create({
+    data: {
+      rentalListingId: listing.id,
+      renterId: renter.id,
+      vehicleId: listing.vehicleId,
+      startAt: new Date("2027-08-01T00:00:00.000Z"),
+      endAt: new Date("2027-08-05T00:00:00.000Z"),
+      status: "ACTIVE",
+      price: 400,
+    },
+  });
+  await prisma.driverAssignment.create({
+    data: { driverId: driver.id, assignmentType: "RENTAL", assignmentId: booking.id, vehicleId: listing.vehicleId },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-cancel-race", groups: ["Rider"] });
+  const res = await request(app)
+    .patch(`/api/rentals/bookings/${booking.id}/cancel`)
+    .set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 409);
+
+  const stored = await prisma.rentalBooking.findUniqueOrThrow({ where: { id: booking.id } });
+  assert.equal(stored.status, "ACTIVE");
+  const assignment = await prisma.driverAssignment.findFirst({ where: { driverId: driver.id, status: "ACTIVE" } });
+  assert.ok(assignment, "the driver's ACTIVE assignment must not be orphaned/cleared by a failed cancel");
+});

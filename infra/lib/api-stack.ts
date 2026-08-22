@@ -104,8 +104,30 @@ export class ApiStack extends cdk.Stack {
     });
     stripeSecret.grantRead(instanceRole);
 
+    // Pinned to exactly one running instance. src/realtime/hub.ts keeps
+    // WebSocket trip-room subscriptions and each driver's latest location
+    // in a plain in-memory Map — correct for one process, silently
+    // split-brained across two (a broadcast triggered on the instance that
+    // received a location update never reaches a rider connected to a
+    // different instance; same for GET /trips/:id/driver-location's
+    // fallback, and express-rate-limit's default in-memory store effectively
+    // multiplies the per-IP budget by instance count). See
+    // docs/realtime-architecture.md for the documented trade-off and its
+    // named trigger for revisiting this: the day this service needs more
+    // than one instance, replace the in-memory hub with a shared backend
+    // (ElastiCache Redis pub/sub is the natural fit) before raising MaxSize
+    // here — not the other way around. Without this pin, App Runner's
+    // default autoscaling config (min 1, max 25) would let that split-brain
+    // happen silently under ordinary load, not just in a rare edge case.
+    const autoScaling = new apprunner.CfnAutoScalingConfiguration(this, "SingleInstanceAutoScaling", {
+      autoScalingConfigurationName: `${resourceName}-single-instance`,
+      minSize: 1,
+      maxSize: 1,
+    });
+
     this.service = new apprunner.CfnService(this, "BackendService", {
       serviceName: resourceName,
+      autoScalingConfigurationArn: autoScaling.attrAutoScalingConfigurationArn,
       sourceConfiguration: {
         autoDeploymentsEnabled: true,
         authenticationConfiguration: { accessRoleArn: accessRole.roleArn },

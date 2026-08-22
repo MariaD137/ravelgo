@@ -11,6 +11,7 @@ import {
   acceptCourierRequest,
   updateCourierStatus,
 } from "../services/courier";
+import { FINAL_FARE_MAX_RATIO, FINAL_FARE_MIN_RATIO } from "../services/pricing";
 
 export const courierRouter = Router();
 
@@ -30,6 +31,18 @@ courierRouter.post("/courier-requests", requireAuth, requireRole("Rider"), async
 
   const sender = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
   if (!sender) return res.status(404).json({ error: "Sender not found" });
+
+  // Same guard as POST /trips: a double-tap or client retry with no check
+  // here would create two independent CourierRequest rows for what was
+  // meant to be one delivery request.
+  const openRequest = await prisma.courierRequest.findFirst({
+    where: { senderId: sender.id, status: { in: ["REQUESTED", "MATCHED", "IN_TRANSIT"] } },
+  });
+  if (openRequest) {
+    return res
+      .status(409)
+      .json({ error: "You already have an active courier request", courierRequestId: openRequest.id });
+  }
 
   const request = await prisma.courierRequest.create({
     data: { ...parsed.data, senderId: sender.id },
@@ -127,6 +140,23 @@ courierRouter.patch("/courier-requests/:id/status", requireAuth, requireRole("Dr
     const driver = await findOwnDriver(req.user!.sub);
     if (!driver || existing.driverId !== driver.id) {
       return res.status(403).json({ error: "Not authorized to update this request" });
+    }
+  }
+
+  // Same server-side bound as PATCH /trips/:id/status applies to a
+  // driver-submitted finalFare — without it a driver could set
+  // finalFare to an arbitrary number unrelated to the request's own
+  // estimatedFare. Not currently wired into any billing/charge path, but
+  // this value is already returned to riders/Admin as the recorded price
+  // for the delivery, so bounding it now avoids it becoming an exploitable
+  // gap the moment courier billing is added.
+  if (parsed.data.status === "DELIVERED" && parsed.data.finalFare != null) {
+    const min = existing.estimatedFare * FINAL_FARE_MIN_RATIO;
+    const max = existing.estimatedFare * FINAL_FARE_MAX_RATIO;
+    if (parsed.data.finalFare < min || parsed.data.finalFare > max) {
+      return res.status(400).json({
+        error: `finalFare (${parsed.data.finalFare}) must be between ${min} and ${max} (${FINAL_FARE_MIN_RATIO}x-${FINAL_FARE_MAX_RATIO}x the request's estimatedFare of ${existing.estimatedFare})`,
+      });
     }
   }
 

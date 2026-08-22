@@ -5,7 +5,7 @@ import { prisma } from "./db/prisma";
 import { attachRealtime } from "./realtime/server";
 
 const server = createServer(app);
-attachRealtime(server);
+const wss = attachRealtime(server);
 
 server.listen(env.PORT, () => {
   console.log(`RavelGo backend listening on port ${env.PORT} (${env.NODE_ENV})`);
@@ -24,6 +24,16 @@ function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`${signal} received, shutting down gracefully`);
+
+  // http.Server.close() only stops accepting new connections — it does not
+  // touch already-upgraded WebSocket sockets, which would otherwise sit
+  // open until the force-exit timer below kills the process out from under
+  // them. Send each one a real close frame first so clients get a clean
+  // "server going away" signal instead of an abrupt reset.
+  for (const client of wss.clients) {
+    client.close(1001, "Server shutting down");
+  }
+  wss.close();
 
   server.close(async () => {
     await prisma.$disconnect();

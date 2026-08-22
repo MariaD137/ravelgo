@@ -25,12 +25,21 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
     final url =
         'https://maps.googleapis.com/maps/api/place/textsearch/json?query=${Uri.encodeComponent(query)}&key=$apiKey';
 
-    final response = await http.get(Uri.parse(url));
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      setState(() => pickupPlaces = data['results']);
-    } else {
-      print('Failed to fetch places');
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() => pickupPlaces = data['results']);
+      } else {
+        setState(() => pickupPlaces = []);
+      }
+    } catch (_) {
+      // No network, a timeout, or a malformed response — fail to an empty
+      // result list rather than leaving the widget tree waiting on a
+      // request that will never resolve, or throwing uncaught out of this
+      // TextField.onChanged handler.
+      if (mounted) setState(() => pickupPlaces = []);
     }
   }
   void _onTextChangedDrop(String query) async {
@@ -43,12 +52,17 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
     final url =
         'https://maps.googleapis.com/maps/api/place/textsearch/json?query=${Uri.encodeComponent(query)}&key=$apiKey';
 
-    final response = await http.get(Uri.parse(url));
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      setState(() => dropPlaces = data['results']);
-    } else {
-      print('Failed to fetch places');
+    try {
+      final response = await http.get(Uri.parse(url));
+      if (!mounted) return;
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() => dropPlaces = data['results']);
+      } else {
+        setState(() => dropPlaces = []);
+      }
+    } catch (_) {
+      if (mounted) setState(() => dropPlaces = []);
     }
   }
 

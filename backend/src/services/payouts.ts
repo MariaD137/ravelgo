@@ -20,9 +20,19 @@ interface PayoutCalculation {
 /**
  * Calculate payout for a driver for a given period (YYYY-MM for monthly, YYYY-W## for weekly).
  * Only includes COMPLETED trips where driver was not suspended.
+ *
+ * `userId` here is a User.id (that's what Payout.driverId/DriverBankAccount.driverId
+ * are foreign keys to, and what payouts.routes.ts resolves and validates
+ * before calling this — see that file's own comment on the naming). Trip and
+ * DriverSubscription, by contrast, key off Driver.id, a different row
+ * entirely. Passing userId straight into those two queries — the bug this
+ * function used to have — would never match any trip (Trip.driverId values
+ * are Driver.id, never equal to a User.id), so grossAmount would silently
+ * compute as 0 for every real driver regardless of actual completed trips.
+ * Resolve the Driver row first and use its id for both of those lookups.
  */
 export async function calculatePayoutForPeriod(
-  driverId: string,
+  userId: string,
   period: string, // e.g., "2024-07" for July 2024
 ): Promise<PayoutCalculation> {
   const [year, month] = period.split("-");
@@ -30,20 +40,24 @@ export async function calculatePayoutForPeriod(
   const endDate = new Date(startDate);
   endDate.setMonth(endDate.getMonth() + 1);
 
+  const driver = await prisma.driver.findUnique({ where: { userId } });
+
   // Get all completed trips for this driver in the period
-  const trips = await prisma.trip.findMany({
-    where: {
-      driverId,
-      status: "COMPLETED",
-      completedAt: {
-        gte: startDate,
-        lt: endDate,
-      },
-    },
-    include: {
-      payment: true,
-    },
-  });
+  const trips = driver
+    ? await prisma.trip.findMany({
+        where: {
+          driverId: driver.id,
+          status: "COMPLETED",
+          completedAt: {
+            gte: startDate,
+            lt: endDate,
+          },
+        },
+        include: {
+          payment: true,
+        },
+      })
+    : [];
 
   // Sum up all successful payments from these trips
   const grossAmount = trips.reduce((sum, trip) => {
@@ -55,10 +69,12 @@ export async function calculatePayoutForPeriod(
   const platformFee = grossAmount * platformFeePercent;
 
   // Check if driver has active subscription (subscription fee offset)
-  const subscription = await prisma.driverSubscription.findUnique({
-    where: { driverId },
-    include: { plan: true },
-  });
+  const subscription = driver
+    ? await prisma.driverSubscription.findUnique({
+        where: { driverId: driver.id },
+        include: { plan: true },
+      })
+    : null;
 
   const subscriptionFee = subscription?.status === "ACTIVE" ? subscription.plan?.priceMonthly || 0 : 0;
 
@@ -66,7 +82,7 @@ export async function calculatePayoutForPeriod(
   const netAmount = Math.max(0, grossAmount - platformFee - subscriptionFee);
 
   return {
-    driverId,
+    driverId: userId,
     grossAmount,
     platformFee,
     subscriptionFee,
@@ -74,6 +90,14 @@ export async function calculatePayoutForPeriod(
     tripsIncluded: trips.length,
     period,
   };
+}
+
+/** Keeps only the last 4 digits of an account/routing number, e.g.
+ * "1234567890" -> "******7890" — a full number has no legitimate reason to
+ * ever leave this service in an API response; the last 4 is enough for an
+ * Admin to confirm which account a payout is headed to. */
+function maskAccountDigits(value: string): string {
+  return value.length <= 4 ? value : "*".repeat(value.length - 4) + value.slice(-4);
 }
 
 /**
@@ -96,7 +120,24 @@ export async function createPayout(calculation: PayoutCalculation) {
     },
   });
 
-  return payout;
+  // The full account/routing number has no reason to travel over the wire
+  // to an Admin's browser just to create a payout record — mask both
+  // before this ever leaves the service layer, rather than relying on
+  // every current and future caller to remember to do it.
+  const bankAccount = payout.driver.bankAccount;
+  return {
+    ...payout,
+    driver: {
+      ...payout.driver,
+      bankAccount: bankAccount
+        ? {
+            ...bankAccount,
+            accountNumber: maskAccountDigits(bankAccount.accountNumber),
+            routingNumber: maskAccountDigits(bankAccount.routingNumber),
+          }
+        : null,
+    },
+  };
 }
 
 /**

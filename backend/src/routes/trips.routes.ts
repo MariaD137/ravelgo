@@ -56,6 +56,17 @@ tripsRouter.post("/trips", requireAuth, requireRole("Rider"), async (req, res) =
   const rider = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
   if (!rider) return res.status(404).json({ error: "Rider not found" });
 
+  // A double-tap on "Request Ride" (or a client retry) with no guard here
+  // would create two independent Trip rows, each independently run through
+  // matchDriverToTrip below — the rider could end up matched to two
+  // different drivers for what was meant to be one ride request.
+  const openTrip = await prisma.trip.findFirst({
+    where: { riderId: rider.id, status: { in: ["REQUESTED", "MATCHED", "IN_PROGRESS"] } },
+  });
+  if (openTrip) {
+    return res.status(409).json({ error: "You already have an active trip request", tripId: openTrip.id });
+  }
+
   // Fare resolution, server-authoritative wherever the engine has enough
   // data to be: if the client sent distance/duration (the same inputs
   // GET /pricing/quote takes), recompute the fare server-side and ignore
@@ -213,9 +224,14 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
 
       if (
         TERMINAL_TRIP_STATUSES.includes(parsed.data.status as (typeof TERMINAL_TRIP_STATUSES)[number]) &&
-        existing.driverId
+        updated.driverId
       ) {
-        await releaseDriver(tx, { driverId: existing.driverId, assignmentType: "RIDE", assignmentId: updated.id });
+        // updated.driverId (read inside this same transaction, after the
+        // conditional update committed) rather than existing.driverId (read
+        // before the transaction even opened) — a concurrent match can set
+        // driverId between those two reads, and using the stale value here
+        // would skip releasing a driver who was actually assigned.
+        await releaseDriver(tx, { driverId: updated.driverId, assignmentType: "RIDE", assignmentId: updated.id });
       }
 
       return updated;
@@ -247,20 +263,37 @@ tripsRouter.patch("/trips/:id/cancel", requireAuth, requireRole("Rider"), async 
     return res.status(403).json({ error: "Not authorized to cancel this trip" });
   }
 
-  if (!CANCELLABLE_TRIP_STATUSES.includes(trip.status as (typeof CANCELLABLE_TRIP_STATUSES)[number])) {
-    return res.status(409).json({ error: `Trip cannot be cancelled from status ${trip.status}` });
-  }
-
-  const updated = await prisma.$transaction(async (tx) => {
-    const cancelled = await tx.trip.update({
-      where: { id: req.params.id },
-      data: { status: "CANCELLED" },
+  let updated;
+  try {
+    updated = await prisma.$transaction(async (tx) => {
+      // Same atomic conditional-update pattern as PATCH /trips/:id/status:
+      // the "still cancellable" check and the write happen in one
+      // statement, so a concurrent match (REQUESTED -> MATCHED, assigning a
+      // driver) between this route's earlier read and this write can't
+      // silently be overwritten by an unconditional update — and, just as
+      // importantly, releaseDriver below reads driverId from this
+      // transaction's own post-update row, not the pre-transaction
+      // snapshot, so a driver assigned in that race is still released
+      // instead of being left orphaned as ACTIVE forever.
+      const { count } = await tx.trip.updateMany({
+        where: { id: req.params.id, status: { in: [...CANCELLABLE_TRIP_STATUSES] } },
+        data: { status: "CANCELLED" },
+      });
+      if (count === 0) {
+        throw new IllegalTripTransitionError(trip.status, "CANCELLED");
+      }
+      const cancelled = await tx.trip.findUniqueOrThrow({ where: { id: req.params.id } });
+      if (cancelled.driverId) {
+        await releaseDriver(tx, { driverId: cancelled.driverId, assignmentType: "RIDE", assignmentId: cancelled.id });
+      }
+      return cancelled;
     });
-    if (trip.driverId) {
-      await releaseDriver(tx, { driverId: trip.driverId, assignmentType: "RIDE", assignmentId: cancelled.id });
+  } catch (err) {
+    if (err instanceof IllegalTripTransitionError) {
+      return res.status(409).json({ error: `Trip cannot be cancelled from status ${trip.status}` });
     }
-    return cancelled;
-  });
+    throw err;
+  }
   broadcastTripStatus(updated.id, updated.status, updated.finalFare);
   res.json(updated);
 });

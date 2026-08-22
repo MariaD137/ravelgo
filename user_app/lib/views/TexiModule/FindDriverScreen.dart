@@ -27,6 +27,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
 
   Future<void> _loadMarkers() async {
     final markers = await _generateCarMarkers();
+    if (!mounted) return;
     setState(() {
       _markers = markers;
     });

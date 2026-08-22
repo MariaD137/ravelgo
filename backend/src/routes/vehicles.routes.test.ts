@@ -67,3 +67,55 @@ test("PATCH /api/vehicles/:id 404s when the vehicle belongs to a different drive
 
   assert.equal(res.status, 404);
 });
+
+// Regression: neither POST nor PATCH used to unset isPrimary on a driver's
+// other vehicles when marking a new one primary — matching.ts picks a
+// vehicle via `orderBy: { isPrimary: "desc" }`, which only means anything
+// if at most one vehicle can be primary at a time.
+test("POST /api/vehicles unsets isPrimary on the driver's other vehicles when the new one is primary", async () => {
+  const driver = await createDriver("driver-sub-primary-1");
+  const first = await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Honda", model: "Civic", colour: "Red", plateNumber: "P1", year: "2019", isPrimary: true },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-primary-1", groups: ["Driver"] });
+  const res = await request(app)
+    .post("/api/vehicles")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ brand: "Kia", model: "Rio", colour: "Black", plateNumber: "P2", year: "2021", isPrimary: true });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.isPrimary, true);
+
+  const stillPrimary = await prisma.vehicle.findMany({ where: { driverId: driver.id, isPrimary: true } });
+  assert.equal(stillPrimary.length, 1);
+  assert.equal(stillPrimary[0].id, res.body.id);
+
+  const updatedFirst = await prisma.vehicle.findUniqueOrThrow({ where: { id: first.id } });
+  assert.equal(updatedFirst.isPrimary, false);
+});
+
+test("PATCH /api/vehicles/:id unsets isPrimary on the driver's other vehicles when this one becomes primary", async () => {
+  const driver = await createDriver("driver-sub-primary-2");
+  const first = await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Honda", model: "Civic", colour: "Red", plateNumber: "P3", year: "2019", isPrimary: true },
+  });
+  const second = await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Kia", model: "Rio", colour: "Black", plateNumber: "P4", year: "2021", isPrimary: false },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-primary-2", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/vehicles/${second.id}`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ isPrimary: true });
+
+  assert.equal(res.status, 200);
+
+  const stillPrimary = await prisma.vehicle.findMany({ where: { driverId: driver.id, isPrimary: true } });
+  assert.equal(stillPrimary.length, 1);
+  assert.equal(stillPrimary[0].id, second.id);
+
+  const updatedFirst = await prisma.vehicle.findUniqueOrThrow({ where: { id: first.id } });
+  assert.equal(updatedFirst.isPrimary, false);
+});

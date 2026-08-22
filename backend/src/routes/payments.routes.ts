@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
@@ -37,35 +38,60 @@ paymentsRouter.post("/trips/:id/charge", requireAuth, requireRole("Driver", "Adm
   if (existing) return res.status(409).json({ error: "Trip has already been charged" });
 
   if (parsed.data.method === "CARD") {
-    const intent = await stripeClient.paymentIntents.create({
-      amount: Math.round(trip.finalFare * 100),
-      currency: "usd",
-      metadata: { tripId: trip.id },
-    });
+    // Idempotency key ties this PaymentIntent to the trip itself: if a
+    // double-tap sends two of these requests concurrently, Stripe returns
+    // the SAME PaymentIntent for both instead of creating two live
+    // intents — one of which would otherwise never get attached to a
+    // Payment row (see below) and just sit there as an orphaned charge
+    // authorization.
+    const intent = await stripeClient.paymentIntents.create(
+      {
+        amount: Math.round(trip.finalFare * 100),
+        currency: "usd",
+        metadata: { tripId: trip.id },
+      },
+      { idempotencyKey: `trip-charge-${trip.id}` },
+    );
+    try {
+      const payment = await prisma.payment.create({
+        data: {
+          tripId: trip.id,
+          userId: trip.riderId,
+          amount: trip.finalFare,
+          method: "CARD",
+          status: "PENDING",
+          providerReference: intent.id,
+        },
+      });
+      return res.status(201).json({ ...payment, clientSecret: intent.client_secret });
+    } catch (err) {
+      // Payment.tripId is @unique — the loser of a race that both passed
+      // the `existing` check above lands here instead of an unhandled 500.
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+        return res.status(409).json({ error: "Trip has already been charged" });
+      }
+      throw err;
+    }
+  }
+
+  try {
     const payment = await prisma.payment.create({
       data: {
         tripId: trip.id,
         userId: trip.riderId,
         amount: trip.finalFare,
-        method: "CARD",
-        status: "PENDING",
-        providerReference: intent.id,
+        method: parsed.data.method,
+        status: "SUCCEEDED",
+        paidAt: new Date(),
       },
     });
-    return res.status(201).json({ ...payment, clientSecret: intent.client_secret });
+    res.status(201).json(payment);
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return res.status(409).json({ error: "Trip has already been charged" });
+    }
+    throw err;
   }
-
-  const payment = await prisma.payment.create({
-    data: {
-      tripId: trip.id,
-      userId: trip.riderId,
-      amount: trip.finalFare,
-      method: parsed.data.method,
-      status: "SUCCEEDED",
-      paidAt: new Date(),
-    },
-  });
-  res.status(201).json(payment);
 });
 
 // Rider (who owns the payment) or Admin: a receipt for a charged trip

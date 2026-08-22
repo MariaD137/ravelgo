@@ -99,14 +99,54 @@ export async function createBooking(input: CreateBookingInput) {
  * the driver operationally busy today (Part 2: listing/booking approval is
  * not the same as active usage). Reservation only happens at activation. */
 export async function decideBooking(bookingId: string, status: "CONFIRMED" | "REJECTED") {
-  const { count } = await prisma.rentalBooking.updateMany({
-    where: { id: bookingId, status: "REQUESTED" },
-    data: { status },
-  });
-  if (count === 0) {
-    throw new RentalBookingStateError("Booking is not in a REQUESTED state");
+  try {
+    return await prisma.$transaction(
+      async (tx) => {
+        const booking = await tx.rentalBooking.findUnique({ where: { id: bookingId } });
+        if (!booking || booking.status !== "REQUESTED") {
+          throw new RentalBookingStateError("Booking is not in a REQUESTED state");
+        }
+
+        // createBooking only ever blocks a new REQUESTED booking against an
+        // already-CONFIRMED/ACTIVE one for the same vehicle+dates —
+        // REQUESTED bookings are deliberately allowed to overlap each other
+        // (see createBooking's doc comment). That means two REQUESTED
+        // bookings for the same overlapping dates can both reach this
+        // function, and without re-checking here, confirming the second one
+        // would create two CONFIRMED bookings for the same vehicle on the
+        // same dates — the exact double-booking this table's overlap
+        // protection exists to prevent. Re-run the same check, inside the
+        // same Serializable transaction as the write, before confirming.
+        if (status === "CONFIRMED") {
+          const overlapping = await tx.rentalBooking.findFirst({
+            where: {
+              vehicleId: booking.vehicleId,
+              id: { not: bookingId },
+              status: { in: [...OVERLAP_BLOCKING_STATUSES] },
+              startAt: { lt: booking.endAt },
+              endAt: { gt: booking.startAt },
+            },
+          });
+          if (overlapping) throw new RentalOverlapConflict();
+        }
+
+        const { count } = await tx.rentalBooking.updateMany({
+          where: { id: bookingId, status: "REQUESTED" },
+          data: { status },
+        });
+        if (count === 0) {
+          throw new RentalBookingStateError("Booking is not in a REQUESTED state");
+        }
+        return tx.rentalBooking.findUniqueOrThrow({ where: { id: bookingId } });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2034") {
+      throw new RentalBookingStateError("Booking confirmation conflicted with a concurrent change, retry");
+    }
+    throw err;
   }
-  return prisma.rentalBooking.findUniqueOrThrow({ where: { id: bookingId } });
 }
 
 /**

@@ -868,3 +868,78 @@ test("GET /api/trips/mine rejects a Driver caller (Rider-only endpoint)", async 
   const res = await request(app).get("/api/trips/mine").set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 403);
 });
+
+// Regression: a double-tap on "Request Ride" (or a client retry) with no
+// guard here used to create two independent Trip rows for the same rider,
+// each independently run through matchDriverToTrip — the rider could end
+// up matched to two different drivers for one intended request.
+test("POST /api/trips rejects a second request while the rider already has an open trip", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-dup-1", role: "RIDER", firstName: "D", lastName: "1", email: "dup1@example.com" },
+  });
+  const token = mockAuthAs({ sub: "rider-sub-dup-1", groups: ["Rider"] });
+
+  const first = await request(app)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ pickup: "Home", destination: "Airport", estimatedFare: 25.5 });
+  assert.equal(first.status, 201);
+
+  const second = await request(app)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ pickup: "Home", destination: "Mall", estimatedFare: 10 });
+  assert.equal(second.status, 409);
+  assert.equal(second.body.tripId, first.body.id);
+
+  const trips = await prisma.trip.findMany({ where: { riderId: (await prisma.user.findUniqueOrThrow({ where: { cognitoSub: "rider-sub-dup-1" } })).id } });
+  assert.equal(trips.length, 1);
+});
+
+test("POST /api/trips allows a new request once the rider's previous trip reached a terminal status", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-dup-2", role: "RIDER", firstName: "D", lastName: "2", email: "dup2@example.com" },
+  });
+  await prisma.trip.create({
+    data: { riderId: rider.id, pickup: "X", destination: "Y", estimatedFare: 10, status: "CANCELLED" },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-dup-2", groups: ["Rider"] });
+  const res = await request(app)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ pickup: "Home", destination: "Airport", estimatedFare: 25.5 });
+  assert.equal(res.status, 201);
+});
+
+// Regression: PATCH /trips/:id/cancel used to read the trip once, then
+// unconditionally overwrite its status to CANCELLED and release a driver
+// using that same stale, pre-transaction snapshot's driverId. A concurrent
+// match (REQUESTED -> MATCHED, assigning a driver) between that read and
+// the write used to get silently clobbered back to CANCELLED without ever
+// releasing the newly-assigned driver, leaving their DriverAssignment
+// orphaned ACTIVE forever. This test drives the route against a trip
+// that's already MATCHED with an ACTIVE assignment (the state such a race
+// would have left the DB in) and confirms cancel both succeeds and
+// actually releases the driver.
+test("PATCH /api/trips/:id/cancel releases the assigned driver's ACTIVE assignment, not just the trip status", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-cancel-release", role: "RIDER", firstName: "C", lastName: "R", email: "cr@example.com" },
+  });
+  const driver = await createDriver("driver-sub-cancel-release");
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "X", destination: "Y", estimatedFare: 10, status: "MATCHED" },
+  });
+  await prisma.driverAssignment.create({
+    data: { driverId: driver.id, assignmentType: "RIDE", assignmentId: trip.id },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-cancel-release", groups: ["Rider"] });
+  const res = await request(app).patch(`/api/trips/${trip.id}/cancel`).set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "CANCELLED");
+
+  const assignment = await prisma.driverAssignment.findFirst({ where: { driverId: driver.id, status: "ACTIVE" } });
+  assert.equal(assignment, null, "the driver's assignment must be released, not left orphaned ACTIVE");
+});

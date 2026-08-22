@@ -17,6 +17,16 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   final _year = TextEditingController();
 
   @override
+  void dispose() {
+    _brand.dispose();
+    _model.dispose();
+    _colour.dispose();
+    _plate.dispose();
+    _year.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Add Vehicle")),
