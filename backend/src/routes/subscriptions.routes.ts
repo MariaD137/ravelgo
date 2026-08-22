@@ -2,12 +2,9 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { findOwnDriver } from "../services/driver";
 
 export const subscriptionsRouter = Router();
-
-async function findOwnDriver(cognitoSub: string) {
-  return prisma.driver.findFirst({ where: { user: { cognitoSub } } });
-}
 
 // Any authenticated user: browse active subscription plans
 subscriptionsRouter.get("/subscription-plans", requireAuth, async (_req, res) => {

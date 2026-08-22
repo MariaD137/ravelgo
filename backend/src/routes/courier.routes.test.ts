@@ -291,7 +291,7 @@ test("PATCH /api/courier-requests/:id/status releases the driver's assignment on
     data: {
       senderId: sender.id,
       driverId: driver.id,
-      status: "MATCHED",
+      status: "IN_TRANSIT",
       pickupAddress: "A",
       dropoffAddress: "B",
       packageDescription: "Box",
@@ -341,4 +341,101 @@ test("GET /api/courier-requests/:id denies a stranger and allows the sender", as
     .get(`/api/courier-requests/${req.id}`)
     .set("Authorization", `Bearer ${strangerToken}`);
   assert.equal(strangerRes.status, 403);
+});
+
+test("PATCH /api/courier-requests/:id/status rejects jumping MATCHED straight to DELIVERED", async () => {
+  const sender = await createRider("rider-sub-illegal-1");
+  const driver = await createDriver("driver-sub-illegal-1");
+  const courierReq = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      driverId: driver.id,
+      status: "MATCHED",
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-illegal-1", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/courier-requests/${courierReq.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "DELIVERED" });
+
+  assert.equal(res.status, 409);
+  const unchanged = await prisma.courierRequest.findUnique({ where: { id: courierReq.id } });
+  assert.equal(unchanged?.status, "MATCHED");
+});
+
+test("PATCH /api/courier-requests/:id/status rejects updating an already-DELIVERED request", async () => {
+  const sender = await createRider("rider-sub-illegal-2");
+  const driver = await createDriver("driver-sub-illegal-2");
+  const courierReq = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      driverId: driver.id,
+      status: "DELIVERED",
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+      deliveredAt: new Date(),
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-illegal-2", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/courier-requests/${courierReq.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "CANCELLED" });
+
+  assert.equal(res.status, 409);
+});
+
+test("CourierRequest.paymentStatus defaults to NOT_CONFIGURED (explicit non-payment state, Stripe not yet integrated)", async () => {
+  await createRider("rider-sub-payment-1");
+  const token = mockAuthAs({ sub: "rider-sub-payment-1", groups: ["Rider"] });
+
+  const res = await request(app)
+    .post("/api/courier-requests")
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.paymentStatus, "NOT_CONFIGURED");
+});
+
+test("PATCH /api/courier-requests/:id/accept 404s cleanly on a malformed/garbage id (not a 500)", async () => {
+  await createDriver("driver-sub-malformed-1");
+  const token = mockAuthAs({ sub: "driver-sub-malformed-1", groups: ["Driver"] });
+
+  const res = await request(app)
+    .patch("/api/courier-requests/not-a-real-id;drop-table/accept")
+    .set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 404);
+});
+
+test("GET /api/courier-requests/:id 404s cleanly on a malformed/garbage id (not a 500)", async () => {
+  await createRider("rider-sub-malformed-1");
+  const token = mockAuthAs({ sub: "rider-sub-malformed-1", groups: ["Rider"] });
+
+  const res = await request(app)
+    .get("/api/courier-requests/' OR 1=1 --")
+    .set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 404);
 });

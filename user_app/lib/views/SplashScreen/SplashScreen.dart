@@ -1,18 +1,28 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver/views/Login/login.dart';
-import 'package:ravelgo_driver/views/Signup/CreateAccount.dart';
 
 class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+
   @override
-  _SplashScreenState createState() => _SplashScreenState();
+  State<SplashScreen> createState() => _SplashScreenState();
 }
 
 class _SplashScreenState extends State<SplashScreen> {
+  Timer? _navigateTimer;
+
   @override
   void initState() {
     super.initState();
-    // Simulate a delay for the splash screen
-    Future.delayed(Duration(seconds: 5), () {
+    // Simulate a delay for the splash screen. Cancellable in dispose() and
+    // mounted-checked before navigating — without both, a widget test (or a
+    // real user backgrounding/closing the app during the delay) hits
+    // "Navigator operation requested with a context that does not include a
+    // Navigator" or a pending-timer assertion after this widget is gone.
+    _navigateTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (context) => Login()),
       );
@@ -20,15 +30,21 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   @override
+  void dispose() {
+    _navigateTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:  const Color(0xFF000000),
-      body:  Padding(
+      backgroundColor: const Color(0xFF000000),
+      body: const Padding(
         padding: EdgeInsets.all(80.0),
         child: Center(
-          child: Image.asset(
-            'assets/logo.png',
-          ), // You can customize this
+          child: Image(
+            image: AssetImage('assets/logo.png'),
+          ),
         ),
       ),
     );

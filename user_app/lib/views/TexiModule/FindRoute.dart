@@ -21,7 +21,7 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
       return;
     }
 
-    final apiKey = dotenv.env['GOOGLE_API_KEY'];
+    final apiKey = dotenv.env['GOOGLE_MAPS_API_KEY'];
     final url =
         'https://maps.googleapis.com/maps/api/place/textsearch/json?query=${Uri.encodeComponent(query)}&key=$apiKey';
 
@@ -39,7 +39,7 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
       return;
     }
 
-    final apiKey = dotenv.env['GOOGLE_API_KEY'];
+    final apiKey = dotenv.env['GOOGLE_MAPS_API_KEY'];
     final url =
         'https://maps.googleapis.com/maps/api/place/textsearch/json?query=${Uri.encodeComponent(query)}&key=$apiKey';
 
@@ -153,6 +153,9 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
     );
   }
 
+  // Referenced from the commented-out call above — an intentionally
+  // disabled row, not dead code, so kept rather than deleted.
+  // ignore: unused_element
   Widget _buildMyLocation() {
     return Row(
       children: const [

@@ -262,19 +262,4 @@ class _BasicDetailsPageState extends State<BasicDetailsPage> {
       ),
     );
   }
-
-  /// BOTTOM NAV
-  Widget _bottomNav() {
-    return BottomNavigationBar(
-      currentIndex: 1,
-      selectedItemColor: const Color(0xFFFFD500),
-      unselectedItemColor: Colors.grey,
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: "Home"),
-        BottomNavigationBarItem(icon: Icon(Icons.grid_view), label: "Services"),
-        BottomNavigationBarItem(icon: Icon(Icons.calendar_today), label: "Rides"),
-        BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Account"),
-      ],
-    );
-  }
 }

@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import type { RentalBookingStatus } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { releaseDriver, reserveDriver } from "./driver-availability";
 
@@ -145,13 +146,34 @@ export async function activateBooking(bookingId: string, driverId: string) {
   }
 }
 
+// COMPLETED only makes sense for a booking that actually became ACTIVE (you
+// can't complete a handover that never happened); CANCELLED is legal from
+// either CONFIRMED (driver backs out before handover) or ACTIVE (an active
+// rental cut short). Neither is legal from REQUESTED (that's decideBooking's
+// job) or from a state that's already terminal (REJECTED/COMPLETED/
+// CANCELLED) — enforced here the same way decideBooking/activateBooking
+// enforce their own preconditions, via a conditional updateMany rather than
+// an unconditional update.
+const END_BOOKING_FROM_STATUSES: Record<"COMPLETED" | "CANCELLED", readonly RentalBookingStatus[]> = {
+  COMPLETED: ["ACTIVE"],
+  CANCELLED: ["CONFIRMED", "ACTIVE"],
+};
+
 /** Ends a booking (COMPLETED or CANCELLED) and releases the driver's active
  * RENTAL assignment if one exists — a no-op release if the booking never
- * reached ACTIVE (e.g. cancelled while still REQUESTED/CONFIRMED). */
+ * reached ACTIVE (e.g. cancelled while still CONFIRMED). */
 export async function endBooking(bookingId: string, status: "COMPLETED" | "CANCELLED", driverId: string) {
   return prisma.$transaction(async (tx) => {
-    const updated = await tx.rentalBooking.update({ where: { id: bookingId }, data: { status } });
+    const { count } = await tx.rentalBooking.updateMany({
+      where: { id: bookingId, status: { in: [...END_BOOKING_FROM_STATUSES[status]] } },
+      data: { status },
+    });
+    if (count === 0) {
+      throw new RentalBookingStateError(
+        `Booking cannot be marked ${status} from its current status`,
+      );
+    }
     await releaseDriver(tx, { driverId, assignmentType: "RENTAL", assignmentId: bookingId });
-    return updated;
+    return tx.rentalBooking.findUniqueOrThrow({ where: { id: bookingId } });
   });
 }

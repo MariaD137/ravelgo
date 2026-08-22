@@ -8,7 +8,7 @@ class AnalyticsScreen extends StatelessWidget {
   static const _hours = [64.0, 72.0, 58.0, 80.0, 91.0, 110.0, 76.0];
   static const _days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-  Widget _barChart(String title, List<double> values, {String Function(double)? formatter}) {
+  Widget _barChart(String title, List<double> values) {
     final maxVal = values.reduce((a, b) => a > b ? a : b);
     return Container(
       padding: const EdgeInsets.all(20),

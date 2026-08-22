@@ -314,3 +314,116 @@ test("PATCH /api/rentals/:id/status rejects a non-Admin caller", async () => {
 
   assert.equal(res.status, 403);
 });
+
+test("PATCH /api/rentals/bookings/:id/end rejects marking a REQUESTED booking COMPLETED (must go through CONFIRMED/ACTIVE)", async () => {
+  const { listing } = await createApprovedListing("driver-sub-illegal-1", 100);
+  const renter = await createRider("rider-sub-illegal-1");
+  const booking = await prisma.rentalBooking.create({
+    data: {
+      rentalListingId: listing.id,
+      renterId: renter.id,
+      vehicleId: listing.vehicleId,
+      startAt: new Date("2028-01-01T00:00:00.000Z"),
+      endAt: new Date("2028-01-05T00:00:00.000Z"),
+      status: "REQUESTED",
+      price: 400,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-illegal-1", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/rentals/bookings/${booking.id}/end`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "COMPLETED" });
+
+  assert.equal(res.status, 409);
+  const unchanged = await prisma.rentalBooking.findUnique({ where: { id: booking.id } });
+  assert.equal(unchanged?.status, "REQUESTED");
+});
+
+test("PATCH /api/rentals/bookings/:id/end rejects ending an already-COMPLETED booking again", async () => {
+  const { listing } = await createApprovedListing("driver-sub-illegal-2", 100);
+  const renter = await createRider("rider-sub-illegal-2");
+  const booking = await prisma.rentalBooking.create({
+    data: {
+      rentalListingId: listing.id,
+      renterId: renter.id,
+      vehicleId: listing.vehicleId,
+      startAt: new Date("2028-02-01T00:00:00.000Z"),
+      endAt: new Date("2028-02-05T00:00:00.000Z"),
+      status: "COMPLETED",
+      price: 400,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-illegal-2", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/rentals/bookings/${booking.id}/end`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "COMPLETED" });
+
+  assert.equal(res.status, 409);
+});
+
+test("PATCH /api/rentals/bookings/:id/activate rejects activating a REQUESTED (not yet CONFIRMED) booking", async () => {
+  const { listing } = await createApprovedListing("driver-sub-illegal-3", 100);
+  const renter = await createRider("rider-sub-illegal-3");
+  const booking = await prisma.rentalBooking.create({
+    data: {
+      rentalListingId: listing.id,
+      renterId: renter.id,
+      vehicleId: listing.vehicleId,
+      startAt: new Date("2028-03-01T00:00:00.000Z"),
+      endAt: new Date("2028-03-05T00:00:00.000Z"),
+      status: "REQUESTED",
+      price: 400,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-illegal-3", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/rentals/bookings/${booking.id}/activate`)
+    .set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 409);
+});
+
+test("RentalBooking.paymentStatus defaults to NOT_CONFIGURED (explicit non-payment state, Stripe not yet integrated)", async () => {
+  const { listing } = await createApprovedListing("driver-sub-payment-1", 100);
+  await createRider("rider-sub-payment-1");
+  const token = mockAuthAs({ sub: "rider-sub-payment-1", groups: ["Rider"] });
+
+  const res = await request(app)
+    .post(`/api/rentals/${listing.id}/bookings`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ startAt: "2028-04-01T00:00:00.000Z", endAt: "2028-04-03T00:00:00.000Z" });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.paymentStatus, "NOT_CONFIGURED");
+});
+
+test("POST /api/rentals/:id/bookings 404s cleanly on a malformed/garbage listing id (not a 500)", async () => {
+  await createRider("rider-sub-malformed-1");
+  const token = mockAuthAs({ sub: "rider-sub-malformed-1", groups: ["Rider"] });
+
+  const res = await request(app)
+    .post("/api/rentals/' OR 1=1 --/bookings")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ startAt: "2028-01-01T00:00:00.000Z", endAt: "2028-01-03T00:00:00.000Z" });
+
+  assert.equal(res.status, 404);
+});
+
+test("PATCH /api/rentals/bookings/:id/activate 404s cleanly on a malformed/garbage booking id (not a 500)", async () => {
+  const user = await prisma.user.create({
+    data: { cognitoSub: "driver-sub-malformed-2", role: "DRIVER", firstName: "D", lastName: "R", email: "malformed2@example.com" },
+  });
+  await prisma.driver.create({ data: { userId: user.id } });
+  const token = mockAuthAs({ sub: "driver-sub-malformed-2", groups: ["Driver"] });
+
+  const res = await request(app)
+    .patch("/api/rentals/bookings/' OR 1=1 --/activate")
+    .set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 404);
+});

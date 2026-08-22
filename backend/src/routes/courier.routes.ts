@@ -5,7 +5,12 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { findOwnDriver } from "../services/driver";
 import { DriverBusyConflict, requireDriverAvailable, sendDriverBusyResponse } from "../services/driver-availability";
-import { CourierRequestConflict, acceptCourierRequest, updateCourierStatus } from "../services/courier";
+import {
+  CourierRequestConflict,
+  IllegalCourierTransitionError,
+  acceptCourierRequest,
+  updateCourierStatus,
+} from "../services/courier";
 
 export const courierRouter = Router();
 
@@ -101,8 +106,15 @@ courierRouter.patch("/courier-requests/:id/status", requireAuth, requireRole("Dr
     }
   }
 
-  const request = await updateCourierStatus(req.params.id, parsed.data);
-  res.json(request);
+  try {
+    const request = await updateCourierStatus(req.params.id, parsed.data);
+    res.json(request);
+  } catch (err) {
+    if (err instanceof IllegalCourierTransitionError) {
+      return res.status(409).json({ error: err.message });
+    }
+    throw err;
+  }
 });
 
 // Rider or Driver: view a courier request they're party to

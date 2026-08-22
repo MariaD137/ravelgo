@@ -76,7 +76,7 @@ class _AvailableCourierRequestsScreenState extends State<AvailableCourierRequest
                     return ListView.separated(
                       padding: const EdgeInsets.all(16),
                       itemCount: requests.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      separatorBuilder: (_, _) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
                         final r = requests[index];
                         return Container(

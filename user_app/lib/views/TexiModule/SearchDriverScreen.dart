@@ -1,5 +1,3 @@
-import 'dart:ffi';
-
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_driver/views/TexiModule/CancelRideScreen.dart';
@@ -13,6 +11,9 @@ class SearchDriverScreen extends StatefulWidget {
 }
 
 class _SearchDriverScreenState extends State<SearchDriverScreen> {
+  // Captured via onMapCreated below for planned camera-follow behavior; not
+  // read yet — kept for that, not dead code to delete.
+  // ignore: unused_field
   GoogleMapController? _mapController;
   double offerAmount = 3500;
   double paymentAmount = 7000;
@@ -275,39 +276,6 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
               ),
             ),
           ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildActionRow() {
-    return Row(
-      children: [
-        ElevatedButton(
-          onPressed: null,
-          style: ElevatedButton.styleFrom(
-            disabledBackgroundColor: Colors.yellow[100],
-          ),
-          child: const Text("+ 100", style: TextStyle(color: Colors.black38)),
-        ),
-        const SizedBox(width: 12),
-        ElevatedButton(
-          onPressed: () {
-            setState(() => offerAmount += 100);
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.yellow[700],
-            foregroundColor: Colors.black,
-          ),
-          child: const Text("+ 100"),
-        ),
-        const Spacer(),
-        const Text("Auto-accept offer"),
-        Switch(
-          value: autoAccept,
-          onChanged: (val) {
-            setState(() => autoAccept = val);
-          },
         ),
       ],
     );

@@ -124,6 +124,19 @@ enum RentalBookingStatus {
   REJECTED
 }
 
+// Ride has a real Payment model (Stripe-adjacent, tied 1:1 to Trip).
+// Courier and Rental do not yet — Stripe is explicitly out of scope until a
+// later integration phase. NOT_CONFIGURED is a deliberate, visible marker
+// on every CourierRequest/RentalBooking rather than silently having no
+// payment field at all, so a client can distinguish "payment isn't wired
+// up yet" from "payment failed" or "payment succeeded" once it is. This is
+// the only value today; the enum grows (PENDING/SUCCEEDED/FAILED/REFUNDED,
+// mirroring PaymentStatus) when Stripe is actually integrated for these
+// two domains.
+enum PaymentIntegrationStatus {
+  NOT_CONFIGURED
+}
+
 model User {
   id                String   @id @default(uuid())
   cognitoSub        String   @unique
@@ -276,6 +289,7 @@ model CourierRequest {
   estimatedFare        Float
   finalFare            Float?
   status               CourierStatus @default(REQUESTED)
+  paymentStatus        PaymentIntegrationStatus @default(NOT_CONFIGURED)
   requestedAt          DateTime      @default(now())
   deliveredAt          DateTime?
 }
@@ -479,6 +493,7 @@ model RentalBooking {
   endAt           DateTime
   status          RentalBookingStatus @default(REQUESTED)
   price           Float
+  paymentStatus   PaymentIntegrationStatus @default(NOT_CONFIGURED)
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
 

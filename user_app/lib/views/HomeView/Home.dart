@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -18,21 +17,17 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   bool _isOnline = false;
-  int _selectedIndex = 0;
 
   // Mock values, replace with live data
-  final String _earnText = "Earn #20,000";
   final String _rating = "80%";
-  final String _dailyEarnings = "#0";
   final String _acceptance = "20%";
   late GoogleMapController _controller;
+  // Written by _loadCurrentLocation() to trigger the camera-follow rebuild
+  // below; not read directly yet — kept for the planned "show my location"
+  // marker, not dead code to delete.
+  // ignore: unused_field
   Position? _currentPosition;
 
-  void _onMenuSelect(int index) {
-    setState(() {
-      // widget.onTabRequested?.call(index); // e.g., switch to tab index 2
-    });
-  }
   void _onMapCreated(GoogleMapController controller) {
     _controller = controller;
   }

@@ -223,7 +223,12 @@ rentalsRouter.patch("/rentals/bookings/:id/end", requireAuth, requireRole("Drive
     return res.status(404).json({ error: "Booking not found" });
   }
 
-  res.json(await endBooking(req.params.id, parsed.data.status, driver.id));
+  try {
+    res.json(await endBooking(req.params.id, parsed.data.status, driver.id));
+  } catch (err) {
+    if (err instanceof RentalBookingStateError) return res.status(409).json({ error: err.message });
+    throw err;
+  }
 });
 
 // Renter: cancel my own booking before it becomes ACTIVE

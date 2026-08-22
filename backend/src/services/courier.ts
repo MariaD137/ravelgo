@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import type { CourierStatus } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { releaseDriver, reserveDriver } from "./driver-availability";
 
@@ -8,6 +9,23 @@ export class CourierRequestConflict extends Error {
     this.name = "CourierRequestConflict";
   }
 }
+
+export class IllegalCourierTransitionError extends Error {
+  constructor(from: string, to: string) {
+    super(`Courier request cannot move from ${from} to ${to}`);
+    this.name = "IllegalCourierTransitionError";
+  }
+}
+
+// Legal predecessor statuses for each status PATCH .../status can set — a
+// terminal status (DELIVERED/CANCELLED) never appears as a "from" anywhere,
+// and REQUESTED (unassigned) is never reachable through this endpoint at
+// all — claiming a request happens only through acceptCourierRequest above.
+const COURIER_ALLOWED_FROM: Record<string, readonly CourierStatus[]> = {
+  IN_TRANSIT: ["MATCHED"],
+  DELIVERED: ["IN_TRANSIT"],
+  CANCELLED: ["MATCHED", "IN_TRANSIT"],
+};
 
 /**
  * Accepts a courier request for a driver, atomically. Two protections
@@ -58,14 +76,23 @@ export async function updateCourierStatus(requestId: string, data: UpdateCourier
   return prisma.$transaction(async (tx) => {
     const existing = await tx.courierRequest.findUniqueOrThrow({ where: { id: requestId } });
 
-    const updated = await tx.courierRequest.update({
-      where: { id: requestId },
+    // Atomic conditional update, same shape as acceptCourierRequest above:
+    // the legal-predecessor check and the write happen in one statement so
+    // a concurrent second request can't slip an illegal transition through
+    // (e.g. two racing DELIVERED calls both reading IN_TRANSIT before
+    // either commits).
+    const { count } = await tx.courierRequest.updateMany({
+      where: { id: requestId, status: { in: [...COURIER_ALLOWED_FROM[data.status]] } },
       data: {
         status: data.status,
         finalFare: data.finalFare,
         deliveredAt: data.status === "DELIVERED" ? new Date() : undefined,
       },
     });
+    if (count === 0) {
+      throw new IllegalCourierTransitionError(existing.status, data.status);
+    }
+    const updated = await tx.courierRequest.findUniqueOrThrow({ where: { id: requestId } });
 
     if ((data.status === "DELIVERED" || data.status === "CANCELLED") && existing.driverId) {
       await releaseDriver(tx, {

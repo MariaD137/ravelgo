@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { findOwnDriver } from "../services/driver";
 
 export const carPaddyRouter = Router();
 
@@ -15,7 +16,7 @@ carPaddyRouter.post("/car-paddy", requireAuth, requireRole("Driver"), async (req
   const parsed = submitSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  const driver = await findOwnDriver(req.user!.sub);
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
   const request = await prisma.carPaddyRequest.create({

@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
@@ -30,14 +32,21 @@ class ApiException implements Exception {
 /// turns a non-2xx response into an [ApiException]. Auth, base URL
 /// resolution, and error handling all live in exactly this one place.
 class ApiClient {
-  ApiClient({AuthTokenProvider? tokenProvider, http.Client? httpClient})
+  ApiClient({AuthTokenProvider? tokenProvider, http.Client? httpClient, Duration? timeout})
     : _tokenProvider = tokenProvider ?? InMemoryAuthTokenProvider.instance,
-      _http = httpClient ?? http.Client();
+      _http = httpClient ?? http.Client(),
+      _timeout = timeout ?? const Duration(seconds: 20);
 
   final AuthTokenProvider _tokenProvider;
   final http.Client _http;
+  final Duration _timeout;
 
-  String get _baseUrl => dotenv.env['API_BASE_URL'] ?? '';
+  // dotenv.env throws NotInitializedError if dotenv.load() was never
+  // called (e.g. a unit test that constructs ApiClient directly without
+  // going through main()'s startup sequence) — fall back to an empty base
+  // URL rather than letting an unrelated dotenv exception surface from
+  // every API call.
+  String get _baseUrl => dotenv.isInitialized ? (dotenv.env['API_BASE_URL'] ?? '') : '';
 
   Future<Map<String, String>> _headers() async {
     final token = await _tokenProvider.getAccessToken();
@@ -54,18 +63,51 @@ class ApiClient {
   }
 
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) async {
-    final res = await _http.get(_uri(path, query), headers: await _headers());
-    return _handle(res);
+    return _send(() async => _http.get(_uri(path, query), headers: await _headers()));
   }
 
   Future<dynamic> post(String path, {Object? body}) async {
-    final res = await _http.post(_uri(path), headers: await _headers(), body: jsonEncode(body));
-    return _handle(res);
+    return _send(() async => _http.post(_uri(path), headers: await _headers(), body: jsonEncode(body)));
   }
 
   Future<dynamic> patch(String path, {Object? body}) async {
-    final res = await _http.patch(_uri(path), headers: await _headers(), body: jsonEncode(body));
-    return _handle(res);
+    return _send(() async => _http.patch(_uri(path), headers: await _headers(), body: jsonEncode(body)));
+  }
+
+  /// Runs one HTTP call and turns every failure mode into an [ApiException]
+  /// so every call site's `on ApiException catch` handles all of them
+  /// uniformly — a non-2xx response (via [_handle]), no connectivity at all
+  /// (SocketException), a request that never got a response in time
+  /// (TimeoutException), and a malformed response body (FormatException,
+  /// from jsonDecode in [_handle]) all reach the caller the same way,
+  /// distinguishable by [ApiException.code] (`NETWORK_ERROR` /
+  /// `TIMEOUT` / `INVALID_RESPONSE`) rather than three different exception
+  /// types a screen would otherwise need three different catch clauses for.
+  Future<dynamic> _send(Future<http.Response> Function() request) async {
+    try {
+      final res = await request().timeout(_timeout);
+      return _handle(res);
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      throw ApiException(
+        statusCode: 0,
+        code: 'TIMEOUT',
+        message: 'The request took too long. Check your connection and try again.',
+      );
+    } on SocketException {
+      throw ApiException(
+        statusCode: 0,
+        code: 'NETWORK_ERROR',
+        message: 'Could not reach the server. Check your connection and try again.',
+      );
+    } on FormatException {
+      throw ApiException(
+        statusCode: 0,
+        code: 'INVALID_RESPONSE',
+        message: 'The server sent back something unexpected.',
+      );
+    }
   }
 
   dynamic _handle(http.Response res) {

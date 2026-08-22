@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import type { TripStatus } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
@@ -20,6 +21,13 @@ import {
 // is released so they can be matched to a new ride, or accept a courier
 // request/rental, again.
 const TERMINAL_TRIP_STATUSES = ["COMPLETED", "CANCELLED", "DISPUTED"] as const;
+
+class IllegalTripTransitionError extends Error {
+  constructor(from: string, to: string) {
+    super(`Trip cannot move from ${from} to ${to}`);
+    this.name = "IllegalTripTransitionError";
+  }
+}
 
 export const tripsRouter = Router();
 
@@ -108,6 +116,20 @@ const updateStatusSchema = z.object({
   finalFare: z.number().positive().optional(),
 });
 
+// Legal predecessor statuses for each status this endpoint can set — a
+// terminal status (COMPLETED/CANCELLED/DISPUTED) never appears as a "from"
+// anywhere, so once reached it's final; REQUESTED only ever advances to
+// MATCHED, never skips straight to IN_PROGRESS/COMPLETED. DISPUTED is
+// reachable from COMPLETED too (a rider contesting a completed trip's
+// fare), not just from an in-flight one.
+const TRIP_ALLOWED_FROM: Record<string, readonly TripStatus[]> = {
+  MATCHED: ["REQUESTED"],
+  IN_PROGRESS: ["MATCHED"],
+  COMPLETED: ["MATCHED", "IN_PROGRESS"],
+  CANCELLED: ["REQUESTED", "MATCHED", "IN_PROGRESS"],
+  DISPUTED: ["MATCHED", "IN_PROGRESS", "COMPLETED"],
+};
+
 // Driver (must be the trip's assigned driver) or Admin: advance trip status
 // (accept, start, complete). Same ownership-check shape already used for
 // PATCH /courier-requests/:id/status below.
@@ -142,25 +164,43 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
     }
   }
 
-  const trip = await prisma.$transaction(async (tx) => {
-    const updated = await tx.trip.update({
-      where: { id: req.params.id },
-      data: {
-        status: parsed.data.status,
-        finalFare: parsed.data.finalFare,
-        completedAt: parsed.data.status === "COMPLETED" ? new Date() : undefined,
-      },
+  let trip;
+  try {
+    trip = await prisma.$transaction(async (tx) => {
+      // Atomic conditional update: the "still in a status this target is
+      // legally reachable from" check and the write happen in one
+      // statement, so a concurrent second request (or a stale client
+      // retrying an already-applied transition) can't sneak an illegal
+      // transition through between this route's earlier reads and this
+      // write — same pattern as the courier/rental accept flows.
+      const { count } = await tx.trip.updateMany({
+        where: { id: req.params.id, status: { in: [...TRIP_ALLOWED_FROM[parsed.data.status]] } },
+        data: {
+          status: parsed.data.status,
+          finalFare: parsed.data.finalFare,
+          completedAt: parsed.data.status === "COMPLETED" ? new Date() : undefined,
+        },
+      });
+      if (count === 0) {
+        throw new IllegalTripTransitionError(existing.status, parsed.data.status);
+      }
+      const updated = await tx.trip.findUniqueOrThrow({ where: { id: req.params.id } });
+
+      if (
+        TERMINAL_TRIP_STATUSES.includes(parsed.data.status as (typeof TERMINAL_TRIP_STATUSES)[number]) &&
+        existing.driverId
+      ) {
+        await releaseDriver(tx, { driverId: existing.driverId, assignmentType: "RIDE", assignmentId: updated.id });
+      }
+
+      return updated;
     });
-
-    if (
-      TERMINAL_TRIP_STATUSES.includes(parsed.data.status as (typeof TERMINAL_TRIP_STATUSES)[number]) &&
-      existing.driverId
-    ) {
-      await releaseDriver(tx, { driverId: existing.driverId, assignmentType: "RIDE", assignmentId: updated.id });
+  } catch (err) {
+    if (err instanceof IllegalTripTransitionError) {
+      return res.status(409).json({ error: err.message });
     }
-
-    return updated;
-  });
+    throw err;
+  }
   broadcastTripStatus(trip.id, trip.status, trip.finalFare);
   res.json(trip);
 });

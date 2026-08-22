@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'RidesView.dart'; // adjust path if needed; this imports the Ride class
 
@@ -31,9 +30,6 @@ class RideDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // You can replace this image with a live map widget (GoogleMap) when ready
-    const mapPreviewPath = '/mnt/data/RideDetailsView.png';
-
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -164,12 +160,5 @@ class RideDetailsScreen extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  Widget _localImage(String path, {BoxFit fit = BoxFit.cover}) {
-    final file = File(path);
-    return file.existsSync()
-        ? Image.file(file, fit: fit)
-        : Container(color: Colors.grey.shade200, child: const Center(child: Icon(Icons.map, size: 48)));
   }
 }

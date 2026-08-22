@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/models/driver_operational_state.dart';
 import 'package:ravelgo_driver_app/models/ride_request.dart';
+import 'package:ravelgo_driver_app/services/driver_session.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/safety/emergency_screen.dart';
 import 'package:ravelgo_driver_app/views/trip/trip_complete_screen.dart';
@@ -16,6 +18,28 @@ class ActiveTripScreen extends StatefulWidget {
 
 class _ActiveTripScreenState extends State<ActiveTripScreen> {
   _TripStage _stage = _TripStage.toPickup;
+
+  @override
+  void initState() {
+    super.initState();
+    // This ride flow is still a local simulation (see this screen's own
+    // "Simulate incoming ride request" entry point, not a real backend
+    // Trip), but the operational-exclusivity invariant (Part 2: a driver
+    // can't be on a ride and also accept a courier request) must hold for
+    // it exactly as it would for a real one — this is the same
+    // DriverSession the real courier flow reads and writes.
+    DriverSession.instance.markBusy(DriverOperationalState.onRide, 'demo-trip');
+  }
+
+  @override
+  void dispose() {
+    // Covers every exit path (trip completed, back button, app navigation
+    // elsewhere) — the driver becomes available again the moment this
+    // screen is no longer showing an active trip, not just on the "happy"
+    // completion path.
+    DriverSession.instance.reconcile(busy: false);
+    super.dispose();
+  }
 
   String get _stageLabel {
     switch (_stage) {

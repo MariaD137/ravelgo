@@ -675,3 +675,167 @@ test("Concurrency: one ACTIVE driver — accepting a courier request and matchin
   });
   assert.equal(activeAssignments.length, 1);
 });
+
+test("PATCH /api/trips/:id/status rejects jumping a REQUESTED trip straight to COMPLETED", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-illegal-1", role: "RIDER", firstName: "I", lastName: "L", email: "il1@example.com" },
+  });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "REQUESTED" },
+  });
+
+  const token = mockAuthAs({ sub: "admin-sub-illegal-1", groups: ["Admin"] });
+  const res = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "COMPLETED", finalFare: 12 });
+
+  assert.equal(res.status, 409);
+  const unchanged = await prisma.trip.findUnique({ where: { id: trip.id } });
+  assert.equal(unchanged?.status, "REQUESTED");
+});
+
+test("PATCH /api/trips/:id/status rejects updating an already-terminal (CANCELLED) trip", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-illegal-2", role: "RIDER", firstName: "I", lastName: "L", email: "il2@example.com" },
+  });
+  const driver = await createDriver("driver-sub-illegal-2");
+  const trip = await prisma.trip.create({
+    data: {
+      riderId: rider.id,
+      driverId: driver.id,
+      pickup: "X",
+      destination: "Y",
+      estimatedFare: 12,
+      status: "CANCELLED",
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-illegal-2", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "COMPLETED", finalFare: 12 });
+
+  assert.equal(res.status, 409);
+});
+
+test("POST /api/trips: the matched driver's own vehicle is assigned to Trip.vehicleId", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-veh-1", role: "RIDER", firstName: "V", lastName: "1", email: "v1@example.com" },
+  });
+  const driver = await createDriver("driver-sub-veh-1");
+  const vehicle = await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Toyota", model: "Camry", colour: "Blue", plateNumber: "veh-1-plate", year: "2021" },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-veh-1", groups: ["Rider"] });
+  const res = await request(app)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ pickup: "Home", destination: "Airport", estimatedFare: 25.5 });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.status, "MATCHED");
+  assert.equal(res.body.vehicleId, vehicle.id);
+});
+
+test("POST /api/trips: a driver with no vehicle on file still matches, with Trip.vehicleId left null (no invented vehicle)", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-veh-2", role: "RIDER", firstName: "V", lastName: "2", email: "v2@example.com" },
+  });
+  await createDriver("driver-sub-veh-2");
+
+  const token = mockAuthAs({ sub: "rider-sub-veh-2", groups: ["Rider"] });
+  const res = await request(app)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ pickup: "Home", destination: "Airport", estimatedFare: 25.5 });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.status, "MATCHED");
+  assert.equal(res.body.vehicleId, null);
+});
+
+test("POST /api/trips: a driver whose vehicle is on an active rental is excluded from matching entirely, not just for that vehicle", async () => {
+  // Documents the actual, current design: DriverAssignment's exclusivity is
+  // driver-level, not vehicle-level — reserveDriver()/isDriverAvailable()
+  // key off the driver, so a driver with ANY active assignment (RIDE,
+  // COURIER, or RENTAL, whichever vehicle it references) is excluded from
+  // ride matching outright, even if they own a second, otherwise-free
+  // vehicle. This is a deliberate reading of Part 2 as written ("a driver
+  // must never simultaneously perform Ride + conflicting Rental") applied
+  // at the driver level; see PRE_AWS_STRIPE_READINESS.md's Remaining Gaps
+  // for why a stricter per-vehicle interpretation (letting the same driver
+  // ride one car while renting out another) was not implemented here.
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-veh-3", role: "RIDER", firstName: "V", lastName: "3", email: "v3@example.com" },
+  });
+  const driver = await createDriver("driver-sub-veh-3");
+  const busyVehicle = await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Honda", model: "Accord", colour: "Black", plateNumber: "veh-3-busy", year: "2020" },
+  });
+  await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Kia", model: "Rio", colour: "Red", plateNumber: "veh-3-free", year: "2022" },
+  });
+  await prisma.driverAssignment.create({
+    data: { driverId: driver.id, assignmentType: "RENTAL", assignmentId: "some-booking-id", vehicleId: busyVehicle.id },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-veh-3", groups: ["Rider"] });
+  const res = await request(app)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ pickup: "Home", destination: "Airport", estimatedFare: 25.5 });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.status, "REQUESTED");
+  assert.equal(res.body.driverId, null);
+});
+
+test("POST /api/trips: a multi-vehicle driver with none busy gets their isPrimary vehicle assigned", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-veh-4", role: "RIDER", firstName: "V", lastName: "4", email: "v4@example.com" },
+  });
+  const driver = await createDriver("driver-sub-veh-4");
+  await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Honda", model: "Accord", colour: "Black", plateNumber: "veh-4-secondary", year: "2020", isPrimary: false },
+  });
+  const primaryVehicle = await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Kia", model: "Rio", colour: "Red", plateNumber: "veh-4-primary", year: "2022", isPrimary: true },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-veh-4", groups: ["Rider"] });
+  const res = await request(app)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ pickup: "Home", destination: "Airport", estimatedFare: 25.5 });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.status, "MATCHED");
+  assert.equal(res.body.vehicleId, primaryVehicle.id);
+});
+
+test("GET /api/trips/:id 404s cleanly on a malformed/garbage id (not a 500)", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-malformed-1", role: "RIDER", firstName: "M", lastName: "1", email: "m1@example.com" },
+  });
+  const token = mockAuthAs({ sub: "rider-sub-malformed-1", groups: ["Rider"] });
+
+  const res = await request(app)
+    .get("/api/trips/' OR 1=1 --")
+    .set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 404);
+});
+
+test("PATCH /api/trips/:id/status 404s cleanly on a malformed/garbage id (not a 500)", async () => {
+  const token = mockAuthAs({ sub: "admin-sub-malformed-1", groups: ["Admin"] });
+
+  const res = await request(app)
+    .patch("/api/trips/not-a-real-uuid/status")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "MATCHED" });
+
+  assert.equal(res.status, 404);
+});

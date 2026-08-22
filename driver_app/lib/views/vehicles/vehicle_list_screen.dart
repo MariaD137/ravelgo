@@ -32,7 +32,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
       body: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: _vehicles.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
           final v = _vehicles[i];
           return Container(

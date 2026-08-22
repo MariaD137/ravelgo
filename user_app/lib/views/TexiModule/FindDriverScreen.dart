@@ -10,6 +10,9 @@ class FindDriverScreen extends StatefulWidget {
 }
 
 class _FindDriverScreenState extends State<FindDriverScreen> {
+  // Captured via onMapCreated below for planned camera-follow behavior; not
+  // read yet — kept for that, not dead code to delete.
+  // ignore: unused_field
   GoogleMapController? _mapController;
   double offerAmount = 7000;
   double estimatedFare = 8000;

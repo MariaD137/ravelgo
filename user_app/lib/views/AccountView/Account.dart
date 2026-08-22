@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver/views/AccountView/AppSettingsPage.dart';
 import 'package:ravelgo_driver/views/AccountView/CommunicationsPage.dart';
@@ -203,13 +202,5 @@ class Accountview extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  /// Helper to load local preview image
-  Widget _localImage(String path, {BoxFit fit = BoxFit.cover}) {
-    final file = File(path);
-    return file.existsSync()
-        ? Image.file(file, fit: fit)
-        : Container(color: Colors.grey.shade300, child: const Icon(Icons.person, size: 40));
   }
 }

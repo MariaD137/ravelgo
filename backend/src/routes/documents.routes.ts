@@ -2,12 +2,13 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { findOwnDriver } from "../services/driver";
 
 export const documentsRouter = Router();
 
 // Driver: view my own documents
 documentsRouter.get("/documents/me", requireAuth, requireRole("Driver"), async (req, res) => {
-  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  const driver = await findOwnDriver(req.user!.sub);
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
   const documents = await prisma.driverDocument.findMany({ where: { driverId: driver.id } });
@@ -25,7 +26,7 @@ documentsRouter.post("/documents", requireAuth, requireRole("Driver"), async (re
   const parsed = uploadSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  const driver = await findOwnDriver(req.user!.sub);
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
   const doc = await prisma.driverDocument.create({
