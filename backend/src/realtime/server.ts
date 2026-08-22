@@ -37,6 +37,27 @@ async function handleSubscribe(socket: WebSocket, user: ConnectionUser, tripId: 
   send(socket, { type: "subscribed", tripId });
 }
 
+function processMessage(socket: WebSocket, user: ConnectionUser, raw: unknown) {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(String(raw));
+  } catch {
+    return send(socket, { type: "error", message: "Invalid JSON" });
+  }
+  if (typeof parsed !== "object" || parsed === null || !("type" in parsed)) {
+    return send(socket, { type: "error", message: "Message must have a type" });
+  }
+
+  const message = parsed as Record<string, unknown>;
+  if (message.type === "subscribe") {
+    void handleSubscribe(socket, user, message.tripId);
+  } else if (message.type === "location") {
+    void handleLocation(socket, user, message.lat, message.lng);
+  } else {
+    send(socket, { type: "error", message: `Unknown message type: ${String(message.type)}` });
+  }
+}
+
 async function handleLocation(socket: WebSocket, user: ConnectionUser, lat: unknown, lng: unknown) {
   if (typeof lat !== "number" || typeof lng !== "number") {
     return send(socket, { type: "error", message: "location requires numeric lat/lng" });
@@ -67,46 +88,54 @@ export function attachRealtime(server: HttpServer) {
       return;
     }
 
+    // Registered synchronously, before any of the awaits below (token
+    // verification, then the suspension check) — `ws` starts parsing bytes
+    // off the underlying socket as soon as the connection is accepted, and
+    // an EventEmitter drops any event with no listener attached at the
+    // moment it fires. A client that sends its first message immediately
+    // after the connection opens (a legitimate pattern this file's own
+    // tests exercise) can otherwise race ahead of those awaits and have
+    // that message silently lost. Queue anything that arrives before
+    // `user` is resolved and drain the queue once auth completes, instead
+    // of narrowing the race without closing it.
+    const pendingMessages: unknown[] = [];
+    let onMessage: (raw: unknown) => void = (raw) => {
+      pendingMessages.push(raw);
+    };
+    socket.on("message", (raw) => onMessage(raw));
+    socket.on("close", () => {
+      leaveAllRooms(socket);
+      connectionUsers.delete(socket);
+    });
+
+    let user: ConnectionUser;
     try {
       const payload = await verifier.verify(token);
-      const user: ConnectionUser = {
+      user = {
         sub: payload.sub,
         groups: Array.isArray(payload["cognito:groups"]) ? (payload["cognito:groups"] as string[]) : [],
       };
-      connectionUsers.set(socket, user);
     } catch {
       socket.close(4401, "Invalid or expired token");
       return;
     }
 
-    socket.on("message", (raw) => {
-      const user = connectionUsers.get(socket);
-      if (!user) return;
-
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(raw.toString());
-      } catch {
-        return send(socket, { type: "error", message: "Invalid JSON" });
+    // Same suspension check requireAuth enforces on every HTTP route (see
+    // middleware/auth.ts) — without it, a suspended user's still-valid JWT
+    // would keep working over this separate WS entry point after HTTP access
+    // was cut off. Admins are exempt for the same recovery-action reason;
+    // a caller with no User row yet isn't blocked.
+    if (!user.groups.includes("Admin")) {
+      const dbUser = await prisma.user.findUnique({ where: { cognitoSub: user.sub }, select: { suspended: true } });
+      if (dbUser?.suspended) {
+        socket.close(4403, "Account suspended");
+        return;
       }
-      if (typeof parsed !== "object" || parsed === null || !("type" in parsed)) {
-        return send(socket, { type: "error", message: "Message must have a type" });
-      }
+    }
 
-      const message = parsed as Record<string, unknown>;
-      if (message.type === "subscribe") {
-        void handleSubscribe(socket, user, message.tripId);
-      } else if (message.type === "location") {
-        void handleLocation(socket, user, message.lat, message.lng);
-      } else {
-        send(socket, { type: "error", message: `Unknown message type: ${String(message.type)}` });
-      }
-    });
-
-    socket.on("close", () => {
-      leaveAllRooms(socket);
-      connectionUsers.delete(socket);
-    });
+    connectionUsers.set(socket, user);
+    onMessage = (raw) => processMessage(socket, user, raw);
+    for (const raw of pendingMessages) processMessage(socket, user, raw);
   });
 
   return wss;

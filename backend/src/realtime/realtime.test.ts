@@ -90,6 +90,36 @@ test("WS connection with an invalid token is closed with 4401", async () => {
   assert.equal(code, 4401);
 });
 
+test("WS connection from a suspended user is closed with 4403", async () => {
+  const { rider } = await createRiderDriverTrip();
+  await prisma.user.update({ where: { id: rider.id }, data: { suspended: true } });
+  const token = mockAuthAs({ sub: rider.cognitoSub, groups: ["Rider"] });
+
+  const socket = new WebSocket(`${wsUrl}?token=${token}`);
+  const code = await waitForClose(socket);
+
+  assert.equal(code, 4403);
+});
+
+test("WS connection from a suspended Admin is still accepted (Admin exempt, same as requireAuth)", async () => {
+  const admin = await prisma.user.create({
+    data: {
+      cognitoSub: "admin-sub-1",
+      role: "ADMIN",
+      firstName: "E",
+      lastName: "F",
+      email: "e@example.com",
+      suspended: true,
+    },
+  });
+  const token = mockAuthAs({ sub: admin.cognitoSub, groups: ["Admin"] });
+
+  const socket = new WebSocket(`${wsUrl}?token=${token}`);
+  await waitForOpen(socket);
+
+  socket.close();
+});
+
 test("subscribe rejects a user who isn't party to the trip", async () => {
   const { trip } = await createRiderDriverTrip();
   const token = mockAuthAs({ sub: "stranger-sub", groups: ["Rider"] });

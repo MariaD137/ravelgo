@@ -445,6 +445,19 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PaginatedTrip" }
+  /trips/mine:
+    get:
+      tags: [Trips]
+      summary: My own trip history, most recent first (Rider)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated trips
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedTrip" }
   /trips/{id}:
     get:
       tags: [Trips]
@@ -861,6 +874,19 @@ paths:
     get:
       tags: [Courier]
       summary: Monitor all courier requests (Admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated courier requests
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedCourierRequest" }
+  /courier-requests/mine:
+    get:
+      tags: [Courier]
+      summary: My own courier request history, most recent first (Rider)
       parameters:
         - $ref: "#/components/parameters/page"
         - $ref: "#/components/parameters/pageSize"
