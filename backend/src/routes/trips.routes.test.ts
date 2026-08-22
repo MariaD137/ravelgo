@@ -556,3 +556,122 @@ test("POST /api/trips: two riders racing with exactly one ACTIVE driver free —
   const matchedTrips = await prisma.trip.findMany({ where: { driverId: driver.id } });
   assert.equal(matchedTrips.length, 1);
 });
+
+test("POST /api/trips does not match a driver already on an active courier request (Courier->Ride)", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-courier-busy", role: "RIDER", firstName: "R", lastName: "C", email: "rc@example.com" },
+  });
+  const busyDriver = await createDriver("driver-sub-courier-busy");
+  await prisma.driverAssignment.create({
+    data: { driverId: busyDriver.id, assignmentType: "COURIER", assignmentId: "some-courier-id" },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-courier-busy", groups: ["Rider"] });
+  const res = await request(app)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ pickup: "Home", destination: "Airport", estimatedFare: 25.5 });
+
+  assert.equal(res.status, 201);
+  // The only ACTIVE driver is busy on a courier request, so the trip stays
+  // unmatched rather than double-booking that driver.
+  assert.equal(res.body.status, "REQUESTED");
+  assert.equal(res.body.driverId, null);
+});
+
+test("POST /api/trips does not match a driver whose rental booking is ACTIVE (Rental->Ride)", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-rental-busy", role: "RIDER", firstName: "R", lastName: "R", email: "rr@example.com" },
+  });
+  const busyDriver = await createDriver("driver-sub-rental-busy");
+  await prisma.driverAssignment.create({
+    data: { driverId: busyDriver.id, assignmentType: "RENTAL", assignmentId: "some-booking-id" },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-rental-busy", groups: ["Rider"] });
+  const res = await request(app)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ pickup: "Home", destination: "Airport", estimatedFare: 25.5 });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.status, "REQUESTED");
+  assert.equal(res.body.driverId, null);
+});
+
+test("PATCH /api/trips/:id/status releases the driver's RIDE assignment on COMPLETED, freeing them for a courier request", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-release-1", role: "RIDER", firstName: "R", lastName: "L", email: "rl@example.com" },
+  });
+  const driver = await createDriver("driver-sub-release-1");
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "MATCHED" },
+  });
+  await prisma.driverAssignment.create({
+    data: { driverId: driver.id, assignmentType: "RIDE", assignmentId: trip.id },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-release-1", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "COMPLETED", finalFare: 12 });
+
+  assert.equal(res.status, 200);
+  const assignment = await prisma.driverAssignment.findFirst({ where: { driverId: driver.id } });
+  assert.equal(assignment?.status, "ENDED");
+  assert.ok(assignment?.endedAt);
+});
+
+test("Concurrency: one ACTIVE driver — accepting a courier request and matching a new ride race — exactly one wins", async () => {
+  const sender = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-cr-race", role: "RIDER", firstName: "R", lastName: "S", email: "rs@example.com" },
+  });
+  const driver = await createDriver("driver-sub-cr-race");
+  const courierReq = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const riderToken = "mock.rider-sub-cr-race";
+  const driverToken = "mock.driver-sub-cr-race";
+  mock.method(verifier, "verify", async (candidate: string) => {
+    if (candidate === riderToken) return { sub: "rider-sub-cr-race", "cognito:groups": ["Rider"] } as never;
+    if (candidate === driverToken) return { sub: "driver-sub-cr-race", "cognito:groups": ["Driver"] } as never;
+    throw new Error("invalid token");
+  });
+
+  const [tripRes, courierRes] = await Promise.all([
+    request(app)
+      .post("/api/trips")
+      .set("Authorization", `Bearer ${riderToken}`)
+      .send({ pickup: "Home", destination: "Airport", estimatedFare: 20 }),
+    request(app)
+      .patch(`/api/courier-requests/${courierReq.id}/accept`)
+      .set("Authorization", `Bearer ${driverToken}`),
+  ]);
+
+  assert.equal(tripRes.status, 201);
+  assert.ok(courierRes.status === 200 || courierRes.status === 409);
+
+  const finalTrip = await prisma.trip.findUnique({ where: { id: tripRes.body.id } });
+  const finalCourier = await prisma.courierRequest.findUnique({ where: { id: courierReq.id } });
+
+  const tripWon = finalTrip?.driverId === driver.id;
+  const courierWon = finalCourier?.driverId === driver.id;
+  // The single driver can win at most one of the two competing assignments
+  // — never both, regardless of which request happened to commit first.
+  assert.notEqual(tripWon, courierWon);
+
+  const activeAssignments = await prisma.driverAssignment.findMany({
+    where: { driverId: driver.id, status: "ACTIVE" },
+  });
+  assert.equal(activeAssignments.length, 1);
+});

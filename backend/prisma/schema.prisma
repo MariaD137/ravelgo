@@ -101,6 +101,29 @@ enum PayoutStatus {
   CANCELLED
 }
 
+// Which domain currently holds a driver operationally busy. One row per
+// active occupation — see DriverAssignment's own comment for the invariant
+// this enum backs.
+enum AssignmentType {
+  RIDE
+  COURIER
+  RENTAL
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  ENDED
+}
+
+enum RentalBookingStatus {
+  REQUESTED
+  CONFIRMED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  REJECTED
+}
+
 model User {
   id                String   @id @default(uuid())
   cognitoSub        String   @unique
@@ -123,6 +146,7 @@ model User {
   promotionRedemptions PromotionRedemption[]
   bankAccount       DriverBankAccount?
   payouts           Payout[]
+  rentalBookings    RentalBooking[]
 }
 
 model Driver {
@@ -145,6 +169,7 @@ model Driver {
   rentalListings    RentalListing[]
   courierRequestsHandled CourierRequest[] @relation("CourierDriver")
   subscription      DriverSubscription?
+  assignments       DriverAssignment[]
 }
 
 model Vehicle {
@@ -161,6 +186,9 @@ model Vehicle {
   createdAt        DateTime @default(now())
 
   rentalListings   RentalListing[]
+  rentalBookings   RentalBooking[]
+  trips            Trip[]
+  assignments      DriverAssignment[]
 }
 
 model Trip {
@@ -169,6 +197,12 @@ model Trip {
   rider         User       @relation("RiderTrips", fields: [riderId], references: [id])
   driverId      String?
   driver        Driver?    @relation("DriverTrips", fields: [driverId], references: [id])
+  // Nullable: trips created before this column existed have no determinable
+  // vehicle and are never backfilled (see the migration's own comment for
+  // why guessing one would be inventing data). New trips get one assigned
+  // by matchDriverToTrip() at match time, once the matched driver is known.
+  vehicleId     String?
+  vehicle       Vehicle?   @relation(fields: [vehicleId], references: [id])
   pickup        String
   destination   String
   estimatedFare Float
@@ -214,6 +248,8 @@ model RentalListing {
   location   String
   status     RentalListingStatus  @default(PENDING_APPROVAL)
   createdAt  DateTime             @default(now())
+
+  bookings   RentalBooking[]
 }
 
 model SupportTicket {
@@ -388,4 +424,69 @@ model Payout {
   @@index([driverId])
   @@index([status])
   @@index([createdAt])
+}
+
+// The single cross-domain record of "what is this driver doing right now."
+// Ride matching, courier accept, and rental activation all read/write this
+// table instead of each other's — Ride/Courier/Rental stay unaware of one
+// another's schema, but share this one row shape to answer "is driver X
+// free" without a driver having to be asked three separate questions.
+//
+// Invariant: at most one ACTIVE row per driver. The status/assignmentType
+// enums here are the app-level view of that invariant; the actual guarantee
+// is a partial unique index added by hand in this table's migration
+// (`CREATE UNIQUE INDEX ... ON "DriverAssignment"("driverId") WHERE status
+// = 'ACTIVE'`) — Prisma's schema DSL has no WHERE clause for @@unique, so it
+// isn't expressible here. That index is what stops two concurrent
+// reservations for the same driver even if the application-level check in
+// services/driver-availability.ts were ever bypassed or raced.
+model DriverAssignment {
+  id             String           @id @default(uuid())
+  driverId       String
+  driver         Driver           @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  assignmentType AssignmentType
+  // The Trip.id / CourierRequest.id / RentalBooking.id this occupation is
+  // for. Not a Prisma relation on purpose: a single foreign key can't point
+  // at three different tables depending on assignmentType, and adding three
+  // nullable relation columns instead would let a row reference more than
+  // one domain's record at once, which is exactly what this table exists to
+  // prevent. Row shape is intentionally shallow — details of the underlying
+  // ride/delivery/rental stay owned by that domain's own model.
+  assignmentId   String
+  vehicleId      String?
+  vehicle        Vehicle?         @relation(fields: [vehicleId], references: [id])
+  status         AssignmentStatus @default(ACTIVE)
+  startedAt      DateTime         @default(now())
+  endedAt        DateTime?
+
+  @@index([driverId])
+  @@index([assignmentType, assignmentId])
+  @@index([vehicleId])
+}
+
+// A real transaction against a RentalListing (the ad). RentalListing itself
+// stays listing-only — PENDING_APPROVAL/APPROVED/REJECTED describes whether
+// the vehicle may be advertised, not whether it is currently being rented.
+model RentalBooking {
+  id              String              @id @default(uuid())
+  rentalListingId String
+  rentalListing   RentalListing       @relation(fields: [rentalListingId], references: [id], onDelete: Cascade)
+  renterId        String
+  renter          User                @relation(fields: [renterId], references: [id])
+  vehicleId       String
+  vehicle         Vehicle             @relation(fields: [vehicleId], references: [id])
+  startAt         DateTime
+  endAt           DateTime
+  status          RentalBookingStatus @default(REQUESTED)
+  price           Float
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  // Overlap prevention (Part 12) is enforced transactionally in
+  // services/rentals.ts, not by a DB exclusion constraint — an EXCLUDE ...
+  // USING gist constraint would need the btree_gist extension enabled on
+  // the target Postgres instance, which isn't something this change can ask
+  // an already-provisioned RDS instance to install. This index supports the
+  // transactional overlap query's WHERE clause.
+  @@index([vehicleId, status])
 }

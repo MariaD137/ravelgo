@@ -2,12 +2,9 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { findOwnDriver } from "../services/driver";
 
 export const vehiclesRouter = Router();
-
-async function findOwnDriver(cognitoSub: string) {
-  return prisma.driver.findFirst({ where: { user: { cognitoSub } } });
-}
 
 // Driver: list my own vehicles
 vehiclesRouter.get("/vehicles/me", requireAuth, requireRole("Driver"), async (req, res) => {

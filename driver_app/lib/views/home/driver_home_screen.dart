@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/models/driver_operational_state.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
 import 'package:ravelgo_driver_app/models/ride_request.dart';
+import 'package:ravelgo_driver_app/services/driver_session.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
+import 'package:ravelgo_driver_app/views/courier/available_courier_requests_screen.dart';
 import 'package:ravelgo_driver_app/views/riderequest/incoming_request_sheet.dart';
 import 'package:ravelgo_driver_app/views/trip/active_trip_screen.dart';
 
@@ -97,20 +100,68 @@ class DriverHomeScreen extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 20),
-                  if (profile.isOnline)
-                    AppComponents.primaryButton(
-                      text: "Simulate incoming ride request",
-                      onPressed: () => _simulateRequest(context),
-                    )
-                  else
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.04), borderRadius: BorderRadius.circular(12)),
-                      child: const Text(
-                        "Go online to start receiving ride, courier and delivery requests matched to your preferences.",
-                        style: TextStyle(fontSize: 13, color: Colors.black54),
-                      ),
-                    ),
+                  // Gated by DriverSession.instance.state, not just
+                  // profile.isOnline: this is a UI convenience (Part 15) so
+                  // the driver isn't shown "start a new job" actions while
+                  // already on one — the backend independently rejects the
+                  // same conflicting action regardless of what this button
+                  // shows (Part 18), so this gating never needs to be
+                  // perfectly correct to keep the driver safe from a
+                  // double-booking, only to keep the UI honest.
+                  ListenableBuilder(
+                    listenable: DriverSession.instance,
+                    builder: (context, _) {
+                      final busy = DriverSession.instance.state.isBusy;
+                      if (!profile.isOnline) {
+                        return Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Text(
+                            "Go online to start receiving ride, courier and delivery requests matched to your preferences.",
+                            style: TextStyle(fontSize: 13, color: Colors.black54),
+                          ),
+                        );
+                      }
+                      if (busy) {
+                        return Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            "You're ${DriverSession.instance.state.label.toLowerCase()} — new ride, delivery and rental requests are paused until it's done.",
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                          ),
+                        );
+                      }
+                      return Column(
+                        children: [
+                          AppComponents.primaryButton(
+                            text: "Simulate incoming ride request",
+                            onPressed: () => _simulateRequest(context),
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const AvailableCourierRequestsScreen()),
+                              );
+                            },
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(double.infinity, 50),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: const Text("View available deliveries"),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                 ],
               ),
             ),

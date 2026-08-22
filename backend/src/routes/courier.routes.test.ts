@@ -160,6 +160,163 @@ test("PATCH /api/courier-requests/:id/accept: two drivers racing for the same re
   assert.ok(final?.driverId);
 });
 
+test("PATCH /api/courier-requests/:id/accept rejects a driver already MATCHED on a ride (Ride->Courier)", async () => {
+  const sender = await createRider("rider-sub-busy-1");
+  const driver = await createDriver("driver-sub-busy-1");
+  // Simulate the driver already holding an active RIDE assignment, the same
+  // row shape matchDriverToTrip() would have created.
+  await prisma.driverAssignment.create({
+    data: { driverId: driver.id, assignmentType: "RIDE", assignmentId: "some-trip-id" },
+  });
+  const courierReq = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-busy-1", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/courier-requests/${courierReq.id}/accept`)
+    .set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, "DRIVER_BUSY");
+  assert.equal(res.body.activeAssignmentType, "RIDE");
+
+  const final = await prisma.courierRequest.findUnique({ where: { id: courierReq.id } });
+  assert.equal(final?.status, "REQUESTED");
+  assert.equal(final?.driverId, null);
+});
+
+test("PATCH /api/courier-requests/:id/accept rejects a driver already on another active courier request (Courier->Courier)", async () => {
+  const sender = await createRider("rider-sub-busy-2");
+  const driver = await createDriver("driver-sub-busy-2");
+  const firstReq = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      driverId: driver.id,
+      status: "MATCHED",
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box 1",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+  await prisma.driverAssignment.create({
+    data: { driverId: driver.id, assignmentType: "COURIER", assignmentId: firstReq.id },
+  });
+  const secondReq = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      pickupAddress: "C",
+      dropoffAddress: "D",
+      packageDescription: "Box 2",
+      recipientName: "Y",
+      recipientPhone: "555-2",
+      estimatedFare: 15,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-busy-2", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/courier-requests/${secondReq.id}/accept`)
+    .set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, "DRIVER_BUSY");
+  assert.equal(res.body.activeAssignmentType, "COURIER");
+  assert.equal(res.body.activeAssignmentId, firstReq.id);
+});
+
+test("PATCH /api/courier-requests/:id/accept: one driver racing to accept two different requests — exactly one wins (concurrency)", async () => {
+  const sender = await createRider("rider-sub-race-2");
+  const driver = await createDriver("driver-sub-race-c");
+  const reqA = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box A",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+  const reqB = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      pickupAddress: "C",
+      dropoffAddress: "D",
+      packageDescription: "Box B",
+      recipientName: "Y",
+      recipientPhone: "555-2",
+      estimatedFare: 12,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-race-c", groups: ["Driver"] });
+  const [resA, resB] = await Promise.all([
+    request(app).patch(`/api/courier-requests/${reqA.id}/accept`).set("Authorization", `Bearer ${token}`),
+    request(app).patch(`/api/courier-requests/${reqB.id}/accept`).set("Authorization", `Bearer ${token}`),
+  ]);
+
+  const statuses = [resA.status, resB.status].sort();
+  assert.deepEqual(statuses, [200, 409]);
+
+  const activeAssignments = await prisma.driverAssignment.findMany({
+    where: { driverId: driver.id, status: "ACTIVE" },
+  });
+  assert.equal(activeAssignments.length, 1);
+
+  const [finalA, finalB] = await Promise.all([
+    prisma.courierRequest.findUnique({ where: { id: reqA.id } }),
+    prisma.courierRequest.findUnique({ where: { id: reqB.id } }),
+  ]);
+  const matchedCount = [finalA, finalB].filter((r) => r?.status === "MATCHED").length;
+  assert.equal(matchedCount, 1);
+});
+
+test("PATCH /api/courier-requests/:id/status releases the driver's assignment on DELIVERED", async () => {
+  const sender = await createRider("rider-sub-release-1");
+  const driver = await createDriver("driver-sub-release-1");
+  const courierReq = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      driverId: driver.id,
+      status: "MATCHED",
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+  await prisma.driverAssignment.create({
+    data: { driverId: driver.id, assignmentType: "COURIER", assignmentId: courierReq.id },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-release-1", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/courier-requests/${courierReq.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "DELIVERED" });
+
+  assert.equal(res.status, 200);
+
+  const assignment = await prisma.driverAssignment.findFirst({ where: { driverId: driver.id } });
+  assert.equal(assignment?.status, "ENDED");
+  assert.ok(assignment?.endedAt);
+});
+
 test("GET /api/courier-requests/:id denies a stranger and allows the sender", async () => {
   const sender = await createRider("rider-sub-5");
   const req = await prisma.courierRequest.create({

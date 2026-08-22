@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
+import 'package:ravelgo_driver_app/services/driver_session.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/account/account_screen.dart';
 import 'package:ravelgo_driver_app/views/earnings/earnings_screen.dart';
@@ -20,6 +21,19 @@ class _DriverShellState extends State<DriverShell> {
 
   void _setOnline(bool value) {
     setState(() => _profile = _profile.copyWith(isOnline: value));
+    // Keep the operational-state model (used for gating conflicting
+    // actions elsewhere, e.g. driver_home_screen.dart) in sync with the
+    // online/offline toggle. Never overrides an existing busy state (RIDE/
+    // COURIER/RENTAL) — a driver mid-delivery who happens to flip this
+    // switch stays correctly marked busy; going offline is intentionally
+    // not modeled as clearing a busy assignment.
+    if (!DriverSession.instance.state.isBusy) {
+      if (value) {
+        DriverSession.instance.goAvailable();
+      } else {
+        DriverSession.instance.goOffline();
+      }
+    }
   }
 
   @override

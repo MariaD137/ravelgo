@@ -5,6 +5,8 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { broadcastTripStatus, getLatestDriverLocation } from "../realtime/hub";
 import { matchDriverToTrip } from "../services/matching";
+import { findOwnDriver } from "../services/driver";
+import { releaseDriver } from "../services/driver-availability";
 import {
   FINAL_FARE_MAX_RATIO,
   FINAL_FARE_MIN_RATIO,
@@ -12,6 +14,12 @@ import {
   getActivePricingRule,
   getSurgeMultiplier,
 } from "../services/pricing";
+
+// Terminal Trip statuses: once reached, the driver is no longer
+// operationally occupied by this ride and their DriverAssignment (if any)
+// is released so they can be matched to a new ride, or accept a courier
+// request/rental, again.
+const TERMINAL_TRIP_STATUSES = ["COMPLETED", "CANCELLED", "DISPUTED"] as const;
 
 export const tripsRouter = Router();
 
@@ -112,7 +120,7 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
 
   const isAdmin = req.user!.groups.includes("Admin");
   if (!isAdmin) {
-    const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+    const driver = await findOwnDriver(req.user!.sub);
     if (!driver || existing.driverId !== driver.id) {
       return res.status(403).json({ error: "Not authorized to update this trip" });
     }
@@ -134,13 +142,24 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
     }
   }
 
-  const trip = await prisma.trip.update({
-    where: { id: req.params.id },
-    data: {
-      status: parsed.data.status,
-      finalFare: parsed.data.finalFare,
-      completedAt: parsed.data.status === "COMPLETED" ? new Date() : undefined,
-    },
+  const trip = await prisma.$transaction(async (tx) => {
+    const updated = await tx.trip.update({
+      where: { id: req.params.id },
+      data: {
+        status: parsed.data.status,
+        finalFare: parsed.data.finalFare,
+        completedAt: parsed.data.status === "COMPLETED" ? new Date() : undefined,
+      },
+    });
+
+    if (
+      TERMINAL_TRIP_STATUSES.includes(parsed.data.status as (typeof TERMINAL_TRIP_STATUSES)[number]) &&
+      existing.driverId
+    ) {
+      await releaseDriver(tx, { driverId: existing.driverId, assignmentType: "RIDE", assignmentId: updated.id });
+    }
+
+    return updated;
   });
   broadcastTripStatus(trip.id, trip.status, trip.finalFare);
   res.json(trip);
@@ -167,9 +186,15 @@ tripsRouter.patch("/trips/:id/cancel", requireAuth, requireRole("Rider"), async 
     return res.status(409).json({ error: `Trip cannot be cancelled from status ${trip.status}` });
   }
 
-  const updated = await prisma.trip.update({
-    where: { id: req.params.id },
-    data: { status: "CANCELLED" },
+  const updated = await prisma.$transaction(async (tx) => {
+    const cancelled = await tx.trip.update({
+      where: { id: req.params.id },
+      data: { status: "CANCELLED" },
+    });
+    if (trip.driverId) {
+      await releaseDriver(tx, { driverId: trip.driverId, assignmentType: "RIDE", assignmentId: cancelled.id });
+    }
+    return cancelled;
   });
   broadcastTripStatus(updated.id, updated.status, updated.finalFare);
   res.json(updated);

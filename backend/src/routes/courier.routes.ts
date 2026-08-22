@@ -3,12 +3,11 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { findOwnDriver } from "../services/driver";
+import { DriverBusyConflict, requireDriverAvailable, sendDriverBusyResponse } from "../services/driver-availability";
+import { CourierRequestConflict, acceptCourierRequest, updateCourierStatus } from "../services/courier";
 
 export const courierRouter = Router();
-
-async function findOwnDriver(cognitoSub: string) {
-  return prisma.driver.findFirst({ where: { user: { cognitoSub } } });
-}
 
 const createCourierSchema = z.object({
   pickupAddress: z.string().min(1),
@@ -52,30 +51,34 @@ courierRouter.get("/courier-requests/available", requireAuth, requireRole("Drive
   res.json(paginate(requests, total, page, pageSize));
 });
 
-// Driver: accept a courier request
-courierRouter.patch("/courier-requests/:id/accept", requireAuth, requireRole("Driver"), async (req, res) => {
-  const driver = await findOwnDriver(req.user!.sub);
-  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+// Driver: accept a courier request. requireDriverAvailable is a fast-path
+// check (rejects a driver already known to be busy, attaches req.driver);
+// the actual race-safety comes from acceptCourierRequest's own SERIALIZABLE
+// transaction, which re-checks and reserves the driver atomically alongside
+// claiming the request — see services/courier.ts's doc comment.
+courierRouter.patch(
+  "/courier-requests/:id/accept",
+  requireAuth,
+  requireRole("Driver"),
+  requireDriverAvailable,
+  async (req, res) => {
+    const existing = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: "Courier request not found" });
 
-  const existing = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
-  if (!existing) return res.status(404).json({ error: "Courier request not found" });
-
-  // Atomic conditional update: the "still REQUESTED and unassigned" check
-  // and the assignment happen in one statement, so two drivers racing to
-  // accept the same request can't both succeed — only the update that
-  // actually matches the WHERE clause changes any rows; the loser's
-  // updateMany matches zero and falls through to the 409 below.
-  const { count } = await prisma.courierRequest.updateMany({
-    where: { id: req.params.id, status: "REQUESTED", driverId: null },
-    data: { driverId: driver.id, status: "MATCHED" },
-  });
-  if (count === 0) {
-    return res.status(409).json({ error: "Request already matched" });
-  }
-
-  const request = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
-  res.json(request);
-});
+    try {
+      const request = await acceptCourierRequest(req.driver!.id, req.params.id);
+      res.json(request);
+    } catch (err) {
+      if (err instanceof CourierRequestConflict) {
+        return res.status(409).json({ error: err.message });
+      }
+      if (err instanceof DriverBusyConflict) {
+        return sendDriverBusyResponse(res, err);
+      }
+      throw err;
+    }
+  },
+);
 
 const updateStatusSchema = z.object({
   status: z.enum(["IN_TRANSIT", "DELIVERED", "CANCELLED"]),
@@ -98,14 +101,7 @@ courierRouter.patch("/courier-requests/:id/status", requireAuth, requireRole("Dr
     }
   }
 
-  const request = await prisma.courierRequest.update({
-    where: { id: req.params.id },
-    data: {
-      status: parsed.data.status,
-      finalFare: parsed.data.finalFare,
-      deliveredAt: parsed.data.status === "DELIVERED" ? new Date() : undefined,
-    },
-  });
+  const request = await updateCourierStatus(req.params.id, parsed.data);
   res.json(request);
 });
 

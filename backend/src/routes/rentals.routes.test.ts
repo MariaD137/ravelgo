@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { after, afterEach, beforeEach, test } from "node:test";
+import { after, afterEach, beforeEach, mock, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
+import { verifier } from "../middleware/auth";
 import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
 
 beforeEach(resetDb);
@@ -71,6 +72,232 @@ test("GET /api/rentals only shows approved listings to non-admin callers", async
   assert.equal(res.body.total, 1);
   assert.equal(res.body.data.length, 1);
   assert.equal(res.body.data[0].status, "APPROVED");
+});
+
+async function createRider(cognitoSub: string) {
+  return prisma.user.create({
+    data: { cognitoSub, role: "RIDER", firstName: "R", lastName: "I", email: `${cognitoSub}@example.com` },
+  });
+}
+
+async function createApprovedListing(cognitoSub: string, dailyRate = 100) {
+  const { driver, vehicle } = await createDriverWithVehicle(cognitoSub);
+  const listing = await prisma.rentalListing.create({
+    data: { driverId: driver.id, vehicleId: vehicle.id, dailyRate, location: "Lagos", status: "APPROVED" },
+  });
+  return { driver, vehicle, listing };
+}
+
+test("POST /api/rentals/:id/bookings creates a booking priced from the listing's dailyRate", async () => {
+  const { listing } = await createApprovedListing("driver-sub-book-1", 100);
+  await createRider("rider-sub-book-1");
+  const token = mockAuthAs({ sub: "rider-sub-book-1", groups: ["Rider"] });
+
+  const res = await request(app)
+    .post(`/api/rentals/${listing.id}/bookings`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ startAt: "2027-01-01T00:00:00.000Z", endAt: "2027-01-03T00:00:00.000Z" });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.status, "REQUESTED");
+  assert.equal(res.body.price, 200);
+});
+
+test("POST /api/rentals/:id/bookings rejects overlapping dates against a CONFIRMED booking (Rental->Rental)", async () => {
+  const { listing, vehicle } = await createApprovedListing("driver-sub-book-2", 100);
+  const renter1 = await createRider("rider-sub-book-2a");
+  await prisma.rentalBooking.create({
+    data: {
+      rentalListingId: listing.id,
+      renterId: renter1.id,
+      vehicleId: vehicle.id,
+      startAt: new Date("2027-02-05T00:00:00.000Z"),
+      endAt: new Date("2027-02-10T00:00:00.000Z"),
+      status: "CONFIRMED",
+      price: 500,
+    },
+  });
+  await createRider("rider-sub-book-2b");
+  const token = mockAuthAs({ sub: "rider-sub-book-2b", groups: ["Rider"] });
+
+  const res = await request(app)
+    .post(`/api/rentals/${listing.id}/bookings`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ startAt: "2027-02-07T00:00:00.000Z", endAt: "2027-02-12T00:00:00.000Z" });
+
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, "RENTAL_OVERLAP");
+});
+
+test("POST /api/rentals/:id/bookings does not block against a REQUESTED (unconfirmed) booking", async () => {
+  const { listing, vehicle } = await createApprovedListing("driver-sub-book-3", 100);
+  const renter1 = await createRider("rider-sub-book-3a");
+  await prisma.rentalBooking.create({
+    data: {
+      rentalListingId: listing.id,
+      renterId: renter1.id,
+      vehicleId: vehicle.id,
+      startAt: new Date("2027-03-05T00:00:00.000Z"),
+      endAt: new Date("2027-03-10T00:00:00.000Z"),
+      status: "REQUESTED",
+      price: 500,
+    },
+  });
+  await createRider("rider-sub-book-3b");
+  const token = mockAuthAs({ sub: "rider-sub-book-3b", groups: ["Rider"] });
+
+  const res = await request(app)
+    .post(`/api/rentals/${listing.id}/bookings`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ startAt: "2027-03-07T00:00:00.000Z", endAt: "2027-03-09T00:00:00.000Z" });
+
+  assert.equal(res.status, 201);
+});
+
+test("Concurrency: two renters booking overlapping dates for the same vehicle — exactly one wins", async () => {
+  const { listing } = await createApprovedListing("driver-sub-book-race", 100);
+
+  const tokenA = "mock.rider-sub-book-race-a";
+  const tokenB = "mock.rider-sub-book-race-b";
+  await createRider("rider-sub-book-race-a");
+  await createRider("rider-sub-book-race-b");
+  mock.method(verifier, "verify", async (candidate: string) => {
+    if (candidate === tokenA) return { sub: "rider-sub-book-race-a", "cognito:groups": ["Rider"] } as never;
+    if (candidate === tokenB) return { sub: "rider-sub-book-race-b", "cognito:groups": ["Rider"] } as never;
+    throw new Error("invalid token");
+  });
+
+  const body = { startAt: "2027-04-01T00:00:00.000Z", endAt: "2027-04-05T00:00:00.000Z" };
+  const [resA, resB] = await Promise.all([
+    request(app).post(`/api/rentals/${listing.id}/bookings`).set("Authorization", `Bearer ${tokenA}`).send(body),
+    request(app).post(`/api/rentals/${listing.id}/bookings`).set("Authorization", `Bearer ${tokenB}`).send(body),
+  ]);
+
+  // Both REQUESTED bookings are logically allowed to coexist (REQUESTED
+  // doesn't block — see OVERLAP_BLOCKING_STATUSES), so a 201/201 outcome is
+  // the common case. But because the overlap check and the insert run
+  // inside a SERIALIZABLE transaction (Part 12: never check-then-create
+  // outside a transaction), Postgres's serializable snapshot isolation can
+  // still abort one of two transactions that scanned the same predicate
+  // range (same vehicleId) and then both inserted into it — a standard SSI
+  // "dangerous structure," not a bug. Either outcome is therefore
+  // acceptable here: what must never happen is silent data loss (both
+  // succeeding with one overwriting the other) or the created booking being
+  // for the wrong vehicle/renter.
+  const statuses = [resA.status, resB.status];
+  assert.ok(
+    statuses.every((s) => s === 201 || s === 409),
+    `expected only 201/409, got ${statuses.join(",")}`,
+  );
+  assert.ok(statuses.includes(201), "at least one concurrent booking attempt must succeed");
+  if (resA.status === 201 && resB.status === 201) {
+    assert.notEqual(resA.body.id, resB.body.id);
+  }
+});
+
+test("Concurrency: confirming both overlapping REQUESTED bookings then activating both — only one activation can hold the vehicle at a time via driver reservation", async () => {
+  const { driver, listing } = await createApprovedListing("driver-sub-book-race2", 100);
+  const renter1 = await createRider("rider-sub-book-race2a");
+  const renter2 = await createRider("rider-sub-book-race2b");
+  const bookingA = await prisma.rentalBooking.create({
+    data: {
+      rentalListingId: listing.id,
+      renterId: renter1.id,
+      vehicleId: listing.vehicleId,
+      startAt: new Date("2027-05-01T00:00:00.000Z"),
+      endAt: new Date("2027-05-05T00:00:00.000Z"),
+      status: "CONFIRMED",
+      price: 400,
+    },
+  });
+  const bookingB = await prisma.rentalBooking.create({
+    data: {
+      rentalListingId: listing.id,
+      renterId: renter2.id,
+      vehicleId: listing.vehicleId,
+      startAt: new Date("2027-06-01T00:00:00.000Z"),
+      endAt: new Date("2027-06-05T00:00:00.000Z"),
+      status: "CONFIRMED",
+      price: 400,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-book-race2", groups: ["Driver"] });
+  const [resA, resB] = await Promise.all([
+    request(app).patch(`/api/rentals/bookings/${bookingA.id}/activate`).set("Authorization", `Bearer ${token}`),
+    request(app).patch(`/api/rentals/bookings/${bookingB.id}/activate`).set("Authorization", `Bearer ${token}`),
+  ]);
+
+  // The single driver behind this listing can only be operationally
+  // occupied by one active rental at a time, even though the two bookings'
+  // date ranges themselves don't overlap.
+  const statuses = [resA.status, resB.status].sort();
+  assert.deepEqual(statuses, [200, 409]);
+
+  const activeAssignments = await prisma.driverAssignment.findMany({
+    where: { driverId: driver.id, status: "ACTIVE" },
+  });
+  assert.equal(activeAssignments.length, 1);
+});
+
+test("PATCH /api/rentals/bookings/:id/activate rejects when the driver is already MATCHED on a ride (Ride->Rental)", async () => {
+  const { driver, listing } = await createApprovedListing("driver-sub-book-4", 100);
+  const renter = await createRider("rider-sub-book-4");
+  const booking = await prisma.rentalBooking.create({
+    data: {
+      rentalListingId: listing.id,
+      renterId: renter.id,
+      vehicleId: listing.vehicleId,
+      startAt: new Date("2027-07-01T00:00:00.000Z"),
+      endAt: new Date("2027-07-05T00:00:00.000Z"),
+      status: "CONFIRMED",
+      price: 400,
+    },
+  });
+  await prisma.driverAssignment.create({
+    data: { driverId: driver.id, assignmentType: "RIDE", assignmentId: "some-trip-id" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-book-4", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/rentals/bookings/${booking.id}/activate`)
+    .set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, "DRIVER_BUSY");
+  assert.equal(res.body.activeAssignmentType, "RIDE");
+
+  const finalBooking = await prisma.rentalBooking.findUnique({ where: { id: booking.id } });
+  assert.equal(finalBooking?.status, "CONFIRMED");
+});
+
+test("PATCH /api/rentals/bookings/:id/end releases the driver's RENTAL assignment on COMPLETED", async () => {
+  const { driver, listing } = await createApprovedListing("driver-sub-book-5", 100);
+  const renter = await createRider("rider-sub-book-5");
+  const booking = await prisma.rentalBooking.create({
+    data: {
+      rentalListingId: listing.id,
+      renterId: renter.id,
+      vehicleId: listing.vehicleId,
+      startAt: new Date("2027-08-01T00:00:00.000Z"),
+      endAt: new Date("2027-08-05T00:00:00.000Z"),
+      status: "ACTIVE",
+      price: 400,
+    },
+  });
+  await prisma.driverAssignment.create({
+    data: { driverId: driver.id, assignmentType: "RENTAL", assignmentId: booking.id, vehicleId: listing.vehicleId },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-book-5", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/rentals/bookings/${booking.id}/end`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "COMPLETED" });
+
+  assert.equal(res.status, 200);
+  const assignment = await prisma.driverAssignment.findFirst({ where: { driverId: driver.id } });
+  assert.equal(assignment?.status, "ENDED");
 });
 
 test("PATCH /api/rentals/:id/status rejects a non-Admin caller", async () => {
