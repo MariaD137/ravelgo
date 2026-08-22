@@ -80,7 +80,7 @@ export async function calculatePayoutForPeriod(
  * Create a payout record (does not actually process payment to bank).
  * Separate service handles actual Stripe/payment provider integration.
  */
-export async function createPayout(calculation: PayoutCalculation): Promise<any> {
+export async function createPayout(calculation: PayoutCalculation) {
   const payout = await prisma.payout.create({
     data: {
       driverId: calculation.driverId,
@@ -103,7 +103,7 @@ export async function createPayout(calculation: PayoutCalculation): Promise<any>
  * Process a pending payout (mark as PROCESSING, send to Stripe, etc).
  * In production, integrate with Stripe Connect for ACH transfers.
  */
-export async function processPayout(payoutId: string): Promise<any> {
+export async function processPayout(payoutId: string) {
   const payout = await prisma.payout.findUnique({
     where: { id: payoutId },
     include: {
@@ -134,7 +134,7 @@ export async function processPayout(payoutId: string): Promise<any> {
  * Mark a payout as completed (successful transfer to driver's bank).
  * Called from webhook handler when Stripe confirms delivery.
  */
-export async function completePayout(payoutId: string, transactionId?: string): Promise<any> {
+export async function completePayout(payoutId: string, transactionId?: string) {
   return prisma.payout.update({
     where: { id: payoutId },
     data: {
@@ -148,7 +148,7 @@ export async function completePayout(payoutId: string, transactionId?: string): 
 /**
  * Mark a payout as failed with reason.
  */
-export async function failPayout(payoutId: string, reason: string): Promise<any> {
+export async function failPayout(payoutId: string, reason: string) {
   return prisma.payout.update({
     where: { id: payoutId },
     data: {
@@ -159,27 +159,16 @@ export async function failPayout(payoutId: string, reason: string): Promise<any>
 }
 
 /**
- * Get payout history for a driver.
- */
-export async function getPayoutHistory(driverId: string, limit: number = 10): Promise<any[]> {
-  return prisma.payout.findMany({
-    where: { driverId },
-    orderBy: { createdAt: "desc" },
-    take: limit,
-  });
-}
-
-/**
  * Calculate and create pending payouts for all active drivers for a given period.
  * Typically run weekly/monthly via scheduled job.
  */
-export async function generatePayoutsForPeriod(period: string): Promise<any[]> {
+export async function generatePayoutsForPeriod(period: string) {
   // Get all active drivers
   const drivers = await prisma.user.findMany({
     where: { role: "DRIVER", suspended: false },
   });
 
-  const payouts = [];
+  const payouts: Awaited<ReturnType<typeof createPayout>>[] = [];
   for (const driver of drivers) {
     try {
       const calculation = await calculatePayoutForPeriod(driver.id, period);

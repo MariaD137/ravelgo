@@ -1,4 +1,5 @@
 import { type NextFunction, type Request, type Response } from "express";
+import { Prisma } from "@prisma/client";
 import { ApiError, ErrorCodes, ErrorResponse } from "../lib/errors";
 
 /**
@@ -45,14 +46,19 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
   }
 
   // Handle Prisma errors
-  if (err.name === "PrismaClientKnownRequestError") {
-    const prismaErr = err as any;
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    const prismaErr = err;
     if (prismaErr.code === "P2002") {
-      // Unique constraint violation
+      // Unique constraint violation. meta.target's shape isn't part of
+      // Prisma's public types (it's the driver-reported list of columns in
+      // the violated constraint) — narrow it defensively rather than
+      // trusting its shape.
+      const target = prismaErr.meta?.target;
+      const field = Array.isArray(target) && typeof target[0] === "string" ? target[0] : "unknown";
       const response: ErrorResponse = {
         error: {
           code: ErrorCodes.CONFLICT,
-          message: `Duplicate value for field: ${prismaErr.meta?.target?.[0] || "unknown"}`,
+          message: `Duplicate value for field: ${field}`,
           timestamp: new Date().toISOString(),
         },
       };

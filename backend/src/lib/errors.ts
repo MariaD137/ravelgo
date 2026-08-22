@@ -3,6 +3,8 @@
  * All endpoints should use these formats for consistent error handling.
  */
 
+import type { ZodError } from "zod";
+
 export interface ValidationError {
   field: string;
   message: string;
@@ -82,7 +84,7 @@ export const Errors = {
  *     throw formatZodError(parsed.error);
  *   }
  */
-export function formatZodError(zodError: any): ApiError {
+export function formatZodError(zodError: ZodError): ApiError {
   const details: ValidationError[] = [];
 
   if (zodError.issues) {

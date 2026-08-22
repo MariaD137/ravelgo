@@ -5,19 +5,13 @@
 
 import { Router } from "express";
 import { z } from "zod";
+import type { PayoutStatus } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { validate } from "../lib/validate";
 import { Errors } from "../lib/errors";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
-import {
-  calculatePayoutForPeriod,
-  createPayout,
-  getPayoutHistory,
-  processPayout,
-  completePayout,
-  failPayout,
-} from "../services/payouts";
+import { calculatePayoutForPeriod, createPayout, processPayout, completePayout, failPayout } from "../services/payouts";
 
 export const payoutsRouter = Router();
 
@@ -229,6 +223,10 @@ payoutsRouter.post("/payouts/:id/fail", requireAuth, requireRole("Admin"), async
   }
 });
 
+const payoutStatusFilterSchema = z
+  .enum(["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"])
+  .optional();
+
 // Admin: list all payouts with filtering
 payoutsRouter.get("/payouts", requireAuth, requireRole("Admin"), async (req, res, next) => {
   try {
@@ -237,14 +235,20 @@ payoutsRouter.get("/payouts", requireAuth, requireRole("Admin"), async (req, res
       req.query,
       "Query parameters",
     );
-
-    const status = req.query.status ? String(req.query.status) : undefined;
+    // Validated against the real PayoutStatus enum rather than cast blindly
+    // — an unrecognized value here previously would have reached Prisma as
+    // `any` and thrown a raw database error instead of a clean 400.
+    const status: PayoutStatus | undefined = validate<PayoutStatus | undefined>(
+      payoutStatusFilterSchema,
+      req.query.status,
+      "status",
+    );
     const driverId = req.query.driverId ? String(req.query.driverId) : undefined;
 
     const [payouts, total] = await Promise.all([
       prisma.payout.findMany({
         where: {
-          ...(status && { status: status as any }),
+          ...(status && { status }),
           ...(driverId && { driverId }),
         },
         orderBy: { createdAt: "desc" },
@@ -256,7 +260,7 @@ payoutsRouter.get("/payouts", requireAuth, requireRole("Admin"), async (req, res
       }),
       prisma.payout.count({
         where: {
-          ...(status && { status: status as any }),
+          ...(status && { status }),
           ...(driverId && { driverId }),
         },
       }),
