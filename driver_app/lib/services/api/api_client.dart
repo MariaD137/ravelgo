@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
-import 'auth_token_provider.dart';
+import 'auth_provider.dart';
 
 /// A backend error response, thrown for any non-2xx result. Carries the
 /// backend's own error shape — including the DRIVER_BUSY conflict format
@@ -28,16 +28,16 @@ class ApiException implements Exception {
 /// (ride_api.dart, courier_api.dart, driver_api.dart, ...) instead of each
 /// calling package:http directly. Resolves the backend base URL from .env
 /// (API_BASE_URL — already declared in .env.example, unused until this
-/// change), attaches the caller's bearer token via [AuthTokenProvider], and
+/// change), attaches the caller's bearer token via [AuthProvider], and
 /// turns a non-2xx response into an [ApiException]. Auth, base URL
 /// resolution, and error handling all live in exactly this one place.
 class ApiClient {
-  ApiClient({AuthTokenProvider? tokenProvider, http.Client? httpClient, Duration? timeout})
-    : _tokenProvider = tokenProvider ?? InMemoryAuthTokenProvider.instance,
+  ApiClient({AuthProvider? authProvider, http.Client? httpClient, Duration? timeout})
+    : _authProvider = authProvider ?? DevOnlyAuthProvider.instance,
       _http = httpClient ?? http.Client(),
       _timeout = timeout ?? const Duration(seconds: 20);
 
-  final AuthTokenProvider _tokenProvider;
+  final AuthProvider _authProvider;
   final http.Client _http;
   final Duration _timeout;
 
@@ -49,7 +49,7 @@ class ApiClient {
   String get _baseUrl => dotenv.isInitialized ? (dotenv.env['API_BASE_URL'] ?? '') : '';
 
   Future<Map<String, String>> _headers() async {
-    final token = await _tokenProvider.getAccessToken();
+    final token = await _authProvider.getAccessToken();
     return {
       'Content-Type': 'application/json',
       if (token != null) 'Authorization': 'Bearer $token',

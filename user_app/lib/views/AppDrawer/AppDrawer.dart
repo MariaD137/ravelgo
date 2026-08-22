@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/HomeView/scheduled_rides_screen.dart';
-import 'package:ravelgo_driver/views/User/invite_a_friend.dart';
-import 'package:ravelgo_driver/views/bottommenu/BottomNavigationView.dart';
+import 'package:ravelgo_rider_app/views/HomeView/scheduled_rides_screen.dart';
+import 'package:ravelgo_rider_app/views/User/invite_a_friend.dart';
+import 'package:ravelgo_rider_app/views/bottommenu/BottomNavigationView.dart';
 
 import '../User/user_summary.dart';
 

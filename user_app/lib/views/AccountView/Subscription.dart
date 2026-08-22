@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/AccountView/SubscriptionSuccessPage.dart';
+import 'package:ravelgo_rider_app/views/AccountView/SubscriptionSuccessPage.dart';
 
 class SubscriptionPage extends StatefulWidget {
   const SubscriptionPage({super.key});

@@ -37,6 +37,30 @@ courierRouter.post("/courier-requests", requireAuth, requireRole("Rider"), async
   res.status(201).json(request);
 });
 
+// Rider: my own courier request history. Registered before "/courier-requests/:id"
+// below — same ordering fix as "/trips/mine" vs "/trips/:id".
+courierRouter.get("/courier-requests/mine", requireAuth, requireRole("Rider"), async (req, res) => {
+  const parsed = paginationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { page, pageSize } = parsed.data;
+
+  const sender = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
+  if (!sender) return res.status(404).json({ error: "Sender not found" });
+
+  const where = { senderId: sender.id };
+  const [requests, total] = await Promise.all([
+    prisma.courierRequest.findMany({
+      where,
+      include: { driver: { include: { user: true } } },
+      orderBy: { requestedAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.courierRequest.count({ where }),
+  ]);
+  res.json(paginate(requests, total, page, pageSize));
+});
+
 // Driver: view unassigned courier requests to accept
 courierRouter.get("/courier-requests/available", requireAuth, requireRole("Driver"), async (req, res) => {
   const parsed = paginationQuerySchema.safeParse(req.query);

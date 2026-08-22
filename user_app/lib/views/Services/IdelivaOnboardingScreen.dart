@@ -1,6 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Services/IDelivaPage.dart';
+import 'package:ravelgo_rider_app/views/Services/IDelivaPage.dart';
 import 'IdelivaProfileScreen.dart';
 
 class IdelivaOnboardingScreen extends StatefulWidget {

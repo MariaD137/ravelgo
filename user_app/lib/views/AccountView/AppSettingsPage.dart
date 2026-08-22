@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/AccountView/VoiceOverPage.dart';
+import 'package:ravelgo_rider_app/views/AccountView/VoiceOverPage.dart';
 
 class AppSettingsPage extends StatelessWidget {
   const AppSettingsPage({super.key});

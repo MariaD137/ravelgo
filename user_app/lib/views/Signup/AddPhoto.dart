@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:ravelgo_driver/views/Signup/VehicleInformation.dart';
+import 'package:ravelgo_rider_app/views/Signup/VehicleInformation.dart';
 
 class AddPhotoScreen extends StatelessWidget {
   final ImagePicker _picker = ImagePicker();

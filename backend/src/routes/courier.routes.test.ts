@@ -439,3 +439,44 @@ test("GET /api/courier-requests/:id 404s cleanly on a malformed/garbage id (not 
 
   assert.equal(res.status, 404);
 });
+
+test("GET /api/courier-requests/mine returns only the calling sender's own requests, most recent first", async () => {
+  const sender = await createRider("rider-sub-mine-1");
+  const otherSender = await createRider("rider-sub-mine-2");
+  await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+  await prisma.courierRequest.create({
+    data: {
+      senderId: otherSender.id,
+      pickupAddress: "C",
+      dropoffAddress: "D",
+      packageDescription: "Box2",
+      recipientName: "Y",
+      recipientPhone: "555-2",
+      estimatedFare: 15,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-mine-1", groups: ["Rider"] });
+  const res = await request(app).get("/api/courier-requests/mine").set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.total, 1);
+  assert.equal(res.body.data.length, 1);
+  assert.equal(res.body.data[0].senderId, sender.id);
+});
+
+test("GET /api/courier-requests/mine rejects a Driver caller (Rider-only endpoint)", async () => {
+  const token = mockAuthAs({ sub: "driver-sub-mine-1", groups: ["Driver"] });
+  const res = await request(app).get("/api/courier-requests/mine").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 403);
+});

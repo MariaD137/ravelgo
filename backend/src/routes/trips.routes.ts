@@ -94,6 +94,31 @@ tripsRouter.post("/trips", requireAuth, requireRole("Rider"), async (req, res) =
   res.status(201).json(matched ?? trip);
 });
 
+// Rider: my own trip history. Registered before "/trips/:id" below — Express
+// matches path segments in registration order, so ":id" would otherwise
+// swallow "mine" (same fix already applied to "/drivers/me" vs "/drivers/:id").
+tripsRouter.get("/trips/mine", requireAuth, requireRole("Rider"), async (req, res) => {
+  const parsed = paginationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { page, pageSize } = parsed.data;
+
+  const rider = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
+  if (!rider) return res.status(404).json({ error: "Rider not found" });
+
+  const where = { riderId: rider.id };
+  const [trips, total] = await Promise.all([
+    prisma.trip.findMany({
+      where,
+      include: { driver: { include: { user: true } } },
+      orderBy: { requestedAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.trip.count({ where }),
+  ]);
+  res.json(paginate(trips, total, page, pageSize));
+});
+
 // Rider or Driver: view a trip they're party to
 tripsRouter.get("/trips/:id", requireAuth, async (req, res) => {
   const trip = await prisma.trip.findUnique({

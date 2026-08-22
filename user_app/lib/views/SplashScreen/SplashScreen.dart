@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Login/login.dart';
+import 'package:ravelgo_rider_app/views/Login/login.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});

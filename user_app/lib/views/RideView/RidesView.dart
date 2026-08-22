@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/RideView/RideDetailsView.dart';
+import 'package:ravelgo_rider_app/views/RideView/RideDetailsView.dart';
 
 class Ride {
   final DateTime dateTime;

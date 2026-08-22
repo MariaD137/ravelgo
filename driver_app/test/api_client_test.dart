@@ -5,14 +5,27 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:ravelgo_driver_app/services/api/api_client.dart';
-import 'package:ravelgo_driver_app/services/api/auth_token_provider.dart';
+import 'package:ravelgo_driver_app/services/api/auth_provider.dart';
 
-class _FixedTokenProvider implements AuthTokenProvider {
+class _FixedTokenProvider implements AuthProvider {
   _FixedTokenProvider(this.token);
   final String? token;
 
   @override
   Future<String?> getAccessToken() async => token;
+
+  @override
+  Future<bool> isAuthenticated() async => token != null;
+
+  @override
+  Future<void> login({required String username, required String password}) async {
+    throw UnimplementedError('not used by these tests');
+  }
+
+  @override
+  Future<void> logout() async {
+    throw UnimplementedError('not used by these tests');
+  }
 }
 
 void main() {
@@ -22,7 +35,7 @@ void main() {
       captured = request;
       return http.Response(jsonEncode({'ok': true}), 200);
     });
-    final api = ApiClient(tokenProvider: _FixedTokenProvider('tok-123'), httpClient: client);
+    final api = ApiClient(authProvider: _FixedTokenProvider('tok-123'), httpClient: client);
 
     final result = await api.get('/api/drivers/me');
 
@@ -37,7 +50,7 @@ void main() {
       captured = request;
       return http.Response(jsonEncode({}), 200);
     });
-    final api = ApiClient(tokenProvider: _FixedTokenProvider(null), httpClient: client);
+    final api = ApiClient(authProvider: _FixedTokenProvider(null), httpClient: client);
 
     await api.get('/api/drivers/me');
 
@@ -52,7 +65,7 @@ void main() {
       'activeAssignmentId': 'trip-1',
     };
     final client = MockClient((request) async => http.Response(jsonEncode(body), 409));
-    final api = ApiClient(tokenProvider: _FixedTokenProvider('t'), httpClient: client);
+    final api = ApiClient(authProvider: _FixedTokenProvider('t'), httpClient: client);
 
     await expectLater(
       api.patch('/api/courier-requests/1/accept'),
@@ -67,7 +80,7 @@ void main() {
 
   test('a non-JSON / empty error body still throws a usable ApiException', () async {
     final client = MockClient((request) async => http.Response('', 500));
-    final api = ApiClient(tokenProvider: _FixedTokenProvider('t'), httpClient: client);
+    final api = ApiClient(authProvider: _FixedTokenProvider('t'), httpClient: client);
 
     await expectLater(
       api.get('/api/health'),
@@ -81,7 +94,7 @@ void main() {
       requestedUri = request.url;
       return http.Response(jsonEncode({'data': []}), 200);
     });
-    final api = ApiClient(tokenProvider: _FixedTokenProvider('t'), httpClient: client);
+    final api = ApiClient(authProvider: _FixedTokenProvider('t'), httpClient: client);
 
     await api.get('/api/courier-requests/available', query: {'page': 2, 'pageSize': 10});
 
@@ -91,7 +104,7 @@ void main() {
 
   test('a SocketException (no connectivity) is wrapped as ApiException(code: NETWORK_ERROR)', () async {
     final client = MockClient((request) async => throw const SocketException('no route to host'));
-    final api = ApiClient(tokenProvider: _FixedTokenProvider('t'), httpClient: client);
+    final api = ApiClient(authProvider: _FixedTokenProvider('t'), httpClient: client);
 
     await expectLater(
       api.get('/api/health'),
@@ -104,7 +117,7 @@ void main() {
       await Future<void>.delayed(const Duration(seconds: 5));
       return http.Response('{}', 200);
     });
-    final api = ApiClient(tokenProvider: _FixedTokenProvider('t'), httpClient: client, timeout: const Duration(milliseconds: 50));
+    final api = ApiClient(authProvider: _FixedTokenProvider('t'), httpClient: client, timeout: const Duration(milliseconds: 50));
 
     await expectLater(
       api.get('/api/health'),
@@ -114,7 +127,7 @@ void main() {
 
   test('a non-JSON success body is wrapped as ApiException(code: INVALID_RESPONSE)', () async {
     final client = MockClient((request) async => http.Response('not json at all {{{', 200));
-    final api = ApiClient(tokenProvider: _FixedTokenProvider('t'), httpClient: client);
+    final api = ApiClient(authProvider: _FixedTokenProvider('t'), httpClient: client);
 
     await expectLater(
       api.get('/api/health'),

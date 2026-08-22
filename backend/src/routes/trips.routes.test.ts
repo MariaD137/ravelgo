@@ -839,3 +839,32 @@ test("PATCH /api/trips/:id/status 404s cleanly on a malformed/garbage id (not a 
 
   assert.equal(res.status, 404);
 });
+
+test("GET /api/trips/mine returns only the calling rider's own trips, most recent first", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-mine-1", role: "RIDER", firstName: "M", lastName: "1", email: "mine1@example.com" },
+  });
+  const otherRider = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-mine-2", role: "RIDER", firstName: "M", lastName: "2", email: "mine2@example.com" },
+  });
+  await prisma.trip.create({
+    data: { riderId: rider.id, pickup: "A", destination: "B", estimatedFare: 10, status: "COMPLETED" },
+  });
+  await prisma.trip.create({
+    data: { riderId: otherRider.id, pickup: "X", destination: "Y", estimatedFare: 20 },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-mine-1", groups: ["Rider"] });
+  const res = await request(app).get("/api/trips/mine").set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.total, 1);
+  assert.equal(res.body.data.length, 1);
+  assert.equal(res.body.data[0].riderId, rider.id);
+});
+
+test("GET /api/trips/mine rejects a Driver caller (Rider-only endpoint)", async () => {
+  const token = mockAuthAs({ sub: "driver-sub-mine-1", groups: ["Driver"] });
+  const res = await request(app).get("/api/trips/mine").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 403);
+});

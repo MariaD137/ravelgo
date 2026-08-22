@@ -1,6 +1,6 @@
 
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Signup/DriverInformation.dart';
+import 'package:ravelgo_rider_app/views/Signup/DriverInformation.dart';
 
 class VerifyAccountScreen extends StatelessWidget {
   final _decoration = InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16));
