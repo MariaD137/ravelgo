@@ -282,8 +282,8 @@ altered besides the new nullable column).
 
 ## 12. Commit SHA
 
-`8b35566` was `HEAD` before this task's commit. This task's own commit
-follows it on branch `claude/ravelgo-completeness-audit-873u5u`.
+`8b35566` was `HEAD` before this task's commit. This task's own commit,
+`d163424`, follows it on branch `claude/ravelgo-completeness-audit-873u5u`.
 
 ## 13. What remains for AWS/S3
 
