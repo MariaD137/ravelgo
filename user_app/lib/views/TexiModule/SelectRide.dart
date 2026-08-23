@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:ravelgo_rider_app/services/ride_session.dart';
 import 'package:ravelgo_rider_app/views/TexiModule/FindDriverScreen.dart';
 
 class SelectRide extends StatefulWidget {
@@ -14,23 +15,39 @@ class _SelectRideState extends State<SelectRide> {
 
   final LatLng _center = const LatLng(6.6018, 3.3515); // Sample: Lagos
 
+  final RideSession _session = RideSession.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _session.addListener(_onSessionChanged);
+    if (_session.quote == null && !_session.quoteLoading) {
+      _session.fetchQuote();
+    }
+  }
+
+  @override
+  void dispose() {
+    _session.removeListener(_onSessionChanged);
+    super.dispose();
+  }
+
+  void _onSessionChanged() {
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
-          // Google Map
           GoogleMap(
             onMapCreated: (controller) => mapController = controller,
-            initialCameraPosition: CameraPosition(
-              target: _center,
-              zoom: 14.0,
-            ),
+            initialCameraPosition: CameraPosition(target: _center, zoom: 14.0),
             myLocationEnabled: true,
             myLocationButtonEnabled: false,
           ),
 
-          // Top bar with back, location search, and add
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -38,22 +55,17 @@ class _SelectRideState extends State<SelectRide> {
             ),
           ),
 
-          // Location button
           Positioned(
             right: 16,
             bottom: 280,
             child: CircleAvatar(
               backgroundColor: Colors.white,
-              child: IconButton(
-                icon: const Icon(Icons.my_location),
-                onPressed: () {},
-              ),
+              child: IconButton(icon: const Icon(Icons.my_location), onPressed: () {}),
             ),
           ),
 
-          // Bottom draggable sheet
           DraggableScrollableSheet(
-            initialChildSize: 0.35,
+            initialChildSize: 0.4,
             minChildSize: 0.35,
             maxChildSize: 0.65,
             builder: (_, controller) {
@@ -62,26 +74,12 @@ class _SelectRideState extends State<SelectRide> {
                   color: Colors.white,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 ),
-                padding: const EdgeInsets.only(left: 12,top: 12,right: 12),
+                padding: const EdgeInsets.only(left: 12, top: 12, right: 12),
                 child: Column(
                   children: [
-                    const Text(
-                      "Choose a ride",
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                    Expanded(
-                      child: ListView(
-                        controller: controller,
-                        children: [
-                          rideCard("Just ride", "#8000", "2min", "4", isSelected: true),
-                          rideCard("EV", "#6000", "2min", "4"),
-                          rideCard("Lite", "#5000", "4min", "3"),
-                        ],
-                      ),
-                    ),
+                    const Text("Choose a ride", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    Expanded(child: ListView(controller: controller, children: [_buildFareCard()])),
                     const SizedBox(height: 12),
-
-                    // Payment and Delivery Row
                     Row(
                       children: [
                         ElevatedButton.icon(
@@ -95,26 +93,9 @@ class _SelectRideState extends State<SelectRide> {
                           label: const Text("Cash"),
                           onPressed: () {},
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Container(
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: const Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text("Pick up a delivery"),
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
-
-                    // Main CTA
                     Row(
                       children: [
                         Expanded(
@@ -123,29 +104,20 @@ class _SelectRideState extends State<SelectRide> {
                               backgroundColor: Colors.yellow.shade600,
                               padding: const EdgeInsets.symmetric(vertical: 14),
                             ),
-                            onPressed: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(builder: (context) => FindDriverScreen()),
-                              );
-                            },
-                            child: const Text("Select Just ride", style: TextStyle(color: Colors.black)),
+                            onPressed: _session.quote == null
+                                ? null
+                                : () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(builder: (context) => const FindDriverScreen()),
+                                    );
+                                  },
+                            child: const Text("Select ride", style: TextStyle(color: Colors.black)),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.black,
-                            shape: const CircleBorder(),
-                            padding: const EdgeInsets.all(12),
-                          ),
-                          onPressed: () {},
-                          child: const Icon(Icons.calendar_today, color: Colors.white, size: 20),
-                        )
                       ],
                     ),
-                    const SizedBox(height: 0),
+                    const SizedBox(height: 8),
                   ],
-
                 ),
               );
             },
@@ -155,39 +127,34 @@ class _SelectRideState extends State<SelectRide> {
     );
   }
 
-  Widget _buildSearchBar() {
+  Widget _buildFareCard() {
+    if (_session.quoteLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 40),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_session.quoteError != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Column(
+          children: [
+            Text(_session.quoteError!, textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 8),
+            TextButton(onPressed: () => _session.fetchQuote(), child: const Text("Retry")),
+          ],
+        ),
+      );
+    }
+    final quote = _session.quote;
+    if (quote == null) return const SizedBox.shrink();
+    final fare = (quote['estimatedFare'] as num).toStringAsFixed(0);
+    final distanceKm = _session.distanceKm?.toStringAsFixed(1) ?? '—';
+    final etaMinutes = _session.durationMinutes?.round() ?? 0;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      margin: const EdgeInsets.only(bottom: 12, left: 5, right: 5),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(30),
-      ),
-      child: Row(
-        children:  [
-          IconButton(
-            icon: const Icon(Icons.arrow_back,color: Colors.black,),
-            onPressed: () => Navigator.pop(context),
-          ),
-          SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: "Denco court 1",
-                border: InputBorder.none,
-              ),
-            ),
-          ),
-          Icon(Icons.add),
-        ],
-      ),
-    );
-  }
-
-  Widget rideCard(String type, String fare, String eta, String seats, {bool isSelected = false}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12,left: 5,right: 5),
-      decoration: BoxDecoration(
-        border: isSelected ? Border.all(color: Colors.green, style: BorderStyle.solid, width: 1.5, strokeAlign: BorderSide.strokeAlignOutside) : Border.all(color: Colors.grey, style: BorderStyle.solid, width: 1, strokeAlign: BorderSide.strokeAlignOutside) ,
+        border: Border.all(color: Colors.green, width: 1.5),
         borderRadius: BorderRadius.circular(12),
         color: Colors.white,
       ),
@@ -200,26 +167,33 @@ class _SelectRideState extends State<SelectRide> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(type, style: const TextStyle(fontWeight: FontWeight.w600)),
+                const Text("Ride", style: TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Text(eta),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.person, size: 16),
-                    Text(seats),
-                  ],
-                )
+                Text("$etaMinutes min · ${distanceKm}km"),
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(fare, style: const TextStyle(fontWeight: FontWeight.w600)),
-              const Text("#2444", style: TextStyle(fontSize: 12, color: Colors.grey)),
-            ],
-          )
+          Text("₦$fare", style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(30)),
+      child: Row(
+        children: [
+          IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black), onPressed: () => Navigator.pop(context)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _session.destination ?? 'Where to?',
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14),
+            ),
+          ),
         ],
       ),
     );

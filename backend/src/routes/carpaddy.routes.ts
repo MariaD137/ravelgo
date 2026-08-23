@@ -47,14 +47,29 @@ const decisionSchema = z.object({
   status: z.enum(["APPROVED", "REJECTED"]),
 });
 
+// A request only moves out of SUBMITTED/IN_REVIEW once — re-approving an
+// already-decided request, or flipping an APPROVED one to REJECTED after
+// the fact, is not a legal transition. Matches the terminal-state
+// protection every other status-patch endpoint in this codebase applies
+// (trips, courier requests, rental listings/bookings).
+const CAR_PADDY_DECIDABLE_FROM = ["SUBMITTED", "IN_REVIEW"] as const;
+
 // Admin: approve/reject a Car Paddy request
 carPaddyRouter.patch("/car-paddy/:id", requireAuth, requireRole("Admin"), async (req, res) => {
   const parsed = decisionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const request = await prisma.carPaddyRequest.update({
-    where: { id: req.params.id },
+  const { count } = await prisma.carPaddyRequest.updateMany({
+    where: { id: req.params.id, status: { in: [...CAR_PADDY_DECIDABLE_FROM] } },
     data: { status: parsed.data.status, reviewedAt: new Date() },
   });
+  if (count === 0) {
+    const existing = await prisma.carPaddyRequest.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: "Car Paddy request not found" });
+    return res
+      .status(409)
+      .json({ error: `Car Paddy request cannot move to ${parsed.data.status} from status ${existing.status}` });
+  }
+  const request = await prisma.carPaddyRequest.findUniqueOrThrow({ where: { id: req.params.id } });
   res.json(request);
 });

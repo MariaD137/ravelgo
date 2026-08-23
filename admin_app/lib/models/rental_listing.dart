@@ -1,5 +1,17 @@
 enum RentalListingStatus { pendingApproval, approved, rejected }
 
+RentalListingStatus rentalListingStatusFromApi(String value) {
+  switch (value) {
+    case 'APPROVED':
+      return RentalListingStatus.approved;
+    case 'REJECTED':
+      return RentalListingStatus.rejected;
+    case 'PENDING_APPROVAL':
+    default:
+      return RentalListingStatus.pendingApproval;
+  }
+}
+
 class RentalListing {
   final String id;
   final String ownerName;
@@ -16,10 +28,19 @@ class RentalListing {
     required this.location,
     required this.status,
   });
-}
 
-final List<RentalListing> mockRentalListings = [
-  RentalListing(id: "LX-201", ownerName: "Thelma Ibeh", vehicle: "Toyota Camry 2021, Black", dailyRate: 25000, location: "Lekki Phase 1", status: RentalListingStatus.pendingApproval),
-  RentalListing(id: "LX-198", ownerName: "Premier Car Rentals Ltd", vehicle: "Mercedes-Benz C300, White", dailyRate: 65000, location: "Victoria Island", status: RentalListingStatus.approved),
-  RentalListing(id: "LX-193", ownerName: "Fatima Bello", vehicle: "Kia Rio 2020, Silver", dailyRate: 18000, location: "Ikeja", status: RentalListingStatus.rejected),
-];
+  /// Built from GET /api/rentals (Admin, all statuses).
+  factory RentalListing.fromJson(Map<String, dynamic> json) {
+    final driver = json['driver'] as Map<String, dynamic>?;
+    final driverUser = driver?['user'] as Map<String, dynamic>?;
+    final vehicle = json['vehicle'] as Map<String, dynamic>?;
+    return RentalListing(
+      id: json['id'] as String,
+      ownerName: driverUser == null ? '(unknown)' : '${driverUser['firstName']} ${driverUser['lastName']}',
+      vehicle: vehicle == null ? '(vehicle unavailable)' : '${vehicle['brand']} ${vehicle['model']} ${vehicle['year']}, ${vehicle['colour']}',
+      dailyRate: (json['dailyRate'] as num).toDouble(),
+      location: json['location'] as String,
+      status: rentalListingStatusFromApi(json['status'] as String),
+    );
+  }
+}

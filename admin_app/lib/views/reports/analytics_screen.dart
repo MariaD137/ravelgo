@@ -1,77 +1,70 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_admin/services/api/admin_api.dart';
+import 'package:ravelgo_admin/services/api/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 
-class AnalyticsScreen extends StatelessWidget {
-  const AnalyticsScreen({super.key});
+class AnalyticsScreen extends StatefulWidget {
+  final AdminApi? adminApi;
+  const AnalyticsScreen({super.key, this.adminApi});
 
-  static const _revenue = [820000.0, 910000.0, 760000.0, 1040000.0, 1180000.0, 1350000.0, 1020000.0];
-  static const _hours = [64.0, 72.0, 58.0, 80.0, 91.0, 110.0, 76.0];
-  static const _days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  @override
+  State<AnalyticsScreen> createState() => _AnalyticsScreenState();
+}
 
-  Widget _barChart(String title, List<double> values) {
-    final maxVal = values.reduce((a, b) => a > b ? a : b);
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: AppComponents.cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 110,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: List.generate(values.length, (i) {
-                final h = 90 * (values[i] / maxVal);
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Container(
-                          height: h,
-                          decoration: BoxDecoration(
-                            color: i == values.length - 1 ? AppColors.primary : AppColors.primary.withValues(alpha: 0.35),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(_days[i], style: const TextStyle(fontSize: 11, color: Colors.black54)),
-                      ],
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ),
-        ],
-      ),
-    );
+class _AnalyticsScreenState extends State<AnalyticsScreen> {
+  late final AdminApi _api = widget.adminApi ?? AdminApi(ApiClient());
+  late Future<Map<String, dynamic>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _api.getWeeklyReport();
+  }
+
+  Future<void> _refresh() async {
+    setState(() => _future = _api.getWeeklyReport());
+    await _future;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Reports & Analytics")),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Row(
-            children: [
-              Expanded(child: AppComponents.statCard("Weekly revenue", "₦7.08M", Icons.trending_up, color: AppColors.success)),
-              const SizedBox(width: 12),
-              Expanded(child: AppComponents.statCard("Driver online hours", "551h", Icons.access_time, color: AppColors.info)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _barChart("Revenue this week (₦)", _revenue),
-          const SizedBox(height: 16),
-          _barChart("Driver online hours this week", _hours),
-          const SizedBox(height: 20),
-          AppComponents.outlineButton(text: "Export report", onPressed: () {}),
-        ],
+      body: RefreshIndicator(
+        onRefresh: _refresh,
+        child: FutureBuilder<Map<String, dynamic>>(
+          future: _future,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return ListView(
+                children: [
+                  const SizedBox(height: 80),
+                  Center(child: Text('Failed to load report: ${snapshot.error}', textAlign: TextAlign.center)),
+                  const SizedBox(height: 12),
+                  Center(child: TextButton(onPressed: _refresh, child: const Text('Retry'))),
+                ],
+              );
+            }
+            final report = snapshot.data!;
+            final revenue = (report['revenueThisWeek'] as num).toDouble();
+            final tripsCompleted = report['tripsCompletedThisWeek'] as int;
+            return ListView(
+              padding: const EdgeInsets.all(20),
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: AppComponents.statCard("Revenue this week", "₦${revenue.toStringAsFixed(0)}", Icons.trending_up, color: AppColors.success)),
+                    const SizedBox(width: 12),
+                    Expanded(child: AppComponents.statCard("Trips completed", "$tripsCompleted", Icons.check_circle_outline, color: AppColors.info)),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }

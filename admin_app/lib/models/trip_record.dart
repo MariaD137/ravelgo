@@ -1,4 +1,23 @@
-enum TripRecordStatus { inProgress, completed, cancelled, disputed }
+enum TripRecordStatus { requested, matched, inProgress, completed, cancelled, disputed }
+
+TripRecordStatus tripStatusFromApi(String value) {
+  switch (value) {
+    case 'REQUESTED':
+      return TripRecordStatus.requested;
+    case 'MATCHED':
+      return TripRecordStatus.matched;
+    case 'IN_PROGRESS':
+      return TripRecordStatus.inProgress;
+    case 'COMPLETED':
+      return TripRecordStatus.completed;
+    case 'CANCELLED':
+      return TripRecordStatus.cancelled;
+    case 'DISPUTED':
+      return TripRecordStatus.disputed;
+    default:
+      return TripRecordStatus.requested;
+  }
+}
 
 class TripRecord {
   final String id;
@@ -20,11 +39,21 @@ class TripRecord {
     required this.date,
     required this.status,
   });
-}
 
-final List<TripRecord> mockTripRecords = [
-  TripRecord(id: "RG-10240", riderName: "Amaka Obi", driverName: "Thelma Ibeh", pickup: "Lekki Phase 1", destination: "Victoria Island", fare: 3200, date: DateTime.now().subtract(const Duration(minutes: 12)), status: TripRecordStatus.inProgress),
-  TripRecord(id: "RG-10239", riderName: "Chidi Eze", driverName: "Chinedu Obi", pickup: "Ikeja City Mall", destination: "Maryland", fare: 1800, date: DateTime.now().subtract(const Duration(hours: 2)), status: TripRecordStatus.completed),
-  TripRecord(id: "RG-10238", riderName: "Ngozi Peters", driverName: "Fatima Bello", pickup: "Yaba", destination: "Surulere", fare: 1500, date: DateTime.now().subtract(const Duration(hours: 5)), status: TripRecordStatus.disputed),
-  TripRecord(id: "RG-10237", riderName: "Tunde Bakare", driverName: "Emeka Nwosu", pickup: "Ajah", destination: "Ikoyi", fare: 4200, date: DateTime.now().subtract(const Duration(days: 1)), status: TripRecordStatus.cancelled),
-];
+  /// Built from GET /api/trips (Admin, paginated) or GET /api/trips/:id.
+  factory TripRecord.fromJson(Map<String, dynamic> json) {
+    final rider = json['rider'] as Map<String, dynamic>?;
+    final driver = json['driver'] as Map<String, dynamic>?;
+    final driverUser = driver?['user'] as Map<String, dynamic>?;
+    return TripRecord(
+      id: json['id'] as String,
+      riderName: rider == null ? '(unknown)' : '${rider['firstName']} ${rider['lastName']}',
+      driverName: driverUser == null ? 'Unassigned' : '${driverUser['firstName']} ${driverUser['lastName']}',
+      pickup: json['pickup'] as String,
+      destination: json['destination'] as String,
+      fare: ((json['finalFare'] ?? json['estimatedFare']) as num).toDouble(),
+      date: DateTime.parse(json['requestedAt'] as String),
+      status: tripStatusFromApi(json['status'] as String),
+    );
+  }
+}

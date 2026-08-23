@@ -28,7 +28,7 @@ class SideMenu extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const UserSummary(),
+                      builder: (context) => UserSummary(),
                     ),
                   );
 

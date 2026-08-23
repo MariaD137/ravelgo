@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:ravelgo_rider_app/services/ride_session.dart';
 import 'package:ravelgo_rider_app/views/TexiModule/CancelRideScreen.dart';
-import 'package:ravelgo_rider_app/views/TexiModule/RequestDriverScreen.dart';
 
+/// Shown right after POST /trips is sent, while the trip is still
+/// REQUESTED. Backend matching (services/matching.ts) runs synchronously
+/// inside that same request/response, or leaves the trip unmatched for
+/// [RideSession]'s poll loop to pick up once a driver frees up — either
+/// way, the instant [RideSession.currentTrip] reports a status other than
+/// REQUESTED, this screen hands off to Home's persistent ride sheet
+/// (ride_view_popup.dart), which is what actually drives the rest of the
+/// trip (driver info, live status, cancel while still cancellable).
 class SearchDriverScreen extends StatefulWidget {
   const SearchDriverScreen({super.key});
 
@@ -11,13 +19,46 @@ class SearchDriverScreen extends StatefulWidget {
 }
 
 class _SearchDriverScreenState extends State<SearchDriverScreen> {
-  // Captured via onMapCreated below for planned camera-follow behavior; not
-  // read yet — kept for that, not dead code to delete.
-  // ignore: unused_field
-  GoogleMapController? _mapController;
-  double offerAmount = 3500;
-  double paymentAmount = 7000;
-  bool autoAccept = false;
+  final RideSession _session = RideSession.instance;
+  bool _cancelling = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _session.addListener(_onSessionChanged);
+  }
+
+  @override
+  void dispose() {
+    _session.removeListener(_onSessionChanged);
+    super.dispose();
+  }
+
+  void _onSessionChanged() {
+    if (!mounted) return;
+    final status = _session.currentTrip?['status'] as String?;
+    if (status != null && status != 'REQUESTED') {
+      // Matched (or already moved past that) — hand off to Home's
+      // persistent ride sheet, which now shows the real driver/status.
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      return;
+    }
+    setState(() {});
+  }
+
+  Future<void> _cancel() async {
+    setState(() => _cancelling = true);
+    final ok = await _session.cancelTrip();
+    if (!mounted) return;
+    if (ok) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } else {
+      setState(() => _cancelling = false);
+      if (_session.requestError != null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_session.requestError!)));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,52 +66,34 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
       body: Stack(
         children: [
           GoogleMap(
-            onMapCreated: (controller) => _mapController = controller,
-            initialCameraPosition: const CameraPosition(
-              target: LatLng(6.5244, 3.3792),
-              zoom: 14,
-            ),
+            initialCameraPosition: const CameraPosition(target: LatLng(6.5244, 3.3792), zoom: 14),
             myLocationEnabled: true,
             zoomControlsEnabled: false,
           ),
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: _buildSearchBar(),
-            ),
+            child: Padding(padding: const EdgeInsets.all(16), child: _buildSearchBar()),
           ),
-
           DraggableScrollableSheet(
             initialChildSize: 0.4,
             minChildSize: 0.3,
             maxChildSize: 0.65,
             builder: (context, scrollController) {
-              return
-                Container(
-                  decoration: BoxDecoration(
+              return Container(
+                decoration: const BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-              boxShadow: [
-              BoxShadow(color: Colors.black12, blurRadius: 10),
-              ],
-              ),
-              child:
-              Column(
-                children:[
-                  _buildDriverViewingBanner(),
-                  Expanded(
-                    child: ListView(
-                        controller: scrollController,
-                        children: [
-                            _buildBottomSheet(),
-                        ]
-                      ),
-                    ),
-                  _buildCancelButton(),
-                  const SizedBox(height: 0),
-                  ]
+                  boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)],
                 ),
-                );
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: ListView(controller: scrollController, children: [_buildBottomSheet()]),
+                    ),
+                    _buildCancelButton(),
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              );
             },
           ),
         ],
@@ -84,244 +107,112 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(30),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8)],
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
       ),
       child: Row(
-        children:  [
-          IconButton(
-            icon: const Icon(Icons.arrow_back,color: Colors.black,),
-            onPressed: () => Navigator.pop(context),
-          ),
-          SizedBox(width: 8),
+        children: [
+          IconButton(icon: const Icon(Icons.arrow_back, color: Colors.black), onPressed: () => Navigator.pop(context)),
+          const SizedBox(width: 8),
           Expanded(
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: "Denco court 1",
-                border: InputBorder.none,
-              ),
+            child: Text(
+              _session.destination ?? 'Where to?',
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14),
             ),
           ),
-          Icon(Icons.add),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDriverViewingBanner() {
-    return Container(
-      margin: const EdgeInsets.only(top: 0),
-      padding: const EdgeInsets.only(left: 8,right: 8,top: 8,bottom: 18),
-      decoration: BoxDecoration(
-        color: Colors.yellow[700],
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      child: Column(children: [
-        Container(
-          width: 40,
-          height: 5,
-          decoration: BoxDecoration(
-            color: Colors.grey[400],
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text("5 drivers are viewing  your request", style: TextStyle(fontWeight: FontWeight.w500)),
-            GestureDetector(
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => RequestDriverScreen()),
-                );
-              },
-              child:   Row(
-                children: List.generate(4, (index) =>
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 0),
-                      child: CircleAvatar(radius: 12, backgroundImage: AssetImage('assets/ic_avatar$index.png')),
-                    ),
-                ),
-              ),
-            ),
-         ],
-        ),
         ],
       ),
     );
   }
 
   Widget _buildBottomSheet() {
+    final fare = (_session.currentTrip?['estimatedFare'] as num?)?.toStringAsFixed(0) ??
+        (_session.quote?['estimatedFare'] as num?)?.toStringAsFixed(0);
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(0)),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 0)],
-      ),
       child: Column(
-
         mainAxisSize: MainAxisSize.min,
         children: [
-
           Container(
             padding: const EdgeInsets.all(35),
-            decoration: BoxDecoration(
-              color: Colors.yellow[100],
-              shape: BoxShape.circle,
-            ),
+            decoration: const BoxDecoration(color: Color(0xFFFFF3CD), shape: BoxShape.circle),
             child: Column(
               children: [
-                const Text("Finding drivers...", style: TextStyle(fontWeight: FontWeight.w500,fontSize: 14)),
-                const SizedBox(height: 40),
-                const Text("Your offer", style: TextStyle(fontWeight: FontWeight.w500,fontSize: 16,color: Colors.grey)),
-                Text("NGN $offerAmount", textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const Text("Finding a driver...", style: TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
+                const SizedBox(height: 12),
+                const CircularProgressIndicator(),
               ],
             ),
           ),
-          const SizedBox(height: 10),
-          _buildTripInfo(),
-          const SizedBox(height: 10),
-          _buildCashRow(),
-          const SizedBox(height: 10),
+          const SizedBox(height: 20),
+          _buildTripInfo(fare),
         ],
       ),
     );
   }
 
-  Widget _buildCashRow() {
-    return Row(
-      children:  [
-        Image.asset("assets/ic_cash_ride.png"),
-        SizedBox(width: 8),
-        Text("Cash"),
-        Spacer(),
-        Icon(Icons.arrow_drop_down),
-      ],
-    );
-  }
-  Widget _buildTripInfo() {
+  Widget _buildTripInfo(String? fare) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Your Trip", style: TextStyle(fontWeight: FontWeight.bold,fontSize: 18)),
+        const Text("Your Trip", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         const SizedBox(height: 8),
         Row(
-          children:  [
-            Image.asset(
-              'assets/ic_pickup.png',
-              width: 24,
-              height: 24,
-            ),
-            SizedBox(width: 8),
-            Text("Denco court 1", style: TextStyle(fontWeight: FontWeight.normal,fontSize: 16)),
+          children: [
+            const Icon(Icons.radio_button_checked, color: Colors.green, size: 20),
+            const SizedBox(width: 8),
+            Expanded(child: Text(_session.pickup ?? '—', overflow: TextOverflow.ellipsis)),
           ],
         ),
         const SizedBox(height: 8),
         Row(
-          children:  [
-            Image.asset(
-              'assets/ic_destination.png',
-              width: 24,
-              height: 24,
-            ),
-            SizedBox(width: 8),
-            Text("Destiation ", style: TextStyle(fontWeight: FontWeight.normal,fontSize: 16)),
+          children: [
+            const Icon(Icons.place, color: Colors.redAccent, size: 20),
+            const SizedBox(width: 8),
+            Expanded(child: Text(_session.destination ?? '—', overflow: TextOverflow.ellipsis)),
           ],
         ),
         const SizedBox(height: 15),
-        Text("Payment", style: TextStyle(fontWeight: FontWeight.w500)),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text("NGN 7,000", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            Spacer(),
-            ElevatedButton(
-              onPressed: null,
-              style: ElevatedButton.styleFrom(
-                disabledBackgroundColor: Colors.yellow[100],
-              ),
-              child: const Text("+ 100", style: TextStyle(color: Colors.black38)),
-            ),
-            const SizedBox(width: 12),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  offerAmount += 100;
-                });
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.yellow[700],
-                foregroundColor: Colors.black,
-              ),
-              child: const Text("+ 100"),
-            ),
-          ],
-        ),
-        const SizedBox(height: 0),
-        Row(
-          children: [
-            Expanded(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  const Text("Auto-accept offer"),
-                  const SizedBox(height: 8),
-                  Switch(
-                    value: autoAccept,
-                    onChanged: (val) {
-                      setState(() => autoAccept = val);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+        Text(fare != null ? "Fare: ₦$fare" : "Fare unavailable", style: const TextStyle(fontWeight: FontWeight.w500)),
       ],
     );
   }
 
   Widget _buildCancelButton() {
-    return Row(
-      children: [
-        Expanded(
-          child: ElevatedButton(
-            onPressed: () {
-              showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent, // To allow rounded corners
-                builder: (context) {
-                  return FractionallySizedBox(
-                    heightFactor: 0.8, // 80% of screen height
-                    child: ClipRRect(
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                      child: const CancelRideScreen(),
-                    ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: _cancelling
+              ? null
+              : () {
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (context) {
+                      return FractionallySizedBox(
+                        heightFactor: 0.8,
+                        child: ClipRRect(
+                          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                          child: CancelRideScreen(onConfirm: _cancel),
+                        ),
+                      );
+                    },
                   );
                 },
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.yellow[700],
-              foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-            child: const Text("Cancel request"),
-          ),
-        ),
-        const SizedBox(width: 12),
-        ElevatedButton(
-          onPressed: () {},
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.yellow[700],
+            foregroundColor: Colors.black,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.symmetric(vertical: 14),
           ),
-          child: const Icon(Icons.calendar_today, color: Colors.black),
+          child: _cancelling
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text("Cancel request"),
         ),
-      ],
+      ),
     );
   }
 }

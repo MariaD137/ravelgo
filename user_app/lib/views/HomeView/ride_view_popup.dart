@@ -1,6 +1,13 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:ravelgo_rider_app/services/ride_session.dart';
 
+/// Live status of the rider's current trip, driven entirely by
+/// [RideSession] — its polling loop and best-effort WebSocket connection
+/// (see ride_session.dart) are what actually advance this UI, never a
+/// local timer simulating progress. [widget.onClose] is only called once
+/// the backend has reported a terminal trip status (COMPLETED, CANCELLED,
+/// or DISPUTED), or the rider cancels and that cancellation is confirmed
+/// by the server.
 class RideViewPopup extends StatefulWidget {
   final VoidCallback onClose;
 
@@ -11,30 +18,41 @@ class RideViewPopup extends StatefulWidget {
 }
 
 class _RideViewPopupState extends State<RideViewPopup> {
-  int stage = 1;
-  Timer? timer;
+  final RideSession _session = RideSession.instance;
+  bool _cancelling = false;
 
   @override
   void initState() {
     super.initState();
-
-    timer = Timer.periodic(const Duration(seconds: 30), (t) {
-      if (stage < 4) {
-        setState(() => stage++);
-      } else {
-        t.cancel();
-      }
-    });
+    _session.addListener(_onSessionChanged);
   }
 
   @override
   void dispose() {
-    timer?.cancel();
+    _session.removeListener(_onSessionChanged);
     super.dispose();
+  }
+
+  void _onSessionChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _cancel() async {
+    setState(() => _cancelling = true);
+    final ok = await _session.cancelTrip();
+    if (!mounted) return;
+    setState(() => _cancelling = false);
+    if (!ok && _session.requestError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_session.requestError!)));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final trip = _session.currentTrip;
+    final status = trip?['status'] as String?;
+    final isTerminal = status == 'COMPLETED' || status == 'CANCELLED' || status == 'DISPUTED';
+
     return Container(
       decoration: const BoxDecoration(
         color: Color(0xFFF6F6F6),
@@ -42,32 +60,31 @@ class _RideViewPopupState extends State<RideViewPopup> {
       ),
       child: Column(
         children: [
-
           Expanded(
-            child: stage == 4
-                ? _stageFour()
+            child: isTerminal
+                ? _terminalView(trip, status)
                 : SingleChildScrollView(
-              padding: const EdgeInsets.all(0),
-              child: Column(
-                children: [
-                  _topBar(),
-                  _statusTitle(),
-                  const SizedBox(height: 16),
-                  _profileSection(),
-                  const SizedBox(height: 16),
-                  _routeCard(),
-                  const SizedBox(height: 16),
-                  _moreCard(),
-                ],
-              ),
-            ),
+                    padding: const EdgeInsets.all(0),
+                    child: Column(
+                      children: [
+                        _topBar(),
+                        _statusTitle(status),
+                        const SizedBox(height: 16),
+                        _driverSection(trip),
+                        const SizedBox(height: 16),
+                        _routeCard(trip),
+                        if (status == 'MATCHED' || status == 'REQUESTED') ...[
+                          const SizedBox(height: 16),
+                          _cancelButton(),
+                        ],
+                      ],
+                    ),
+                  ),
           ),
         ],
       ),
     );
   }
-
-  // ================= TOP YELLOW =================
 
   Widget _topBar() {
     return Container(
@@ -83,247 +100,164 @@ class _RideViewPopupState extends State<RideViewPopup> {
             width: 48,
             height: 5,
             margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(
-              color: Colors.white70,
-              borderRadius: BorderRadius.circular(10),
-            ),
+            decoration: BoxDecoration(color: Colors.white70, borderRadius: BorderRadius.circular(10)),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 16, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24)),
             child: const Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.shield_outlined, size: 16),
                 SizedBox(width: 6),
-                Text("Safety",
-                    style: TextStyle(
-                        fontWeight: FontWeight.w600)),
+                Text("Safety", style: TextStyle(fontWeight: FontWeight.w600)),
               ],
             ),
-          )
+          ),
         ],
       ),
     );
   }
 
-  // ================= STATUS TITLE =================
-
-  Widget _statusTitle() {
-    String text = "";
-    if (stage == 1) text = "Driving to pick-up";
-    if (stage == 2) text = "You have arrived!";
-    if (stage == 3) text = "Driving to your destination";
-
+  Widget _statusTitle(String? status) {
+    final text = switch (status) {
+      'REQUESTED' => 'Finding a driver...',
+      'MATCHED' => 'Your driver is on the way',
+      'IN_PROGRESS' => 'Driving to your destination',
+      _ => 'Trip status unavailable',
+    };
     return Text(
       text,
-      style: const TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w600,
-        color: Color(0xFF9C7B00),
-      ),
+      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF9C7B00)),
     );
   }
 
-  // ================= PROFILE =================
+  Widget _driverSection(Map<String, dynamic>? trip) {
+    final driver = trip?['driver'] as Map<String, dynamic>?;
+    final driverUser = driver?['user'] as Map<String, dynamic>?;
+    final name = driverUser != null ? '${driverUser['firstName']} ${driverUser['lastName']}' : null;
+    final rating = (driver?['rating'] as num?)?.toStringAsFixed(2);
+    final phone = driverUser?['phoneNumber'] as String?;
 
-  Widget _profileSection() {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
       child: Column(
         children: [
           Row(
             children: [
-              const CircleAvatar(
-                radius: 22,
-                backgroundImage: NetworkImage(
-                    "https://i.pravatar.cc/150?img=47"),
-              ),
+              const CircleAvatar(radius: 22, child: Icon(Icons.person)),
               const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment:
-                CrossAxisAlignment.start,
-                children: const [
-                  Text("Thelma Ibeh",
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15)),
-                  SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Icon(Icons.star,
-                          size: 16, color: Colors.green),
-                      SizedBox(width: 4),
-                      Text("4.55 Rating",
-                          style:
-                          TextStyle(fontSize: 13)),
-                    ],
-                  )
-                ],
-              )
-            ],
-          ),
-          const Divider(height: 28),
-          Row(
-            children: [
               Expanded(
-                child: Container(
-                  padding:
-                  const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF2F2F2),
-                    borderRadius:
-                    BorderRadius.circular(12),
-                  ),
-                  child:
-                  const Text("Any pickup notes?"),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name ?? 'Waiting for a driver to be assigned...',
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                    ),
+                    if (rating != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.star, size: 16, color: Colors.green),
+                          const SizedBox(width: 4),
+                          Text("$rating Rating", style: const TextStyle(fontSize: 13)),
+                        ],
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Container(
-                padding:
-                const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF2F2F2),
-                  borderRadius:
-                  BorderRadius.circular(12),
-                ),
-                child:
-                const Icon(Icons.call, size: 18),
-              )
             ],
-          )
+          ),
+          if (phone != null) ...[
+            const Divider(height: 28),
+            Row(
+              children: [
+                const Icon(Icons.phone, size: 18),
+                const SizedBox(width: 8),
+                Text(phone),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 
-  // ================= ROUTE CARD =================
-
-  Widget _routeCard() {
+  Widget _routeCard(Map<String, dynamic>? trip) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
       child: Column(
-        crossAxisAlignment:
-        CrossAxisAlignment.start,
-        children: const [
-          Text("My route",
-              style: TextStyle(
-                  fontWeight: FontWeight.w600)),
-          SizedBox(height: 12),
-          Text("Denco court 1"),
-          SizedBox(height: 6),
-          Text("skybox"),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("My route", style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 12),
+          Text(trip?['pickup'] as String? ?? '—'),
+          const SizedBox(height: 6),
+          Text(trip?['destination'] as String? ?? '—'),
         ],
       ),
     );
   }
 
-  // ================= MORE CARD =================
-
-  Widget _moreCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment:
-        CrossAxisAlignment.start,
-        children: const [
-          Text("More",
-              style: TextStyle(
-                  fontWeight: FontWeight.w600)),
-          SizedBox(height: 16),
-          Row(
-            mainAxisAlignment:
-            MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(Icons.share),
-              SizedBox(width: 4,),
-              Text("Share trip details"),
-              Spacer(),
-              Icon(Icons.chevron_right),
-            ],
-          ),
-          SizedBox(height: 12),
-          Row(
-            mainAxisAlignment:
-            MainAxisAlignment.spaceBetween,
-            children: [
-              Icon(Icons.phone),
-              SizedBox(width: 4,),
-              Text("Contact rider"),
-              Spacer(),
-              Icon(Icons.chevron_right),
-            ],
-          ),
-        ],
+  Widget _cancelButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SizedBox(
+        width: double.infinity,
+        child: OutlinedButton(
+          onPressed: _cancelling ? null : _cancel,
+          style: OutlinedButton.styleFrom(side: const BorderSide(color: Colors.red)),
+          child: _cancelling
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text("Cancel ride", style: TextStyle(color: Colors.red)),
+        ),
       ),
     );
   }
 
-  // ================= STAGE 4 =================
-
-  Widget _stageFour() {
+  Widget _terminalView(Map<String, dynamic>? trip, String? status) {
+    final fare = (trip?['finalFare'] as num?) ?? (trip?['estimatedFare'] as num?);
+    final title = switch (status) {
+      'COMPLETED' => 'Trip completed',
+      'CANCELLED' => 'Trip cancelled',
+      'DISPUTED' => 'Trip disputed',
+      _ => 'Trip ended',
+    };
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
-        mainAxisAlignment:
-        MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           const SizedBox(),
           Column(
-            children: const [
-              Text("Driving to your destination",
-                  style: TextStyle(
-                      color: Color(0xFF9C7B00),
-                      fontWeight: FontWeight.w600)),
-              SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text("7 min",
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600)),
-              ),
-              SizedBox(height: 4),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text("Ozumba mbadiwe"),
-              )
+            children: [
+              Text(title, style: const TextStyle(color: Color(0xFF9C7B00), fontWeight: FontWeight.w600)),
+              if (fare != null) ...[
+                const SizedBox(height: 12),
+                Text('₦${fare.toStringAsFixed(0)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+              ],
+              const SizedBox(height: 4),
+              Text(trip?['destination'] as String? ?? ''),
             ],
           ),
           SizedBox(
             width: double.infinity,
             height: 52,
             child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor:
-                const Color(0xFF4E7D2A),
-              ),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF4E7D2A)),
               onPressed: () {
+                _session.clearTrip();
                 widget.onClose();
               },
-              child: const Text("END RIDE"),
+              child: const Text("DONE"),
             ),
-          )
+          ),
         ],
       ),
     );

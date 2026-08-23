@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_rider_app/components/LocationService.dart';
-import 'package:ravelgo_rider_app/components/ride_controller.dart';
+import 'package:ravelgo_rider_app/services/ride_session.dart';
 import 'package:ravelgo_rider_app/views/AppDrawer/AppDrawer.dart';
 import 'package:ravelgo_rider_app/views/HomeView/ride_view_popup.dart';
 import 'package:ravelgo_rider_app/views/User/invite_a_friend.dart';
@@ -76,9 +76,10 @@ class _HomePageState extends State<HomePage> {
       backgroundColor: Color(0xFFF2F2F4),
       body: SafeArea(
 
-        child:ValueListenableBuilder<bool>(
-            valueListenable: RideController.isRideActive,
-            builder: (context, isRideActive, _) {
+        child:AnimatedBuilder(
+            animation: RideSession.instance,
+            builder: (context, _) {
+              final isRideActive = RideSession.instance.hasActiveTrip;
               return Stack(
                 children: [
                   // Map / image background
@@ -128,10 +129,10 @@ class _HomePageState extends State<HomePage> {
                       minChildSize: 0.2,
                       maxChildSize: 0.8,
                       builder: (context, scrollController) {
-                        return  RideViewPopup(onClose: () {
-                            RideController.stopRide();
-                          },
-                        );
+                        // RideSession already notifies this AnimatedBuilder
+                        // when the trip is cleared — no separate stop-ride
+                        // call needed here.
+                        return RideViewPopup(onClose: () {});
                       },
                     ),
 

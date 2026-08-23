@@ -108,6 +108,29 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/User" }
         "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Riders]
+      summary: Update my own name/phone (Rider) — not email, which is tied to the Cognito identity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName: { type: string }
+                lastName: { type: string }
+                phoneNumber: { type: string }
+      responses:
+        "200":
+          description: Updated rider profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /riders/me/loyalty:
     get:
       tags: [Loyalty & Promotions]
@@ -998,6 +1021,52 @@ paths:
                   activeTrips: { type: integer }
                   onlineDrivers: { type: integer }
                   pendingApprovals: { type: integer }
+  /admin/reports/weekly:
+    get:
+      tags: [Admin]
+      summary: Real, Postgres-computed weekly figures for the Reports screen (Admin)
+      responses:
+        "200":
+          description: Weekly figures
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tripsCompletedThisWeek: { type: integer }
+                  revenueThisWeek: { type: number }
+  /admin/me:
+    post:
+      tags: [Admin]
+      summary: Create/upsert my own admin profile (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firstName, lastName, email]
+              properties:
+                firstName: { type: string }
+                lastName: { type: string }
+                email: { type: string, format: email }
+      responses:
+        "201":
+          description: Admin profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    get:
+      tags: [Admin]
+      summary: My own admin profile (Admin)
+      responses:
+        "200":
+          description: Admin profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /courier-requests:
     post:

@@ -1,41 +1,30 @@
 import 'package:flutter/material.dart';
-import 'RidesView.dart'; // adjust path if needed; this imports the Ride class
+import 'RidesView.dart' show formatTripTime;
 
+/// The real receipt for one past trip — every field here comes from the
+/// Trip row GET /api/trips/mine returned (pickup/destination/status/fare/
+/// driver), not a static example. There is no per-trip VAT/fee breakdown
+/// in the backend's Payment model — only a total amount — so this screen
+/// shows the total fare it actually has rather than inventing a breakdown.
 class RideDetailsScreen extends StatelessWidget {
-  final Ride ride;
+  final Map<String, dynamic> trip;
 
-  const RideDetailsScreen({Key? key, required this.ride}) : super(key: key);
-
-  String _formatTime(DateTime dt) {
-    final months = [
-      '',
-      'Jan',
-      'Feb',
-      'Mar',
-      'Apr',
-      'May',
-      'Jun',
-      'Jul',
-      'Aug',
-      'Sep',
-      'Oct',
-      'Nov',
-      'Dec'
-    ];
-    final hour = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-    final minute = dt.minute.toString().padLeft(2, '0');
-    final ampm = dt.hour >= 12 ? 'pm' : 'am';
-    return '${dt.day} ${months[dt.month]}. $hour:$minute $ampm';
-  }
+  const RideDetailsScreen({Key? key, required this.trip}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    final requestedAt = DateTime.tryParse(trip['requestedAt'] as String? ?? '');
+    final driver = trip['driver'] as Map<String, dynamic>?;
+    final driverUser = driver?['user'] as Map<String, dynamic>?;
+    final driverName = driverUser != null ? '${driverUser['firstName']} ${driverUser['lastName']}' : null;
+    final fare = (trip['finalFare'] as num?) ?? (trip['estimatedFare'] as num?);
+    final isEstimate = trip['finalFare'] == null;
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
-            // Top bar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8),
               child: Row(
@@ -46,97 +35,68 @@ class RideDetailsScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Ride with ${ride.title}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 4),
-                        Text(_formatTime(ride.dateTime), style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+                        Text(
+                          driverName != null ? 'Ride with $driverName' : 'Ride ${trip['status']}',
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                        ),
+                        if (requestedAt != null) ...[
+                          const SizedBox(height: 4),
+                          Text(formatTripTime(requestedAt), style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+                        ],
                       ],
                     ),
                   ),
                 ],
               ),
             ),
-
-            // Map preview
-            SizedBox(
-              height: 300,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: Image.asset("assets/fake_map.png",fit: BoxFit.fill,),
-                  ),
-                  // Positioned(
-                  //   right: 12,
-                  //   bottom: 12,
-                  //   child: Material(
-                  //     elevation: 2,
-                  //     shape: const CircleBorder(),
-                  //     color: Colors.white,
-                  //     child: IconButton(
-                  //       icon: const Icon(Icons.my_location),
-                  //       onPressed: () {},
-                  //     ),
-                  //   ),
-                  // ),
-                ],
-              ),
-            ),
-
-            // Details & payments (static example)
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Example stops (replace with real stops if available)
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // timeline indicator
                         Column(
                           children: [
-                            Container(width: 18, height: 18, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.green)),
-                            Container(width: 2, height: 48, color: Colors.grey.shade300),
-                            Container(width: 18, height: 18, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.grey)),
+                            Container(width: 14, height: 14, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.green)),
+                            Container(width: 2, height: 36, color: Colors.grey.shade300),
+                            Container(width: 14, height: 14, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.redAccent)),
                           ],
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text('24 kusenla road', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                              SizedBox(height: 12),
-                              Text('Dutse', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                              SizedBox(height: 12),
-                              Text('Madiba', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                            children: [
+                              Text(trip['pickup'] as String? ?? '—', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 20),
+                              Text(trip['destination'] as String? ?? '—', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                             ],
                           ),
                         ),
                       ],
                     ),
-
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Additional ride details can be found in your email receipt',
-                      style: TextStyle(color: Color(0xFF7A5F00)),
-                    ),
-
                     const SizedBox(height: 18),
-                    const Text('Payments', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                    Text('Status: ${trip['status']}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 18),
+                    const Text('Fare', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 12),
-
-                    _paymentRow('Ride Fare', '#2854'),
-                    const Divider(height: 18, color: Colors.grey),
-                    _paymentRow('Vat Fees', '#52.50'),
-                    const Divider(height: 22, color: Colors.grey),
-
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6.0),
                       child: Row(
-                        children: const [
-                          Expanded(child: Text('Total', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
-                          Text('#2854', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                        children: [
+                          Expanded(
+                            child: Text(
+                              isEstimate ? 'Estimated total' : 'Total',
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          Text(
+                            fare != null ? '₦${fare.toStringAsFixed(0)}' : '—',
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                          ),
                         ],
                       ),
                     ),
@@ -146,18 +106,6 @@ class RideDetailsScreen extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _paymentRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: TextStyle(color: Colors.grey[700]))),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
-        ],
       ),
     );
   }

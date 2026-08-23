@@ -1,27 +1,61 @@
 enum RiderStatus { active, suspended }
 
+class RiderTripSummary {
+  final String id;
+  final String pickup;
+  final String destination;
+  final String status;
+  final DateTime requestedAt;
+
+  const RiderTripSummary({
+    required this.id,
+    required this.pickup,
+    required this.destination,
+    required this.status,
+    required this.requestedAt,
+  });
+
+  factory RiderTripSummary.fromJson(Map<String, dynamic> json) {
+    return RiderTripSummary(
+      id: json['id'] as String,
+      pickup: json['pickup'] as String,
+      destination: json['destination'] as String,
+      status: json['status'] as String,
+      requestedAt: DateTime.parse(json['requestedAt'] as String),
+    );
+  }
+}
+
 class RiderRecord {
   final String id;
   final String name;
   final String email;
-  final int totalTrips;
-  final double rating;
   final RiderStatus status;
   final bool isLoyaltyMember;
+  // Only populated from GET /api/riders/:id (detail) — the list endpoint
+  // doesn't include trip history, so this is null there rather than a
+  // fabricated 0/placeholder.
+  final List<RiderTripSummary>? recentTrips;
 
   const RiderRecord({
     required this.id,
     required this.name,
     required this.email,
-    required this.totalTrips,
-    required this.rating,
     required this.status,
     this.isLoyaltyMember = false,
+    this.recentTrips,
   });
-}
 
-final List<RiderRecord> mockRiders = [
-  RiderRecord(id: "USR-5081", name: "Amaka Obi", email: "amaka.obi@gmail.com", totalTrips: 63, rating: 4.9, status: RiderStatus.active, isLoyaltyMember: true),
-  RiderRecord(id: "USR-5082", name: "Chidi Eze", email: "chidi.eze@gmail.com", totalTrips: 21, rating: 4.7, status: RiderStatus.active),
-  RiderRecord(id: "USR-5083", name: "Ngozi Peters", email: "ngozi.p@gmail.com", totalTrips: 8, rating: 3.2, status: RiderStatus.suspended),
-];
+  /// Built from GET /api/riders (list) or GET /api/riders/:id (detail).
+  factory RiderRecord.fromJson(Map<String, dynamic> json) {
+    final trips = json['ridesAsRider'] as List?;
+    return RiderRecord(
+      id: json['id'] as String,
+      name: '${json['firstName']} ${json['lastName']}',
+      email: json['email'] as String,
+      status: (json['suspended'] as bool? ?? false) ? RiderStatus.suspended : RiderStatus.active,
+      isLoyaltyMember: json['isLoyaltyMember'] as bool? ?? false,
+      recentTrips: trips?.cast<Map<String, dynamic>>().map(RiderTripSummary.fromJson).toList(),
+    );
+  }
+}

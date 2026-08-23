@@ -1,12 +1,26 @@
 enum CourierRequestStatus { awaitingCourier, inTransit, delivered, cancelled }
 
+CourierRequestStatus courierStatusFromApi(String value) {
+  switch (value) {
+    case 'IN_TRANSIT':
+      return CourierRequestStatus.inTransit;
+    case 'DELIVERED':
+      return CourierRequestStatus.delivered;
+    case 'CANCELLED':
+      return CourierRequestStatus.cancelled;
+    case 'REQUESTED':
+    case 'MATCHED':
+    default:
+      return CourierRequestStatus.awaitingCourier;
+  }
+}
+
 class CourierRequest {
   final String id;
   final String requesterName;
   final String? courierName;
   final String pickupStation;
   final String dropoffStation;
-  final double fixedFee;
   final double courierFare;
   final CourierRequestStatus status;
 
@@ -16,14 +30,23 @@ class CourierRequest {
     this.courierName,
     required this.pickupStation,
     required this.dropoffStation,
-    required this.fixedFee,
     required this.courierFare,
     required this.status,
   });
-}
 
-final List<CourierRequest> mockCourierRequests = [
-  CourierRequest(id: "CR-3301", requesterName: "Amaka Obi", courierName: "Bisi Adewale", pickupStation: "Lekki Station A", dropoffStation: "Ikeja Station C", fixedFee: 500, courierFare: 2200, status: CourierRequestStatus.inTransit),
-  CourierRequest(id: "CR-3300", requesterName: "Tunde Bakare", pickupStation: "Yaba Station B", dropoffStation: "Surulere Station A", fixedFee: 500, courierFare: 1600, status: CourierRequestStatus.awaitingCourier),
-  CourierRequest(id: "CR-3298", requesterName: "Chidi Eze", courierName: "Kunle Ade", pickupStation: "VI Station A", dropoffStation: "Ajah Station D", fixedFee: 500, courierFare: 2600, status: CourierRequestStatus.delivered),
-];
+  /// Built from GET /api/courier-requests (Admin, paginated).
+  factory CourierRequest.fromJson(Map<String, dynamic> json) {
+    final sender = json['sender'] as Map<String, dynamic>?;
+    final driver = json['driver'] as Map<String, dynamic>?;
+    final driverUser = driver?['user'] as Map<String, dynamic>?;
+    return CourierRequest(
+      id: json['id'] as String,
+      requesterName: sender == null ? '(unknown)' : '${sender['firstName']} ${sender['lastName']}',
+      courierName: driverUser == null ? null : '${driverUser['firstName']} ${driverUser['lastName']}',
+      pickupStation: json['pickupAddress'] as String,
+      dropoffStation: json['dropoffAddress'] as String,
+      courierFare: ((json['finalFare'] ?? json['estimatedFare']) as num).toDouble(),
+      status: courierStatusFromApi(json['status'] as String),
+    );
+  }
+}

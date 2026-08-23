@@ -125,7 +125,7 @@ class SubscriptionSuccessPage extends StatelessWidget {
                         Navigator.pushAndRemoveUntil(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const Accountview(),
+                            builder: (_) => Accountview(),
                           ),
                               (route) => false,
                         );

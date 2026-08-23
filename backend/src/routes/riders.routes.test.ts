@@ -74,6 +74,37 @@ test("GET /api/riders/me 404s before a profile has been created", async () => {
   assert.equal(res.status, 404);
 });
 
+test("PATCH /api/riders/me updates my own name/phone and persists it in Postgres", async () => {
+  const token = mockAuthAs({ sub: "rider-sub-6", groups: ["Rider"] });
+  await request(app)
+    .post("/api/riders/me")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "Old", lastName: "Name", email: "old@example.com" });
+
+  const res = await request(app)
+    .patch("/api/riders/me")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "New", lastName: "Name2", phoneNumber: "+15551234567" });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.firstName, "New");
+  assert.equal(res.body.lastName, "Name2");
+  assert.equal(res.body.phoneNumber, "+15551234567");
+
+  const persisted = await prisma.user.findUnique({ where: { cognitoSub: "rider-sub-6" } });
+  assert.equal(persisted?.firstName, "New");
+  assert.equal(persisted?.phoneNumber, "+15551234567");
+});
+
+test("PATCH /api/riders/me 404s before a profile has been created", async () => {
+  const token = mockAuthAs({ sub: "rider-sub-7", groups: ["Rider"] });
+  const res = await request(app)
+    .patch("/api/riders/me")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "New" });
+  assert.equal(res.status, 404);
+});
+
 test("PATCH /api/riders/:id/status lets an Admin suspend a rider", async () => {
   const rider = await prisma.user.create({
     data: { cognitoSub: "rider-sub-5", role: "RIDER", firstName: "Zed", lastName: "Q", email: "zed@example.com" },

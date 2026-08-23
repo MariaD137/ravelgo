@@ -1,5 +1,19 @@
 enum CarPaddyStatus { submitted, inReview, approved, rejected }
 
+CarPaddyStatus carPaddyStatusFromApi(String value) {
+  switch (value) {
+    case 'IN_REVIEW':
+      return CarPaddyStatus.inReview;
+    case 'APPROVED':
+      return CarPaddyStatus.approved;
+    case 'REJECTED':
+      return CarPaddyStatus.rejected;
+    case 'SUBMITTED':
+    default:
+      return CarPaddyStatus.submitted;
+  }
+}
+
 class CarPaddyRequest {
   final String id;
   final String driverName;
@@ -14,10 +28,17 @@ class CarPaddyRequest {
     required this.submittedOn,
     required this.status,
   });
-}
 
-final List<CarPaddyRequest> mockCarPaddyRequests = [
-  CarPaddyRequest(id: "CP-771", driverName: "Thelma Ibeh", plateNumber: "LND-482-KJ", submittedOn: DateTime.now().subtract(const Duration(days: 1)), status: CarPaddyStatus.inReview),
-  CarPaddyRequest(id: "CP-770", driverName: "Chinedu Obi", plateNumber: "ABJ-119-XY", submittedOn: DateTime.now().subtract(const Duration(days: 3)), status: CarPaddyStatus.approved),
-  CarPaddyRequest(id: "CP-769", driverName: "Emeka Nwosu", plateNumber: "KAN-004-ZZ", submittedOn: DateTime.now().subtract(const Duration(days: 4)), status: CarPaddyStatus.rejected),
-];
+  /// Built from GET /api/car-paddy (Admin, paginated).
+  factory CarPaddyRequest.fromJson(Map<String, dynamic> json) {
+    final driver = json['driver'] as Map<String, dynamic>?;
+    final driverUser = driver?['user'] as Map<String, dynamic>?;
+    return CarPaddyRequest(
+      id: json['id'] as String,
+      driverName: driverUser == null ? '(unknown)' : '${driverUser['firstName']} ${driverUser['lastName']}',
+      plateNumber: json['plateNumber'] as String,
+      submittedOn: DateTime.parse(json['submittedAt'] as String),
+      status: carPaddyStatusFromApi(json['status'] as String),
+    );
+  }
+}

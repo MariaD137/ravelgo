@@ -1,42 +1,44 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_admin/theme/app_theme.dart';
 
+/// Fine-grained admin roles (Super Admin / Ops Manager / Support Agent /
+/// Finance Viewer, each scoped to a subset of modules) have no backend
+/// representation yet — Cognito groups today are a single binary "Admin"
+/// membership (see middleware/auth.ts's requireRole), and there is no
+/// Prisma model for a permissions/role table. Building real fine-grained
+/// admin RBAC means either Cognito custom groups/claims or a new
+/// authorization layer — both out of scope until Cognito is configured.
+/// This screen intentionally shows that honestly rather than a list of
+/// invented roles and staff names with no backing data.
 class AdminRolesScreen extends StatelessWidget {
   const AdminRolesScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final roles = [
-      ("Super Admin", "Full access to all modules", ["Ops Admin"]),
-      ("Operations Manager", "Drivers, trips, pricing, support", ["Kunle Ade", "Bisi Adewale"]),
-      ("Support Agent", "Support tickets, disputes, lost items only", ["Ngozi Adeyemi"]),
-      ("Finance Viewer", "Read-only access to revenue & subscriptions", ["Femi Coker"]),
-    ];
     return Scaffold(
       appBar: AppBar(title: const Text("Admin Roles")),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: roles.map((r) {
-          return Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.all(14),
-            decoration: AppComponents.cardDecoration(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(r.$1, style: const TextStyle(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                Text(r.$2, style: const TextStyle(fontSize: 12, color: Colors.black54)),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: r.$3.map((n) => AppComponents.badge(n)).toList(),
-                ),
-              ],
+      body: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.admin_panel_settings_outlined, size: 48, color: Colors.black38),
+            const SizedBox(height: 16),
+            const Text(
+              "Fine-grained admin roles aren't available yet",
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+              textAlign: TextAlign.center,
             ),
-          );
-        }).toList(),
+            const SizedBox(height: 8),
+            Text(
+              "Every signed-in admin currently has full access — RavelGo's Cognito "
+              "setup has a single Admin group with no sub-roles yet. Scoped roles "
+              "(Support Agent, Finance Viewer, etc.) will land once Cognito custom "
+              "groups or an equivalent permissions model is configured.",
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }

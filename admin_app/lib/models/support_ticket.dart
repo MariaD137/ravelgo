@@ -1,5 +1,28 @@
 enum TicketStatus { open, inProgress, resolved }
 
+TicketStatus ticketStatusFromApi(String value) {
+  switch (value) {
+    case 'IN_PROGRESS':
+      return TicketStatus.inProgress;
+    case 'RESOLVED':
+      return TicketStatus.resolved;
+    case 'OPEN':
+    default:
+      return TicketStatus.open;
+  }
+}
+
+String ticketStatusToApi(TicketStatus status) {
+  switch (status) {
+    case TicketStatus.open:
+      return 'OPEN';
+    case TicketStatus.inProgress:
+      return 'IN_PROGRESS';
+    case TicketStatus.resolved:
+      return 'RESOLVED';
+  }
+}
+
 class SupportTicket {
   final String id;
   final String from;
@@ -16,10 +39,17 @@ class SupportTicket {
     required this.status,
     required this.createdAt,
   });
-}
 
-final List<SupportTicket> mockTickets = [
-  SupportTicket(id: "TCK-441", from: "Amaka Obi", subject: "Lost phone in trip RG-10201", category: "Lost item", status: TicketStatus.open, createdAt: DateTime.now().subtract(const Duration(hours: 2))),
-  SupportTicket(id: "TCK-440", from: "Emeka Nwosu", subject: "Disputed cancellation charge", category: "Billing dispute", status: TicketStatus.inProgress, createdAt: DateTime.now().subtract(const Duration(hours: 9))),
-  SupportTicket(id: "TCK-439", from: "Ngozi Peters", subject: "Driver took a longer route", category: "Trip complaint", status: TicketStatus.resolved, createdAt: DateTime.now().subtract(const Duration(days: 2))),
-];
+  /// Built from GET /api/support-tickets (Admin, paginated).
+  factory SupportTicket.fromJson(Map<String, dynamic> json) {
+    final user = json['user'] as Map<String, dynamic>?;
+    return SupportTicket(
+      id: json['id'] as String,
+      from: user == null ? '(unknown)' : '${user['firstName']} ${user['lastName']}',
+      subject: json['subject'] as String,
+      category: json['category'] as String,
+      status: ticketStatusFromApi(json['status'] as String),
+      createdAt: DateTime.parse(json['createdAt'] as String),
+    );
+  }
+}

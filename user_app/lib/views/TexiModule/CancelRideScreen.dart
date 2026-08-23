@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_rider_app/views/HomeView/Home.dart';
 
+/// Confirms the rider's reason for cancelling, then hands off to
+/// [onConfirm] — the caller's real PATCH /trips/:id/cancel call (see
+/// SearchDriverScreen) — rather than assuming success itself. The reason
+/// selected is UI-only today: Trip has no column to record it, so nothing
+/// here pretends to send it to the backend.
 class CancelRideScreen extends StatefulWidget {
-  const CancelRideScreen({super.key});
+  const CancelRideScreen({super.key, required this.onConfirm});
+
+  final Future<void> Function() onConfirm;
 
   @override
   State<CancelRideScreen> createState() => _CancelRideScreenState();
@@ -67,10 +73,8 @@ class _CancelRideScreenState extends State<CancelRideScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: selectedReasonIndex == null ? null : () {
-                    Navigator.pop(context); // First close the sheet
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (_) => const HomePage()),
-                    );
+                    Navigator.pop(context); // Close the reason sheet first.
+                    widget.onConfirm();
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: selectedReasonIndex == null ? Colors.yellow[100] : Colors.yellow[700],

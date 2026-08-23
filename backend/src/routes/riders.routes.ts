@@ -66,6 +66,30 @@ ridersRouter.get("/riders/me", requireAuth, requireRole("Rider"), async (req, re
   }
 });
 
+// Rider: update my own profile (name/phone — not email, which is tied to
+// the Cognito identity this row was bootstrapped from). Uses the same
+// conditional-updateMany pattern as the state-machine routes: a plain
+// prisma.user.update() would throw P2025 (record not found) for a rider
+// who never called POST /riders/me first, so the "did this hit a row"
+// check and the write happen in one statement instead.
+const updateMeSchema = z.object({
+  firstName: z.string().min(1).optional(),
+  lastName: z.string().min(1).optional(),
+  phoneNumber: z.string().optional(),
+});
+
+ridersRouter.patch("/riders/me", requireAuth, requireRole("Rider"), async (req, res, next) => {
+  try {
+    const data = validate<typeof updateMeSchema._output>(updateMeSchema, req.body, "Request body");
+    const { count } = await prisma.user.updateMany({ where: { cognitoSub: req.user!.sub }, data });
+    if (count === 0) throw Errors.notFound("Rider profile");
+    const rider = await prisma.user.findUniqueOrThrow({ where: { cognitoSub: req.user!.sub } });
+    res.json(rider);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Admin: get a single rider with trip history.
 // Registered after the literal "/riders/me" routes above — Express matches
 // path segments in registration order, so ":id" would otherwise swallow

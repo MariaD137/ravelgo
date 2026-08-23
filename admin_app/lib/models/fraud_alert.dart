@@ -1,46 +1,50 @@
-enum AlertSeverity { low, medium, high }
+enum AlertStatus { open, acknowledged, resolved }
 
-class FraudAlert {
-  final String id;
-  final String title;
-  final String description;
-  final AlertSeverity severity;
-  final DateTime detectedAt;
-
-  const FraudAlert({
-    required this.id,
-    required this.title,
-    required this.description,
-    required this.severity,
-    required this.detectedAt,
-  });
+AlertStatus alertStatusFromApi(String value) {
+  switch (value) {
+    case 'ACKNOWLEDGED':
+      return AlertStatus.acknowledged;
+    case 'RESOLVED':
+      return AlertStatus.resolved;
+    case 'OPEN':
+    default:
+      return AlertStatus.open;
+  }
 }
 
-final List<FraudAlert> mockFraudAlerts = [
-  FraudAlert(id: "FA-901", title: "Unusual booking pattern", description: "Driver DRV-1044 accepted and cancelled 6 trips within 10 minutes.", severity: AlertSeverity.high, detectedAt: DateTime.now().subtract(const Duration(minutes: 40))),
-  FraudAlert(id: "FA-900", title: "GPS spoofing suspected", description: "Trip RG-10238 shows a route inconsistent with reported distance.", severity: AlertSeverity.medium, detectedAt: DateTime.now().subtract(const Duration(hours: 3))),
-  FraudAlert(id: "FA-899", title: "Duplicate account signals", description: "Rider USR-5083 device fingerprint matches 3 other suspended accounts.", severity: AlertSeverity.medium, detectedAt: DateTime.now().subtract(const Duration(hours: 8))),
-];
-
-class EmergencyAlert {
+/// A row from GET /api/emergency-alerts, common to both the "Fraud Alerts"
+/// (type == FRAUD_SUSPECTED) and "Emergency Alerts" (type == SOS) admin
+/// screens — there is no separate fraud-detection or dispatch system behind
+/// either screen, just this one alert table filtered by type.
+class EmergencyAlertRecord {
   final String id;
   final String personName;
   final String role;
-  final String location;
-  final DateTime triggeredAt;
-  final bool resolved;
+  final String type;
+  final String? message;
+  final AlertStatus status;
+  final DateTime createdAt;
 
-  const EmergencyAlert({
+  const EmergencyAlertRecord({
     required this.id,
     required this.personName,
     required this.role,
-    required this.location,
-    required this.triggeredAt,
-    this.resolved = false,
+    required this.type,
+    this.message,
+    required this.status,
+    required this.createdAt,
   });
-}
 
-final List<EmergencyAlert> mockEmergencyAlerts = [
-  EmergencyAlert(id: "SOS-221", personName: "Thelma Ibeh", role: "Driver", location: "Ozumba Mbadiwe Ave, VI", triggeredAt: DateTime.now().subtract(const Duration(minutes: 6))),
-  EmergencyAlert(id: "SOS-220", personName: "Chidi Eze", role: "Rider", location: "Yaba Bridge", triggeredAt: DateTime.now().subtract(const Duration(hours: 5)), resolved: true),
-];
+  factory EmergencyAlertRecord.fromJson(Map<String, dynamic> json) {
+    final user = json['user'] as Map<String, dynamic>?;
+    return EmergencyAlertRecord(
+      id: json['id'] as String,
+      personName: user == null ? '(unknown)' : '${user['firstName']} ${user['lastName']}',
+      role: user?['role'] as String? ?? 'UNKNOWN',
+      type: json['type'] as String,
+      message: json['message'] as String?,
+      status: alertStatusFromApi(json['status'] as String),
+      createdAt: DateTime.parse(json['createdAt'] as String),
+    );
+  }
+}
