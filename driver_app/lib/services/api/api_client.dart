@@ -76,6 +76,22 @@ class ApiClient {
     return base.replace(queryParameters: query.map((key, value) => MapEntry(key, '$value')));
   }
 
+  /// The wss:// (or ws:// for a plain-http backend, e.g. local dev)
+  /// equivalent of [path] against the same API_BASE_URL every REST call
+  /// uses — see docs/realtime-architecture.md's wire protocol
+  /// (`wss://<host>/ws?token=<access token>`) on the backend.
+  Uri wsUri(String path) {
+    final httpUri = Uri.parse('$_baseUrl$path');
+    final wsScheme = httpUri.scheme == 'https' ? 'wss' : 'ws';
+    return httpUri.replace(scheme: wsScheme);
+  }
+
+  /// The same [AuthProvider] this client attaches to every REST request's
+  /// Authorization header — exposed so a caller opening a WebSocket
+  /// connection (which authenticates via a `token` query param instead of
+  /// a header) can use the identical token source rather than a second one.
+  Future<String?> getAccessToken() => _authProvider.getAccessToken();
+
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) async {
     return _send(() async => _http.get(_uri(path, query), headers: await _headers()));
   }

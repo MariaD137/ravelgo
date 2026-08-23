@@ -2,7 +2,7 @@ import type { Server as HttpServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import { verifier } from "../middleware/auth";
 import { prisma } from "../db/prisma";
-import { broadcastDriverLocation, joinTripRoom, leaveAllRooms, recordDriverLocation } from "./hub";
+import { broadcastDriverLocation, joinDriverRoom, joinTripRoom, leaveAllRooms, recordDriverLocation } from "./hub";
 
 interface ConnectionUser {
   sub: string;
@@ -37,6 +37,19 @@ async function handleSubscribe(socket: WebSocket, user: ConnectionUser, tripId: 
   send(socket, { type: "subscribed", tripId });
 }
 
+// No id is ever accepted from the client here — the driver room joined is
+// resolved from this connection's own verified identity (the same `user`
+// every other handler on this socket already trusts), so a driver can only
+// ever subscribe to their own assignment channel, never another driver's.
+async function handleSubscribeDriver(socket: WebSocket, user: ConnectionUser) {
+  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: user.sub } } });
+  if (!driver) {
+    return send(socket, { type: "error", message: "Only drivers can subscribe to assignment events" });
+  }
+  joinDriverRoom(driver.id, socket);
+  send(socket, { type: "subscribed_driver", driverId: driver.id });
+}
+
 function processMessage(socket: WebSocket, user: ConnectionUser, raw: unknown) {
   let parsed: unknown;
   try {
@@ -51,6 +64,8 @@ function processMessage(socket: WebSocket, user: ConnectionUser, raw: unknown) {
   const message = parsed as Record<string, unknown>;
   if (message.type === "subscribe") {
     void handleSubscribe(socket, user, message.tripId);
+  } else if (message.type === "subscribe_driver") {
+    void handleSubscribeDriver(socket, user);
   } else if (message.type === "location") {
     void handleLocation(socket, user, message.lat, message.lng);
   } else {

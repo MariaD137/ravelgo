@@ -37,6 +37,11 @@ export async function matchDriverToTrip(tripId: string) {
         const driver = await tx.driver.findFirst({
           where: {
             status: "ACTIVE",
+            // A driver who hasn't toggled themselves online in the app
+            // must never be matched, even if otherwise ACTIVE and free —
+            // "online" is the driver's own real-time presence signal,
+            // distinct from the admin-controlled approval `status`.
+            online: true,
             // Backward-compatible with Trip rows written before
             // DriverAssignment existed (a driver mid-ride from before this
             // migration has no DriverAssignment row yet) as well as the

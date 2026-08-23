@@ -1,11 +1,26 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:ravelgo_driver_app/models/driver_operational_state.dart';
-import 'package:ravelgo_driver_app/models/driver_profile.dart';
 import 'package:ravelgo_driver_app/services/api/api_client.dart';
 import 'package:ravelgo_driver_app/services/api/auth_provider.dart';
 import 'package:ravelgo_driver_app/services/driver_session.dart';
 import 'package:ravelgo_driver_app/views/home/driver_home_screen.dart';
+
+class _FixedTokenProvider implements AuthProvider {
+  @override
+  Future<String?> getAccessToken() async => 'tok';
+  @override
+  Future<bool> isAuthenticated() async => true;
+  @override
+  Future<void> login({required String username, required String password}) async =>
+      throw UnimplementedError();
+  @override
+  Future<void> logout() async => throw UnimplementedError();
+}
 
 /// Part 2's requirement — "a driver actively performing a ride or courier
 /// job must not be able to navigate into another operational workflow and
@@ -16,9 +31,14 @@ import 'package:ravelgo_driver_app/views/home/driver_home_screen.dart';
 /// specific screen it might otherwise navigate to.
 void main() {
   setUp(() {
+    // A MockClient that 404s everything real matching/assignment calls
+    // would hit — this file only exercises the operational-state gating
+    // (state is set directly via markBusy/reconcile below), not the
+    // network calls setOnline()/loadProfile() make.
+    final client = MockClient((_) async => http.Response(jsonEncode({'error': 'not used'}), 404));
     DriverSession.resetForTesting(
-      authProvider: DevOnlyAuthProvider.instance,
-      apiClient: ApiClient(authProvider: DevOnlyAuthProvider.instance),
+      authProvider: _FixedTokenProvider(),
+      apiClient: ApiClient(authProvider: _FixedTokenProvider(), httpClient: client),
     );
     DriverSession.instance.goOffline();
   });
@@ -27,7 +47,7 @@ void main() {
     return MaterialApp(
       home: Scaffold(
         drawer: const Drawer(child: SizedBox()),
-        body: DriverHomeScreen(profile: const DriverProfile(isOnline: true), onOnlineToggle: (_) {}),
+        body: const DriverHomeScreen(),
       ),
     );
   }
@@ -36,7 +56,7 @@ void main() {
     DriverSession.instance.goAvailable();
     await tester.pumpWidget(pumpableHome());
 
-    expect(find.text('Simulate incoming ride request'), findsOneWidget);
+    expect(find.text('Listening for ride requests...'), findsOneWidget);
     expect(find.text('View available deliveries'), findsOneWidget);
   });
 
@@ -44,7 +64,7 @@ void main() {
     DriverSession.instance.markBusy(DriverOperationalState.onRide, 'trip-1');
     await tester.pumpWidget(pumpableHome());
 
-    expect(find.text('Simulate incoming ride request'), findsNothing);
+    expect(find.text('Listening for ride requests...'), findsNothing);
     expect(find.text('View available deliveries'), findsNothing);
     expect(find.textContaining('on a ride'), findsOneWidget);
   });
@@ -53,7 +73,7 @@ void main() {
     DriverSession.instance.markBusy(DriverOperationalState.onCourier, 'courier-1');
     await tester.pumpWidget(pumpableHome());
 
-    expect(find.text('Simulate incoming ride request'), findsNothing);
+    expect(find.text('Listening for ride requests...'), findsNothing);
     expect(find.text('View available deliveries'), findsNothing);
     expect(find.textContaining('on a delivery'), findsOneWidget);
   });

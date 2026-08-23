@@ -1,46 +1,91 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/models/driver_operational_state.dart';
-import 'package:ravelgo_driver_app/models/driver_profile.dart';
-import 'package:ravelgo_driver_app/models/ride_request.dart';
 import 'package:ravelgo_driver_app/services/driver_session.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/courier/available_courier_requests_screen.dart';
 import 'package:ravelgo_driver_app/views/riderequest/incoming_request_sheet.dart';
 import 'package:ravelgo_driver_app/views/trip/active_trip_screen.dart';
 
-class DriverHomeScreen extends StatelessWidget {
-  final DriverProfile profile;
-  final ValueChanged<bool> onOnlineToggle;
+/// Real matching, not a simulation: [DriverSession] polls (and best-effort
+/// WebSocket-pushes) GET /api/drivers/me/assignment while online and free,
+/// and the moment it sees a real ACTIVE ride assignment
+/// (`pendingRideAssignment`), this screen shows the incoming-request sheet
+/// automatically — there is no "Simulate incoming ride request" button
+/// anymore. See DRIVER_APP_REAL_MATCHING_READINESS.md.
+class DriverHomeScreen extends StatefulWidget {
+  const DriverHomeScreen({super.key});
 
-  const DriverHomeScreen({super.key, required this.profile, required this.onOnlineToggle});
+  @override
+  State<DriverHomeScreen> createState() => _DriverHomeScreenState();
+}
 
-  static const _demoRequest = RideRequest(
-    riderName: "Amaka O.",
-    riderRating: 4.9,
-    pickup: "14 Admiralty Way, Lekki Phase 1",
-    destination: "Landmark Beach, Victoria Island",
-    estimatedFare: 3200,
-    distanceKm: 8.4,
-    etaMinutes: 6,
-    preferredLanguage: "English",
-    quietModeRequested: true,
-    pickupNote: "Please call when you arrive, gate is locked.",
-  );
+class _DriverHomeScreenState extends State<DriverHomeScreen> {
+  bool _sheetShowing = false;
+  bool _togglingOnline = false;
 
-  Future<void> _simulateRequest(BuildContext context) async {
-    final accepted = await showModalBottomSheet<bool>(
+  @override
+  void initState() {
+    super.initState();
+    DriverSession.instance.addListener(_onSessionChanged);
+    // A pending assignment can already exist the moment this screen first
+    // builds (e.g. the app was backgrounded mid-poll) — check once up
+    // front rather than only reacting to a change.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowIncomingRequest());
+  }
+
+  @override
+  void dispose() {
+    DriverSession.instance.removeListener(_onSessionChanged);
+    super.dispose();
+  }
+
+  void _onSessionChanged() {
+    if (!mounted) return;
+    setState(() {});
+    _maybeShowIncomingRequest();
+  }
+
+  Future<void> _maybeShowIncomingRequest() async {
+    if (_sheetShowing) return;
+    final trip = DriverSession.instance.pendingRideAssignment;
+    if (trip == null) return;
+    _sheetShowing = true;
+    final acceptedTrip = await showModalBottomSheet<Map<String, dynamic>?>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => const IncomingRequestSheet(request: _demoRequest),
+      isDismissible: false,
+      enableDrag: false,
+      builder: (_) => IncomingRequestSheet(trip: trip),
     );
-    if (accepted == true && context.mounted) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => const ActiveTripScreen(request: _demoRequest)));
+    _sheetShowing = false;
+    if (acceptedTrip != null && mounted) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => ActiveTripScreen(trip: acceptedTrip)));
+    }
+  }
+
+  Future<void> _toggleOnline(bool value) async {
+    setState(() => _togglingOnline = true);
+    final ok = value ? await DriverSession.instance.setOnline() : await DriverSession.instance.setOffline();
+    if (!mounted) return;
+    setState(() => _togglingOnline = false);
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(DriverSession.instance.authErrorMessage ?? 'Could not update your status.')),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final profile = DriverSession.instance.profile;
+    // Driven by DriverSession.instance.state — set immediately by
+    // setOnline()/setOffline()/markBusy()/reconcile() — rather than
+    // profile.isOnline directly, so the UI updates the instant a toggle
+    // succeeds instead of waiting on a profile reload.
+    final isOnline = DriverSession.instance.state != DriverOperationalState.offline;
+    final busy = DriverSession.instance.state.isBusy;
+
     return SafeArea(
       child: Column(
         children: [
@@ -77,42 +122,41 @@ class DriverHomeScreen extends StatelessWidget {
                     decoration: AppComponents.cardDecoration(),
                     child: Row(
                       children: [
-                        Icon(Icons.circle, size: 12, color: profile.isOnline ? AppColors.online : AppColors.offline),
+                        Icon(Icons.circle, size: 12, color: isOnline ? AppColors.online : AppColors.offline),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            profile.isOnline ? "You're online and visible to riders" : "You're offline",
+                            isOnline ? "You're online and visible to riders" : "You're offline",
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                         ),
-                        Switch(value: profile.isOnline, activeThumbColor: AppColors.primaryDark, onChanged: onOnlineToggle),
+                        _togglingOnline
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                            : Switch(value: isOnline, activeThumbColor: AppColors.primaryDark, onChanged: busy ? null : _toggleOnline),
                       ],
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(child: AppComponents.statChip("Today's earnings", "₦18,400")),
-                      const SizedBox(width: 12),
-                      Expanded(child: AppComponents.statChip("Trips today", "6")),
-                      const SizedBox(width: 12),
-                      Expanded(child: AppComponents.statChip("Online hours", "5h 20m")),
-                    ],
-                  ),
+                  if (profile != null)
+                    Row(
+                      children: [
+                        Expanded(child: AppComponents.statChip("Rating", profile.rating.toStringAsFixed(2))),
+                        const SizedBox(width: 12),
+                        Expanded(child: AppComponents.statChip("Total trips", '${profile.totalTrips}')),
+                      ],
+                    ),
                   const SizedBox(height: 20),
-                  // Gated by DriverSession.instance.state, not just
-                  // profile.isOnline: this is a UI convenience (Part 15) so
+                  // Gated by DriverSession.instance.state, not just the
+                  // online toggle: this is a UI convenience (Part 15) so
                   // the driver isn't shown "start a new job" actions while
                   // already on one — the backend independently rejects the
                   // same conflicting action regardless of what this button
                   // shows (Part 18), so this gating never needs to be
                   // perfectly correct to keep the driver safe from a
                   // double-booking, only to keep the UI honest.
-                  ListenableBuilder(
-                    listenable: DriverSession.instance,
-                    builder: (context, _) {
-                      final busy = DriverSession.instance.state.isBusy;
-                      if (!profile.isOnline) {
+                  Builder(
+                    builder: (context) {
+                      if (!isOnline) {
                         return Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
@@ -140,9 +184,24 @@ class DriverHomeScreen extends StatelessWidget {
                       }
                       return Column(
                         children: [
-                          AppComponents.primaryButton(
-                            text: "Simulate incoming ride request",
-                            onPressed: () => _simulateRequest(context),
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: AppColors.online.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.wifi_tethering, size: 18, color: AppColors.online),
+                                SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    "Listening for ride requests...",
+                                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                           const SizedBox(height: 12),
                           OutlinedButton(

@@ -167,6 +167,14 @@ model Driver {
   userId            String       @unique
   user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   status            DriverStatus @default(PENDING_REVIEW)
+  // Real-time presence, distinct from `status` (admin approval state):
+  // a driver toggles this from the app when they go online/offline for
+  // the day. matchDriverToTrip only considers online:true drivers eligible
+  // for a new ride — an ACTIVE-but-offline driver must never be assigned
+  // one, the same way an ACTIVE-but-busy (has an ACTIVE DriverAssignment)
+  // driver isn't. Defaults false: a driver is offline until they
+  // explicitly go online, including immediately after onboarding.
+  online            Boolean      @default(false)
   rating            Float        @default(5.0)
   totalTrips        Int          @default(0)
   preferredLanguage String       @default("English")

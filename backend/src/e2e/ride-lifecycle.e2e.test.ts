@@ -43,7 +43,7 @@ test("ride lifecycle: request -> real fare -> auto-match -> driver progresses tr
     .set("Authorization", `Bearer ${driverToken}`)
     .send({ firstName: "Femi", lastName: "Balogun", email: "femi.e2e@example.com" });
   const driverId = driverProfile.body.id as string;
-  await prisma.driver.update({ where: { id: driverId }, data: { status: "ACTIVE" } });
+  await prisma.driver.update({ where: { id: driverId }, data: { status: "ACTIVE", online: true } });
 
   const riderToken = mockAuthAs({ sub: "e2e-ride-rider-1", groups: ["Rider"] });
   await request(app)

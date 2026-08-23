@@ -43,7 +43,7 @@ test("POST /api/trips auto-matches an available ACTIVE driver", async () => {
   const driverUser = await prisma.user.create({
     data: { cognitoSub: "driver-sub-6", role: "DRIVER", firstName: "I", lastName: "J", email: "i@example.com" },
   });
-  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE" } });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE", online: true } });
 
   const token = mockAuthAs({ sub: "rider-sub-6", groups: ["Rider"] });
   const res = await request(app)
@@ -107,7 +107,10 @@ async function createDriver(cognitoSub: string) {
   const user = await prisma.user.create({
     data: { cognitoSub, role: "DRIVER", firstName: "D", lastName: "R", email: `${cognitoSub}@example.com` },
   });
-  return prisma.driver.create({ data: { userId: user.id, status: "ACTIVE" } });
+  // online: true — an ACTIVE-but-offline driver is not matching-eligible
+  // (see matching.ts); every test using this helper expects a real driver
+  // a rider could actually be matched to.
+  return prisma.driver.create({ data: { userId: user.id, status: "ACTIVE", online: true } });
 }
 
 test("PATCH /api/trips/:id/status lets the trip's assigned Driver advance its status", async () => {

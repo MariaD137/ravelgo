@@ -230,6 +230,47 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Driver" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /drivers/me/online:
+    patch:
+      tags: [Drivers]
+      summary: Go online/offline (Driver) — required for real-time matching eligibility
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [online]
+              properties:
+                online: { type: boolean }
+      responses:
+        "200":
+          description: Updated driver profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Driver" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /drivers/me/assignment:
+    get:
+      tags: [Drivers]
+      summary: My current active assignment, if any (Driver) — Ride, Courier, or Rental
+      responses:
+        "200":
+          description: The active DriverAssignment row, or null if the driver is free
+          content:
+            application/json:
+              schema:
+                nullable: true
+                type: object
+                properties:
+                  id: { type: string }
+                  assignmentType: { type: string, enum: [RIDE, COURIER, RENTAL] }
+                  assignmentId: { type: string }
+                  status: { type: string }
+        "404": { $ref: "#/components/responses/NotFound" }
   /drivers/me/subscription:
     post:
       tags: [Subscriptions]

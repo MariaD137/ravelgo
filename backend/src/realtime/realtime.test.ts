@@ -206,3 +206,83 @@ test("GET /trips/:id/driver-location 404s before any location has been reported"
   const res = await request(baseUrl).get(`/api/trips/${trip.id}/driver-location`).set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 404);
 });
+
+test("subscribe_driver rejects a non-driver caller", async () => {
+  const token = mockAuthAs({ sub: "rider-not-driver", groups: ["Rider"] });
+  await prisma.user.create({
+    data: { cognitoSub: "rider-not-driver", role: "RIDER", firstName: "R", lastName: "N", email: "rn@example.com" },
+  });
+
+  const socket = new WebSocket(`${wsUrl}?token=${token}`);
+  await waitForOpen(socket);
+  socket.send(JSON.stringify({ type: "subscribe_driver" }));
+  const reply = await waitForMessage(socket);
+
+  assert.equal(reply.type, "error");
+  socket.close();
+});
+
+test("a real ride match over real HTTP pushes driver:assignment to the matched driver's own real WS connection, and not to a different driver's", async () => {
+  await prisma.pricingRule.deleteMany();
+  await prisma.pricingRule.create({ data: { name: "Standard", baseFare: 5, perKm: 1, perMinute: 0.1, active: true } });
+
+  const matchedDriverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-assign-ws-1", role: "DRIVER", firstName: "M", lastName: "D", email: "mws1@example.com" },
+  });
+  const matchedDriver = await prisma.driver.create({ data: { userId: matchedDriverUser.id, status: "ACTIVE", online: true } });
+  const otherDriverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-assign-ws-2", role: "DRIVER", firstName: "O", lastName: "D", email: "ows2@example.com" },
+  });
+  // A second ACTIVE+online driver who must NOT receive the first driver's
+  // assignment event — proves driver rooms are per-driver, not broadcast
+  // to every connected driver.
+  await prisma.driver.create({ data: { userId: otherDriverUser.id, status: "ACTIVE", online: true } });
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-assign-ws-1", role: "RIDER", firstName: "R", lastName: "I", email: "rws1@example.com" },
+  });
+
+  const matchedDriverToken = mockAuthAs({ sub: "driver-assign-ws-1", groups: ["Driver"] });
+  const matchedSocket = new WebSocket(`${wsUrl}?token=${matchedDriverToken}`);
+  await waitForOpen(matchedSocket);
+  matchedSocket.send(JSON.stringify({ type: "subscribe_driver" }));
+  const subAck = await waitForMessage(matchedSocket);
+  assert.equal(subAck.type, "subscribed_driver");
+  assert.equal(subAck.driverId, matchedDriver.id);
+
+  restoreAuth();
+  const otherDriverToken = mockAuthAs({ sub: "driver-assign-ws-2", groups: ["Driver"] });
+  const otherSocket = new WebSocket(`${wsUrl}?token=${otherDriverToken}`);
+  await waitForOpen(otherSocket);
+  otherSocket.send(JSON.stringify({ type: "subscribe_driver" }));
+  await waitForMessage(otherSocket); // subscribed_driver ack
+  let otherReceivedAssignment = false;
+  otherSocket.on("message", (raw) => {
+    const msg = JSON.parse(raw.toString());
+    if (msg.type === "driver:assignment") otherReceivedAssignment = true;
+  });
+
+  const assignmentPromise = waitForMessage(matchedSocket);
+  restoreAuth();
+  const riderToken = mockAuthAs({ sub: rider.cognitoSub, groups: ["Rider"] });
+  const tripRes = await request(baseUrl)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${riderToken}`)
+    .send({ pickup: "A", destination: "B", distanceKm: 2, durationMinutes: 5 });
+  assert.equal(tripRes.status, 201);
+  assert.equal(tripRes.body.status, "MATCHED");
+  assert.equal(tripRes.body.driverId, matchedDriver.id);
+
+  const assignment = await assignmentPromise;
+  assert.equal(assignment.type, "driver:assignment");
+  assert.equal(assignment.assignmentType, "RIDE");
+  assert.equal(assignment.assignmentId, tripRes.body.id);
+
+  // Give the (deliberately absent) cross-delivery a moment to have arrived
+  // if the bug existed, before asserting it didn't.
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(otherReceivedAssignment, false);
+
+  matchedSocket.close();
+  otherSocket.close();
+  await prisma.pricingRule.deleteMany();
+});

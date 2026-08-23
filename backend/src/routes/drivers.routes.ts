@@ -55,14 +55,56 @@ driversRouter.post("/drivers/me", requireAuth, requireRole("Driver"), async (req
   res.status(201).json(driver);
 });
 
-// Driver: get my own profile
+// Driver: get my own profile. Includes `user` (name/email/phone live there,
+// not on Driver itself) — previously omitted, which meant a driver's own
+// profile screen had no real name/email/phone to render at all and fell
+// back to hardcoded placeholder data.
 driversRouter.get("/drivers/me", requireAuth, requireRole("Driver"), async (req, res) => {
   const driver = await prisma.driver.findFirst({
     where: { user: { cognitoSub: req.user!.sub } },
-    include: { vehicles: true, documents: true },
+    include: { user: true, vehicles: true, documents: true },
   });
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
   res.json(driver);
+});
+
+const onlineSchema = z.object({ online: z.boolean() });
+
+// Driver: go online/offline. This is the real-time presence signal
+// matching.ts requires (online: true) alongside status: "ACTIVE" before a
+// driver is matching-eligible — replaces the previous MVP-skeleton
+// placeholder where this toggle only existed in the Flutter app's own
+// local state and had no effect on the backend at all.
+driversRouter.patch("/drivers/me/online", requireAuth, requireRole("Driver"), async (req, res) => {
+  const parsed = onlineSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { count } = await prisma.driver.updateMany({
+    where: { user: { cognitoSub: req.user!.sub } },
+    data: { online: parsed.data.online },
+  });
+  if (count === 0) return res.status(404).json({ error: "Driver profile not found" });
+
+  const driver = await prisma.driver.findFirstOrThrow({ where: { user: { cognitoSub: req.user!.sub } } });
+  res.json(driver);
+});
+
+// Driver: my current active assignment (Ride, Courier, or Rental), if any.
+// The primary polling mechanism driver_app uses to discover it has been
+// matched to a new trip — matching itself is fully server-side and
+// synchronous (services/matching.ts), so the driver has no "browse and
+// accept" step to learn about it from; this is how they find out. A
+// best-effort WebSocket push (driver:assignment, see realtime/server.ts)
+// overlays this same polling loop for near-instant delivery, exactly
+// mirroring how RideSession drives the rider side in user_app.
+driversRouter.get("/drivers/me/assignment", requireAuth, requireRole("Driver"), async (req, res) => {
+  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  const assignment = await prisma.driverAssignment.findFirst({
+    where: { driverId: driver.id, status: "ACTIVE" },
+  });
+  res.json(assignment);
 });
 
 // Admin: get a single driver with documents.
@@ -93,7 +135,3 @@ driversRouter.patch("/drivers/:id/status", requireAuth, requireRole("Admin"), as
   });
   res.json(driver);
 });
-
-// Driver: toggle online preference is handled client-side / via a lightweight presence
-// table in a later iteration; ride matching (websocket/App Sync) is intentionally out
-// of scope for this MVP skeleton.

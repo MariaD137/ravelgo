@@ -32,7 +32,10 @@ async function createDriverWithVehicle(cognitoSub: string) {
   const user = await prisma.user.create({
     data: { cognitoSub, role: "DRIVER", firstName: "D", lastName: "R", email: `${cognitoSub}@example.com` },
   });
-  const driver = await prisma.driver.create({ data: { userId: user.id, status: "ACTIVE" } });
+  // online: true — matching.ts only considers online drivers eligible, and
+  // this file's whole point is racing a real ride-match against another
+  // domain, so the driver must actually be matching-eligible.
+  const driver = await prisma.driver.create({ data: { userId: user.id, status: "ACTIVE", online: true } });
   const vehicle = await prisma.vehicle.create({
     data: { driverId: driver.id, brand: "Tesla", model: "Model 3", colour: "White", plateNumber: `${cognitoSub}-1`, year: "2022" },
   });

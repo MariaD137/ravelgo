@@ -12,6 +12,12 @@ export interface DriverLocation {
 // instead (the day App Runner runs more than one instance, not before).
 const tripRooms = new Map<string, Set<WebSocket>>();
 const latestDriverLocation = new Map<string, DriverLocation>();
+// One room per driver, joined only by that driver's own authenticated
+// connection (server.ts's handleSubscribeDriver resolves the driverId from
+// the connection's own verified identity — a client never supplies one),
+// so a driver can never subscribe to, and therefore never receive, another
+// driver's assignment events.
+const driverRooms = new Map<string, Set<WebSocket>>();
 
 export function joinTripRoom(tripId: string, socket: WebSocket) {
   let room = tripRooms.get(tripId);
@@ -22,8 +28,20 @@ export function joinTripRoom(tripId: string, socket: WebSocket) {
   room.add(socket);
 }
 
+export function joinDriverRoom(driverId: string, socket: WebSocket) {
+  let room = driverRooms.get(driverId);
+  if (!room) {
+    room = new Set();
+    driverRooms.set(driverId, room);
+  }
+  room.add(socket);
+}
+
 export function leaveAllRooms(socket: WebSocket) {
   for (const room of tripRooms.values()) {
+    room.delete(socket);
+  }
+  for (const room of driverRooms.values()) {
     room.delete(socket);
   }
 }
@@ -55,11 +73,31 @@ export function broadcastDriverLocation(tripId: string, location: DriverLocation
   broadcastToTrip(tripId, { type: "location", tripId, ...location });
 }
 
+/** Notifies a driver's own connection(s) that they've been given a new
+ * assignment — a lightweight "something changed, go re-fetch" signal (the
+ * same shape as broadcastTripStatus), not a full data payload. The driver
+ * app is expected to follow up with GET /api/drivers/me/assignment (or, for
+ * a RIDE, GET /api/trips/:id) for the details, exactly as RideSession does
+ * on the rider side for trip:status. */
+export function broadcastDriverAssignment(
+  driverId: string,
+  assignmentType: "RIDE" | "COURIER" | "RENTAL",
+  assignmentId: string,
+) {
+  const room = driverRooms.get(driverId);
+  if (!room || room.size === 0) return;
+  const message = JSON.stringify({ type: "driver:assignment", assignmentType, assignmentId });
+  for (const socket of room) {
+    if (socket.readyState === socket.OPEN) socket.send(message);
+  }
+}
+
 // Test-only: without this, `resetDb()` between test files would leave stale
 // state (rooms, cached locations) in this in-memory hub across whichever
 // tests happen to run in the same process — reuse the exact "reset shared
 // state between tests" pattern already used for the DB in test/helpers.ts.
 export function resetRealtimeState() {
   tripRooms.clear();
+  driverRooms.clear();
   latestDriverLocation.clear();
 }

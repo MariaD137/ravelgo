@@ -4,7 +4,7 @@ import type { TripStatus } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
-import { broadcastTripStatus, getLatestDriverLocation } from "../realtime/hub";
+import { broadcastDriverAssignment, broadcastTripStatus, getLatestDriverLocation } from "../realtime/hub";
 import { matchDriverToTrip } from "../services/matching";
 import { findOwnDriver } from "../services/driver";
 import { releaseDriver } from "../services/driver-availability";
@@ -102,6 +102,15 @@ tripsRouter.post("/trips", requireAuth, requireRole("Rider"), async (req, res) =
   });
 
   const matched = await matchDriverToTrip(trip.id);
+  if (matched?.driverId) {
+    // The driver has no "browse and accept" step for a ride — matching is
+    // synchronous and server-authoritative above — so this is how they
+    // find out at all. Best-effort: driver_app's own polling loop
+    // (GET /drivers/me/assignment) is the primary, always-correct
+    // mechanism this overlays, same relationship as trip:status has to the
+    // rider's polling in RideSession.
+    broadcastDriverAssignment(matched.driverId, "RIDE", matched.id);
+  }
   res.status(201).json(matched ?? trip);
 });
 
