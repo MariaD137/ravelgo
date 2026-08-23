@@ -1,14 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/services/driver_session.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 
-/// A real ride the backend already matched to this driver (services/
-/// matching.ts, synchronous and server-side) — there is no "offer" the
-/// driver could lose to another driver by taking too long, so this sheet
-/// no longer has a countdown timer that auto-declines. There is also no
-/// backend fare-negotiation capability, so the previous "Negotiate final
-/// fare" control (which only updated local state and sent nothing to
-/// anyone) is gone rather than kept as decoration.
+/// A real pending ride offer from the backend's Uber-style dispatch
+/// (services/matching.ts): the offer is held open only until
+/// `offerExpiresAt`, so this sheet shows a real countdown driven by that
+/// server timestamp — purely presentational. Reaching zero only hides the
+/// sheet locally (see [DriverSession.clearPendingOfferOnLocalTimeout]); it
+/// never calls decline itself, since a local timeout is not the same thing
+/// as the driver actually declining, and the backend's own lazy expiration
+/// is what records EXPIRED. There is no backend fare-negotiation
+/// capability, so the previous "Negotiate final fare" control (which only
+/// updated local state and sent nothing to anyone) is gone rather than
+/// kept as decoration.
 class IncomingRequestSheet extends StatefulWidget {
   final Map<String, dynamic> trip;
   const IncomingRequestSheet({super.key, required this.trip});
@@ -19,16 +25,20 @@ class IncomingRequestSheet extends StatefulWidget {
 
 class _IncomingRequestSheetState extends State<IncomingRequestSheet> {
   final DriverSession _session = DriverSession.instance;
+  Timer? _countdownTimer;
+  Duration _remaining = Duration.zero;
 
   @override
   void initState() {
     super.initState();
     _session.addListener(_onSessionChanged);
+    _startCountdown();
   }
 
   @override
   void dispose() {
     _session.removeListener(_onSessionChanged);
+    _countdownTimer?.cancel();
     super.dispose();
   }
 
@@ -36,7 +46,29 @@ class _IncomingRequestSheetState extends State<IncomingRequestSheet> {
     if (mounted) setState(() {});
   }
 
+  void _startCountdown() {
+    final expiresAtRaw = widget.trip['offerExpiresAt'] as String?;
+    final expiresAt = expiresAtRaw != null ? DateTime.tryParse(expiresAtRaw) : null;
+    if (expiresAt == null) return; // no expiry known — no countdown shown
+    void tick() {
+      final remaining = expiresAt.difference(DateTime.now());
+      if (!mounted) return;
+      setState(() => _remaining = remaining.isNegative ? Duration.zero : remaining);
+      if (remaining.isNegative || remaining == Duration.zero) {
+        _countdownTimer?.cancel();
+        // A local timeout only hides the sheet — it must never be treated
+        // as this driver declining (see class doc comment above).
+        _session.clearPendingOfferOnLocalTimeout();
+        Navigator.pop(context, null);
+      }
+    }
+
+    tick();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
+  }
+
   Future<void> _accept() async {
+    _countdownTimer?.cancel();
     final confirmed = await _session.acceptPendingRide();
     if (!mounted) return;
     if (confirmed == null) {
@@ -50,6 +82,7 @@ class _IncomingRequestSheetState extends State<IncomingRequestSheet> {
   }
 
   Future<void> _decline() async {
+    _countdownTimer?.cancel();
     await _session.declinePendingRide();
     if (mounted) Navigator.pop(context, null);
   }
@@ -62,6 +95,8 @@ class _IncomingRequestSheetState extends State<IncomingRequestSheet> {
     final fare = (trip['estimatedFare'] as num?)?.toDouble() ?? 0;
     final pickupNote = trip['pickupNote'] as String?;
     final busy = _session.assignmentActionInFlight;
+    final hasCountdown = trip['offerExpiresAt'] != null;
+    final secondsLeft = _remaining.inSeconds;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -70,7 +105,21 @@ class _IncomingRequestSheetState extends State<IncomingRequestSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("New ride request", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("New ride request", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              if (hasCountdown)
+                Text(
+                  '${secondsLeft}s',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: secondsLeft <= 5 ? Colors.red : Colors.black54,
+                  ),
+                ),
+            ],
+          ),
           const SizedBox(height: 16),
           Row(
             children: [

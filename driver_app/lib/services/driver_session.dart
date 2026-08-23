@@ -29,15 +29,17 @@ import 'api/vehicle_api.dart';
 /// with the backend's own answer — server state always wins over whatever
 /// this class currently holds (Part 19).
 ///
-/// Ride matching has no "browse and accept" step on the backend — a driver
-/// is matched synchronously and atomically by services/matching.ts, with
-/// no offer a second driver could also be racing for (see
-/// DRIVER_APP_REAL_MATCHING_READINESS.md's API MAP section). This class's
-/// [_pollForAssignment] loop and best-effort WebSocket connection are how a
-/// driver discovers a match happened at all, not a client-side matching
-/// engine — every decision (who gets matched, whether a transition is
-/// legal) is made and enforced by the backend; this class only asks it and
-/// mirrors the answer.
+/// Ride matching is a real Uber-style offer/accept flow: the backend offers
+/// a REQUESTED trip to one eligible driver at a time (services/matching.ts)
+/// — the driver sees a real "new ride request" and chooses ACCEPT or
+/// DECLINE, never an automatic acceptance. This class's polling loop and
+/// best-effort WebSocket connection are how a driver discovers a pending
+/// offer at all, not a client-side matching engine — every decision (who
+/// gets offered what, whether an accept wins a concurrency race) is made
+/// and enforced by the backend; this class only asks it and mirrors the
+/// answer. Declining an offer never affects the driver's own account
+/// status (Driver.status is a separate, one-time admin-approval state
+/// machine) — the driver stays available for the next offer.
 ///
 /// [instance] must be set up once via [initialize] — from main.dart's
 /// composition root, with an explicit [AuthProvider] — before anything
@@ -118,14 +120,14 @@ class DriverSession extends ChangeNotifier {
   DriverProfile? _profile;
   DriverProfile? get profile => _profile;
 
-  /// Full Trip JSON for a ride the backend just matched to this driver,
-  /// discovered via polling/WS and not yet acted on (accepted or
-  /// declined). Null the rest of the time. Driver-facing screens
-  /// (driver_home_screen.dart) show the incoming-request sheet exactly
-  /// when this is non-null — never on a local timer or a "simulate"
-  /// button.
-  Map<String, dynamic>? _pendingRideAssignment;
-  Map<String, dynamic>? get pendingRideAssignment => _pendingRideAssignment;
+  /// Trip JSON for a real pending ride offer (merged with `offerId` and
+  /// `offerExpiresAt`), discovered via polling/WS and not yet acted on
+  /// (accepted or declined). Null the rest of the time. Driver-facing
+  /// screens (driver_home_screen.dart) show the incoming-request sheet
+  /// exactly when this is non-null — never on a local timer or a
+  /// "simulate" button.
+  Map<String, dynamic>? _pendingRideOffer;
+  Map<String, dynamic>? get pendingRideOffer => _pendingRideOffer;
 
   bool _assignmentActionInFlight = false;
   bool get assignmentActionInFlight => _assignmentActionInFlight;
@@ -133,7 +135,7 @@ class DriverSession extends ChangeNotifier {
   Timer? _pollTimer;
   WebSocketChannel? _ws;
   StreamSubscription? _wsSub;
-  String? _lastSeenAssignmentId;
+  String? _lastSeenOfferId;
 
   /// Delegates to the injected [AuthProvider] and tracks the result as
   /// [authStatus] rather than letting navigation itself stand in for "the
@@ -170,7 +172,7 @@ class DriverSession extends ChangeNotifier {
     _state = DriverOperationalState.offline;
     _activeAssignmentId = null;
     _profile = null;
-    _pendingRideAssignment = null;
+    _pendingRideOffer = null;
     notifyListeners();
   }
 
@@ -184,6 +186,9 @@ class DriverSession extends ChangeNotifier {
       _profile = DriverProfile.fromJson(json);
       if (_profile!.isOnline && !_state.isBusy) {
         _state = DriverOperationalState.available;
+        // Resume offer discovery — needed after an app restart, where this
+        // is the first signal that the driver was left online.
+        _startAssignmentTracking();
       }
       notifyListeners();
       return true;
@@ -287,17 +292,35 @@ class DriverSession extends ChangeNotifier {
     }
   }
 
-  // --- Ride assignment discovery (polling primary + WS overlay) ------------
+  // --- Ride offer discovery (polling primary + WS overlay) -----------------
 
   void _startAssignmentTracking() {
     _pollTimer?.cancel();
-    // Polling is the primary, always-correct mechanism — matching is
-    // synchronous server-side with no client push required to work at
-    // all; the WebSocket connection below is a best-effort latency
-    // improvement on top of it, never a replacement for it.
+    // Polling is the primary, always-correct mechanism — a new offer
+    // requires no client push to be discoverable at all; the WebSocket
+    // connection below is a best-effort latency improvement on top of it,
+    // never a replacement for it.
     _pollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _poll());
-    unawaited(_poll());
+    // One-time reconciliation for a job already committed before this
+    // tracking session started (e.g. the app was restarted mid-ride) —
+    // a normal accept already marks the driver busy directly and stops
+    // tracking, so this only catches state that predates it.
+    unawaited(_reconcileExistingAssignment());
     unawaited(_connectWs());
+  }
+
+  Future<void> _reconcileExistingAssignment() async {
+    try {
+      final assignment = await rideApi.getMyAssignment();
+      if (assignment != null && assignment['assignmentType'] == 'RIDE') {
+        reconcile(busy: true, assignmentType: 'RIDE', assignmentId: assignment['assignmentId'] as String?);
+        return;
+      }
+    } on ApiException {
+      // Fall through — the regular poll loop below will still discover
+      // any pending offer.
+    }
+    unawaited(_poll());
   }
 
   void _stopAssignmentTracking() {
@@ -312,8 +335,8 @@ class DriverSession extends ChangeNotifier {
   Future<void> _poll() async {
     if (_state != DriverOperationalState.available) return;
     try {
-      final assignment = await rideApi.getMyAssignment();
-      await _handleAssignmentSeen(assignment);
+      final offer = await rideApi.getMyOffer();
+      await _handleOfferSeen(offer);
     } on ApiException {
       // A single failed poll is not surfaced — the next tick retries.
     }
@@ -343,7 +366,7 @@ class DriverSession extends ChangeNotifier {
   void _onWsMessage(dynamic raw) {
     try {
       final msg = jsonDecode(raw as String) as Map<String, dynamic>;
-      if (msg['type'] == 'driver:assignment' && msg['assignmentType'] == 'RIDE') {
+      if (msg['type'] == 'driver:offer') {
         // The WS message itself carries no trip details — same "something
         // changed, go re-fetch" shape as trip:status on the rider side —
         // so trigger an immediate poll rather than trusting the message
@@ -356,46 +379,45 @@ class DriverSession extends ChangeNotifier {
     }
   }
 
-  Future<void> _handleAssignmentSeen(Map<String, dynamic>? assignment) async {
-    if (assignment == null) return;
-    if (assignment['assignmentType'] != 'RIDE') return;
-    final tripId = assignment['assignmentId'] as String?;
-    if (tripId == null) return;
-    if (tripId == _lastSeenAssignmentId) return; // already showing/handled this one
+  Future<void> _handleOfferSeen(Map<String, dynamic>? offer) async {
+    if (offer == null) return;
+    final offerId = offer['id'] as String?;
+    final tripId = offer['tripId'] as String?;
+    if (offerId == null || tripId == null) return;
+    if (offerId == _lastSeenOfferId) return; // already showing/handled this one
     try {
       final trip = await rideApi.getTrip(tripId);
-      if (trip['status'] != 'MATCHED') return; // stale by the time we fetched it
-      _lastSeenAssignmentId = tripId;
-      _pendingRideAssignment = trip;
+      if (trip['status'] != 'REQUESTED') return; // stale by the time we fetched it
+      _lastSeenOfferId = offerId;
+      _pendingRideOffer = {...trip, 'offerId': offerId, 'offerExpiresAt': offer['expiresAt']};
       notifyListeners();
     } on ApiException {
       // Couldn't fetch details this tick — leave unshown, next poll retries.
     }
   }
 
-  /// Confirms the assignment still stands (re-fetches the trip — a stale
-  /// notification, e.g. the rider having cancelled in the meantime, is
-  /// caught here rather than trusted from the earlier poll/WS event), then
-  /// marks the driver busy. Returns the confirmed trip on success.
+  /// Accepts the real pending offer — PATCH /trip-offers/:id/accept.
+  /// Atomic and concurrency-safe server-side: a losing race against
+  /// another driver's accept, or an offer that already expired, surfaces
+  /// as an [ApiException] here rather than a fabricated success. Marks the
+  /// driver busy and returns the now-MATCHED trip only on genuine success.
   Future<Map<String, dynamic>?> acceptPendingRide() async {
-    final pending = _pendingRideAssignment;
+    final pending = _pendingRideOffer;
     if (pending == null || _assignmentActionInFlight) return null;
-    final tripId = pending['id'] as String;
+    final offerId = pending['offerId'] as String;
     _assignmentActionInFlight = true;
     notifyListeners();
     try {
-      final trip = await rideApi.getTrip(tripId);
-      if (trip['status'] != 'MATCHED') {
-        // No longer valid (rider cancelled, or it moved on some other way)
-        // — clear it honestly rather than opening a trip screen for a job
-        // that no longer exists.
-        _pendingRideAssignment = null;
-        return null;
-      }
-      _pendingRideAssignment = null;
-      markBusy(DriverOperationalState.onRide, tripId);
+      final trip = await rideApi.acceptOffer(offerId);
+      _pendingRideOffer = null;
+      markBusy(DriverOperationalState.onRide, trip['id'] as String);
       return trip;
     } on ApiException {
+      // No longer available (already expired, already resolved, or lost a
+      // concurrent accept race to another driver) — clear it honestly
+      // rather than opening a trip screen for a job that never became
+      // this driver's.
+      _pendingRideOffer = null;
       return null;
     } finally {
       _assignmentActionInFlight = false;
@@ -403,29 +425,44 @@ class DriverSession extends ChangeNotifier {
     }
   }
 
-  /// Declines a pending ride — the real backend transition (MATCHED ->
-  /// CANCELLED) a driver is authorized to make on their own assigned trip,
-  /// via the same PATCH /trips/:id/status endpoint the rest of the ride
-  /// lifecycle uses. Returns whether it succeeded.
+  /// Declines a pending offer — PATCH /trip-offers/:id/decline. This only
+  /// resolves this one offer for this one driver: it never cancels the
+  /// rider's trip (the backend offers it on to the next eligible driver)
+  /// and never touches this driver's own account status or availability —
+  /// the driver stays ACTIVE, ONLINE, and eligible for the next offer.
+  /// Returns whether it succeeded.
   Future<bool> declinePendingRide() async {
-    final pending = _pendingRideAssignment;
+    final pending = _pendingRideOffer;
     if (pending == null || _assignmentActionInFlight) return false;
-    final tripId = pending['id'] as String;
+    final offerId = pending['offerId'] as String;
     _assignmentActionInFlight = true;
     notifyListeners();
     try {
-      await rideApi.updateStatus(tripId, 'CANCELLED');
-      _pendingRideAssignment = null;
+      await rideApi.declineOffer(offerId);
+      _pendingRideOffer = null;
       return true;
     } on ApiException {
-      // Already moved on (e.g. rider cancelled first, or it's no longer
-      // MATCHED) — either way, nothing left for this driver to decline.
-      _pendingRideAssignment = null;
+      // Already resolved some other way (e.g. it expired first) — either
+      // way, nothing left for this driver to decline.
+      _pendingRideOffer = null;
       return false;
     } finally {
       _assignmentActionInFlight = false;
       notifyListeners();
     }
+  }
+
+  /// Called only when the incoming-request sheet's own countdown reaches
+  /// zero — hides the sheet locally without recording anything. This must
+  /// never call [declinePendingRide]: a local timeout is not a driver
+  /// decision, and recording it as a DECLINE would corrupt the driver's
+  /// acceptance-rate stats. The backend's own lazy expiration (checked on
+  /// the next offer/trip poll, by whichever side reads it first) is what
+  /// actually records EXPIRED.
+  void clearPendingOfferOnLocalTimeout() {
+    if (_pendingRideOffer == null) return;
+    _pendingRideOffer = null;
+    notifyListeners();
   }
 
   @override

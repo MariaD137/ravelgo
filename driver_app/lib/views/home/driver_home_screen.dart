@@ -7,10 +7,10 @@ import 'package:ravelgo_driver_app/views/riderequest/incoming_request_sheet.dart
 import 'package:ravelgo_driver_app/views/trip/active_trip_screen.dart';
 import 'package:ravelgo_driver_app/widgets/live_map_preview.dart';
 
-/// Real matching, not a simulation: [DriverSession] polls (and best-effort
-/// WebSocket-pushes) GET /api/drivers/me/assignment while online and free,
-/// and the moment it sees a real ACTIVE ride assignment
-/// (`pendingRideAssignment`), this screen shows the incoming-request sheet
+/// Real offer dispatch, not a simulation: [DriverSession] polls (and
+/// best-effort WebSocket-pushes) GET /api/drivers/me/offer while online and
+/// free, and the moment it sees a real pending offer
+/// (`pendingRideOffer`), this screen shows the incoming-request sheet
 /// automatically — there is no "Simulate incoming ride request" button
 /// anymore. See DRIVER_APP_REAL_MATCHING_READINESS.md.
 class DriverHomeScreen extends StatefulWidget {
@@ -48,7 +48,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   Future<void> _maybeShowIncomingRequest() async {
     if (_sheetShowing) return;
-    final trip = DriverSession.instance.pendingRideAssignment;
+    final trip = DriverSession.instance.pendingRideOffer;
     if (trip == null) return;
     _sheetShowing = true;
     final acceptedTrip = await showModalBottomSheet<Map<String, dynamic>?>(

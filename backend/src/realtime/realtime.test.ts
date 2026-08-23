@@ -222,7 +222,7 @@ test("subscribe_driver rejects a non-driver caller", async () => {
   socket.close();
 });
 
-test("a real ride match over real HTTP pushes driver:assignment to the matched driver's own real WS connection, and not to a different driver's", async () => {
+test("a real ride offer over real HTTP pushes driver:offer to the eligible driver's own real WS connection, and not to a different driver's; accepting it then matches the trip", async () => {
   await prisma.pricingRule.deleteMany();
   await prisma.pricingRule.create({ data: { name: "Standard", baseFare: 5, perKm: 1, perMinute: 0.1, active: true } });
 
@@ -255,13 +255,13 @@ test("a real ride match over real HTTP pushes driver:assignment to the matched d
   await waitForOpen(otherSocket);
   otherSocket.send(JSON.stringify({ type: "subscribe_driver" }));
   await waitForMessage(otherSocket); // subscribed_driver ack
-  let otherReceivedAssignment = false;
+  let otherReceivedOffer = false;
   otherSocket.on("message", (raw) => {
     const msg = JSON.parse(raw.toString());
-    if (msg.type === "driver:assignment") otherReceivedAssignment = true;
+    if (msg.type === "driver:offer") otherReceivedOffer = true;
   });
 
-  const assignmentPromise = waitForMessage(matchedSocket);
+  const offerPromise = waitForMessage(matchedSocket);
   restoreAuth();
   const riderToken = mockAuthAs({ sub: rider.cognitoSub, groups: ["Rider"] });
   const tripRes = await request(baseUrl)
@@ -269,18 +269,29 @@ test("a real ride match over real HTTP pushes driver:assignment to the matched d
     .set("Authorization", `Bearer ${riderToken}`)
     .send({ pickup: "A", destination: "B", distanceKm: 2, durationMinutes: 5 });
   assert.equal(tripRes.status, 201);
-  assert.equal(tripRes.body.status, "MATCHED");
-  assert.equal(tripRes.body.driverId, matchedDriver.id);
+  // Uber-style offer model: the trip is offered, not auto-accepted on the
+  // driver's behalf — it stays REQUESTED until the driver actually accepts.
+  assert.equal(tripRes.body.status, "REQUESTED");
+  assert.equal(tripRes.body.driverId, null);
 
-  const assignment = await assignmentPromise;
-  assert.equal(assignment.type, "driver:assignment");
-  assert.equal(assignment.assignmentType, "RIDE");
-  assert.equal(assignment.assignmentId, tripRes.body.id);
+  const offerPush = await offerPromise;
+  assert.equal(offerPush.type, "driver:offer");
+  assert.equal(offerPush.tripId, tripRes.body.id);
 
   // Give the (deliberately absent) cross-delivery a moment to have arrived
   // if the bug existed, before asserting it didn't.
   await new Promise((resolve) => setTimeout(resolve, 100));
-  assert.equal(otherReceivedAssignment, false);
+  assert.equal(otherReceivedOffer, false);
+
+  restoreAuth();
+  const matchedDriverTokenAgain = mockAuthAs({ sub: "driver-assign-ws-1", groups: ["Driver"] });
+  const offer = await prisma.tripOffer.findFirstOrThrow({ where: { tripId: tripRes.body.id } });
+  const acceptRes = await request(baseUrl)
+    .patch(`/api/trip-offers/${offer.id}/accept`)
+    .set("Authorization", `Bearer ${matchedDriverTokenAgain}`);
+  assert.equal(acceptRes.status, 200);
+  assert.equal(acceptRes.body.status, "MATCHED");
+  assert.equal(acceptRes.body.driverId, matchedDriver.id);
 
   matchedSocket.close();
   otherSocket.close();
