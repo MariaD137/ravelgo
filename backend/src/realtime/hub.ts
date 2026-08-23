@@ -92,6 +92,22 @@ export function broadcastDriverAssignment(
   }
 }
 
+/** Notifies a driver's own connection(s) that they've been sent a real ride
+ * offer (see services/matching.ts's offerNextDriver) — the same
+ * lightweight "something changed, go re-fetch" shape as
+ * broadcastDriverAssignment, deliberately distinct from it: an offer is not
+ * yet a committed assignment, and the driver app must not treat this as
+ * "you have a new job" the way it does driver:assignment — only as "go
+ * check GET /api/drivers/me/offer". */
+export function broadcastDriverOffer(driverId: string, tripId: string) {
+  const room = driverRooms.get(driverId);
+  if (!room || room.size === 0) return;
+  const message = JSON.stringify({ type: "driver:offer", tripId });
+  for (const socket of room) {
+    if (socket.readyState === socket.OPEN) socket.send(message);
+  }
+}
+
 // Test-only: without this, `resetDb()` between test files would leave stale
 // state (rooms, cached locations) in this in-memory hub across whichever
 // tests happen to run in the same process — reuse the exact "reset shared

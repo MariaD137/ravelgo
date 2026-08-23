@@ -36,7 +36,7 @@ test("POST /api/trips lets a Rider request a trip", async () => {
   assert.equal(res.body.status, "REQUESTED");
 });
 
-test("POST /api/trips auto-matches an available ACTIVE driver", async () => {
+test("POST /api/trips offers an available ACTIVE driver, who accepts and becomes matched", async () => {
   await prisma.user.create({
     data: { cognitoSub: "rider-sub-6", role: "RIDER", firstName: "G", lastName: "H", email: "g@example.com" },
   });
@@ -51,9 +51,20 @@ test("POST /api/trips auto-matches an available ACTIVE driver", async () => {
     .set("Authorization", `Bearer ${token}`)
     .send({ pickup: "Home", destination: "Airport", estimatedFare: 25.5 });
 
+  // A real offer went out — matching never auto-assigns. The trip itself
+  // stays REQUESTED until the offered driver actually accepts.
   assert.equal(res.status, 201);
-  assert.equal(res.body.status, "MATCHED");
-  assert.equal(res.body.driverId, driver.id);
+  assert.equal(res.body.status, "REQUESTED");
+  assert.equal(res.body.driverId, null);
+
+  const offer = await prisma.tripOffer.findFirstOrThrow({ where: { tripId: res.body.id } });
+  assert.equal(offer.driverId, driver.id);
+  assert.equal(offer.status, "OFFERED");
+
+  const acceptRes = await acceptOfferAsDriver("driver-sub-6");
+  assert.equal(acceptRes.status, 200);
+  assert.equal(acceptRes.body.status, "MATCHED");
+  assert.equal(acceptRes.body.driverId, driver.id);
 });
 
 test("POST /api/trips leaves a trip REQUESTED when no ACTIVE driver is free", async () => {
@@ -111,6 +122,21 @@ async function createDriver(cognitoSub: string) {
   // (see matching.ts); every test using this helper expects a real driver
   // a rider could actually be matched to.
   return prisma.driver.create({ data: { userId: user.id, status: "ACTIVE", online: true } });
+}
+
+/** The real two-step flow every "the driver gets matched" test now goes
+ * through: matching only ever sends an offer (POST /trips), never an
+ * automatic match — this fetches the given driver's pending offer and
+ * accepts it, returning the PATCH .../accept response (the now-MATCHED
+ * trip, or the error if there wasn't one / it lost a race). Switches the
+ * mocked identity to this driver via mockAuthAs — only call this once the
+ * test no longer needs a different identity's token to keep working. */
+async function acceptOfferAsDriver(driverSub: string) {
+  const token = mockAuthAs({ sub: driverSub, groups: ["Driver"] });
+  const offerRes = await request(app).get("/api/drivers/me/offer").set("Authorization", `Bearer ${token}`);
+  assert.equal(offerRes.status, 200);
+  assert.ok(offerRes.body, `expected driver ${driverSub} to have a pending offer`);
+  return request(app).patch(`/api/trip-offers/${offerRes.body.id}/accept`).set("Authorization", `Bearer ${token}`);
 }
 
 test("PATCH /api/trips/:id/status lets the trip's assigned Driver advance its status", async () => {
@@ -519,7 +545,7 @@ test("PATCH /api/trips/:id/status accepts a finalFare within the allowed varianc
   assert.equal(res.body.finalFare, 28);
 });
 
-test("POST /api/trips: two riders racing with exactly one ACTIVE driver free — the driver is matched to only one trip", async () => {
+test("POST /api/trips: two riders racing with exactly one ACTIVE driver free — the driver is offered only one trip", async () => {
   await prisma.user.create({
     data: { cognitoSub: "rider-sub-race-a", role: "RIDER", firstName: "R", lastName: "A", email: "race-a@example.com" },
   });
@@ -551,13 +577,18 @@ test("POST /api/trips: two riders racing with exactly one ACTIVE driver free —
 
   assert.equal(resA.status, 201);
   assert.equal(resB.status, 201);
-  const matchedStatuses = [resA.body.status, resB.body.status].sort();
-  // Exactly one trip is MATCHED to the one available driver; the other is
-  // left REQUESTED — never both MATCHED to the same driver.
-  assert.deepEqual(matchedStatuses, ["MATCHED", "REQUESTED"]);
+  // Both trips stay REQUESTED at this point — matching never auto-assigns.
+  assert.equal(resA.body.status, "REQUESTED");
+  assert.equal(resB.body.status, "REQUESTED");
 
-  const matchedTrips = await prisma.trip.findMany({ where: { driverId: driver.id } });
-  assert.equal(matchedTrips.length, 1);
+  // Exactly one of the two trips got a real offer to the one available
+  // driver; the database-level partial unique index
+  // (TripOffer_driverId_offered_unique) guarantees the driver can never
+  // hold two simultaneous OFFERED offers, regardless of which request's
+  // transaction happened to commit first.
+  const offers = await prisma.tripOffer.findMany({ where: { driverId: driver.id } });
+  assert.equal(offers.length, 1);
+  assert.ok(offers[0].tripId === resA.body.id || offers[0].tripId === resB.body.id);
 });
 
 test("POST /api/trips does not match a driver already on an active courier request (Courier->Ride)", async () => {
@@ -626,9 +657,12 @@ test("PATCH /api/trips/:id/status releases the driver's RIDE assignment on COMPL
   assert.ok(assignment?.endedAt);
 });
 
-test("Concurrency: one ACTIVE driver — accepting a courier request and matching a new ride race — exactly one wins", async () => {
+test("Concurrency: one ACTIVE driver — accepting a real ride offer and accepting a courier request race — exactly one wins", async () => {
   const sender = await prisma.user.create({
-    data: { cognitoSub: "rider-sub-cr-race", role: "RIDER", firstName: "R", lastName: "S", email: "rs@example.com" },
+    data: { cognitoSub: "sender-sub-cr-race", role: "RIDER", firstName: "R", lastName: "S", email: "rs@example.com" },
+  });
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-cr-race", role: "RIDER", firstName: "R", lastName: "T", email: "rt@example.com" },
   });
   const driver = await createDriver("driver-sub-cr-race");
   const courierReq = await prisma.courierRequest.create({
@@ -643,35 +677,38 @@ test("Concurrency: one ACTIVE driver — accepting a courier request and matchin
     },
   });
 
-  const riderToken = "mock.rider-sub-cr-race";
-  const driverToken = "mock.driver-sub-cr-race";
-  mock.method(verifier, "verify", async (candidate: string) => {
-    if (candidate === riderToken) return { sub: "rider-sub-cr-race", "cognito:groups": ["Rider"] } as never;
-    if (candidate === driverToken) return { sub: "driver-sub-cr-race", "cognito:groups": ["Driver"] } as never;
-    throw new Error("invalid token");
-  });
+  // Requesting the ride (and the offer it generates) is not itself part of
+  // the race — an unanswered offer no longer reserves the driver at all
+  // (see TripOffer's own doc comment), so it can't conflict with anything
+  // by merely existing. The real race, matching how every other
+  // cross-domain concurrency test in this codebase is structured, is
+  // between the two ACTUAL commitment actions: accepting the ride offer,
+  // and accepting the courier request.
+  const riderToken = mockAuthAs({ sub: "rider-sub-cr-race", groups: ["Rider"] });
+  const tripRes = await request(app)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${riderToken}`)
+    .send({ pickup: "Home", destination: "Airport", estimatedFare: 20 });
+  assert.equal(tripRes.body.status, "REQUESTED");
+  const offer = await prisma.tripOffer.findFirstOrThrow({ where: { tripId: tripRes.body.id } });
+  assert.equal(offer.driverId, driver.id);
 
-  const [tripRes, courierRes] = await Promise.all([
-    request(app)
-      .post("/api/trips")
-      .set("Authorization", `Bearer ${riderToken}`)
-      .send({ pickup: "Home", destination: "Airport", estimatedFare: 20 }),
-    request(app)
-      .patch(`/api/courier-requests/${courierReq.id}/accept`)
-      .set("Authorization", `Bearer ${driverToken}`),
+  const driverToken = mockAuthAs({ sub: "driver-sub-cr-race", groups: ["Driver"] });
+  const [acceptOfferRes, acceptCourierRes] = await Promise.all([
+    request(app).patch(`/api/trip-offers/${offer.id}/accept`).set("Authorization", `Bearer ${driverToken}`),
+    request(app).patch(`/api/courier-requests/${courierReq.id}/accept`).set("Authorization", `Bearer ${driverToken}`),
   ]);
 
-  assert.equal(tripRes.status, 201);
-  assert.ok(courierRes.status === 200 || courierRes.status === 409);
-
-  const finalTrip = await prisma.trip.findUnique({ where: { id: tripRes.body.id } });
-  const finalCourier = await prisma.courierRequest.findUnique({ where: { id: courierReq.id } });
-
-  const tripWon = finalTrip?.driverId === driver.id;
-  const courierWon = finalCourier?.driverId === driver.id;
+  const offerWon = acceptOfferRes.status === 200;
+  const courierWon = acceptCourierRes.status === 200;
   // The single driver can win at most one of the two competing assignments
   // — never both, regardless of which request happened to commit first.
-  assert.notEqual(tripWon, courierWon);
+  assert.notEqual(offerWon, courierWon);
+
+  const finalTrip = await prisma.trip.findUnique({ where: { id: tripRes.body.id } });
+  assert.equal(finalTrip?.driverId, offerWon ? driver.id : null);
+  const finalCourier = await prisma.courierRequest.findUnique({ where: { id: courierReq.id } });
+  assert.equal(finalCourier?.driverId, courierWon ? driver.id : null);
 
   const activeAssignments = await prisma.driverAssignment.findMany({
     where: { driverId: driver.id, status: "ACTIVE" },
@@ -739,8 +776,12 @@ test("POST /api/trips: the matched driver's own vehicle is assigned to Trip.vehi
     .send({ pickup: "Home", destination: "Airport", estimatedFare: 25.5 });
 
   assert.equal(res.status, 201);
-  assert.equal(res.body.status, "MATCHED");
-  assert.equal(res.body.vehicleId, vehicle.id);
+  assert.equal(res.body.status, "REQUESTED");
+
+  const acceptRes = await acceptOfferAsDriver("driver-sub-veh-1");
+  assert.equal(acceptRes.status, 200);
+  assert.equal(acceptRes.body.status, "MATCHED");
+  assert.equal(acceptRes.body.vehicleId, vehicle.id);
 });
 
 test("POST /api/trips: a driver with no vehicle on file still matches, with Trip.vehicleId left null (no invented vehicle)", async () => {
@@ -756,8 +797,12 @@ test("POST /api/trips: a driver with no vehicle on file still matches, with Trip
     .send({ pickup: "Home", destination: "Airport", estimatedFare: 25.5 });
 
   assert.equal(res.status, 201);
-  assert.equal(res.body.status, "MATCHED");
-  assert.equal(res.body.vehicleId, null);
+  assert.equal(res.body.status, "REQUESTED");
+
+  const acceptRes = await acceptOfferAsDriver("driver-sub-veh-2");
+  assert.equal(acceptRes.status, 200);
+  assert.equal(acceptRes.body.status, "MATCHED");
+  assert.equal(acceptRes.body.vehicleId, null);
 });
 
 test("POST /api/trips: a driver whose vehicle is on an active rental is excluded from matching entirely, not just for that vehicle", async () => {
@@ -815,8 +860,12 @@ test("POST /api/trips: a multi-vehicle driver with none busy gets their isPrimar
     .send({ pickup: "Home", destination: "Airport", estimatedFare: 25.5 });
 
   assert.equal(res.status, 201);
-  assert.equal(res.body.status, "MATCHED");
-  assert.equal(res.body.vehicleId, primaryVehicle.id);
+  assert.equal(res.body.status, "REQUESTED");
+
+  const acceptRes = await acceptOfferAsDriver("driver-sub-veh-4");
+  assert.equal(acceptRes.status, 200);
+  assert.equal(acceptRes.body.status, "MATCHED");
+  assert.equal(acceptRes.body.vehicleId, primaryVehicle.id);
 });
 
 test("GET /api/trips/:id 404s cleanly on a malformed/garbage id (not a 500)", async () => {

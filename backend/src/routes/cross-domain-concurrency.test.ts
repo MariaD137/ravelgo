@@ -6,11 +6,10 @@
 // already have Promise.all coverage in trips.routes.test.ts,
 // courier.routes.test.ts, and rentals.routes.test.ts respectively.
 import assert from "node:assert/strict";
-import { after, afterEach, beforeEach, mock, test } from "node:test";
+import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { verifier } from "../middleware/auth";
 import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
 
 beforeEach(async () => {
@@ -64,38 +63,40 @@ async function createConfirmedBooking(driverCognitoSub: string) {
   return { driver, vehicle, booking };
 }
 
-test("Concurrency (Ride<->Rental): one driver — matching a new ride and activating a rental booking race — exactly one wins", async () => {
+test("Concurrency (Ride<->Rental): one driver — accepting a real ride offer and activating a rental booking race — exactly one wins", async () => {
   const { driver, booking } = await createConfirmedBooking("driver-sub-xd-ride-rental");
   await prisma.user.create({
     data: { cognitoSub: "rider-sub-xd-ride-rental", role: "RIDER", firstName: "R", lastName: "X", email: "rx1@example.com" },
   });
 
-  const riderToken = "mock.rider-sub-xd-ride-rental";
-  const driverToken = "mock.driver-sub-xd-ride-rental";
-  mock.method(verifier, "verify", async (candidate: string) => {
-    if (candidate === riderToken) return { sub: "rider-sub-xd-ride-rental", "cognito:groups": ["Rider"] } as never;
-    if (candidate === driverToken) return { sub: "driver-sub-xd-ride-rental", "cognito:groups": ["Driver"] } as never;
-    throw new Error("invalid token");
-  });
+  // Requesting the ride (and the offer it generates) isn't itself part of
+  // the race — an unanswered offer no longer reserves the driver (see
+  // TripOffer's own doc comment) — so only the two real commitment
+  // actions race: accepting the ride offer, and activating the booking.
+  const riderToken = mockAuthAs({ sub: "rider-sub-xd-ride-rental", groups: ["Rider"] });
+  const tripRes = await request(app)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${riderToken}`)
+    .send({ pickup: "Home", destination: "Airport", estimatedFare: 20 });
+  assert.equal(tripRes.body.status, "REQUESTED");
+  const offer = await prisma.tripOffer.findFirstOrThrow({ where: { tripId: tripRes.body.id } });
+  assert.equal(offer.driverId, driver.id);
 
-  const [tripRes, activateRes] = await Promise.all([
-    request(app)
-      .post("/api/trips")
-      .set("Authorization", `Bearer ${riderToken}`)
-      .send({ pickup: "Home", destination: "Airport", estimatedFare: 20 }),
+  const driverToken = mockAuthAs({ sub: "driver-sub-xd-ride-rental", groups: ["Driver"] });
+  const [acceptOfferRes, activateRes] = await Promise.all([
+    request(app).patch(`/api/trip-offers/${offer.id}/accept`).set("Authorization", `Bearer ${driverToken}`),
     request(app).patch(`/api/rentals/bookings/${booking.id}/activate`).set("Authorization", `Bearer ${driverToken}`),
   ]);
 
-  assert.equal(tripRes.status, 201);
-  assert.ok(activateRes.status === 200 || activateRes.status === 409);
-
-  const finalTrip = await prisma.trip.findUnique({ where: { id: tripRes.body.id } });
-  const finalBooking = await prisma.rentalBooking.findUnique({ where: { id: booking.id } });
-
-  const rideWon = finalTrip?.driverId === driver.id;
-  const rentalWon = finalBooking?.status === "ACTIVE";
+  const rideWon = acceptOfferRes.status === 200;
+  const rentalWon = activateRes.status === 200;
   // The single driver can win at most one of the two competing assignments.
   assert.notEqual(rideWon, rentalWon);
+
+  const finalTrip = await prisma.trip.findUnique({ where: { id: tripRes.body.id } });
+  assert.equal(finalTrip?.driverId, rideWon ? driver.id : null);
+  const finalBooking = await prisma.rentalBooking.findUnique({ where: { id: booking.id } });
+  assert.equal(finalBooking?.status, rentalWon ? "ACTIVE" : "CONFIRMED");
 
   const activeAssignments = await prisma.driverAssignment.findMany({
     where: { driverId: driver.id, status: "ACTIVE" },

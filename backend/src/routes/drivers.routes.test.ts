@@ -196,12 +196,19 @@ test("GET /api/drivers/me/assignment returns the real ACTIVE DriverAssignment ro
     .post("/api/trips")
     .set("Authorization", `Bearer ${riderToken}`)
     .send({ pickup: "A", destination: "B", distanceKm: 2, durationMinutes: 5 });
-  assert.equal(tripRes.body.status, "MATCHED");
+  assert.equal(tripRes.body.status, "REQUESTED");
 
   // mockAuthAs replaces the verifier's mock wholesale — re-mock the driver
   // identity (same deterministic `mock.<sub>` token) since riderToken was
   // mocked most recently above.
   const driverTokenAgain = mockAuthAs({ sub: "driver-sub-assign-2", groups: ["Driver"] });
+  const offerRes = await request(app).get("/api/drivers/me/offer").set("Authorization", `Bearer ${driverTokenAgain}`);
+  assert.equal(offerRes.body.tripId, tripRes.body.id);
+  const acceptRes = await request(app)
+    .patch(`/api/trip-offers/${offerRes.body.id}/accept`)
+    .set("Authorization", `Bearer ${driverTokenAgain}`);
+  assert.equal(acceptRes.body.status, "MATCHED");
+
   const assignRes = await request(app)
     .get("/api/drivers/me/assignment")
     .set("Authorization", `Bearer ${driverTokenAgain}`);

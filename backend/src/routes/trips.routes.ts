@@ -4,10 +4,18 @@ import { Prisma, type TripStatus } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
-import { broadcastDriverAssignment, broadcastTripStatus, getLatestDriverLocation } from "../realtime/hub";
-import { matchDriverToTrip } from "../services/matching";
+import { broadcastDriverOffer, broadcastTripStatus, getLatestDriverLocation } from "../realtime/hub";
+import {
+  OfferForbiddenError,
+  OfferNotAvailableError,
+  OfferNotFoundError,
+  acceptOffer,
+  declineOffer,
+  expireStaleOfferIfAny,
+  offerNextDriver,
+} from "../services/matching";
 import { findOwnDriver } from "../services/driver";
-import { releaseDriver } from "../services/driver-availability";
+import { DriverBusyConflict, releaseDriver, sendDriverBusyResponse } from "../services/driver-availability";
 import {
   FINAL_FARE_MAX_RATIO,
   FINAL_FARE_MIN_RATIO,
@@ -114,17 +122,19 @@ tripsRouter.post("/trips", requireAuth, requireRole("Rider"), async (req, res) =
     throw err;
   }
 
-  const matched = await matchDriverToTrip(trip.id);
-  if (matched?.driverId) {
-    // The driver has no "browse and accept" step for a ride — matching is
-    // synchronous and server-authoritative above — so this is how they
-    // find out at all. Best-effort: driver_app's own polling loop
-    // (GET /drivers/me/assignment) is the primary, always-correct
-    // mechanism this overlays, same relationship as trip:status has to the
-    // rider's polling in RideSession.
-    broadcastDriverAssignment(matched.driverId, "RIDE", matched.id);
+  // Real, Uber-style dispatch: send an offer to the best eligible driver —
+  // never an automatic match. The trip stays REQUESTED (exactly the same
+  // "searching for a driver" state the rider already sees either way)
+  // until that driver actually accepts via PATCH /trip-offers/:id/accept,
+  // or nobody is eligible right now. Best-effort: driver_app's own polling
+  // loop (GET /drivers/me/offer) is the primary, always-correct mechanism
+  // this overlays, same relationship as trip:status has to the rider's
+  // polling in RideSession.
+  const offer = await offerNextDriver(trip.id);
+  if (offer) {
+    broadcastDriverOffer(offer.driverId, trip.id);
   }
-  res.status(201).json(matched ?? trip);
+  res.status(201).json(trip);
 });
 
 // Rider or Driver: my own trip history — a driver's "My Trips" screen and a
@@ -164,7 +174,10 @@ tripsRouter.get("/trips/mine", requireAuth, requireRole("Rider", "Driver"), asyn
   res.json(paginate(trips, total, page, pageSize));
 });
 
-// Rider or Driver: view a trip they're party to
+// Rider or Driver: view a trip they're party to — including a driver who
+// currently holds a real, unanswered offer for it (not yet "party" to the
+// trip in the assigned-driver sense, but they legitimately need to see
+// pickup/destination/fare to decide whether to accept).
 tripsRouter.get("/trips/:id", requireAuth, async (req, res) => {
   const trip = await prisma.trip.findUnique({
     where: { id: req.params.id },
@@ -173,10 +186,25 @@ tripsRouter.get("/trips/:id", requireAuth, async (req, res) => {
   if (!trip) return res.status(404).json({ error: "Trip not found" });
 
   const groups = req.user!.groups;
-  const isOwner =
-    trip.rider.cognitoSub === req.user!.sub || trip.driver?.user.cognitoSub === req.user!.sub;
+  let isOwner = trip.rider.cognitoSub === req.user!.sub || trip.driver?.user.cognitoSub === req.user!.sub;
+  if (!isOwner && groups.includes("Driver")) {
+    const offer = await prisma.tripOffer.findFirst({
+      where: { tripId: trip.id, status: "OFFERED", driver: { user: { cognitoSub: req.user!.sub } } },
+    });
+    isOwner = offer != null;
+  }
   if (!isOwner && !groups.includes("Admin")) {
     return res.status(403).json({ error: "Not authorized to view this trip" });
+  }
+
+  // Lazy expiration (see expireStaleOfferIfAny's own doc comment): a
+  // rider polling their own trip is one of the two places (alongside the
+  // offered driver's own GET /drivers/me/offer poll) a stale, unanswered
+  // offer actually gets advanced to the next eligible driver — belt and
+  // suspenders in case that driver's app isn't polling.
+  if (trip.status === "REQUESTED") {
+    const nextOffer = await expireStaleOfferIfAny(trip.id);
+    if (nextOffer) broadcastDriverOffer(nextOffer.driverId, nextOffer.tripId);
   }
   res.json(trip);
 });
@@ -320,6 +348,13 @@ tripsRouter.patch("/trips/:id/cancel", requireAuth, requireRole("Rider"), async 
       if (cancelled.driverId) {
         await releaseDriver(tx, { driverId: cancelled.driverId, assignmentType: "RIDE", assignmentId: cancelled.id });
       }
+      // A rider cancelling out from under an outstanding, unanswered
+      // offer isn't the offered driver's doing — EXPIRED, not DECLINED,
+      // so it's never counted against their acceptance rate (§6/§9).
+      await tx.tripOffer.updateMany({
+        where: { tripId: cancelled.id, status: "OFFERED" },
+        data: { status: "EXPIRED", respondedAt: new Date() },
+      });
       return cancelled;
     });
   } catch (err) {
@@ -330,6 +365,50 @@ tripsRouter.patch("/trips/:id/cancel", requireAuth, requireRole("Rider"), async 
   }
   broadcastTripStatus(updated.id, updated.status, updated.finalFare);
   res.json(updated);
+});
+
+// Driver: accept a real ride offer sent to them by the backend's own
+// dispatch engine (services/matching.ts's offerNextDriver) — the ONLY way
+// a Trip becomes MATCHED. There is no automatic acceptance anywhere in
+// this codebase, and the driver's account approval status has already
+// been checked once (at offer time) — accepting a specific ride never
+// requires a fresh Admin approval.
+tripsRouter.patch("/trip-offers/:id/accept", requireAuth, requireRole("Driver"), async (req, res) => {
+  const driver = await findOwnDriver(req.user!.sub);
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  try {
+    const trip = await acceptOffer(req.params.id, driver.id);
+    broadcastTripStatus(trip.id, trip.status, trip.finalFare);
+    res.json(trip);
+  } catch (err) {
+    if (err instanceof OfferNotFoundError) return res.status(404).json({ error: "Offer not found" });
+    if (err instanceof OfferForbiddenError) return res.status(403).json({ error: "Not authorized to act on this offer" });
+    if (err instanceof OfferNotAvailableError) return res.status(409).json({ error: err.message });
+    if (err instanceof DriverBusyConflict) return sendDriverBusyResponse(res, err);
+    throw err;
+  }
+});
+
+// Driver: decline a real ride offer. This never suspends, deactivates, or
+// otherwise penalizes the driver's account — declining is recorded purely
+// for acceptance-rate reporting (see the loyalty/driver-stats endpoint's
+// own doc comment), the driver remains ACTIVE and online, and the backend
+// automatically tries the next eligible driver for the same trip.
+tripsRouter.patch("/trip-offers/:id/decline", requireAuth, requireRole("Driver"), async (req, res) => {
+  const driver = await findOwnDriver(req.user!.sub);
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  try {
+    const { nextOffer } = await declineOffer(req.params.id, driver.id);
+    if (nextOffer) broadcastDriverOffer(nextOffer.driverId, nextOffer.tripId);
+    res.json({ status: "DECLINED" });
+  } catch (err) {
+    if (err instanceof OfferNotFoundError) return res.status(404).json({ error: "Offer not found" });
+    if (err instanceof OfferForbiddenError) return res.status(403).json({ error: "Not authorized to act on this offer" });
+    if (err instanceof OfferNotAvailableError) return res.status(409).json({ error: err.message });
+    throw err;
+  }
 });
 
 // Rider or Driver: poll the assigned driver's last known location (a

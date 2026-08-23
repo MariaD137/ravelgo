@@ -65,15 +65,32 @@ test("ride lifecycle: request -> real fare -> auto-match -> driver progresses tr
     .send({ pickup: "Lekki Phase 1", destination: "Victoria Island", distanceKm, durationMinutes });
   assert.equal(requested.status, 201);
   assert.equal(requested.body.estimatedFare, expectedFare, "fare must be server-computed, not client-supplied");
-  assert.equal(requested.body.status, "MATCHED", "the one ACTIVE unencumbered driver must be auto-matched");
-  assert.equal(requested.body.driverId, driverId);
+  // Uber-style offer model: POST /trips offers the ride to the one eligible
+  // driver but does NOT auto-accept on their behalf — the trip stays
+  // REQUESTED until the driver actually accepts the real offer below.
+  assert.equal(requested.body.status, "REQUESTED");
+  assert.equal(requested.body.driverId, null);
   const tripId = requested.body.id as string;
+
+  // The driver discovers and accepts the real offer, exactly like the
+  // driver_app's own offer poll -> ACCEPT flow.
+  const driverTokenForOffer = mockAuthAs({ sub: "e2e-ride-driver-1", groups: ["Driver"] });
+  const offerSeen = await request(app).get("/api/drivers/me/offer").set("Authorization", `Bearer ${driverTokenForOffer}`);
+  assert.equal(offerSeen.status, 200);
+  assert.equal(offerSeen.body.tripId, tripId);
+  const accepted = await request(app)
+    .patch(`/api/trip-offers/${offerSeen.body.id}/accept`)
+    .set("Authorization", `Bearer ${driverTokenForOffer}`);
+  assert.equal(accepted.status, 200);
+  assert.equal(accepted.body.status, "MATCHED");
+  assert.equal(accepted.body.driverId, driverId);
 
   // Independent re-read — the same call RideSession's poll loop and its
   // immediate post-request fetch make — proves the match is really
   // persisted, including the nested driver/user relation the rider's live
   // status screen (ride_view_popup.dart) renders.
-  const fetched = await request(app).get(`/api/trips/${tripId}`).set("Authorization", `Bearer ${riderToken}`);
+  const riderTokenForFetch = mockAuthAs({ sub: "e2e-ride-rider-1", groups: ["Rider"] });
+  const fetched = await request(app).get(`/api/trips/${tripId}`).set("Authorization", `Bearer ${riderTokenForFetch}`);
   assert.equal(fetched.status, 200);
   assert.equal(fetched.body.status, "MATCHED");
   assert.equal(fetched.body.driver.user.firstName, "Femi");

@@ -28,6 +28,16 @@ enum TripStatus {
   DISPUTED
 }
 
+// The individual ride-offer lifecycle — distinct from Driver.status
+// (account-level approval/suspension) and from Trip.status (the ride
+// itself). See TripOffer's own doc comment for the full rationale.
+enum TripOfferStatus {
+  OFFERED
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
 enum DocumentStatus {
   NOT_UPLOADED
   PENDING
@@ -191,6 +201,7 @@ model Driver {
   courierRequestsHandled CourierRequest[] @relation("CourierDriver")
   subscription      DriverSubscription?
   assignments       DriverAssignment[]
+  tripOffers        TripOffer[]
 }
 
 model Vehicle {
@@ -236,6 +247,33 @@ model Trip {
 
   payment       Payment?
   emergencyAlerts EmergencyAlert[]
+  offers        TripOffer[]
+}
+
+// A single ride-offer sent to one specific driver at a time — the "Uber-style"
+// dispatch step between a rider's REQUESTED trip and it becoming MATCHED.
+// Distinct from DriverAssignment (which represents the driver actually being
+// committed/busy on a job): an offer is merely a proposal a driver can accept
+// or decline, and must never make the driver look "busy" in the
+// DriverAssignment sense until they actually accept it — that's why this is
+// its own model rather than an extra AssignmentStatus value (AssignmentType/
+// AssignmentStatus are shared with Courier and Rental's own very different
+// browse-and-claim / listing-activation flows, and conflating "offered" with
+// "busy" there would incorrectly block a driver from other domains' work
+// just for having an unanswered ride offer).
+model TripOffer {
+  id          String          @id @default(uuid())
+  tripId      String
+  trip        Trip            @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  driverId    String
+  driver      Driver          @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  status      TripOfferStatus @default(OFFERED)
+  offeredAt   DateTime        @default(now())
+  respondedAt DateTime?
+  expiresAt   DateTime
+
+  @@index([tripId])
+  @@index([driverId, status])
 }
 
 model DriverDocument {

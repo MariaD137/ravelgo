@@ -3,7 +3,9 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
-import { driverActiveStatusError } from "../services/driver";
+import { driverActiveStatusError, findOwnDriver } from "../services/driver";
+import { broadcastDriverOffer } from "../realtime/hub";
+import { expireStaleOfferIfAny, getAcceptanceStats } from "../services/matching";
 
 export const driversRouter = Router();
 
@@ -66,7 +68,8 @@ driversRouter.get("/drivers/me", requireAuth, requireRole("Driver"), async (req,
     include: { user: true, vehicles: true, documents: true },
   });
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
-  res.json(driver);
+  const acceptanceStats = await getAcceptanceStats(driver.id);
+  res.json({ ...driver, acceptanceStats });
 });
 
 const onlineSchema = z.object({ online: z.boolean() });
@@ -84,7 +87,7 @@ driversRouter.patch("/drivers/me/online", requireAuth, requireRole("Driver"), as
   // must stay available so a suspended driver's app can clear a stale
   // online:true) — only going online is gated on being an approved,
   // non-suspended driver. Ride matching independently re-enforces ACTIVE
-  // via matchDriverToTrip's own query filter either way; this stops a
+  // via offerNextDriver's own query filter either way; this stops a
   // pending/suspended driver from even appearing "online" in the app.
   if (parsed.data.online) {
     const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
@@ -131,11 +134,12 @@ driversRouter.patch("/drivers/me", requireAuth, requireRole("Driver"), async (re
   res.json(driver);
 });
 
-// Driver: my current active assignment (Ride, Courier, or Rental), if any.
-// The primary polling mechanism driver_app uses to discover it has been
-// matched to a new trip — matching itself is fully server-side and
-// synchronous (services/matching.ts), so the driver has no "browse and
-// accept" step to learn about it from; this is how they find out. A
+// Driver: my current active assignment (Ride, Courier, or Rental), if any
+// — i.e. a job I have already accepted and am now committed to. The
+// primary polling mechanism driver_app uses to know it's currently busy
+// on something (e.g. after an app restart mid-ride). This is distinct
+// from GET /drivers/me/offer below: an offer is a proposal awaiting a
+// yes/no; this endpoint only ever reflects real, accepted commitments. A
 // best-effort WebSocket push (driver:assignment, see realtime/server.ts)
 // overlays this same polling loop for near-instant delivery, exactly
 // mirroring how RideSession drives the rider side in user_app.
@@ -149,6 +153,29 @@ driversRouter.get("/drivers/me/assignment", requireAuth, requireRole("Driver"), 
   res.json(assignment);
 });
 
+// Driver: my current pending ride offer, if any — the real "Uber-style"
+// dispatch step (services/matching.ts's offerNextDriver), distinct from
+// the assignment endpoint above: this is a proposal the driver hasn't
+// answered yet, not a committed job. driver_app polls this (while
+// online and free) to discover a new offer the same way it previously
+// polled the assignment endpoint; a best-effort WebSocket push
+// (driver:offer) overlays it for near-instant delivery. Lazily expires a
+// stale offer (past its own expiresAt) on read, advancing the trip to the
+// next eligible driver — see expireStaleOfferIfAny's own doc comment for
+// why this is safe to do here with no scheduler/queue involved.
+driversRouter.get("/drivers/me/offer", requireAuth, requireRole("Driver"), async (req, res) => {
+  const driver = await findOwnDriver(req.user!.sub);
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  let offer = await prisma.tripOffer.findFirst({ where: { driverId: driver.id, status: "OFFERED" } });
+  if (offer && offer.expiresAt <= new Date()) {
+    const nextOffer = await expireStaleOfferIfAny(offer.tripId);
+    if (nextOffer) broadcastDriverOffer(nextOffer.driverId, nextOffer.tripId);
+    offer = null; // this driver's own offer is gone either way (expired, or handed to someone else)
+  }
+  res.json(offer);
+});
+
 // Admin: get a single driver with documents.
 // Registered after the literal "/drivers/me" routes above — Express matches
 // path segments in registration order, so ":id" would otherwise swallow
@@ -159,7 +186,8 @@ driversRouter.get("/drivers/:id", requireAuth, requireRole("Admin"), async (req,
     include: { user: true, vehicles: true, documents: true },
   });
   if (!driver) return res.status(404).json({ error: "Driver not found" });
-  res.json(driver);
+  const acceptanceStats = await getAcceptanceStats(driver.id);
+  res.json({ ...driver, acceptanceStats });
 });
 
 const statusSchema = z.object({

@@ -293,6 +293,23 @@ paths:
                   assignmentId: { type: string }
                   status: { type: string }
         "404": { $ref: "#/components/responses/NotFound" }
+  /drivers/me/offer:
+    get:
+      tags: [Drivers]
+      summary: >-
+        My current pending ride offer, if any (Driver) — a real, Uber-style
+        dispatch offer awaiting Accept/Decline, distinct from
+        /drivers/me/assignment (which only reflects already-accepted,
+        committed jobs). Lazily expires a stale offer (past its own
+        expiresAt) on read and advances the trip to the next eligible
+        driver.
+      responses:
+        "200":
+          description: The offer, or null if none is currently pending
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TripOffer" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /drivers/me/subscription:
     post:
       tags: [Subscriptions]
@@ -640,7 +657,11 @@ paths:
         server-side from the active PricingRule/SurgeZone (same engine as
         GET /pricing/quote) and any client-supplied estimatedFare is
         ignored. Otherwise estimatedFare is required and, when a
-        PricingRule is active, must be at least its base fare.
+        PricingRule is active, must be at least its base fare. The
+        returned Trip is always REQUESTED — this only sends a real ride
+        offer to the best eligible driver (see /trip-offers/{id}/accept);
+        it never auto-matches. The trip becomes MATCHED only once that
+        driver actually accepts.
       requestBody:
         required: true
         content:
@@ -762,6 +783,44 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: Trip is no longer in a cancellable state
+  /trip-offers/{id}/accept:
+    patch:
+      tags: [Trips]
+      summary: >-
+        Accept a real ride offer (Driver) — the ONLY way a Trip becomes
+        MATCHED. There is no automatic acceptance anywhere in this API.
+        Atomic: fails with 409 if the offer already expired, was already
+        accepted/declined, or the driver picked up a conflicting job in the
+        meantime (code DRIVER_BUSY).
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: The now-MATCHED trip
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Trip" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Offer no longer available (expired/resolved), or driver already holds an active assignment (code DRIVER_BUSY)
+  /trip-offers/{id}/decline:
+    patch:
+      tags: [Trips]
+      summary: >-
+        Decline a real ride offer (Driver). Never suspends, deactivates, or
+        otherwise penalizes the driver's account — the driver stays ACTIVE
+        and online, and the backend automatically offers the trip to the
+        next eligible driver.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Offer declined
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Offer no longer available (already resolved/expired)
   /trips/{id}/driver-location:
     get:
       tags: [Trips]
@@ -1922,6 +1981,36 @@ components:
         totalTrips: { type: integer }
         preferredLanguage: { type: string }
         subscriptionActive: { type: boolean }
+        acceptanceStats: { $ref: "#/components/schemas/AcceptanceStats" }
+
+    AcceptanceStats:
+      type: object
+      description: >-
+        Ride-offer performance for this driver, computed on read from
+        TripOffer history — never an account-status mechanism (declining
+        or letting an offer expire never affects Driver.status).
+      properties:
+        totalOffers: { type: integer, description: "ACCEPTED + DECLINED + EXPIRED offers; a still-pending OFFERED one is excluded." }
+        acceptedOffers: { type: integer }
+        declinedOffers: { type: integer }
+        expiredOffers: { type: integer, description: "Tracked separately — never folded into acceptedOffers or declinedOffers." }
+        acceptanceRate:
+          type: number
+          nullable: true
+          description: "acceptedOffers / totalOffers, or null if the driver has never had an offer resolve yet."
+
+    TripOffer:
+      type: object
+      nullable: true
+      description: A single ride offer sent to one specific driver — see /trips's POST description.
+      properties:
+        id: { type: string }
+        tripId: { type: string }
+        driverId: { type: string }
+        status: { type: string, enum: [OFFERED, ACCEPTED, DECLINED, EXPIRED] }
+        offeredAt: { type: string, format: date-time }
+        respondedAt: { type: string, format: date-time, nullable: true }
+        expiresAt: { type: string, format: date-time }
 
     VehicleInput:
       type: object
