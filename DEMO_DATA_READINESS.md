@@ -228,7 +228,6 @@ fixed dataset).
 
 ## 12. Commit SHA
 
-`1f7c740` was `HEAD` before this task's commit. This task's own commit —
-containing only `backend/prisma/seed.ts` and this report — follows it on
-branch `claude/ravelgo-completeness-audit-873u5u`; see the branch's latest
-commit for the exact SHA.
+`1f7c740` was `HEAD` before this task's commit. This task's own commit,
+`f133922`, contains only `backend/prisma/seed.ts` and this report, on
+branch `claude/ravelgo-completeness-audit-873u5u`.
