@@ -25,7 +25,10 @@ async function createDriver(cognitoSub: string) {
   const user = await prisma.user.create({
     data: { cognitoSub, role: "DRIVER", firstName: "D", lastName: "R", email: `${cognitoSub}@example.com` },
   });
-  return prisma.driver.create({ data: { userId: user.id } });
+  // ACTIVE — an admin-approved driver, since most of this file's tests are
+  // about courier business logic, not the approval gate itself (see the
+  // dedicated "pending/suspended driver" test below for that).
+  return prisma.driver.create({ data: { userId: user.id, status: "ACTIVE" } });
 }
 
 test("POST /api/courier-requests lets a Rider request a delivery", async () => {
@@ -91,6 +94,32 @@ test("PATCH /api/courier-requests/:id/accept matches a driver to the request", a
 
   assert.equal(res.status, 200);
   assert.equal(res.body.status, "MATCHED");
+});
+
+test("PATCH /api/courier-requests/:id/accept rejects a driver who isn't ACTIVE (pending approval or suspended)", async () => {
+  const sender = await createRider("rider-sub-notactive-1");
+  const pendingDriver = await prisma.user.create({
+    data: { cognitoSub: "driver-sub-pending-1", role: "DRIVER", firstName: "P", lastName: "D", email: "pd1@example.com" },
+  });
+  await prisma.driver.create({ data: { userId: pendingDriver.id } }); // default PENDING_REVIEW
+  const req = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-pending-1", groups: ["Driver"] });
+  const res = await request(app).patch(`/api/courier-requests/${req.id}/accept`).set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 403);
+  const stillOpen = await prisma.courierRequest.findUniqueOrThrow({ where: { id: req.id } });
+  assert.equal(stillOpen.status, "REQUESTED", "a pending/suspended driver must not be able to claim the request");
 });
 
 test("PATCH /api/courier-requests/:id/status rejects a driver not assigned to the request", async () => {

@@ -1,7 +1,7 @@
 import { AssignmentType, Driver, Prisma } from "@prisma/client";
 import type { NextFunction, Request, Response } from "express";
 import { prisma } from "../db/prisma";
-import { findOwnDriver } from "./driver";
+import { driverActiveStatusError, findOwnDriver } from "./driver";
 
 // Prisma.TransactionClient outside a $transaction callback, or the top-level
 // `prisma` client itself — every function here works with either, so a
@@ -135,6 +135,12 @@ export function sendDriverBusyResponse(res: Response, err: DriverBusyConflict) {
 export async function requireDriverAvailable(req: Request, res: Response, next: NextFunction) {
   const driver = await findOwnDriver(req.user!.sub);
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  // A driver awaiting approval or suspended by an Admin must not be able
+  // to take on new work — see driverActiveStatusError's own doc comment
+  // for why this only guards starting something new, not an in-progress job.
+  const statusError = driverActiveStatusError(driver.status);
+  if (statusError) return res.status(403).json({ error: statusError });
 
   const active = await getActiveAssignment(prisma, driver.id);
   if (active) {

@@ -434,6 +434,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RentalListing" }
+        "403":
+          description: Driver is pending admin approval or has been suspended
         "404": { $ref: "#/components/responses/NotFound" }
     get:
       tags: [Rentals]
@@ -555,6 +557,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RentalBooking" }
+        "403":
+          description: >-
+            Confirming (not rejecting) while the driver is pending admin
+            approval or suspended
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: Booking is not in a state this decision can apply to
@@ -574,6 +580,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/RentalBooking" }
+        "403":
+          description: Driver is pending admin approval or has been suspended
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: >-
@@ -1213,9 +1221,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CourierRequest" }
+        "403":
+          description: Driver is pending admin approval or has been suspended
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
-          description: Request already matched
+          description: Request already matched, or driver already holds an active assignment (code DRIVER_BUSY)
   /courier-requests/{id}/status:
     patch:
       tags: [Courier]

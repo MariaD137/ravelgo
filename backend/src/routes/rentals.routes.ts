@@ -4,7 +4,7 @@ import type { RentalListingStatus } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
-import { findOwnDriver } from "../services/driver";
+import { driverActiveStatusError, findOwnDriver } from "../services/driver";
 import { DriverBusyConflict, sendDriverBusyResponse } from "../services/driver-availability";
 import {
   RentalBookingStateError,
@@ -40,6 +40,8 @@ rentalsRouter.post("/rentals", requireAuth, requireRole("Driver"), async (req, r
 
   const driver = await findOwnDriver(req.user!.sub);
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+  const statusError = driverActiveStatusError(driver.status);
+  if (statusError) return res.status(403).json({ error: statusError });
 
   const vehicle = await prisma.vehicle.findUnique({ where: { id: parsed.data.vehicleId } });
   if (!vehicle || vehicle.driverId !== driver.id) {
@@ -200,6 +202,13 @@ rentalsRouter.patch("/rentals/bookings/:id/decision", requireAuth, requireRole("
   if (!driver || !booking || booking.rentalListing.driverId !== driver.id) {
     return res.status(404).json({ error: "Booking not found" });
   }
+  // Confirming commits the driver to a future job — a pending/suspended
+  // driver shouldn't be able to take on new bookings, though they can
+  // still REJECT one (declining new work is always allowed).
+  if (parsed.data.status === "CONFIRMED") {
+    const statusError = driverActiveStatusError(driver.status);
+    if (statusError) return res.status(403).json({ error: statusError });
+  }
 
   try {
     res.json(await decideBooking(req.params.id, parsed.data.status));
@@ -221,6 +230,8 @@ rentalsRouter.patch("/rentals/bookings/:id/activate", requireAuth, requireRole("
   if (!driver || !booking || booking.rentalListing.driverId !== driver.id) {
     return res.status(404).json({ error: "Booking not found" });
   }
+  const statusError = driverActiveStatusError(driver.status);
+  if (statusError) return res.status(403).json({ error: statusError });
 
   try {
     res.json(await activateBooking(req.params.id, driver.id));

@@ -19,7 +19,10 @@ async function createDriverWithVehicle(cognitoSub: string) {
   const user = await prisma.user.create({
     data: { cognitoSub, role: "DRIVER", firstName: "D", lastName: "R", email: `${cognitoSub}@example.com` },
   });
-  const driver = await prisma.driver.create({ data: { userId: user.id } });
+  // ACTIVE — an admin-approved driver, since most of this file's tests are
+  // about rental business logic, not the approval gate itself (see the
+  // dedicated "pending/suspended driver" tests below for that).
+  const driver = await prisma.driver.create({ data: { userId: user.id, status: "ACTIVE" } });
   const vehicle = await prisma.vehicle.create({
     data: { driverId: driver.id, brand: "Tesla", model: "Model 3", colour: "White", plateNumber: `${cognitoSub}-1`, year: "2022" },
   });
@@ -269,6 +272,82 @@ test("PATCH /api/rentals/bookings/:id/activate rejects when the driver is alread
 
   const finalBooking = await prisma.rentalBooking.findUnique({ where: { id: booking.id } });
   assert.equal(finalBooking?.status, "CONFIRMED");
+});
+
+test("POST /api/rentals rejects a driver who isn't ACTIVE (pending approval or suspended)", async () => {
+  const user = await prisma.user.create({
+    data: { cognitoSub: "driver-sub-pending-rental", role: "DRIVER", firstName: "P", lastName: "D", email: "pdr@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: user.id } }); // default PENDING_REVIEW
+  const vehicle = await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Kia", model: "Rio", colour: "Blue", plateNumber: "PDR-1", year: "2020" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-pending-rental", groups: ["Driver"] });
+  const res = await request(app)
+    .post("/api/rentals")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ vehicleId: vehicle.id, dailyRate: 50, location: "Lagos" });
+
+  assert.equal(res.status, 403);
+  const listings = await prisma.rentalListing.findMany({ where: { driverId: driver.id } });
+  assert.equal(listings.length, 0);
+});
+
+test("PATCH /api/rentals/bookings/:id/decision rejects CONFIRMING as a suspended driver, but REJECTING still works", async () => {
+  const { driver, listing } = await createApprovedListing("driver-sub-suspended-decision", 100);
+  await prisma.driver.update({ where: { id: driver.id }, data: { status: "SUSPENDED" } });
+  const renter = await createRider("rider-sub-suspended-decision");
+  const booking = await prisma.rentalBooking.create({
+    data: {
+      rentalListingId: listing.id,
+      renterId: renter.id,
+      vehicleId: listing.vehicleId,
+      startAt: new Date("2027-08-01T00:00:00.000Z"),
+      endAt: new Date("2027-08-03T00:00:00.000Z"),
+      status: "REQUESTED",
+      price: 200,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-suspended-decision", groups: ["Driver"] });
+  const confirm = await request(app)
+    .patch(`/api/rentals/bookings/${booking.id}/decision`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "CONFIRMED" });
+  assert.equal(confirm.status, 403, "a suspended driver must not be able to confirm new work");
+
+  const reject = await request(app)
+    .patch(`/api/rentals/bookings/${booking.id}/decision`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "REJECTED" });
+  assert.equal(reject.status, 200, "declining is always allowed, even while suspended");
+});
+
+test("PATCH /api/rentals/bookings/:id/activate rejects a suspended driver", async () => {
+  const { driver, listing } = await createApprovedListing("driver-sub-suspended-activate", 100);
+  const renter = await createRider("rider-sub-suspended-activate");
+  const booking = await prisma.rentalBooking.create({
+    data: {
+      rentalListingId: listing.id,
+      renterId: renter.id,
+      vehicleId: listing.vehicleId,
+      startAt: new Date("2027-09-01T00:00:00.000Z"),
+      endAt: new Date("2027-09-03T00:00:00.000Z"),
+      status: "CONFIRMED",
+      price: 200,
+    },
+  });
+  await prisma.driver.update({ where: { id: driver.id }, data: { status: "SUSPENDED" } });
+
+  const token = mockAuthAs({ sub: "driver-sub-suspended-activate", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/rentals/bookings/${booking.id}/activate`)
+    .set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 403);
+  const finalBooking = await prisma.rentalBooking.findUnique({ where: { id: booking.id } });
+  assert.equal(finalBooking?.status, "CONFIRMED", "must not be activated by a suspended driver");
 });
 
 test("PATCH /api/rentals/bookings/:id/end releases the driver's RENTAL assignment on COMPLETED", async () => {

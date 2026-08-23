@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { driverActiveStatusError } from "../services/driver";
 
 export const driversRouter = Router();
 
@@ -78,6 +79,19 @@ const onlineSchema = z.object({ online: z.boolean() });
 driversRouter.patch("/drivers/me/online", requireAuth, requireRole("Driver"), async (req, res) => {
   const parsed = onlineSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  // Going offline is always allowed regardless of status (harmless, and
+  // must stay available so a suspended driver's app can clear a stale
+  // online:true) — only going online is gated on being an approved,
+  // non-suspended driver. Ride matching independently re-enforces ACTIVE
+  // via matchDriverToTrip's own query filter either way; this stops a
+  // pending/suspended driver from even appearing "online" in the app.
+  if (parsed.data.online) {
+    const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+    if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+    const statusError = driverActiveStatusError(driver.status);
+    if (statusError) return res.status(403).json({ error: statusError });
+  }
 
   const { count } = await prisma.driver.updateMany({
     where: { user: { cognitoSub: req.user!.sub } },

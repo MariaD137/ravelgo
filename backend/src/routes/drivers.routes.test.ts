@@ -59,10 +59,14 @@ test("PATCH /api/drivers/:id/status lets an Admin suspend a driver", async () =>
 
 test("PATCH /api/drivers/me/online toggles real presence, persisted in Postgres", async () => {
   const token = mockAuthAs({ sub: "driver-sub-online-1", groups: ["Driver"] });
-  await request(app)
+  const created = await request(app)
     .post("/api/drivers/me")
     .set("Authorization", `Bearer ${token}`)
     .send({ firstName: "On", lastName: "Line", email: "online1@example.com" });
+  // Going online is gated on being an admin-approved (ACTIVE) driver — see
+  // the dedicated "pending/suspended driver" tests below for that gate
+  // itself; this test is about the online toggle's own persistence.
+  await prisma.driver.update({ where: { id: created.body.id }, data: { status: "ACTIVE" } });
 
   const goOnline = await request(app)
     .patch("/api/drivers/me/online")
@@ -80,6 +84,44 @@ test("PATCH /api/drivers/me/online toggles real presence, persisted in Postgres"
     .send({ online: false });
   assert.equal(goOffline.status, 200);
   assert.equal(goOffline.body.online, false);
+});
+
+test("PATCH /api/drivers/me/online rejects going online while PENDING_REVIEW, but going offline still works", async () => {
+  const token = mockAuthAs({ sub: "driver-sub-pending-online", groups: ["Driver"] });
+  await request(app)
+    .post("/api/drivers/me")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "Pend", lastName: "Ing", email: "pendonline@example.com" });
+  // No admin approval — the driver stays at the schema's default PENDING_REVIEW.
+
+  const goOnline = await request(app)
+    .patch("/api/drivers/me/online")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ online: true });
+  assert.equal(goOnline.status, 403);
+  assert.match(goOnline.body.error, /under review/i);
+
+  const goOffline = await request(app)
+    .patch("/api/drivers/me/online")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ online: false });
+  assert.equal(goOffline.status, 200, "going offline must always be allowed, regardless of approval status");
+});
+
+test("PATCH /api/drivers/me/online rejects going online while SUSPENDED", async () => {
+  const token = mockAuthAs({ sub: "driver-sub-suspended-online", groups: ["Driver"] });
+  const created = await request(app)
+    .post("/api/drivers/me")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "Sus", lastName: "Pend", email: "susonline@example.com" });
+  await prisma.driver.update({ where: { id: created.body.id }, data: { status: "SUSPENDED" } });
+
+  const res = await request(app)
+    .patch("/api/drivers/me/online")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ online: true });
+  assert.equal(res.status, 403);
+  assert.match(res.body.error, /suspended/i);
 });
 
 test("PATCH /api/drivers/me/online 404s before a driver profile exists", async () => {
