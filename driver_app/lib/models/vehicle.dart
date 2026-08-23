@@ -9,6 +9,7 @@ class Vehicle {
   final String year;
   final bool isPrimary;
   final bool listedForRental;
+  final String? imageUrl;
 
   const Vehicle({
     required this.id,
@@ -19,6 +20,7 @@ class Vehicle {
     required this.year,
     this.isPrimary = false,
     this.listedForRental = false,
+    this.imageUrl,
   });
 
   factory Vehicle.fromJson(Map<String, dynamic> json) {
@@ -31,6 +33,7 @@ class Vehicle {
       year: json['year'] as String? ?? '',
       isPrimary: json['isPrimary'] as bool? ?? false,
       listedForRental: json['listedForRental'] as bool? ?? false,
+      imageUrl: json['imageUrl'] as String?,
     );
   }
 }

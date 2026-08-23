@@ -76,6 +76,19 @@ class ApiClient {
     return base.replace(queryParameters: query.map((key, value) => MapEntry(key, '$value')));
   }
 
+  /// Resolves a possibly-relative asset URL (e.g. a rental listing's
+  /// vehicle.imageUrl like "/demo-assets/demo-bmw-7-series.png" from a
+  /// seeded demo vehicle) against API_BASE_URL, the same way every REST
+  /// path already is. A real driver-uploaded photo comes back as an
+  /// absolute CloudFront URL (see backend/src/services/assets.ts) and is
+  /// returned unchanged. Null/empty input returns null, so callers can pass
+  /// a vehicle's imageUrl straight through without a null check first.
+  String? resolveAssetUrl(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+    return '$_baseUrl$raw';
+  }
+
   Future<dynamic> get(String path, {Map<String, dynamic>? query}) async {
     return _send(() async => _http.get(_uri(path, query), headers: await _headers()));
   }

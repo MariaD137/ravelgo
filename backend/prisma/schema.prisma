@@ -215,6 +215,13 @@ model Vehicle {
   year             String
   isPrimary        Boolean  @default(false)
   listedForRental  Boolean  @default(false)
+  // A resolved, ready-to-render URL — either a real CloudFront/S3 asset URL
+  // (see services/assets.ts's resolveAssetUrl, used by POST/PATCH /vehicles
+  // when an imageKey is supplied) or a local dev static path such as
+  // "/demo-assets/demo-bmw-7-series.png" for seeded demo vehicles. Never a
+  // raw, unvalidated client-supplied URL — see vehicles.routes.ts for the
+  // ownership check on the imageKey it's derived from.
+  imageUrl         String?
   createdAt        DateTime @default(now())
 
   rentalListings   RentalListing[]

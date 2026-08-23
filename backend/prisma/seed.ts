@@ -218,9 +218,16 @@ async function seedDemoData() {
   const [demoDriver1, demoDriver2, demoDriver3] = demoDrivers;
 
   // ---- Demo vehicles (Objective 2: exactly 3 clearly identified demo vehicles) ----
+  // imageUrl points at a committed, clearly-labeled DEMO placeholder photo
+  // (backend/public/demo-vehicles, served at /demo-assets — see app.ts) —
+  // a relative path, resolved by each Flutter app's ApiClient.resolveAssetUrl
+  // against API_BASE_URL exactly like every other API path already is. Real
+  // driver-uploaded photos go through POST /uploads/presign instead and end
+  // up as an absolute CloudFront URL (see services/assets.ts), which
+  // resolveAssetUrl leaves untouched.
   const vehicle1 = await prisma.vehicle.upsert({
     where: { plateNumber: "DEMO-101-LG" },
-    update: {},
+    update: { imageUrl: "/demo-assets/demo-mercedes-e-class.png" },
     create: {
       driverId: demoDriver1.driver.id,
       brand: "Mercedes-Benz",
@@ -230,11 +237,12 @@ async function seedDemoData() {
       year: "2023",
       isPrimary: true,
       listedForRental: true, // Demo vehicle — available for taxi and rental
+      imageUrl: "/demo-assets/demo-mercedes-e-class.png",
     },
   });
   const vehicle2 = await prisma.vehicle.upsert({
     where: { plateNumber: "DEMO-202-LG" },
-    update: {},
+    update: { imageUrl: "/demo-assets/demo-toyota-land-cruiser.png" },
     create: {
       driverId: demoDriver2.driver.id,
       brand: "Toyota",
@@ -244,11 +252,12 @@ async function seedDemoData() {
       year: "2022",
       isPrimary: true,
       listedForRental: true, // Demo vehicle — available for taxi and rental
+      imageUrl: "/demo-assets/demo-toyota-land-cruiser.png",
     },
   });
   const vehicle3 = await prisma.vehicle.upsert({
     where: { plateNumber: "DEMO-303-LG" },
-    update: {},
+    update: { imageUrl: "/demo-assets/demo-bmw-7-series.png" },
     create: {
       driverId: demoDriver3.driver.id,
       brand: "BMW",
@@ -258,6 +267,7 @@ async function seedDemoData() {
       year: "2024",
       isPrimary: true,
       listedForRental: true, // Demo vehicle — rental only (driver 3 stays offline for taxi)
+      imageUrl: "/demo-assets/demo-bmw-7-series.png",
     },
   });
 
@@ -363,10 +373,20 @@ async function seedDemoData() {
       }),
   );
 
-  // 1 active/recent ride (IN_PROGRESS) — also makes demo driver 2 correctly
-  // busy via a real DriverAssignment, exactly like a real matched ride.
-  const activeTrip = await findOrCreate(
-    () => prisma.trip.findFirst({ where: { riderId: demoRider2.id, driverId: demoDriver2.driver.id, status: "IN_PROGRESS" } }),
+  // 3rd completed ride, for demo driver 2. (Previously this was seeded as an
+  // IN_PROGRESS ride with an ACTIVE RIDE DriverAssignment — but the vehicle-
+  // image/demo-inventory task needs demo driver 2 fully AVAILABLE: ACTIVE +
+  // online + no active assignment, so a rider can request a ride through the
+  // real dispatch system in services/matching.ts and demo driver 2 actually
+  // receives a live TripOffer, and so it can equally be used to accept the
+  // awaiting courier request below. A completed ride still demonstrates
+  // history without holding the driver busy — see
+  // VEHICLE_IMAGE_AND_DEMO_DATA_READINESS.md §5.)
+  const driver2Trip = await findOrCreate(
+    () =>
+      prisma.trip.findFirst({
+        where: { riderId: demoRider2.id, driverId: demoDriver2.driver.id, pickup: "Lekki Phase 1, Lagos", destination: "Ajah, Lagos" },
+      }),
     () =>
       prisma.trip.create({
         data: {
@@ -376,28 +396,28 @@ async function seedDemoData() {
           pickup: "Lekki Phase 1, Lagos",
           destination: "Ajah, Lagos",
           estimatedFare: 14.25,
-          status: "IN_PROGRESS",
+          finalFare: 14.25,
+          status: "COMPLETED",
           category: "Personal",
-          requestedAt: new Date(now - 15 * 60 * 1000),
+          requestedAt: new Date(now - 40 * 60 * 1000),
+          completedAt: new Date(now - 25 * 60 * 1000),
         },
       }),
   );
-  await findOrCreate(
-    () =>
-      prisma.driverAssignment.findFirst({
-        where: { driverId: demoDriver2.driver.id, assignmentType: "RIDE", assignmentId: activeTrip.id },
-      }),
-    () =>
-      prisma.driverAssignment.create({
-        data: {
-          driverId: demoDriver2.driver.id,
-          assignmentType: "RIDE",
-          assignmentId: activeTrip.id,
-          vehicleId: vehicle2.id,
-          status: "ACTIVE",
-        },
-      }),
-  );
+  // Self-healing: a DB seeded before this change may still have this trip as
+  // IN_PROGRESS with an ACTIVE assignment (from a previous seed run) —
+  // reconcile it into the completed state above rather than leaving demo
+  // driver 2 permanently busy.
+  if (driver2Trip.status !== "COMPLETED") {
+    await prisma.trip.update({
+      where: { id: driver2Trip.id },
+      data: { status: "COMPLETED", finalFare: driver2Trip.estimatedFare, completedAt: new Date() },
+    });
+  }
+  await prisma.driverAssignment.updateMany({
+    where: { driverId: demoDriver2.driver.id, assignmentType: "RIDE", assignmentId: driver2Trip.id, status: "ACTIVE" },
+    data: { status: "ENDED", endedAt: new Date() },
+  });
 
   // ---- Courier business + delivery demo data (Objective 4) ----
 
@@ -574,6 +594,7 @@ async function seedDemoData() {
     demoRiders: demoRiderSeeds.map((r) => `demo.rider${r.n}@ravelgo.test`),
     demoBusinesses: demoBusinessSeeds.map((b) => `demo.business${b.n}@ravelgo.test`),
     demoVehicles: [vehicle1.plateNumber, vehicle2.plateNumber, vehicle3.plateNumber],
+    availableForLiveDispatch: "demo.driver2@ravelgo.test (ACTIVE, online, no active assignment)",
   });
 }
 

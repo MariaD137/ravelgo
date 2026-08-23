@@ -412,6 +412,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Vehicle" }
+        "403":
+          description: imageKey does not belong to the calling user
   /vehicles/{id}:
     patch:
       tags: [Vehicles]
@@ -428,6 +430,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Vehicle" }
+        "403":
+          description: imageKey does not belong to the calling user
         "404": { $ref: "#/components/responses/NotFound" }
 
   /rentals:
@@ -2021,6 +2025,16 @@ components:
         plateNumber: { type: string }
         year: { type: string }
         isPrimary: { type: boolean }
+        imageKey:
+          type: string
+          writeOnly: true
+          description: >-
+            The S3 object key returned by POST /uploads/presign (bucket:
+            "assets") after uploading the photo bytes directly to S3. Must be
+            namespaced under the caller's own sub (exactly what that endpoint
+            always mints) — an imageKey belonging to another user is rejected
+            with 403. Resolved server-side into Vehicle.imageUrl; omit to
+            leave the vehicle's photo unchanged.
 
     Vehicle:
       allOf:
@@ -2030,6 +2044,14 @@ components:
             id: { type: string }
             driverId: { type: string }
             listedForRental: { type: boolean }
+            imageUrl:
+              type: string
+              nullable: true
+              description: >-
+                A ready-to-load photo URL, or null if none has been set yet.
+                Resolved from the imageKey most recently supplied to
+                POST /vehicles or PATCH /vehicles/{id} — see
+                services/assets.ts.
 
     RentalListing:
       type: object

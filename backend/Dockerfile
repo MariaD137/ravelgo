@@ -14,6 +14,7 @@ COPY package*.json ./
 COPY prisma ./prisma
 RUN npm ci --omit=dev && npm run prisma:generate
 COPY openapi.yaml ./
+COPY public ./public
 COPY --from=build /app/dist ./dist
 
 # Runs as the non-root `node` user the base image already provides —

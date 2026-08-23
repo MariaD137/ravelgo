@@ -1,8 +1,12 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:ravelgo_driver_app/models/vehicle.dart';
 import 'package:ravelgo_driver_app/services/api/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_session.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
+import 'package:ravelgo_driver_app/widgets/pickable_upload_box.dart';
 
 class AddVehicleScreen extends StatefulWidget {
   const AddVehicleScreen({super.key});
@@ -20,6 +24,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   final _year = TextEditingController();
   bool _submitting = false;
   String? _error;
+  XFile? _pickedPhoto;
 
   @override
   void dispose() {
@@ -40,13 +45,38 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       _error = null;
     });
     try {
-      final json = await DriverSession.instance.vehicleApi.create(
+      var json = await DriverSession.instance.vehicleApi.create(
         brand: _brand.text.trim(),
         model: _model.text.trim(),
         colour: _colour.text.trim(),
         plateNumber: _plate.text.trim(),
         year: _year.text.trim(),
       );
+
+      // The photo (if any) is uploaded and attached only after the vehicle
+      // exists, so there's a real vehicleId to attach it to — a failed
+      // photo upload doesn't block saving the vehicle itself; it's surfaced
+      // as a separate, honest error instead.
+      final photo = _pickedPhoto;
+      if (photo != null) {
+        try {
+          final bytes = await photo.readAsBytes();
+          json = await DriverSession.instance.vehicleApi.uploadImageAndAttach(
+            vehicleId: json['id'] as String,
+            bytes: Uint8List.fromList(bytes),
+            fileName: photo.name,
+            contentType: photo.mimeType ?? 'image/jpeg',
+          );
+        } on ApiException catch (err) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Vehicle saved, but the photo could not be uploaded: ${err.message}')));
+          Navigator.pop(context, Vehicle.fromJson(json));
+          return;
+        }
+      }
+
       if (!mounted) return;
       Navigator.pop(context, Vehicle.fromJson(json));
     } on ApiException catch (err) {
@@ -103,6 +133,12 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                   if (value.length < 4) return 'Enter a 4-digit year';
                   return null;
                 },
+              ),
+              const SizedBox(height: 16),
+              PickableUploadBox(
+                label: "Vehicle photo (optional)",
+                pickedFileName: _pickedPhoto?.name,
+                onPicked: (file) => setState(() => _pickedPhoto = file),
               ),
               if (_error != null) ...[
                 const SizedBox(height: 16),

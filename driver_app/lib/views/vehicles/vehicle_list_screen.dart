@@ -83,30 +83,43 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (context, i) {
                 final v = vehicles[i];
+                final resolvedImageUrl = DriverSession.instance.apiClient.resolveAssetUrl(v.imageUrl);
                 return Container(
                   padding: const EdgeInsets.all(14),
                   decoration: AppComponents.cardDecoration(),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10)),
-                        child: const Icon(Icons.directions_car, color: Colors.black54),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text("${v.brand} ${v.model} · ${v.colour}", style: const TextStyle(fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 4),
-                            Text("${v.plateNumber} · ${v.year}", style: const TextStyle(fontSize: 12, color: Colors.black54)),
-                          ],
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: AspectRatio(
+                          aspectRatio: 16 / 9,
+                          child: resolvedImageUrl != null
+                              ? Image.network(
+                                  resolvedImageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) => _NoVehiclePhoto(),
+                                )
+                              : _NoVehiclePhoto(),
                         ),
                       ),
-                      if (v.isPrimary) AppComponents.badge("Primary"),
-                      if (v.listedForRental) AppComponents.badge("For rental", color: Colors.blue),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text("${v.brand} ${v.model} · ${v.colour}", style: const TextStyle(fontWeight: FontWeight.w600)),
+                                const SizedBox(height: 4),
+                                Text("${v.plateNumber} · ${v.year}", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                              ],
+                            ),
+                          ),
+                          if (v.isPrimary) AppComponents.badge("Primary"),
+                          if (v.listedForRental) AppComponents.badge("For rental", color: Colors.blue),
+                        ],
+                      ),
                     ],
                   ),
                 );
@@ -114,6 +127,26 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// A clean, honest placeholder shown in place of a real photo — never a
+/// stand-in image that could be mistaken for the actual vehicle.
+class _NoVehiclePhoto extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.background,
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.directions_car, color: Colors.black38, size: 32),
+          const SizedBox(height: 4),
+          Text("No vehicle photo", style: TextStyle(color: Colors.black.withValues(alpha: 0.4), fontSize: 12)),
+        ],
       ),
     );
   }

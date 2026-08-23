@@ -16,6 +16,7 @@ class RentalListing {
   final String id;
   final String ownerName;
   final String vehicle;
+  final String? vehicleImageUrl;
   final double dailyRate;
   final String location;
   final RentalListingStatus status;
@@ -24,6 +25,7 @@ class RentalListing {
     required this.id,
     required this.ownerName,
     required this.vehicle,
+    this.vehicleImageUrl,
     required this.dailyRate,
     required this.location,
     required this.status,
@@ -38,6 +40,7 @@ class RentalListing {
       id: json['id'] as String,
       ownerName: driverUser == null ? '(unknown)' : '${driverUser['firstName']} ${driverUser['lastName']}',
       vehicle: vehicle == null ? '(vehicle unavailable)' : '${vehicle['brand']} ${vehicle['model']} ${vehicle['year']}, ${vehicle['colour']}',
+      vehicleImageUrl: vehicle?['imageUrl'] as String?,
       dailyRate: (json['dailyRate'] as num).toDouble(),
       location: json['location'] as String,
       status: rentalListingStatusFromApi(json['status'] as String),

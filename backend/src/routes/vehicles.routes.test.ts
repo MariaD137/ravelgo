@@ -95,6 +95,137 @@ test("POST /api/vehicles unsets isPrimary on the driver's other vehicles when th
   assert.equal(updatedFirst.isPrimary, false);
 });
 
+// Vehicle image (Part 1-3 of the vehicle-image feature): imageKey is an S3
+// object key namespaced under the caller's own sub (exactly what
+// POST /uploads/presign always mints), resolved server-side into
+// Vehicle.imageUrl. ASSETS_PUBLIC_BASE_URL is unset in this test
+// environment, so resolveAssetUrl's fallback applies and imageUrl equals
+// the imageKey verbatim — see services/assets.test.ts for the CDN-configured
+// resolution behaviour itself.
+test("POST /api/vehicles accepts an own imageKey and resolves it into imageUrl", async () => {
+  await createDriver("driver-sub-image-1");
+  const token = mockAuthAs({ sub: "driver-sub-image-1", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/vehicles")
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      brand: "Mercedes-Benz",
+      model: "E-Class",
+      colour: "Black",
+      plateNumber: "IMG-001",
+      year: "2023",
+      imageKey: "driver-sub-image-1/photo.jpg",
+    });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.imageUrl, "driver-sub-image-1/photo.jpg");
+});
+
+test("POST /api/vehicles rejects an imageKey namespaced under a different user", async () => {
+  await createDriver("driver-sub-image-2");
+  const token = mockAuthAs({ sub: "driver-sub-image-2", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/vehicles")
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      brand: "Toyota",
+      model: "Corolla",
+      colour: "Blue",
+      plateNumber: "IMG-002",
+      year: "2020",
+      imageKey: "someone-elses-sub/photo.jpg",
+    });
+
+  assert.equal(res.status, 403);
+  const created = await prisma.vehicle.findUnique({ where: { plateNumber: "IMG-002" } });
+  assert.equal(created, null);
+});
+
+test("POST /api/vehicles without imageKey leaves imageUrl null", async () => {
+  await createDriver("driver-sub-image-3");
+  const token = mockAuthAs({ sub: "driver-sub-image-3", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/vehicles")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ brand: "Honda", model: "Accord", colour: "Silver", plateNumber: "IMG-003", year: "2020" });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.imageUrl, null);
+});
+
+test("PATCH /api/vehicles/:id accepts an own imageKey and updates imageUrl", async () => {
+  const driver = await createDriver("driver-sub-image-4");
+  const vehicle = await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Kia", model: "Rio", colour: "Black", plateNumber: "IMG-004", year: "2021" },
+  });
+  const token = mockAuthAs({ sub: "driver-sub-image-4", groups: ["Driver"] });
+
+  const res = await request(app)
+    .patch(`/api/vehicles/${vehicle.id}`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ imageKey: "driver-sub-image-4/new-photo.jpg" });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.imageUrl, "driver-sub-image-4/new-photo.jpg");
+});
+
+test("PATCH /api/vehicles/:id rejects an imageKey namespaced under a different user and leaves the vehicle unchanged", async () => {
+  const driver = await createDriver("driver-sub-image-5");
+  const vehicle = await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Kia", model: "Rio", colour: "Black", plateNumber: "IMG-005", year: "2021" },
+  });
+  const token = mockAuthAs({ sub: "driver-sub-image-5", groups: ["Driver"] });
+
+  const res = await request(app)
+    .patch(`/api/vehicles/${vehicle.id}`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ imageKey: "someone-elses-sub/new-photo.jpg" });
+
+  assert.equal(res.status, 403);
+  const unchanged = await prisma.vehicle.findUniqueOrThrow({ where: { id: vehicle.id } });
+  assert.equal(unchanged.imageUrl, null);
+});
+
+test("GET /api/vehicles/me reflects a previously-set imageUrl", async () => {
+  const driver = await createDriver("driver-sub-image-6");
+  await prisma.vehicle.create({
+    data: {
+      driverId: driver.id,
+      brand: "BMW",
+      model: "7 Series",
+      colour: "Grey",
+      plateNumber: "IMG-006",
+      year: "2024",
+      imageUrl: "driver-sub-image-6/existing-photo.jpg",
+    },
+  });
+  const token = mockAuthAs({ sub: "driver-sub-image-6", groups: ["Driver"] });
+
+  const res = await request(app).get("/api/vehicles/me").set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body[0].imageUrl, "driver-sub-image-6/existing-photo.jpg");
+});
+
+test("PATCH /api/vehicles/:id 404s for another driver's vehicle even with a validly-owned imageKey", async () => {
+  const driverA = await createDriver("driver-sub-image-7");
+  await createDriver("driver-sub-image-8");
+  const vehicle = await prisma.vehicle.create({
+    data: { driverId: driverA.id, brand: "Ford", model: "Focus", colour: "White", plateNumber: "IMG-007", year: "2018" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-image-8", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/vehicles/${vehicle.id}`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ imageKey: "driver-sub-image-8/photo.jpg" });
+
+  assert.equal(res.status, 404);
+});
+
 test("PATCH /api/vehicles/:id unsets isPrimary on the driver's other vehicles when this one becomes primary", async () => {
   const driver = await createDriver("driver-sub-primary-2");
   const first = await prisma.vehicle.create({

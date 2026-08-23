@@ -107,12 +107,27 @@ class _RentalListingsScreenState extends State<RentalListingsScreen> {
               itemBuilder: (context, i) {
                 final l = listings[i];
                 final mutating = _mutatingIds.contains(l.id);
+                final resolvedImageUrl = ApiClient().resolveAssetUrl(l.vehicleImageUrl);
                 return Container(
                   padding: const EdgeInsets.all(14),
                   decoration: AppComponents.cardDecoration(),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: AspectRatio(
+                          aspectRatio: 16 / 9,
+                          child: resolvedImageUrl != null
+                              ? Image.network(
+                                  resolvedImageUrl,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) => const _NoVehiclePhoto(),
+                                )
+                              : const _NoVehiclePhoto(),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -141,6 +156,28 @@ class _RentalListingsScreenState extends State<RentalListingsScreen> {
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+/// A clean, honest placeholder shown in place of a real photo — never a
+/// stand-in image that could be mistaken for the actual vehicle.
+class _NoVehiclePhoto extends StatelessWidget {
+  const _NoVehiclePhoto();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AppColors.background,
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.directions_car, color: Colors.black38, size: 32),
+          const SizedBox(height: 4),
+          Text("No vehicle photo", style: TextStyle(color: Colors.black.withValues(alpha: 0.4), fontSize: 12)),
+        ],
       ),
     );
   }

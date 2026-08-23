@@ -85,6 +85,14 @@ const openapiDocument = loadYaml(readFileSync(join(__dirname, "..", "openapi.yam
 app.get("/openapi.json", (_req, res) => res.json(openapiDocument));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiDocument));
 
+// A handful of committed, clearly-labeled DEMO placeholder vehicle photos
+// (backend/public/demo-vehicles) — used only by the demo/sample vehicles
+// prisma/seed.ts creates, so the apps have something real to render before
+// real S3-backed photos exist (see services/assets.ts). Not the real
+// vehicle-photo pipeline: an actual driver upload goes through
+// POST /uploads/presign to the S3 assets bucket, never through here.
+app.use("/demo-assets", express.static(join(__dirname, "..", "public", "demo-vehicles")));
+
 app.use(healthRouter);
 app.use("/api", driversRouter);
 app.use("/api", ridersRouter);
