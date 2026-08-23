@@ -89,6 +89,34 @@ driversRouter.patch("/drivers/me/online", requireAuth, requireRole("Driver"), as
   res.json(driver);
 });
 
+const updateMeSchema = z.object({
+  preferredLanguage: z.string().min(1).optional(),
+  quietModePreferred: z.boolean().optional(),
+});
+
+// Driver: update my own ride-matching preferences (preferredLanguage,
+// quietModePreferred — the two Driver-model fields the app's "Ride
+// Preferences" screen can actually persist). Mirrors PATCH /riders/me's
+// conditional-updateMany pattern: POST /drivers/me only ever sets
+// preferredLanguage once, at onboarding, and there was previously no way to
+// change it (or quietModePreferred) afterward.
+driversRouter.patch("/drivers/me", requireAuth, requireRole("Driver"), async (req, res) => {
+  const parsed = updateMeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { count } = await prisma.driver.updateMany({
+    where: { user: { cognitoSub: req.user!.sub } },
+    data: parsed.data,
+  });
+  if (count === 0) return res.status(404).json({ error: "Driver profile not found" });
+
+  const driver = await prisma.driver.findFirstOrThrow({
+    where: { user: { cognitoSub: req.user!.sub } },
+    include: { user: true, vehicles: true, documents: true },
+  });
+  res.json(driver);
+});
+
 // Driver: my current active assignment (Ride, Courier, or Rental), if any.
 // The primary polling mechanism driver_app uses to discover it has been
 // matched to a new trip — matching itself is fully server-side and

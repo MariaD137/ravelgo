@@ -1,4 +1,7 @@
+/// A driver's vehicle — parsed from GET /api/vehicles/me / POST /api/vehicles's
+/// real Vehicle rows.
 class Vehicle {
+  final String id;
   final String brand;
   final String model;
   final String colour;
@@ -8,6 +11,7 @@ class Vehicle {
   final bool listedForRental;
 
   const Vehicle({
+    required this.id,
     required this.brand,
     required this.model,
     required this.colour,
@@ -16,4 +20,17 @@ class Vehicle {
     this.isPrimary = false,
     this.listedForRental = false,
   });
+
+  factory Vehicle.fromJson(Map<String, dynamic> json) {
+    return Vehicle(
+      id: json['id'] as String,
+      brand: json['brand'] as String? ?? '',
+      model: json['model'] as String? ?? '',
+      colour: json['colour'] as String? ?? '',
+      plateNumber: json['plateNumber'] as String? ?? '',
+      year: json['year'] as String? ?? '',
+      isPrimary: json['isPrimary'] as bool? ?? false,
+      listedForRental: json['listedForRental'] as bool? ?? false,
+    );
+  }
 }

@@ -9,7 +9,7 @@ class TripDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cancelled = trip.status == TripStatus.cancelled;
+    final cancelled = trip.isCancelled;
     return Scaffold(
       appBar: AppBar(title: Text(trip.id)),
       body: SingleChildScrollView(
@@ -17,9 +17,9 @@ class TripDetailScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AppComponents.badge(cancelled ? "Cancelled" : "Completed", color: cancelled ? AppColors.danger : AppColors.success),
+            AppComponents.badge(cancelled ? "Cancelled" : trip.status, color: cancelled ? AppColors.danger : AppColors.success),
             const SizedBox(height: 12),
-            Text(formatFriendlyDate(trip.date), style: const TextStyle(color: Colors.black54)),
+            Text(formatFriendlyDate(trip.requestedAt), style: const TextStyle(color: Colors.black54)),
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(16),
@@ -44,14 +44,6 @@ class TripDetailScreen extends StatelessWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text("Category"),
-                      Text(trip.category, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
                       const Text("Fare", style: TextStyle(fontWeight: FontWeight.w700)),
                       Text(cancelled ? "₦0" : "₦${trip.fare.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.w700)),
                     ],
@@ -59,15 +51,22 @@ class TripDetailScreen extends StatelessWidget {
                 ],
               ),
             ),
+            // Neither a per-driver receipt download nor a lost-item report
+            // has a real backend endpoint yet (payments.routes.ts's receipt
+            // route exists for a Payment id, not a Trip id, and isn't
+            // reachable from here) — shown as an honest "not available yet"
+            // rather than a fake success message.
             const SizedBox(height: 20),
             AppComponents.outlineButton(
               text: "Download receipt",
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Receipt saved to device"))),
+              onPressed: () => ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text("Receipts aren't available from this screen yet"))),
             ),
             const SizedBox(height: 12),
             AppComponents.outlineButton(
               text: "Report a lost item",
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lost item report submitted"))),
+              onPressed: () => ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text("Lost item reporting isn't available yet"))),
             ),
           ],
         ),

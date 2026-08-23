@@ -26,7 +26,7 @@ class AddPhotoScreen extends StatelessWidget {
                   OutlinedButton(onPressed: ()  async {
                     final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
                     if (image != null) {
-                      print("Selected file: ${image.path}");
+                      debugPrint("Selected file: ${image.path}");
                       // handle the selected image file here
                     }
                   }, child: Text('Add a photo')),

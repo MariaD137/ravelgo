@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/services/driver_session.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 
+/// The overall rating/trip count are real (Driver.rating/totalTrips, from
+/// the same profile DriverShell already loaded before this screen is
+/// reachable). Per-trip written reviews have no backend model yet — no
+/// endpoint exists for a rider to leave one, and DriverDocument/Trip carry
+/// no review text field — so that section is shown as an honest "not
+/// available yet" rather than fabricated review text.
 class MyRatingsScreen extends StatelessWidget {
   const MyRatingsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final reviews = [
-      (5, "Great driver, very punctual", "2 days ago"),
-      (5, "Smooth ride, friendly", "4 days ago"),
-      (3, "Took a longer route than expected", "1 week ago"),
-      (4, "Clean car", "2 weeks ago"),
-    ];
+    final profile = DriverSession.instance.profile!;
     return Scaffold(
       appBar: AppBar(title: const Text("My Ratings")),
       body: ListView(
@@ -22,40 +24,30 @@ class MyRatingsScreen extends StatelessWidget {
             decoration: AppComponents.cardDecoration(),
             child: Column(
               children: [
-                const Text("4.8", style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold)),
+                Text(profile.rating.toStringAsFixed(1), style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold)),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(5, (i) => const Icon(Icons.star, color: AppColors.primaryDark, size: 18)),
+                  children: List.generate(5, (i) {
+                    final threshold = i + 1;
+                    final filled = profile.rating >= threshold - 0.5;
+                    return Icon(filled ? Icons.star : Icons.star_border, color: AppColors.primaryDark, size: 18);
+                  }),
                 ),
                 const SizedBox(height: 4),
-                const Text("Based on 214 trips", style: TextStyle(fontSize: 12, color: Colors.black54)),
+                Text("Based on ${profile.totalTrips} trips", style: const TextStyle(fontSize: 12, color: Colors.black54)),
               ],
             ),
           ),
           const SizedBox(height: 16),
-          AppComponents.sectionTitle("Recent reviews (anonymous)"),
-          ...reviews.map((r) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: AppComponents.cardDecoration(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          ...List.generate(r.$1, (i) => const Icon(Icons.star, size: 14, color: AppColors.primaryDark)),
-                          ...List.generate(5 - r.$1, (i) => const Icon(Icons.star_border, size: 14, color: Colors.black26)),
-                          const Spacer(),
-                          Text(r.$3, style: const TextStyle(fontSize: 11, color: Colors.black45)),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(r.$2, style: const TextStyle(fontSize: 13)),
-                    ],
-                  ),
-                ),
-              )),
+          AppComponents.sectionTitle("Recent reviews"),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: AppComponents.cardDecoration(),
+            child: const Text(
+              "Written trip reviews aren't available yet — this screen shows your real overall rating and trip count above.",
+              style: TextStyle(fontSize: 13, color: Colors.black54),
+            ),
+          ),
         ],
       ),
     );

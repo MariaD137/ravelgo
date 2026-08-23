@@ -26,6 +26,17 @@ documentsRouter.post("/documents", requireAuth, requireRole("Driver"), async (re
   const parsed = uploadSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+  // POST /uploads/presign always mints fileKey as `${callerSub}/...` — so a
+  // fileKey not namespaced under the caller's own sub was never actually
+  // issued to them by that endpoint. Without this check, a driver who knew
+  // (or guessed) another user's sub and object key could register it as
+  // their own document; this doesn't grant S3 access, but it would let a
+  // driver falsely claim someone else's already-uploaded file as one of
+  // their own DriverDocument rows.
+  if (!parsed.data.fileKey.startsWith(`${req.user!.sub}/`)) {
+    return res.status(403).json({ error: "fileKey must belong to the calling user" });
+  }
+
   const driver = await findOwnDriver(req.user!.sub);
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 

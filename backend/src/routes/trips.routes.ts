@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import type { TripStatus } from "@prisma/client";
+import { Prisma, type TripStatus } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
@@ -97,9 +97,22 @@ tripsRouter.post("/trips", requireAuth, requireRole("Rider"), async (req, res) =
     estimatedFare = parsed.data.estimatedFare;
   }
 
-  const trip = await prisma.trip.create({
-    data: { pickup, destination, category, pickupNote, estimatedFare, riderId: rider.id },
-  });
+  let trip;
+  try {
+    trip = await prisma.trip.create({
+      data: { pickup, destination, category, pickupNote, estimatedFare, riderId: rider.id },
+    });
+  } catch (err) {
+    // Database-level backstop for the same race the `openTrip` check above
+    // closes at the application level: a partial unique index
+    // (Trip_riderId_open_unique) rejects a second concurrent insert that
+    // both requests' `openTrip` reads missed, so the loser gets a clean 409
+    // here instead of two open trips for one rider.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return res.status(409).json({ error: "You already have an active trip request" });
+    }
+    throw err;
+  }
 
   const matched = await matchDriverToTrip(trip.id);
   if (matched?.driverId) {
@@ -114,22 +127,34 @@ tripsRouter.post("/trips", requireAuth, requireRole("Rider"), async (req, res) =
   res.status(201).json(matched ?? trip);
 });
 
-// Rider: my own trip history. Registered before "/trips/:id" below — Express
-// matches path segments in registration order, so ":id" would otherwise
-// swallow "mine" (same fix already applied to "/drivers/me" vs "/drivers/:id").
-tripsRouter.get("/trips/mine", requireAuth, requireRole("Rider"), async (req, res) => {
+// Rider or Driver: my own trip history — a driver's "My Trips" screen and a
+// rider's trip history both read this same endpoint, scoped to whichever
+// side of the trip the caller is on, rather than each having its own
+// separate (and inevitably diverging) route. Registered before "/trips/:id"
+// below — Express matches path segments in registration order, so ":id"
+// would otherwise swallow "mine" (same fix already applied to "/drivers/me"
+// vs "/drivers/:id").
+tripsRouter.get("/trips/mine", requireAuth, requireRole("Rider", "Driver"), async (req, res) => {
   const parsed = paginationQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { page, pageSize } = parsed.data;
 
-  const rider = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
-  if (!rider) return res.status(404).json({ error: "Rider not found" });
+  const isDriver = req.user!.groups.includes("Driver");
+  let where: { riderId: string } | { driverId: string };
+  if (isDriver) {
+    const driver = await findOwnDriver(req.user!.sub);
+    if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+    where = { driverId: driver.id };
+  } else {
+    const rider = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
+    if (!rider) return res.status(404).json({ error: "Rider not found" });
+    where = { riderId: rider.id };
+  }
 
-  const where = { riderId: rider.id };
   const [trips, total] = await Promise.all([
     prisma.trip.findMany({
       where,
-      include: { driver: { include: { user: true } } },
+      include: { rider: true, driver: { include: { user: true } } },
       orderBy: { requestedAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,

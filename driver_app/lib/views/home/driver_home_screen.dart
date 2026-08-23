@@ -5,6 +5,7 @@ import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/courier/available_courier_requests_screen.dart';
 import 'package:ravelgo_driver_app/views/riderequest/incoming_request_sheet.dart';
 import 'package:ravelgo_driver_app/views/trip/active_trip_screen.dart';
+import 'package:ravelgo_driver_app/widgets/live_map_preview.dart';
 
 /// Real matching, not a simulation: [DriverSession] polls (and best-effort
 /// WebSocket-pushes) GET /api/drivers/me/assignment while online and free,
@@ -91,7 +92,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         children: [
           Stack(
             children: [
-              Image.asset('assets/fake_map.png', width: double.infinity, height: 320, fit: BoxFit.cover),
+              const LiveMapPreview(height: 320),
               Positioned(
                 top: 16,
                 left: 16,

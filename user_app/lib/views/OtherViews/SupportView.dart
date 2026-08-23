@@ -110,7 +110,7 @@ class SupportView extends StatelessWidget {
           title: Text(label),
           trailing: const Icon(Icons.chevron_right),
           onTap: () {
-            print("Tapped: $label");
+            debugPrint("Tapped: $label");
           },
         ),
         const Divider(height: 1),

@@ -16,7 +16,7 @@ class _PostCarScreenState extends State<PostCarScreen> {
 
   @override
   Widget build(BuildContext context) {
-    print(Navigator.of(context).canPop()); // should be false
+    debugPrint('canPop: ${Navigator.of(context).canPop()}'); // should be false
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.white,

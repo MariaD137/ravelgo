@@ -23,6 +23,14 @@ class RideApi {
     return await _client.get('/api/trips/$tripId') as Map<String, dynamic>;
   }
 
+  /// The driver's own trip history — GET /api/trips/mine, scoped to this
+  /// driver's side of the trip (the same endpoint a rider's own trip
+  /// history uses, on the rider side).
+  Future<List<Map<String, dynamic>>> getMyTrips({int page = 1, int pageSize = 20}) async {
+    final res = await _client.get('/api/trips/mine', query: {'page': page, 'pageSize': pageSize}) as Map<String, dynamic>;
+    return (res['data'] as List).cast<Map<String, dynamic>>();
+  }
+
   Future<Map<String, dynamic>> updateStatus(String tripId, String status, {double? finalFare}) async {
     return await _client.patch(
           '/api/trips/$tripId/status',

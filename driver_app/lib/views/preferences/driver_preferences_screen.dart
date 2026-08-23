@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/services/api/api_client.dart';
+import 'package:ravelgo_driver_app/services/driver_session.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 
 class DriverPreferencesScreen extends StatefulWidget {
@@ -9,10 +11,32 @@ class DriverPreferencesScreen extends StatefulWidget {
 }
 
 class _DriverPreferencesScreenState extends State<DriverPreferencesScreen> {
-  String _language = "English";
-  bool _quietMode = false;
-  bool _acceptCourier = false;
-  bool _acceptLongTrips = true;
+  late String _language = DriverSession.instance.profile!.preferredLanguage;
+  late bool _quietMode = DriverSession.instance.profile!.quietModePreferred;
+  bool _saving = false;
+  String? _error;
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await DriverSession.instance.driverApi.updatePreferences(
+        preferredLanguage: _language,
+        quietModePreferred: _quietMode,
+      );
+      await DriverSession.instance.loadProfile();
+      if (!mounted) return;
+      Navigator.pop(context);
+    } on ApiException catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = err.message;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,24 +73,41 @@ class _DriverPreferencesScreenState extends State<DriverPreferencesScreen> {
                   value: _quietMode,
                   onChanged: (v) => setState(() => _quietMode = v),
                 ),
-                AppComponents.divider(),
-                SwitchListTile(
-                  title: const Text("Accept courier requests"),
-                  subtitle: const Text("Note: courier pickups are handled via the Riders app", style: TextStyle(fontSize: 12)),
-                  value: _acceptCourier,
-                  onChanged: (v) => setState(() => _acceptCourier = v),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          // "Accept courier requests" / "Accept long-distance trips" have no
+          // backend field yet (Driver has no such columns, and matching.ts
+          // doesn't filter on anything like them) — shown disabled with an
+          // honest note rather than a toggle that silently does nothing.
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: AppComponents.cardDecoration(),
+            child: Column(
+              children: [
+                const SwitchListTile(
+                  title: Text("Accept courier requests"),
+                  subtitle: Text("Not available yet — courier requests are matched separately", style: TextStyle(fontSize: 12)),
+                  value: true,
+                  onChanged: null,
                 ),
                 AppComponents.divider(),
-                SwitchListTile(
-                  title: const Text("Accept long-distance trips"),
-                  value: _acceptLongTrips,
-                  onChanged: (v) => setState(() => _acceptLongTrips = v),
+                const SwitchListTile(
+                  title: Text("Accept long-distance trips"),
+                  subtitle: Text("Not available yet", style: TextStyle(fontSize: 12)),
+                  value: true,
+                  onChanged: null,
                 ),
               ],
             ),
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+          ],
           const SizedBox(height: 20),
-          AppComponents.primaryButton(text: "Save preferences", onPressed: () => Navigator.pop(context)),
+          AppComponents.primaryButton(text: _saving ? "Saving…" : "Save preferences", onPressed: _saving ? null : _save),
         ],
       ),
     );

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
@@ -44,10 +45,22 @@ courierRouter.post("/courier-requests", requireAuth, requireRole("Rider"), async
       .json({ error: "You already have an active courier request", courierRequestId: openRequest.id });
   }
 
-  const request = await prisma.courierRequest.create({
-    data: { ...parsed.data, senderId: sender.id },
-  });
-  res.status(201).json(request);
+  try {
+    const request = await prisma.courierRequest.create({
+      data: { ...parsed.data, senderId: sender.id },
+    });
+    res.status(201).json(request);
+  } catch (err) {
+    // Database-level backstop for the same race the `openRequest` check
+    // above closes at the application level: a partial unique index
+    // (CourierRequest_senderId_open_unique) rejects a second concurrent
+    // insert that both requests' `openRequest` reads missed, so the loser
+    // gets a clean 409 here instead of two open requests for one sender.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return res.status(409).json({ error: "You already have an active courier request" });
+    }
+    throw err;
+  }
 });
 
 // Rider: my own courier request history. Registered before "/courier-requests/:id"

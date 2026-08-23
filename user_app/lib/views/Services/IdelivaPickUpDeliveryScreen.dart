@@ -47,7 +47,7 @@ class PickDeliveryScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                     onTap: () {
                       // 👉 Your action here
-                      print("Scheduled requests tapped");
+                      debugPrint("Scheduled requests tapped");
 
                       // Example navigation
                       Navigator.push(

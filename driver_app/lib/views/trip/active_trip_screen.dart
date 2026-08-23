@@ -5,6 +5,7 @@ import 'package:ravelgo_driver_app/services/driver_session.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/safety/emergency_screen.dart';
 import 'package:ravelgo_driver_app/views/trip/trip_complete_screen.dart';
+import 'package:ravelgo_driver_app/widgets/live_map_preview.dart';
 
 /// Drives the driver's side of a real Trip through the backend's own
 /// status transitions (MATCHED -> IN_PROGRESS -> COMPLETED, each a real
@@ -137,7 +138,7 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
           children: [
             Stack(
               children: [
-                Image.asset('assets/fake_map.png', width: double.infinity, height: 280, fit: BoxFit.cover),
+                const LiveMapPreview(height: 280),
                 Positioned(
                   top: 12,
                   left: 12,

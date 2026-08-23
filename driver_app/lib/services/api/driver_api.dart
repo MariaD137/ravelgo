@@ -38,4 +38,20 @@ class DriverApi {
   Future<Map<String, dynamic>> setOnline(bool online) async {
     return await _client.patch('/api/drivers/me/online', body: {'online': online}) as Map<String, dynamic>;
   }
+
+  /// Updates the two Driver-model fields the "Ride Preferences" screen can
+  /// actually persist — preferredLanguage and quietModePreferred. There is
+  /// no backend field yet for the screen's other two toggles (accepting
+  /// courier requests / long-distance trips specifically), so this
+  /// intentionally only ever sends these two.
+  Future<Map<String, dynamic>> updatePreferences({String? preferredLanguage, bool? quietModePreferred}) async {
+    return await _client.patch(
+          '/api/drivers/me',
+          body: {
+            if (preferredLanguage != null) 'preferredLanguage': preferredLanguage,
+            if (quietModePreferred != null) 'quietModePreferred': quietModePreferred,
+          },
+        )
+        as Map<String, dynamic>;
+  }
 }

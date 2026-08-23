@@ -196,6 +196,10 @@ test("PATCH /api/courier-requests/:id/accept rejects a driver already MATCHED on
 
 test("PATCH /api/courier-requests/:id/accept rejects a driver already on another active courier request (Courier->Courier)", async () => {
   const sender = await createRider("rider-sub-busy-2");
+  // A second, distinct sender for the second request — one sender can never
+  // legitimately have two simultaneously-open CourierRequests
+  // (CourierRequest_senderId_open_unique), so this fixture needs two.
+  const secondSender = await createRider("rider-sub-busy-2b");
   const driver = await createDriver("driver-sub-busy-2");
   const firstReq = await prisma.courierRequest.create({
     data: {
@@ -215,7 +219,7 @@ test("PATCH /api/courier-requests/:id/accept rejects a driver already on another
   });
   const secondReq = await prisma.courierRequest.create({
     data: {
-      senderId: sender.id,
+      senderId: secondSender.id,
       pickupAddress: "C",
       dropoffAddress: "D",
       packageDescription: "Box 2",
@@ -238,6 +242,9 @@ test("PATCH /api/courier-requests/:id/accept rejects a driver already on another
 
 test("PATCH /api/courier-requests/:id/accept: one driver racing to accept two different requests — exactly one wins (concurrency)", async () => {
   const sender = await createRider("rider-sub-race-2");
+  // A second, distinct sender — see the Courier->Courier test above for why
+  // one sender can't hold two open requests at once.
+  const secondSender = await createRider("rider-sub-race-2b");
   const driver = await createDriver("driver-sub-race-c");
   const reqA = await prisma.courierRequest.create({
     data: {
@@ -252,7 +259,7 @@ test("PATCH /api/courier-requests/:id/accept: one driver racing to accept two di
   });
   const reqB = await prisma.courierRequest.create({
     data: {
-      senderId: sender.id,
+      senderId: secondSender.id,
       pickupAddress: "C",
       dropoffAddress: "D",
       packageDescription: "Box B",
@@ -479,4 +486,33 @@ test("GET /api/courier-requests/mine rejects a Driver caller (Rider-only endpoin
   const token = mockAuthAs({ sub: "driver-sub-mine-1", groups: ["Driver"] });
   const res = await request(app).get("/api/courier-requests/mine").set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 403);
+});
+
+test("POST /api/courier-requests: two truly concurrent requests from the same sender — the database-level partial unique index rejects the loser", async () => {
+  await createRider("rider-sub-courier-dup-race");
+  const token = mockAuthAs({ sub: "rider-sub-courier-dup-race", groups: ["Rider"] });
+  const payload = {
+    pickupAddress: "A",
+    dropoffAddress: "B",
+    packageDescription: "Box",
+    recipientName: "R",
+    recipientPhone: "+1",
+    estimatedFare: 15,
+  };
+
+  // Exercises CourierRequest_senderId_open_unique (added in migration
+  // 20260823083433_add_open_request_unique_indexes) — the database-level
+  // backstop behind the application-level `openRequest` pre-check, which
+  // can't fully close a true concurrent double-submit on its own.
+  const [a, b] = await Promise.all([
+    request(app).post("/api/courier-requests").set("Authorization", `Bearer ${token}`).send(payload),
+    request(app).post("/api/courier-requests").set("Authorization", `Bearer ${token}`).send(payload),
+  ]);
+
+  const statuses = [a.status, b.status].sort();
+  assert.deepEqual(statuses, [201, 409]);
+
+  const sender = await prisma.user.findUniqueOrThrow({ where: { cognitoSub: "rider-sub-courier-dup-race" } });
+  const requests = await prisma.courierRequest.findMany({ where: { senderId: sender.id } });
+  assert.equal(requests.length, 1, "exactly one CourierRequest row must exist, even under a true race");
 });

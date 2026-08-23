@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/models/vehicle.dart';
+import 'package:ravelgo_driver_app/services/api/api_client.dart';
+import 'package:ravelgo_driver_app/services/driver_session.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 
 class AddVehicleScreen extends StatefulWidget {
@@ -10,11 +12,14 @@ class AddVehicleScreen extends StatefulWidget {
 }
 
 class _AddVehicleScreenState extends State<AddVehicleScreen> {
+  final _formKey = GlobalKey<FormState>();
   final _brand = TextEditingController();
   final _model = TextEditingController();
   final _colour = TextEditingController();
   final _plate = TextEditingController();
   final _year = TextEditingController();
+  bool _submitting = false;
+  String? _error;
 
   @override
   void dispose() {
@@ -26,43 +31,87 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     super.dispose();
   }
 
+  String? _required(String? v) => (v == null || v.trim().isEmpty) ? 'Required' : null;
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      final json = await DriverSession.instance.vehicleApi.create(
+        brand: _brand.text.trim(),
+        model: _model.text.trim(),
+        colour: _colour.text.trim(),
+        plateNumber: _plate.text.trim(),
+        year: _year.text.trim(),
+      );
+      if (!mounted) return;
+      Navigator.pop(context, Vehicle.fromJson(json));
+    } on ApiException catch (err) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _error = err.message;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Add Vehicle")),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            TextField(controller: _brand, decoration: const InputDecoration(labelText: "Brand", border: OutlineInputBorder())),
-            const SizedBox(height: 16),
-            TextField(controller: _model, decoration: const InputDecoration(labelText: "Model", border: OutlineInputBorder())),
-            const SizedBox(height: 16),
-            TextField(controller: _colour, decoration: const InputDecoration(labelText: "Colour", border: OutlineInputBorder())),
-            const SizedBox(height: 16),
-            TextField(controller: _plate, decoration: const InputDecoration(labelText: "Plate number", border: OutlineInputBorder())),
-            const SizedBox(height: 16),
-            TextField(controller: _year, decoration: const InputDecoration(labelText: "Year", border: OutlineInputBorder())),
-            const SizedBox(height: 24),
-            AppComponents.uploadBox("Upload vehicle registration (Car Papers)"),
-            const SizedBox(height: 28),
-            AppComponents.primaryButton(
-              text: "Save vehicle",
-              onPressed: () {
-                Navigator.pop(
-                  context,
-                  Vehicle(
-                    brand: _brand.text.isEmpty ? "Toyota" : _brand.text,
-                    model: _model.text.isEmpty ? "Corolla" : _model.text,
-                    colour: _colour.text.isEmpty ? "White" : _colour.text,
-                    plateNumber: _plate.text.isEmpty ? "NEW-000-XX" : _plate.text,
-                    year: _year.text.isEmpty ? "2022" : _year.text,
-                  ),
-                );
-              },
-            ),
-          ],
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: _brand,
+                decoration: const InputDecoration(labelText: "Brand", border: OutlineInputBorder()),
+                validator: _required,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _model,
+                decoration: const InputDecoration(labelText: "Model", border: OutlineInputBorder()),
+                validator: _required,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _colour,
+                decoration: const InputDecoration(labelText: "Colour", border: OutlineInputBorder()),
+                validator: _required,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _plate,
+                decoration: const InputDecoration(labelText: "Plate number", border: OutlineInputBorder()),
+                validator: _required,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _year,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: "Year", border: OutlineInputBorder()),
+                validator: (v) {
+                  final value = v?.trim() ?? '';
+                  if (value.isEmpty) return 'Required';
+                  if (value.length < 4) return 'Enter a 4-digit year';
+                  return null;
+                },
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 16),
+                Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+              ],
+              const SizedBox(height: 28),
+              AppComponents.primaryButton(text: _submitting ? "Saving…" : "Save vehicle", onPressed: _submitting ? null : _submit),
+            ],
+          ),
         ),
       ),
     );

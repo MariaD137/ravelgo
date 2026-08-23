@@ -230,6 +230,28 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Driver" }
         "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Drivers]
+      summary: Update my ride-matching preferences (Driver) — preferredLanguage, quietModePreferred
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                preferredLanguage: { type: string }
+                quietModePreferred: { type: boolean }
+      responses:
+        "200":
+          description: Updated driver profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Driver" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /drivers/me/online:
     patch:
       tags: [Drivers]
@@ -653,7 +675,9 @@ paths:
   /trips/mine:
     get:
       tags: [Trips]
-      summary: My own trip history, most recent first (Rider)
+      summary: >-
+        My own trip history, most recent first (Rider or Driver — scoped to
+        whichever side of the trip the caller is on)
       parameters:
         - $ref: "#/components/parameters/page"
         - $ref: "#/components/parameters/pageSize"
@@ -663,6 +687,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PaginatedTrip" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /trips/{id}:
     get:
       tags: [Trips]

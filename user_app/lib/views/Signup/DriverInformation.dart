@@ -32,7 +32,7 @@ class DriverInformationScreen extends StatelessWidget {
                 Expanded(child: ElevatedButton(onPressed: ()   async {
                   final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
                   if (image != null) {
-                    print("Selected file: ${image.path}");
+                    debugPrint("Selected file: ${image.path}");
                     // handle the selected image file here
                   }
                 }, child: Text('Choose File'))),
@@ -50,7 +50,7 @@ class DriverInformationScreen extends StatelessWidget {
                 Expanded(child: ElevatedButton(onPressed: ()   async {
                   final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
                   if (image != null) {
-                    print("Selected file: ${image.path}");
+                    debugPrint("Selected file: ${image.path}");
                     // handle the selected image file here
                   }
                 }, child: Text('Choose File'))),

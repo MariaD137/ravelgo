@@ -91,6 +91,36 @@ test("PATCH /api/drivers/me/online 404s before a driver profile exists", async (
   assert.equal(res.status, 404);
 });
 
+test("PATCH /api/drivers/me updates preferredLanguage/quietModePreferred, persisted in Postgres", async () => {
+  const token = mockAuthAs({ sub: "driver-sub-prefs-1", groups: ["Driver"] });
+  await request(app)
+    .post("/api/drivers/me")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "Pre", lastName: "Fs", email: "prefs1@example.com" });
+
+  const res = await request(app)
+    .patch("/api/drivers/me")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ preferredLanguage: "Yoruba", quietModePreferred: true });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.preferredLanguage, "Yoruba");
+  assert.equal(res.body.quietModePreferred, true);
+
+  const persisted = await prisma.driver.findFirst({ where: { user: { cognitoSub: "driver-sub-prefs-1" } } });
+  assert.equal(persisted?.preferredLanguage, "Yoruba");
+  assert.equal(persisted?.quietModePreferred, true);
+});
+
+test("PATCH /api/drivers/me 404s before a driver profile exists", async () => {
+  const token = mockAuthAs({ sub: "driver-sub-prefs-2", groups: ["Driver"] });
+  const res = await request(app)
+    .patch("/api/drivers/me")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ preferredLanguage: "French" });
+  assert.equal(res.status, 404);
+});
+
 test("GET /api/drivers/me/assignment returns null when the driver has no active job", async () => {
   const token = mockAuthAs({ sub: "driver-sub-assign-1", groups: ["Driver"] });
   await request(app)

@@ -9,8 +9,10 @@ import '../models/driver_profile.dart';
 import 'api/api_client.dart';
 import 'api/auth_provider.dart';
 import 'api/courier_api.dart';
+import 'api/document_api.dart';
 import 'api/driver_api.dart';
 import 'api/ride_api.dart';
+import 'api/vehicle_api.dart';
 
 /// The app-wide holder of the driver's own [DriverOperationalState], real
 /// profile, real-time presence, current ride assignment, auth session, and
@@ -50,7 +52,9 @@ class DriverSession extends ChangeNotifier {
       apiClient = apiClient,
       driverApi = DriverApi(apiClient),
       rideApi = RideApi(apiClient),
-      courierApi = CourierApi(apiClient);
+      courierApi = CourierApi(apiClient),
+      vehicleApi = VehicleApi(apiClient),
+      documentApi = DocumentApi(apiClient);
 
   static DriverSession? _instance;
 
@@ -96,6 +100,8 @@ class DriverSession extends ChangeNotifier {
   final DriverApi driverApi;
   final RideApi rideApi;
   final CourierApi courierApi;
+  final VehicleApi vehicleApi;
+  final DocumentApi documentApi;
 
   DriverOperationalState _state = DriverOperationalState.offline;
   String? _activeAssignmentId;

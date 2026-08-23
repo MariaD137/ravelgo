@@ -34,6 +34,22 @@ test("POST /api/documents registers a document as PENDING for the calling driver
   assert.equal(res.body.status, "PENDING");
 });
 
+test("POST /api/documents rejects a fileKey not namespaced under the caller's own sub", async () => {
+  await createDriver("driver-sub-filekey-1");
+  const token = mockAuthAs({ sub: "driver-sub-filekey-1", groups: ["Driver"] });
+
+  // POST /uploads/presign always mints fileKey as `${callerSub}/...` — a key
+  // under a different sub was never actually issued to this caller.
+  const res = await request(app)
+    .post("/api/documents")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ title: "Driver's license", fileKey: "someone-elses-sub/abc-license.pdf" });
+
+  assert.equal(res.status, 403);
+  const docs = await prisma.driverDocument.findMany();
+  assert.equal(docs.length, 0);
+});
+
 test("GET /api/documents/me only returns the calling driver's own documents", async () => {
   const driverA = await createDriver("driver-sub-2");
   const driverB = await createDriver("driver-sub-3");

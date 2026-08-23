@@ -32,8 +32,9 @@ class _HomePageState extends State<HomePage> {
     _controller = controller;
   }
   Future<void> _loadCurrentLocation() async {
-    final position = await LocationService.getCurrentLocation();
-    if (position != null) {
+    try {
+      final position = await LocationService.getCurrentLocation();
+      if (!mounted) return;
       setState(() {
         _currentPosition = position;
       });
@@ -45,10 +46,12 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       );
-
-      // Optionally, animate camera here if using GoogleMapController
-    } else {
-      print("⚠️ Failed to get location.");
+    } on LocationException catch (err) {
+      // Distinguishable by err.reason if a caller ever needs to branch on
+      // it (e.g. prompting to open settings for permissionDeniedForever) —
+      // this screen just logs which one occurred instead of a single
+      // generic "failed" message.
+      debugPrint('Home: could not load current location (${err.reason}): ${err.message}');
     }
   }
   static const CameraPosition _initialCameraPosition = CameraPosition(

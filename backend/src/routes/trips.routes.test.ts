@@ -866,10 +866,43 @@ test("GET /api/trips/mine returns only the calling rider's own trips, most recen
   assert.equal(res.body.data[0].riderId, rider.id);
 });
 
-test("GET /api/trips/mine rejects a Driver caller (Rider-only endpoint)", async () => {
-  const token = mockAuthAs({ sub: "driver-sub-mine-1", groups: ["Driver"] });
+test("GET /api/trips/mine rejects a caller who is neither Rider nor Driver", async () => {
+  const token = mockAuthAs({ sub: "admin-sub-mine-1", groups: ["Admin"] });
   const res = await request(app).get("/api/trips/mine").set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 403);
+});
+
+test("GET /api/trips/mine, called by a Driver, returns only that driver's own trips (driver_app's My Trips screen)", async () => {
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-sub-mine-2", role: "DRIVER", firstName: "M", lastName: "D", email: "mined@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id } });
+  const otherDriverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-sub-mine-3", role: "DRIVER", firstName: "M", lastName: "D2", email: "mined2@example.com" },
+  });
+  const otherDriver = await prisma.driver.create({ data: { userId: otherDriverUser.id } });
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-mine-3", role: "RIDER", firstName: "M", lastName: "3", email: "mine3@example.com" },
+  });
+  await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, status: "COMPLETED" },
+  });
+  await prisma.trip.create({
+    data: { riderId: rider.id, driverId: otherDriver.id, pickup: "X", destination: "Y", estimatedFare: 20, status: "COMPLETED" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-mine-2", groups: ["Driver"] });
+  const res = await request(app).get("/api/trips/mine").set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.total, 1);
+  assert.equal(res.body.data[0].driverId, driver.id);
+});
+
+test("GET /api/trips/mine 404s for a Driver caller with no Driver profile yet", async () => {
+  const token = mockAuthAs({ sub: "driver-sub-mine-4", groups: ["Driver"] });
+  const res = await request(app).get("/api/trips/mine").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 404);
 });
 
 // Regression: a double-tap on "Request Ride" (or a client retry) with no
@@ -897,6 +930,36 @@ test("POST /api/trips rejects a second request while the rider already has an op
 
   const trips = await prisma.trip.findMany({ where: { riderId: (await prisma.user.findUniqueOrThrow({ where: { cognitoSub: "rider-sub-dup-1" } })).id } });
   assert.equal(trips.length, 1);
+});
+
+test("POST /api/trips: two truly concurrent requests from the same rider — the database-level partial unique index rejects the loser, not just the application-level pre-check", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-dup-race", role: "RIDER", firstName: "D", lastName: "R", email: "duprace@example.com" },
+  });
+  const token = mockAuthAs({ sub: "rider-sub-dup-race", groups: ["Rider"] });
+
+  // Both requests race the same read-then-write window the `openTrip`
+  // application-level check can't fully close on its own — this is what
+  // exercises Trip_riderId_open_unique (added in migration
+  // 20260823083433_add_open_request_unique_indexes) rather than just the
+  // sequential pre-check already covered by the test above.
+  const [a, b] = await Promise.all([
+    request(app)
+      .post("/api/trips")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ pickup: "Home", destination: "Airport", estimatedFare: 25.5 }),
+    request(app)
+      .post("/api/trips")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ pickup: "Home", destination: "Mall", estimatedFare: 10 }),
+  ]);
+
+  const statuses = [a.status, b.status].sort();
+  assert.deepEqual(statuses, [201, 409]);
+
+  const rider = await prisma.user.findUniqueOrThrow({ where: { cognitoSub: "rider-sub-dup-race" } });
+  const trips = await prisma.trip.findMany({ where: { riderId: rider.id } });
+  assert.equal(trips.length, 1, "exactly one Trip row must exist, even under a true race");
 });
 
 test("POST /api/trips allows a new request once the rider's previous trip reached a terminal status", async () => {

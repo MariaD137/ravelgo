@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { after, afterEach, beforeEach, test } from "node:test";
+import { after, afterEach, beforeEach, mock, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
+import { verifier } from "../middleware/auth";
 import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
 
 beforeEach(async () => {
@@ -87,6 +88,46 @@ test("POST /api/promotions/:code/redeem applies once, then rejects a second rede
 
   const second = await request(app).post("/api/promotions/WELCOME10/redeem").set("Authorization", `Bearer ${token}`);
   assert.equal(second.status, 409);
+});
+
+test("POST /api/promotions/:code/redeem: two different users racing for the last redemption slot — exactly one wins", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-promo-race-1", role: "RIDER", firstName: "R", lastName: "1", email: "promo1@example.com" },
+  });
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-promo-race-2", role: "RIDER", firstName: "R", lastName: "2", email: "promo2@example.com" },
+  });
+  const adminToken = mockAuthAs({ sub: "admin-sub-promo-race", groups: ["Admin"] });
+  await request(app)
+    .post("/api/promotions")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ code: "LASTONE", description: "Last slot", discountPercent: 15, maxRedemptions: 1 });
+  restoreAuth();
+
+  const tokenA = "mock.rider-sub-promo-race-1";
+  const tokenB = "mock.rider-sub-promo-race-2";
+  mock.method(verifier, "verify", async (candidate: string) => {
+    if (candidate === tokenA) return { sub: "rider-sub-promo-race-1", "cognito:groups": ["Rider"] } as never;
+    if (candidate === tokenB) return { sub: "rider-sub-promo-race-2", "cognito:groups": ["Rider"] } as never;
+    throw new Error("invalid token");
+  });
+
+  // Both requests read `promotion.redemptionCount < maxRedemptions` as 0 < 1
+  // (true) before either commits — this is exactly the race the atomic
+  // conditional-updateMany fix (redemptionCount: { lt: maxRedemptions }) has
+  // to close; a plain read-then-increment would let both through.
+  const [a, b] = await Promise.all([
+    request(app).post("/api/promotions/LASTONE/redeem").set("Authorization", `Bearer ${tokenA}`),
+    request(app).post("/api/promotions/LASTONE/redeem").set("Authorization", `Bearer ${tokenB}`),
+  ]);
+
+  const statuses = [a.status, b.status].sort();
+  assert.deepEqual(statuses, [201, 409]);
+
+  const promotion = await prisma.promotion.findUniqueOrThrow({ where: { code: "LASTONE" } });
+  assert.equal(promotion.redemptionCount, 1, "redemptionCount must never exceed maxRedemptions under a true race");
+  const redemptions = await prisma.promotionRedemption.findMany({ where: { promotionId: promotion.id } });
+  assert.equal(redemptions.length, 1);
 });
 
 test("POST /api/promotions/:code/redeem 404s for an unknown code", async () => {

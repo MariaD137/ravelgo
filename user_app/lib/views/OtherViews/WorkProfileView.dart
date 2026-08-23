@@ -119,7 +119,7 @@ class _SettingsTile extends StatelessWidget {
       ),
       trailing: const Icon(Icons.chevron_right, color: Colors.grey),
       onTap: () {
-        print('Tapped on $title');
+        debugPrint('Tapped on $title');
       },
     );
   }
