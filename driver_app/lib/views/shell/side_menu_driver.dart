@@ -45,7 +45,13 @@ class SideMenuDriver extends StatelessWidget {
                           children: [
                             const Icon(Icons.star, color: AppColors.primary, size: 14),
                             const SizedBox(width: 4),
-                            Text("${profile.rating}  ·  ${profile.totalTrips} trips", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                            Expanded(
+                              child: Text(
+                                "${profile.rating}  ·  ${profile.totalTrips} trips",
+                                style: const TextStyle(fontSize: 12, color: Colors.black54),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                           ],
                         ),
                       ],

@@ -80,12 +80,17 @@ class ApiClient {
     return _send(() async => _http.get(_uri(path, query), headers: await _headers()));
   }
 
+  // body is only jsonEncode'd when actually provided — jsonEncode(null)
+  // would otherwise send the 4-byte literal "null" as the request body,
+  // which Express's strict-mode JSON parser rejects with 400 before the
+  // route handler ever runs. Every no-payload action (process, ...) needs
+  // a genuinely empty body, same as [get] and [delete] already send.
   Future<dynamic> post(String path, {Object? body}) async {
-    return _send(() async => _http.post(_uri(path), headers: await _headers(), body: jsonEncode(body)));
+    return _send(() async => _http.post(_uri(path), headers: await _headers(), body: body == null ? null : jsonEncode(body)));
   }
 
   Future<dynamic> patch(String path, {Object? body}) async {
-    return _send(() async => _http.patch(_uri(path), headers: await _headers(), body: jsonEncode(body)));
+    return _send(() async => _http.patch(_uri(path), headers: await _headers(), body: body == null ? null : jsonEncode(body)));
   }
 
   /// Runs one HTTP call and turns every failure mode into an [ApiException]

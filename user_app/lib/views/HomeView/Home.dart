@@ -5,7 +5,7 @@ import 'package:ravelgo_rider_app/components/LocationService.dart';
 import 'package:ravelgo_rider_app/services/ride_session.dart';
 import 'package:ravelgo_rider_app/views/AppDrawer/AppDrawer.dart';
 import 'package:ravelgo_rider_app/views/HomeView/ride_view_popup.dart';
-import 'package:ravelgo_rider_app/views/User/invite_a_friend.dart';
+import 'package:ravelgo_rider_app/views/TexiModule/FindRoute.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -16,11 +16,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  bool _isOnline = false;
-
-  // Mock values, replace with live data
-  final String _rating = "80%";
-  final String _acceptance = "20%";
   late GoogleMapController _controller;
   // Written by _loadCurrentLocation() to trigger the camera-follow rebuild
   // below; not read directly yet — kept for the planned "show my location"
@@ -164,34 +159,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// Mock toggle widget styled like the design
-  Widget _buildToggle() {
-    return GestureDetector(
-      onTap: () => setState(() => _isOnline = !_isOnline),
-      child: Container(
-        width: 56,
-        height: 30,
-        padding: EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: _isOnline ? Colors.green : Colors.grey.shade300,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Align(
-          alignment: _isOnline ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            width: 22,
-            height: 22,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 2)],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   /// Reusable card container with light shadow
   Widget _cardContainer({required Widget child, BorderRadius? borderRadius}) {
     return Container(
@@ -207,35 +174,10 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// Statistic row with label and value aligned like design
-  Widget _statRow(String label, String value) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: TextStyle(fontSize: 15)),
-              SizedBox(height: 2),
-              Text(value, style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFB08A00))),
-            ],
-          ),
-          Spacer(),
-          Icon(Icons.chevron_right, size: 18, color: Colors.grey[400]),
-        ],
-      ),
-    );
-  }
-
-  Widget _divider() => Divider(height: 1, thickness: 1, color: Colors.grey[300]);
-
   Widget _buildHomeSheet(ScrollController scrollController) {
     return Container(
       decoration: const BoxDecoration(
-        color: Color(0xFFB8BABE),
+        color: Color(0xFFF2F2F4),
         borderRadius: BorderRadius.vertical(top: Radius.circular(0)),
       ),
       child: SingleChildScrollView(
@@ -243,94 +185,33 @@ class _HomePageState extends State<HomePage> {
         padding: const EdgeInsets.only(bottom: 12),
         child: Column(
           children: [
-
-            /// HEADER (Yellow Section)
+            /// Drag Handle
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.only(top: 12, bottom: 16),
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFD500),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(0)),
-              ),
-              child: Column(
-                children: [
-
-                  /// Drag Handle
-                  Container(
-                    width: 48,
-                    height: 5,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.7),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-
-                  /// Toggle + Safety Row
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Row(
-                      children: [
-                        _buildToggle(),
-                        const SizedBox(width: 10),
-                        const Text(
-                          "Get Online",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const Spacer(),
-                      ],
-                    ),
-                  ),
-                ],
+              width: 48,
+              height: 5,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.black26,
+                borderRadius: BorderRadius.circular(10),
               ),
             ),
 
-            const SizedBox(height: 14),
-
-            /// Invite Card
+            /// "Where to?" — the real entry point into requesting a ride
+            /// (FindRouteScreen -> SelectRide -> the actual backend-wired
+            /// matching flow), not a placeholder.
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: _cardContainer(
                 child: ListTile(
-                  contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  leading: const Icon(Icons.card_giftcard_outlined),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  leading: const Icon(Icons.search),
                   title: const Text(
-                    "Earn ₹20,000",
-                    style: TextStyle(fontWeight: FontWeight.w600),
+                    "Where to?",
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
                   ),
-                  subtitle: const Text("Invite friends to drive"),
-                  trailing:
-                  const Icon(Icons.chevron_right, color: Colors.grey),
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const InviteFriendsView(),
-                      ),
-                    );
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const FindRouteScreen()));
                   },
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 12),
-
-            /// Stats Card
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: _cardContainer(
-                child: Column(
-                  children: [
-                    _statRow("Driver Rating / Score", _rating),
-                    _divider(),
-                    _statRow("Daily Earnings", "₹0"),
-                    _divider(),
-                    _statRow("Acceptance Rate", _acceptance),
-                  ],
                 ),
               ),
             ),
