@@ -121,9 +121,10 @@ paths:
                 properties:
                   completedTrips: { type: integer }
                   currentTier:
+                    type: object
+                    nullable: true
                     oneOf:
                       - $ref: "#/components/schemas/LoyaltyTier"
-                      - nullable: true
         "404": { $ref: "#/components/responses/NotFound" }
   /riders/{id}:
     get:
@@ -1564,7 +1565,7 @@ components:
         totalTrips: { type: integer }
         preferredLanguage: { type: string }
         subscriptionActive: { type: boolean }
-        isOnline: { type: boolean, description: Persisted presence — backend is the source of truth, not the client }
+        isOnline: { type: boolean, description: "Persisted presence — backend is the source of truth, not the client" }
         lastOnlineAt: { type: string, format: date-time, nullable: true }
 
     DriverSummary:
@@ -1574,10 +1575,10 @@ components:
         isOnline: { type: boolean }
         lastOnlineAt: { type: string, format: date-time, nullable: true }
         tripsToday: { type: integer }
-        grossFareToday: { type: number, description: Sum of what riders paid today, before the platform commission }
+        grossFareToday: { type: number, description: "Sum of what riders paid today, before the platform commission" }
         platformFeeToday: { type: number, description: RavelGo's commission on grossFareToday }
         netEarningsToday: { type: number, description: grossFareToday minus platformFeeToday — what the driver actually earns }
-        onlineHoursToday: { type: number, description: Computed from persisted DriverOnlineSession rows, not a client-side timer }
+        onlineHoursToday: { type: number, description: "Computed from persisted DriverOnlineSession rows, not a client-side timer" }
         rating: { type: number }
         totalTrips: { type: integer }
 
@@ -1643,7 +1644,7 @@ components:
         fileKey: { type: string }
         photoType: { $ref: "#/components/schemas/VehiclePhotoType" }
         displayOrder: { type: integer }
-        url: { type: string, nullable: true, description: Public CloudFront URL, or null if ASSETS_CLOUDFRONT_DOMAIN isn't configured }
+        url: { type: string, nullable: true, description: "Public CloudFront URL, or null if ASSETS_CLOUDFRONT_DOMAIN isn't configured" }
 
     Vehicle:
       allOf:
