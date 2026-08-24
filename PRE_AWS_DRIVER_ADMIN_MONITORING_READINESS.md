@@ -259,4 +259,5 @@ Docs: `docs/PRD.md` (§9.1 added), `docs/realtime-architecture.md`
 
 ## Commit SHA
 
-See the commit that adds this file on branch `claude/ravelgo-prd-wu3xd9`.
+`abb821d` — "Persist driver presence and wire driver/admin dashboards to
+real data", branch `claude/ravelgo-prd-wu3xd9`.
