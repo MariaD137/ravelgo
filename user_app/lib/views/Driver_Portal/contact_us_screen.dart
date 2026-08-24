@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Driver_Portal/side_menu_driver.dart';
+import 'package:ravelgo_user/views/Driver_Portal/side_menu_driver.dart';
 
 class ContactUsScreen extends StatelessWidget {
-  const ContactUsScreen({Key? key}) : super(key: key);
+  const ContactUsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +61,7 @@ class ContactUsScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                        color: Colors.black12.withOpacity(0.05),
+                        color: Colors.black12.withValues(alpha: 0.05),
                         blurRadius: 6)
                   ],
                 ),
@@ -78,7 +78,11 @@ class ContactUsScreen extends StatelessWidget {
                     const SizedBox(height: 24),
 
                     ElevatedButton(
-                      onPressed: () {},
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Message submitted. We will get back to you soon.')),
+                        );
+                      },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFFFD500),
                         foregroundColor: Colors.black,
@@ -105,7 +109,7 @@ class ContactUsScreen extends StatelessWidget {
                 children: const [
                   Icon(Icons.email_outlined),
                   SizedBox(width: 12),
-                  Text("ravelgo.com",
+                  Text("support@ravelgo.com",
                       style: TextStyle(fontSize: 16)),
                 ],
               ),

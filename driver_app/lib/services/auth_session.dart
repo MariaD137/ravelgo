@@ -1,21 +1,30 @@
-/// Seam for the driver app's not-yet-built Cognito sign-in flow.
-///
-/// The backend authenticates every request with a Cognito access token
-/// (see backend/src/middleware/auth.ts) but this app has no login/session
-/// code yet — connecting it to real Cognito is tracked as a launch-blocking
-/// gap in docs/PRD.md, and is out of scope here. [DriverApi] only needs
-/// *something* that can hand it a bearer token, so it depends on this
-/// interface rather than on Cognito directly — once sign-in exists, drop
-/// in a real implementation and nothing in services/ or views/ has to
-/// change.
+import 'package:ravelgo_driver_app/services/auth_service.dart';
+
+/// Seam between [DriverApi]'s REST calls and however the app currently
+/// authenticates. [DriverApi] depends on this interface rather than on
+/// Cognito directly, so a test can substitute a fake token source without
+/// touching services/ or views/.
 abstract class AuthTokenProvider {
   Future<String?> getAccessToken();
 }
 
-/// Placeholder implementation: no session exists, so every call reports
-/// "not signed in". This intentionally does NOT fabricate a token — a
-/// screen using this provider should surface the resulting 401 as a real
-/// "please sign in" error, not silently succeed against a fake identity.
+/// Real implementation, backed by the signed-in Cognito session in
+/// [AuthService] (secure-storage-persisted access token from sign-in/
+/// sign-up — see auth_service.dart). Returns null when there's no session,
+/// same as [NoAuthTokenProvider], so an unauthenticated call still
+/// surfaces the backend's real 401 instead of silently succeeding.
+class CognitoAuthTokenProvider implements AuthTokenProvider {
+  const CognitoAuthTokenProvider();
+
+  @override
+  Future<String?> getAccessToken() => AuthService().getAccessToken();
+}
+
+/// Test/placeholder implementation: no session exists, so every call
+/// reports "not signed in". This intentionally does NOT fabricate a token
+/// — a screen using this provider should surface the resulting 401 as a
+/// real "please sign in" error, not silently succeed against a fake
+/// identity.
 class NoAuthTokenProvider implements AuthTokenProvider {
   const NoAuthTokenProvider();
 

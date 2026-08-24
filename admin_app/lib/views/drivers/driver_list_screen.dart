@@ -20,7 +20,7 @@ class DriverListScreen extends StatefulWidget {
 
 class _DriverListScreenState extends State<DriverListScreen> {
   late final AdminApi _api = widget.api ??
-      AdminApi(baseUrl: dotenv.env['API_BASE_URL'] ?? '', authTokenProvider: const NoAuthTokenProvider());
+      AdminApi(baseUrl: dotenv.env['API_BASE_URL'] ?? '', authTokenProvider: const CognitoAuthTokenProvider());
 
   _LoadState _state = _LoadState.loading;
   List<AdminDriverSummary> _drivers = [];

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/models/rider_record.dart';
+import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 
 class RiderDetailScreen extends StatefulWidget {
@@ -12,11 +13,34 @@ class RiderDetailScreen extends StatefulWidget {
 
 class _RiderDetailScreenState extends State<RiderDetailScreen> {
   late RiderStatus _status;
+  bool _togglingStatus = false;
 
   @override
   void initState() {
     super.initState();
     _status = widget.rider.status;
+  }
+
+  Future<void> _toggleStatus() async {
+    final shouldSuspend = _status != RiderStatus.suspended;
+    setState(() => _togglingStatus = true);
+    try {
+      await ApiClient().patch('/riders/${widget.rider.id}/status', body: {'suspended': shouldSuspend});
+      if (!mounted) return;
+      setState(() {
+        _status = shouldSuspend ? RiderStatus.suspended : RiderStatus.active;
+        _togglingStatus = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Account ${shouldSuspend ? "suspended" : "reactivated"} successfully')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _togglingStatus = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to update status: $e')),
+      );
+    }
   }
 
   @override
@@ -42,11 +66,11 @@ class _RiderDetailScreenState extends State<RiderDetailScreen> {
           ),
           const SizedBox(height: 20),
           AppComponents.outlineButton(
-            text: _status == RiderStatus.suspended ? "Reactivate account" : "Suspend account",
+            text: _togglingStatus
+                ? 'Updating...'
+                : (_status == RiderStatus.suspended ? "Reactivate account" : "Suspend account"),
             color: _status == RiderStatus.suspended ? AppColors.success : AppColors.danger,
-            onPressed: () => setState(() {
-              _status = _status == RiderStatus.suspended ? RiderStatus.active : RiderStatus.suspended;
-            }),
+            onPressed: _togglingStatus ? null : _toggleStatus,
           ),
         ],
       ),

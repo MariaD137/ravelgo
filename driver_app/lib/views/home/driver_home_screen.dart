@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
 import 'package:ravelgo_driver_app/models/ride_request.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
@@ -140,12 +141,26 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+
     return SafeArea(
       child: Column(
         children: [
           Stack(
             children: [
-              Image.asset('assets/fake_map.png', width: double.infinity, height: 320, fit: BoxFit.cover),
+              const SizedBox(
+                width: double.infinity,
+                height: 320,
+                child: GoogleMap(
+                  initialCameraPosition: CameraPosition(
+                    target: LatLng(6.5244, 3.3792),
+                    zoom: 14.0,
+                  ),
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: false,
+                  compassEnabled: false,
+                  zoomControlsEnabled: false,
+                ),
+              ),
               Positioned(
                 top: 16,
                 left: 16,
@@ -189,7 +204,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                           ),
                           Switch(
                             value: widget.profile.isOnline,
-                            activeColor: AppColors.primaryDark,
+                            activeThumbColor: AppColors.primaryDark,
                             onChanged: widget.onOnlineToggle,
                           ),
                         ],

@@ -3,6 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
+import { withBypass } from "../lib/rls";
 import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
 
 beforeEach(resetDb);
@@ -183,9 +184,11 @@ test("GET /api/drivers/me/summary scopes strictly to the caller — never anothe
       completedAt: new Date(),
     },
   });
-  await prisma.payment.create({
-    data: { tripId: trip.id, userId: rider.id, amount: 100, status: "SUCCEEDED" },
-  });
+  await withBypass((tx) =>
+    tx.payment.create({
+      data: { tripId: trip.id, userId: rider.id, amount: 100, status: "SUCCEEDED" },
+    }),
+  );
 
   const tokenA = mockAuthAs({ sub: "driver-summary-a", groups: ["Driver"] });
   const resA = await request(app).get("/api/drivers/me/summary").set("Authorization", `Bearer ${tokenA}`);

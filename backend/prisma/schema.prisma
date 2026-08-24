@@ -91,6 +91,7 @@ enum PaymentStatus {
   SUCCEEDED
   FAILED
   REFUNDED
+  DISPUTED
 }
 
 enum PayoutStatus {
@@ -168,6 +169,8 @@ model User {
   // authenticated Admin caller's own User row (see routes).
   documentsReviewed    DriverDocument[]      @relation("DocumentReviewer")
   vehiclesVerified     Vehicle[]             @relation("VehicleVerifier")
+
+  @@index([role])
 }
 
 model Driver {
@@ -197,6 +200,8 @@ model Driver {
   courierRequestsHandled CourierRequest[]      @relation("CourierDriver")
   subscription           DriverSubscription?
   onlineSessions         DriverOnlineSession[]
+
+  @@index([status])
 }
 
 // One row per online→offline span. `endedAt: null` means the session is
@@ -246,6 +251,8 @@ model Vehicle {
   rentalListings RentalListing[]
   photos         VehiclePhoto[]
   documents      DriverDocument[]
+
+  @@index([driverId])
 }
 
 // FRONT/REAR/etc. photos for one vehicle — deliberately a separate table
@@ -265,23 +272,34 @@ model VehiclePhoto {
 }
 
 model Trip {
-  id            String     @id @default(uuid())
-  riderId       String
-  rider         User       @relation("RiderTrips", fields: [riderId], references: [id])
-  driverId      String?
-  driver        Driver?    @relation("DriverTrips", fields: [driverId], references: [id])
-  pickup        String
-  destination   String
-  estimatedFare Float
-  finalFare     Float?
-  status        TripStatus @default(REQUESTED)
-  category      String     @default("Personal")
-  pickupNote    String?
-  requestedAt   DateTime   @default(now())
-  completedAt   DateTime?
+  id              String     @id @default(uuid())
+  riderId         String
+  rider           User       @relation("RiderTrips", fields: [riderId], references: [id])
+  driverId        String?
+  driver          Driver?    @relation("DriverTrips", fields: [driverId], references: [id])
+  pickup          String
+  destination     String
+  estimatedFare   Float
+  finalFare       Float?
+  // Driver-reported trip metrics, captured at COMPLETED and used as the
+  // *inputs* to the server-side fare calculation — never the fare itself.
+  // See trips.routes.ts: finalFare is computed from these against the
+  // active PricingRule, not accepted directly from the request body.
+  distanceKm      Float?
+  durationMinutes Float?
+  status          TripStatus @default(REQUESTED)
+  category        String     @default("Personal")
+  pickupNote      String?
+  requestedAt     DateTime   @default(now())
+  completedAt     DateTime?
 
   payment         Payment?
   emergencyAlerts EmergencyAlert[]
+
+  @@index([riderId])
+  @@index([driverId])
+  @@index([status])
+  @@index([completedAt])
 }
 
 model DriverDocument {
@@ -304,6 +322,9 @@ model DriverDocument {
   reviewedById    String?
   reviewedBy      User?              @relation("DocumentReviewer", fields: [reviewedById], references: [id])
   updatedAt       DateTime           @updatedAt
+
+  @@index([driverId])
+  @@index([vehicleId])
 }
 
 model CarPaddyRequest {
@@ -314,6 +335,8 @@ model CarPaddyRequest {
   status      CarPaddyStatus @default(SUBMITTED)
   submittedAt DateTime       @default(now())
   reviewedAt  DateTime?
+
+  @@index([driverId])
 }
 
 model RentalListing {
@@ -326,6 +349,9 @@ model RentalListing {
   location  String
   status    RentalListingStatus @default(PENDING_APPROVAL)
   createdAt DateTime            @default(now())
+
+  @@index([driverId])
+  @@index([vehicleId])
 }
 
 model SupportTicket {
@@ -336,6 +362,8 @@ model SupportTicket {
   category  String
   status    TicketStatus @default(OPEN)
   createdAt DateTime     @default(now())
+
+  @@index([userId])
 }
 
 model CourierRequest {
@@ -354,6 +382,10 @@ model CourierRequest {
   status             CourierStatus @default(REQUESTED)
   requestedAt        DateTime      @default(now())
   deliveredAt        DateTime?
+
+  @@index([senderId])
+  @@index([driverId])
+  @@index([status])
 }
 
 model EmergencyAlert {
@@ -367,6 +399,9 @@ model EmergencyAlert {
   status     AlertStatus @default(OPEN)
   createdAt  DateTime    @default(now())
   resolvedAt DateTime?
+
+  @@index([userId])
+  @@index([tripId])
 }
 
 model SubscriptionPlan {
@@ -389,6 +424,8 @@ model DriverSubscription {
   status           SubscriptionStatus @default(ACTIVE)
   startedAt        DateTime           @default(now())
   currentPeriodEnd DateTime
+
+  @@index([planId])
 }
 
 model Payment {
@@ -404,6 +441,9 @@ model Payment {
   providerReference String?
   createdAt         DateTime      @default(now())
   paidAt            DateTime?
+
+  @@index([userId])
+  @@index([providerReference])
 }
 
 // A catalog of tiers, not a stored assignment on User — the caller's current
@@ -493,11 +533,29 @@ model Payout {
   period        String // e.g., "2024-07" for weekly/monthly payout period
   transactionId String? // Stripe or payment provider transaction ID
   failureReason String?
+  notes         String?
   completedAt   DateTime?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
+  // A driver can have at most one payout per period — the database-level
+  // backstop behind the check-then-create in payouts.routes.ts/services;
+  // concurrent requests or a re-run batch job now fail the second insert
+  // instead of silently creating a duplicate payout.
+  @@unique([driverId, period])
   @@index([driverId])
   @@index([status])
   @@index([createdAt])
+}
+
+// Stripe webhook delivery ledger — one row per event.id, inserted before
+// any side effect runs. A replayed/retried delivery (Stripe re-sends on
+// anything but a 2xx, and can also just double-send) hits the primary key's
+// unique-constraint and is skipped instead of re-applying its side effects.
+// Not one of the three RLS-protected financial tables (no single owning
+// user), so it's queried directly rather than through withUserContext/withBypass.
+model WebhookEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now())
 }

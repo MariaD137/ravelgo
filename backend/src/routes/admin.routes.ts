@@ -2,11 +2,12 @@ import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { getLatestDriverLocation } from "../realtime/hub";
+import { asyncHandler } from "../middleware/async-handler";
 
 export const adminRouter = Router();
 
 // Admin: dashboard KPIs
-adminRouter.get("/admin/dashboard", requireAuth, requireRole("Admin"), async (_req, res) => {
+adminRouter.get("/admin/dashboard", requireAuth, requireRole("Admin"), asyncHandler(async (_req, res) => {
   const [activeTrips, onlineDrivers, pendingDocs, pendingCarPaddy] = await Promise.all([
     prisma.trip.count({ where: { status: { in: ["MATCHED", "IN_PROGRESS"] } } }),
     // isOnline is real, persisted presence (see PATCH /drivers/me/online) —
@@ -23,7 +24,7 @@ adminRouter.get("/admin/dashboard", requireAuth, requireRole("Admin"), async (_r
     onlineDrivers,
     pendingApprovals: pendingDocs + pendingCarPaddy,
   });
-});
+}));
 
 // Admin: fleet-wide driver presence. Counts by verification status +
 // presence, plus a per-driver list (identity, status, online state, since
@@ -37,7 +38,7 @@ adminRouter.get("/admin/dashboard", requireAuth, requireRole("Admin"), async (_r
 // available over the existing WebSocket — an Admin-authenticated socket
 // sends {"type":"subscribe:fleet"} (see realtime/server.ts) — this REST
 // endpoint is the same data as a point-in-time snapshot / initial load.
-adminRouter.get("/admin/drivers/presence", requireAuth, requireRole("Admin"), async (_req, res) => {
+adminRouter.get("/admin/drivers/presence", requireAuth, requireRole("Admin"), asyncHandler(async (_req, res) => {
   const [total, online, pendingReview, suspended, active, drivers] = await Promise.all([
     prisma.driver.count(),
     prisma.driver.count({ where: { isOnline: true } }),
@@ -77,4 +78,4 @@ adminRouter.get("/admin/drivers/presence", requireAuth, requireRole("Admin"), as
       };
     }),
   });
-});
+}));

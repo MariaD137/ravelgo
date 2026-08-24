@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Driver_Portal/side_menu_driver.dart';
+import 'package:ravelgo_user/views/Driver_Portal/side_menu_driver.dart';
 
 class PassengerInvoiceScreen extends StatelessWidget {
-  const PassengerInvoiceScreen({Key? key}) : super(key: key);
+  const PassengerInvoiceScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +47,7 @@ class PassengerInvoiceScreen extends StatelessWidget {
               const SizedBox(height: 28),
 
               const Text(
-                "My Trips",
+                "Invoices",
                 style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700),
               ),
 
@@ -65,7 +65,11 @@ class PassengerInvoiceScreen extends StatelessWidget {
               const SizedBox(height: 14),
 
               OutlinedButton.icon(
-                onPressed: () {},
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Feature coming soon')),
+                  );
+                },
                 icon: const Icon(Icons.picture_as_pdf_outlined),
                 label: const Text("Download"),
                 style: OutlinedButton.styleFrom(
@@ -162,7 +166,7 @@ class _HeaderCell extends StatelessWidget {
   final String text;
   final double width;
 
-  const _HeaderCell(this.text, this.width, {Key? key}) : super(key: key);
+  const _HeaderCell(this.text, this.width);
 
   @override
   Widget build(BuildContext context) {
@@ -182,7 +186,7 @@ class _DataCell extends StatelessWidget {
   final String text;
   final double width;
 
-  const _DataCell(this.text, this.width, {Key? key}) : super(key: key);
+  const _DataCell(this.text, this.width);
 
   @override
   Widget build(BuildContext context) {

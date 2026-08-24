@@ -24,6 +24,11 @@ const rawEnvSchema = z.object({
   // and lib/assetUrl.ts. Optional: local dev without a deployed
   // distribution just gets `url: null` back instead of a broken link.
   ASSETS_CLOUDFRONT_DOMAIN: z.string().optional(),
+  // Uploads land here first, never in AssetsBucket/DocumentsBucket directly —
+  // the upload-processor Lambda (infra/lambda/upload-processor) only copies
+  // an object into its final bucket after it passes MIME/magic-byte
+  // validation. See infra/lib/storage-stack.ts.
+  PENDING_ASSETS_BUCKET: z.string().optional(),
   // Comma-separated list of allowed origins for CORS, e.g.
   // "https://app.ravelgo.com,https://admin.ravelgo.com". Empty in
   // development so local Flutter/web dev builds on arbitrary ports aren't
@@ -37,6 +42,13 @@ const rawEnvSchema = z.object({
   // real cause.
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  // 32-byte AES-256-GCM key (base64), used to encrypt bank account/routing
+  // numbers at rest — see src/lib/encryption.ts. Optional in dev/test
+  // (encryption.ts falls back to a fixed dev-only key there); required in
+  // production, enforced below rather than by zod so the error names the
+  // real cause. Generate with: openssl rand -base64 32
+  FIELD_ENCRYPTION_KEY: z.string().optional(),
+  PLATFORM_FEE_PERCENT: z.coerce.number().min(0).max(1).default(0.2),
 });
 
 export interface Env {
@@ -49,9 +61,12 @@ export interface Env {
   DOCUMENTS_BUCKET?: string;
   ASSETS_BUCKET?: string;
   ASSETS_CLOUDFRONT_DOMAIN?: string;
+  PENDING_ASSETS_BUCKET?: string;
   ALLOWED_ORIGINS: string[];
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  FIELD_ENCRYPTION_KEY?: string;
+  PLATFORM_FEE_PERCENT: number;
 }
 
 function loadEnv(): Env {
@@ -85,6 +100,9 @@ function loadEnv(): Env {
   if (data.NODE_ENV === "production" && (!data.STRIPE_SECRET_KEY || !data.STRIPE_WEBHOOK_SECRET)) {
     throw new Error("STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required in production");
   }
+  if (data.NODE_ENV === "production" && !data.FIELD_ENCRYPTION_KEY) {
+    throw new Error("FIELD_ENCRYPTION_KEY is required in production (32-byte base64 key)");
+  }
 
   return {
     NODE_ENV: data.NODE_ENV,
@@ -96,9 +114,12 @@ function loadEnv(): Env {
     DOCUMENTS_BUCKET: data.DOCUMENTS_BUCKET,
     ASSETS_BUCKET: data.ASSETS_BUCKET,
     ASSETS_CLOUDFRONT_DOMAIN: data.ASSETS_CLOUDFRONT_DOMAIN,
+    PENDING_ASSETS_BUCKET: data.PENDING_ASSETS_BUCKET,
     ALLOWED_ORIGINS: allowedOrigins,
     STRIPE_SECRET_KEY: data.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: data.STRIPE_WEBHOOK_SECRET,
+    FIELD_ENCRYPTION_KEY: data.FIELD_ENCRYPTION_KEY,
+    PLATFORM_FEE_PERCENT: data.PLATFORM_FEE_PERCENT,
   };
 }
 

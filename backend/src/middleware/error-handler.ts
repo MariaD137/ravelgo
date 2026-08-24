@@ -1,4 +1,5 @@
 import { type NextFunction, type Request, type Response } from "express";
+import type { Prisma } from "@prisma/client";
 import { ApiError, ErrorCodes, ErrorResponse } from "../lib/errors";
 
 /**
@@ -23,13 +24,15 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
 
   // Handle Prisma errors
   if (err.name === "PrismaClientKnownRequestError") {
-    const prismaErr = err as any;
+    const prismaErr = err as Prisma.PrismaClientKnownRequestError;
     if (prismaErr.code === "P2002") {
       // Unique constraint violation
+      const target = prismaErr.meta?.target;
+      const field = Array.isArray(target) ? String(target[0]) : "unknown";
       const response: ErrorResponse = {
         error: {
           code: ErrorCodes.CONFLICT,
-          message: `Duplicate value for field: ${prismaErr.meta?.target?.[0] || "unknown"}`,
+          message: `Duplicate value for field: ${field}`,
           timestamp: new Date().toISOString(),
         },
       };

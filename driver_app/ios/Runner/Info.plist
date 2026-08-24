@@ -47,6 +47,12 @@
 		<true/>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>RavelGo needs your location to find nearby rides and show your position on the map.</string>
+		<key>NSCameraUsageDescription</key>
+		<string>RavelGo needs camera access to take profile photos and document images.</string>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>RavelGo needs photo library access to upload profile photos and documents.</string>
 		<key>GMSApiKey</key>
 	<string>$(GOOGLE_MAPS_API_KEY)</string>
 </dict>

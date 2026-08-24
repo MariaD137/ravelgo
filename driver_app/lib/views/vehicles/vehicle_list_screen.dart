@@ -21,7 +21,7 @@ class VehicleListScreen extends StatefulWidget {
 
 class _VehicleListScreenState extends State<VehicleListScreen> {
   late final DriverApi _api = widget.api ??
-      DriverApi(baseUrl: dotenv.env['API_BASE_URL'] ?? '', authTokenProvider: const NoAuthTokenProvider());
+      DriverApi(baseUrl: dotenv.env['API_BASE_URL'] ?? '', authTokenProvider: const CognitoAuthTokenProvider());
 
   _LoadState _state = _LoadState.loading;
   List<Vehicle> _vehicles = [];

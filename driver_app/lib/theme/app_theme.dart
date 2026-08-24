@@ -29,7 +29,7 @@ class AppComponents {
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
           ),
-          if (trailing != null) trailing,
+          ?trailing,
         ],
       ),
     );
@@ -148,26 +148,29 @@ class AppComponents {
     );
   }
 
-  static Widget uploadBox(String label) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.border),
-        color: Colors.white,
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
-            child: const Icon(Icons.upload_file_outlined),
-          ),
-          const SizedBox(width: 12),
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
-          const Icon(Icons.chevron_right, size: 18),
-        ],
+  static Widget uploadBox(String label, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap ?? () {},
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.border),
+          color: Colors.white,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
+              child: const Icon(Icons.upload_file_outlined),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+            const Icon(Icons.chevron_right, size: 18),
+          ],
+        ),
       ),
     );
   }

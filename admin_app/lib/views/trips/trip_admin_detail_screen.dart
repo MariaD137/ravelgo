@@ -1,14 +1,47 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/models/trip_record.dart';
+import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/utils/date_utils.dart';
 
-class TripAdminDetailScreen extends StatelessWidget {
+class TripAdminDetailScreen extends StatefulWidget {
   final TripRecord trip;
   const TripAdminDetailScreen({super.key, required this.trip});
 
   @override
+  State<TripAdminDetailScreen> createState() => _TripAdminDetailScreenState();
+}
+
+class _TripAdminDetailScreenState extends State<TripAdminDetailScreen> {
+  bool _resolving = false;
+
+  Future<void> _markResolved() async {
+    setState(() => _resolving = true);
+    try {
+      await ApiClient().patch('/trips/${widget.trip.id}/status', body: {'status': 'COMPLETED'});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Trip marked as resolved')),
+      );
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _resolving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to resolve trip: $e')),
+      );
+    }
+  }
+
+  void _showComingSoon(String feature) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$feature: Feature coming soon')),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final trip = widget.trip;
     return Scaffold(
       appBar: AppBar(title: Text(trip.id)),
       body: ListView(
@@ -42,13 +75,27 @@ class TripAdminDetailScreen extends StatelessWidget {
             const SizedBox(height: 16),
             Row(
               children: [
-                Expanded(child: AppComponents.outlineButton(text: "Refund rider", color: AppColors.danger, onPressed: () {})),
+                Expanded(
+                  child: AppComponents.outlineButton(
+                    text: "Refund rider",
+                    color: AppColors.danger,
+                    onPressed: () => _showComingSoon('Refund rider'),
+                  ),
+                ),
                 const SizedBox(width: 12),
-                Expanded(child: AppComponents.primaryButton(text: "Mark resolved", onPressed: () => Navigator.pop(context))),
+                Expanded(
+                  child: AppComponents.primaryButton(
+                    text: _resolving ? "Resolving..." : "Mark resolved",
+                    onPressed: _resolving ? null : _markResolved,
+                  ),
+                ),
               ],
             ),
           ] else
-            AppComponents.outlineButton(text: "Flag this trip for review", onPressed: () {}),
+            AppComponents.outlineButton(
+              text: "Flag this trip for review",
+              onPressed: () => _showComingSoon('Flag trip'),
+            ),
         ],
       ),
     );

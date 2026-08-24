@@ -2,9 +2,18 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { asyncHandler } from "../middleware/async-handler";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const courierRouter = Router();
+
+const VALID_COURIER_TRANSITIONS: Record<string, string[]> = {
+  REQUESTED: ["MATCHED", "CANCELLED"],
+  MATCHED: ["IN_TRANSIT", "CANCELLED"],
+  IN_TRANSIT: ["DELIVERED", "CANCELLED"],
+  DELIVERED: [],
+  CANCELLED: [],
+};
 
 async function findOwnDriver(cognitoSub: string) {
   return prisma.driver.findFirst({ where: { user: { cognitoSub } } });
@@ -16,11 +25,11 @@ const createCourierSchema = z.object({
   packageDescription: z.string().min(1),
   recipientName: z.string().min(1),
   recipientPhone: z.string().min(1),
-  estimatedFare: z.number().positive(),
+  estimatedFare: z.number().positive().max(10000),
 });
 
 // Rider: request a courier/package delivery
-courierRouter.post("/courier-requests", requireAuth, requireRole("Rider"), async (req, res) => {
+courierRouter.post("/courier-requests", requireAuth, requireRole("Rider"), asyncHandler(async (req, res) => {
   const parsed = createCourierSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -31,10 +40,10 @@ courierRouter.post("/courier-requests", requireAuth, requireRole("Rider"), async
     data: { ...parsed.data, senderId: sender.id },
   });
   res.status(201).json(request);
-});
+}));
 
 // Driver: view unassigned courier requests to accept
-courierRouter.get("/courier-requests/available", requireAuth, requireRole("Driver"), async (req, res) => {
+courierRouter.get("/courier-requests/available", requireAuth, requireRole("Driver"), asyncHandler(async (req, res) => {
   const parsed = paginationQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { page, pageSize } = parsed.data;
@@ -50,45 +59,58 @@ courierRouter.get("/courier-requests/available", requireAuth, requireRole("Drive
     prisma.courierRequest.count({ where }),
   ]);
   res.json(paginate(requests, total, page, pageSize));
-});
+}));
 
 // Driver: accept a courier request
-courierRouter.patch("/courier-requests/:id/accept", requireAuth, requireRole("Driver"), async (req, res) => {
+courierRouter.patch("/courier-requests/:id/accept", requireAuth, requireRole("Driver"), asyncHandler(async (req, res) => {
   const driver = await findOwnDriver(req.user!.sub);
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
-  const existing = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
-  if (!existing) return res.status(404).json({ error: "Courier request not found" });
-  if (existing.status !== "REQUESTED" || existing.driverId) {
+  const result = await prisma.courierRequest.updateMany({
+    where: { id: req.params.id, status: "REQUESTED", driverId: null },
+    data: { driverId: driver.id, status: "MATCHED" },
+  });
+
+  if (result.count === 0) {
+    const existing = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: "Courier request not found" });
     return res.status(409).json({ error: "Request already matched" });
   }
 
-  const request = await prisma.courierRequest.update({
-    where: { id: req.params.id },
-    data: { driverId: driver.id, status: "MATCHED" },
-  });
+  const request = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
   res.json(request);
-});
+}));
 
 const updateStatusSchema = z.object({
   status: z.enum(["IN_TRANSIT", "DELIVERED", "CANCELLED"]),
-  finalFare: z.number().positive().optional(),
+  finalFare: z.number().positive().max(10000).optional(),
 });
 
 // Driver assigned to it, or Admin: advance courier status
-courierRouter.patch("/courier-requests/:id/status", requireAuth, requireRole("Driver", "Admin"), async (req, res) => {
+courierRouter.patch("/courier-requests/:id/status", requireAuth, requireRole("Driver", "Admin"), asyncHandler(async (req, res) => {
   const parsed = updateStatusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const existing = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: "Courier request not found" });
 
+  // Authorization before transition validity — matches trips.routes.ts's
+  // ordering. A caller with no claim on this request shouldn't learn
+  // anything about its current status or which transitions are valid from
+  // it (even via a 400 vs. 403 distinction); check who they are first.
   const isAdmin = req.user!.groups.includes("Admin");
   if (!isAdmin) {
     const driver = await findOwnDriver(req.user!.sub);
     if (!driver || existing.driverId !== driver.id) {
       return res.status(403).json({ error: "Not authorized to update this request" });
     }
+  }
+
+  const allowed = VALID_COURIER_TRANSITIONS[existing.status] ?? [];
+  if (!allowed.includes(parsed.data.status)) {
+    return res.status(400).json({
+      error: { code: "INVALID_STATUS_TRANSITION", message: `Cannot transition from ${existing.status} to ${parsed.data.status}` },
+    });
   }
 
   const request = await prisma.courierRequest.update({
@@ -100,10 +122,10 @@ courierRouter.patch("/courier-requests/:id/status", requireAuth, requireRole("Dr
     },
   });
   res.json(request);
-});
+}));
 
 // Rider or Driver: view a courier request they're party to
-courierRouter.get("/courier-requests/:id", requireAuth, async (req, res) => {
+courierRouter.get("/courier-requests/:id", requireAuth, asyncHandler(async (req, res) => {
   const request = await prisma.courierRequest.findUnique({
     where: { id: req.params.id },
     include: { sender: true, driver: { include: { user: true } } },
@@ -117,10 +139,10 @@ courierRouter.get("/courier-requests/:id", requireAuth, async (req, res) => {
     return res.status(403).json({ error: "Not authorized to view this request" });
   }
   res.json(request);
-});
+}));
 
 // Admin: monitor all courier requests
-courierRouter.get("/courier-requests", requireAuth, requireRole("Admin"), async (req, res) => {
+courierRouter.get("/courier-requests", requireAuth, requireRole("Admin"), asyncHandler(async (req, res) => {
   const parsed = paginationQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { page, pageSize } = parsed.data;
@@ -135,4 +157,4 @@ courierRouter.get("/courier-requests", requireAuth, requireRole("Admin"), async 
     prisma.courierRequest.count(),
   ]);
   res.json(paginate(requests, total, page, pageSize));
-});
+}));

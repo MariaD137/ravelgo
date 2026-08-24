@@ -11,12 +11,87 @@ permissions:
   id-token: write # required to assume the AWS role via OIDC
   contents: read
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
+  ci-gate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ravelgo
+          POSTGRES_PASSWORD: ravelgo
+          POSTGRES_DB: ravelgo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ravelgo:ravelgo@localhost:5432/ravelgo_test
+      COGNITO_USER_POOL_ID: us-east-1_ciPool0000
+      COGNITO_CLIENT_ID: ciclientid0000000000000
+      STRIPE_SECRET_KEY: sk_test_ci_dummy
+      STRIPE_WEBHOOK_SECRET: whsec_ci_dummy
+      DOCUMENTS_BUCKET: ravelgo-ci-documents
+      ASSETS_BUCKET: ravelgo-ci-assets
+      PENDING_ASSETS_BUCKET: ravelgo-ci-pending-assets
+      AWS_ACCESS_KEY_ID: ci-dummy-access-key-id
+      AWS_SECRET_ACCESS_KEY: ci-dummy-secret-access-key
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci
+      - run: npm run prisma:generate
+      - run: npx prisma migrate deploy
+
+      # Same reasoning as backend-ci.yml: the postgres:16 image's
+      # POSTGRES_USER is the cluster's bootstrap role and can never lose
+      # SUPERUSER, and superusers bypass row-level security unconditionally
+      # regardless of FORCE — so tests run as that role would never
+      # actually exercise the RLS policies (a cross-user financial-table
+      # read that should be blocked would silently succeed, failing the
+      # very test written to catch that). Create a second, ordinary,
+      # non-superuser role and point the rest of this job at it instead.
+      - name: Create non-superuser app role so RLS is actually enforced in CI
+        run: |
+          PGPASSWORD=ravelgo psql -h localhost -U ravelgo -d ravelgo_test \
+            -c "CREATE ROLE ravelgo_app LOGIN PASSWORD 'ravelgo_app';" \
+            -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO ravelgo_app;" \
+            -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO ravelgo_app;"
+          echo "DATABASE_URL=postgresql://ravelgo_app:ravelgo_app@localhost:5432/ravelgo_test" >> "$GITHUB_ENV"
+
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+
   build-and-deploy:
+    needs: ci-gate
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
@@ -41,3 +116,23 @@ jobs:
       - name: Trigger App Runner deployment
         run: |
           aws apprunner start-deployment --service-arn "${{ vars.APP_RUNNER_SERVICE_ARN }}"
+
+      - name: Wait for deployment to stabilize
+        run: |
+          echo "Waiting for App Runner service to become RUNNING..."
+          for i in $(seq 1 30); do
+            STATUS=$(aws apprunner describe-service \
+              --service-arn "${{ vars.APP_RUNNER_SERVICE_ARN }}" \
+              --query 'Service.Status' --output text)
+            echo "  Attempt $i: $STATUS"
+            if [ "$STATUS" = "RUNNING" ]; then
+              echo "Deployment successful"
+              exit 0
+            fi
+            if [ "$STATUS" = "CREATE_FAILED" ] || [ "$STATUS" = "DELETE_FAILED" ]; then
+              echo "::error::Deployment failed with status: $STATUS"
+              exit 1
+            fi
+            sleep 20
+          done
+          echo "::warning::Deployment did not stabilize within 10 minutes"

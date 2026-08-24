@@ -3,13 +3,7 @@ import 'package:flutter/material.dart';
 import 'side_menu_driver.dart';
 
 class RavelDriverPortalScreen extends StatelessWidget {
-  const RavelDriverPortalScreen({Key? key}) : super(key: key);
-
-  final InputDecoration _decoration = const InputDecoration(
-    border: OutlineInputBorder(),
-    contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 16),
-    prefixIcon: Icon(Icons.lock_outline),
-  );
+  const RavelDriverPortalScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

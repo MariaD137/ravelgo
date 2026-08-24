@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { Errors } from "../lib/errors";
 import { assertFileKeyOwnedByUser } from "../lib/fileKey";
 import { publicAssetUrl } from "../lib/assetUrl";
+import { asyncHandler } from "../middleware/async-handler";
 
 export const vehiclesRouter = Router();
 
@@ -43,41 +44,33 @@ function serializeVehicle(vehicle: VehicleWithOptionalRelations) {
 
 // Driver: list my own vehicles (active and deactivated alike — nothing
 // disappears silently; the client decides how to present isActive).
-vehiclesRouter.get("/vehicles/me", requireAuth, requireRole("Driver"), async (req, res, next) => {
-  try {
-    const driver = await findOwnDriver(req.user!.sub);
-    if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+vehiclesRouter.get("/vehicles/me", requireAuth, requireRole("Driver"), asyncHandler(async (req, res) => {
+  const driver = await findOwnDriver(req.user!.sub);
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
-    const vehicles = await prisma.vehicle.findMany({
-      where: { driverId: driver.id },
-      include: vehicleInclude,
-      orderBy: { createdAt: "desc" },
-    });
-    res.json(vehicles.map(serializeVehicle));
-  } catch (err) {
-    next(err);
-  }
-});
+  const vehicles = await prisma.vehicle.findMany({
+    where: { driverId: driver.id },
+    include: vehicleInclude,
+    orderBy: { createdAt: "desc" },
+  });
+  res.json(vehicles.map(serializeVehicle));
+}));
 
 // Driver: get one of my own vehicles, with photos and documents.
 // Registered after "/vehicles/me" — see the same ordering note on
 // GET /drivers/:id in drivers.routes.ts (":id" would otherwise swallow
 // "me" if registered first).
-vehiclesRouter.get("/vehicles/:id", requireAuth, requireRole("Driver"), async (req, res, next) => {
-  try {
-    const driver = await findOwnDriver(req.user!.sub);
-    if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+vehiclesRouter.get("/vehicles/:id", requireAuth, requireRole("Driver"), asyncHandler(async (req, res) => {
+  const driver = await findOwnDriver(req.user!.sub);
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
-    const vehicle = await prisma.vehicle.findFirst({
-      where: { id: req.params.id, driverId: driver.id },
-      include: vehicleInclude,
-    });
-    if (!vehicle) return res.status(404).json({ error: "Vehicle not found" });
-    res.json(serializeVehicle(vehicle));
-  } catch (err) {
-    next(err);
-  }
-});
+  const vehicle = await prisma.vehicle.findFirst({
+    where: { id: req.params.id, driverId: driver.id },
+    include: vehicleInclude,
+  });
+  if (!vehicle) return res.status(404).json({ error: "Vehicle not found" });
+  res.json(serializeVehicle(vehicle));
+}));
 
 const vehicleTypeEnum = z.enum(["SEDAN", "SUV", "VAN", "TRUCK", "MOTORCYCLE", "LUXURY", "OTHER"]);
 
@@ -95,7 +88,7 @@ const createVehicleSchema = z.object({
 // Driver: add a vehicle. Every new vehicle starts PENDING verification (the
 // Vehicle model's default) — creating it *is* the submission; there's no
 // separate draft state.
-vehiclesRouter.post("/vehicles", requireAuth, requireRole("Driver"), async (req, res) => {
+vehiclesRouter.post("/vehicles", requireAuth, requireRole("Driver"), asyncHandler(async (req, res) => {
   const parsed = createVehicleSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -106,12 +99,12 @@ vehiclesRouter.post("/vehicles", requireAuth, requireRole("Driver"), async (req,
     data: { ...parsed.data, driverId: driver.id },
   });
   res.status(201).json(serializeVehicle(vehicle));
-});
+}));
 
 const updateVehicleSchema = createVehicleSchema.partial();
 
 // Driver: update one of my own vehicles
-vehiclesRouter.patch("/vehicles/:id", requireAuth, requireRole("Driver"), async (req, res) => {
+vehiclesRouter.patch("/vehicles/:id", requireAuth, requireRole("Driver"), asyncHandler(async (req, res) => {
   const parsed = updateVehicleSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -128,7 +121,7 @@ vehiclesRouter.patch("/vehicles/:id", requireAuth, requireRole("Driver"), async 
     data: parsed.data,
   });
   res.json(serializeVehicle(updated));
-});
+}));
 
 // Driver: safely deactivate my own vehicle. A soft flag, never a hard
 // delete — verification history and anything referencing this vehicle

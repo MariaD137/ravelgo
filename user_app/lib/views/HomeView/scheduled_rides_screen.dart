@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/components/ride_controller.dart';
+import 'package:ravelgo_user/components/ride_controller.dart';
 
 class ScheduledRidesRequestsScreen extends StatefulWidget {
-  const ScheduledRidesRequestsScreen({Key? key}) : super(key: key);
+  const ScheduledRidesRequestsScreen({super.key});
 
   @override
   State<ScheduledRidesRequestsScreen> createState() =>
@@ -79,7 +79,7 @@ class _ScheduledRidesRequestsScreenState
                       : hasConfirm == true ? _emptyConfirmed() : ListView.separated(
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                               itemCount: 3,
-                              separatorBuilder: (_, __) => const SizedBox(height: 25),
+                              separatorBuilder: (_, _) => const SizedBox(height: 25),
                               itemBuilder: (context, index) {
                                 return const RideBorderCard();
                               },
@@ -164,7 +164,7 @@ class _ScheduledRidesRequestsScreenState
   }
 }
 class RideRequestCard extends StatelessWidget {
-  const RideRequestCard({Key? key}) : super(key: key);
+  const RideRequestCard({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -318,7 +318,7 @@ class RideRequestCard extends StatelessWidget {
   }
 }
 class RideBorderCard extends StatelessWidget {
-  const RideBorderCard({Key? key}) : super(key: key);
+  const RideBorderCard({super.key});
 
   @override
   Widget build(BuildContext context) {

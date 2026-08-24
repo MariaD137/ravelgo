@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Driver_Portal/side_menu_driver.dart';
+import 'package:ravelgo_user/views/Driver_Portal/side_menu_driver.dart';
 
 class VehicleListScreen extends StatelessWidget {
-  const VehicleListScreen({Key? key}) : super(key: key);
+  const VehicleListScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +64,9 @@ class VehicleListScreen extends StatelessWidget {
               /// ADD NEW VEHICLE BUTTON
               ElevatedButton(
                 onPressed: () {
-                  // Navigate to Add Vehicle Screen
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Feature coming soon')),
+                  );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFFFD500),

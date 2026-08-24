@@ -1,0 +1,94 @@
+name: Security
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Audit backend dependencies
+        working-directory: backend
+        run: |
+          npm install --package-lock-only --ignore-scripts 2>/dev/null
+          npm audit --audit-level=high
+
+      - name: Audit infra dependencies
+        working-directory: infra
+        run: |
+          npm install --package-lock-only --ignore-scripts 2>/dev/null
+          npm audit --audit-level=high
+
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for committed env files
+        run: |
+          if git ls-files | grep -E '(^|/)\.env$' | grep -v '.example'; then
+            echo "::error::Real .env file found in tracked files"
+            exit 1
+          fi
+          echo "No .env files in tracked files"
+
+      - name: Scan for leaked secrets
+        run: |
+          echo "=== Scanning for high-risk patterns ==="
+          FAIL=0
+
+          # Exclude this workflow file itself from history scanning (it
+          # necessarily contains these patterns as literal text — they're
+          # what it's grepping for), and suppress commit message bodies via
+          # --format=%H: a commit message that *describes* this fix (e.g.
+          # explaining why a string like "BEGIN RSA PRIVATE KEY" was
+          # excluded) is prose, not committed file content, and without
+          # --format the full message text is scanned right along with the
+          # diff, reproducing the same false positive one layer up. Actual
+          # leaked secrets live in diff content, which --format=%H does not
+          # touch — only the commit header/message is dropped.
+          HISTORY="git log --all -p --format=%H -- . ':!.github/workflows/security.yml'"
+
+          # Live Stripe keys
+          if eval "$HISTORY" | grep -qE 'sk_live_[a-zA-Z0-9]{24,}'; then
+            echo "CRITICAL: Live Stripe secret key found in history"
+            FAIL=1
+          fi
+
+          # AWS access keys
+          if eval "$HISTORY" | grep -qE 'AKIA[0-9A-Z]{16}'; then
+            echo "CRITICAL: AWS access key found in history"
+            FAIL=1
+          fi
+
+          # Private keys
+          if eval "$HISTORY" | grep -q 'BEGIN RSA PRIVATE KEY\|BEGIN EC PRIVATE KEY\|BEGIN OPENSSH PRIVATE KEY'; then
+            echo "CRITICAL: Private key found in history"
+            FAIL=1
+          fi
+
+          if [ $FAIL -eq 1 ]; then
+            echo ""
+            echo "Run: git filter-repo or BFG Repo Cleaner to purge secrets"
+            exit 1
+          fi
+
+          echo "No high-risk secrets detected"

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Driver_Portal/side_menu_driver.dart';
+import 'package:ravelgo_user/views/Driver_Portal/side_menu_driver.dart';
 
 class MyTripsScreen extends StatefulWidget {
-  const MyTripsScreen({Key? key}) : super(key: key);
+  const MyTripsScreen({super.key});
 
   @override
   State<MyTripsScreen> createState() => _MyTripsScreenState();
@@ -78,7 +78,11 @@ class _MyTripsScreenState extends State<MyTripsScreen> {
               /// DOWNLOAD BUTTON
               if (hasTrips)
                 OutlinedButton.icon(
-                  onPressed: () {},
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Feature coming soon')),
+                    );
+                  },
                   icon: const Icon(Icons.picture_as_pdf_outlined),
                   label: const Text("Download"),
                   style: OutlinedButton.styleFrom(

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Driver_Portal/side_menu_driver.dart';
+import 'package:ravelgo_user/views/Driver_Portal/side_menu_driver.dart';
 
 class FAQScreen extends StatelessWidget {
-  const FAQScreen({Key? key}) : super(key: key);
+  const FAQScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

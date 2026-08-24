@@ -32,7 +32,7 @@ class MyDocumentsScreen extends StatefulWidget {
 
 class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
   late final DriverApi _api = widget.api ??
-      DriverApi(baseUrl: dotenv.env['API_BASE_URL'] ?? '', authTokenProvider: const NoAuthTokenProvider());
+      DriverApi(baseUrl: dotenv.env['API_BASE_URL'] ?? '', authTokenProvider: const CognitoAuthTokenProvider());
 
   _LoadState _state = _LoadState.loading;
   List<DriverDocument> _documents = [];

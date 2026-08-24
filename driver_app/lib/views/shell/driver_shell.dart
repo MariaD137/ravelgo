@@ -21,13 +21,9 @@ class _DriverShellState extends State<DriverShell> {
   int _index = 0;
   DriverProfile _profile = const DriverProfile();
 
-  // Real driver sign-in (Cognito) doesn't exist in this app yet — see
-  // AuthTokenProvider's doc comment. Until it does, presence/summary calls
-  // will fail with "You need to sign in again." rather than silently using
-  // a fake identity.
   late final DriverApi _driverApi = DriverApi(
     baseUrl: dotenv.env['API_BASE_URL'] ?? '',
-    authTokenProvider: const NoAuthTokenProvider(),
+    authTokenProvider: const CognitoAuthTokenProvider(),
   );
 
   // The backend is the source of truth for presence — this only flips

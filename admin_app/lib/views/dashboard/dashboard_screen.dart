@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:ravelgo_admin/models/trip_record.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/auth_session.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
-import 'package:ravelgo_admin/utils/date_utils.dart';
 
 enum _LoadState { loading, loaded, error }
 
@@ -23,18 +21,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   static const _rides = [128.0, 142.0, 96.0, 180.0, 210.0, 260.0, 174.0];
   static const _days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-  // Cognito sign-in isn't wired into this app yet (see AuthTokenProvider's
-  // doc comment) — calls will fail with "You need to sign in again."
-  // rather than using a fake identity.
   late final AdminApi _api = widget.api ??
       AdminApi(
         baseUrl: dotenv.env['API_BASE_URL'] ?? '',
-        authTokenProvider: const NoAuthTokenProvider(),
+        authTokenProvider: const CognitoAuthTokenProvider(),
       );
 
   _LoadState _state = _LoadState.loading;
   DashboardKpis? _kpis;
   FleetPresence? _fleet;
+  RecentTripsPage? _recentTrips;
   String _errorMessage = "Unable to load dashboard";
 
   @override
@@ -46,11 +42,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _load() async {
     setState(() => _state = _LoadState.loading);
     try {
-      final results = await Future.wait([_api.fetchDashboardKpis(), _api.fetchFleetPresence()]);
+      final results = await Future.wait([
+        _api.fetchDashboardKpis(),
+        _api.fetchFleetPresence(),
+        _api.fetchRecentTrips(pageSize: 5),
+      ]);
       if (!mounted) return;
       setState(() {
         _kpis = results[0] as DashboardKpis;
         _fleet = results[1] as FleetPresence;
+        _recentTrips = results[2] as RecentTripsPage;
         _state = _LoadState.loaded;
       });
     } catch (e) {
@@ -74,6 +75,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       children: [
         AppComponents.statCard("Active rides now", "${kpis.activeTrips}", Icons.directions_car_filled_outlined),
         AppComponents.statCard("Online drivers", "${kpis.onlineDrivers}", Icons.badge_outlined, color: AppColors.success),
+        AppComponents.statCard("Total trips", "${_recentTrips?.total ?? 0}", Icons.payments_outlined, color: AppColors.info),
         AppComponents.statCard("Pending approvals", "${kpis.pendingApprovals}", Icons.pending_actions_outlined, color: AppColors.warning),
       ],
     );
@@ -136,7 +138,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           padding: const EdgeInsets.all(16),
           decoration: AppComponents.cardDecoration(),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               const Text("Unable to load dashboard", style: TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 4),
@@ -148,6 +150,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         );
       case _LoadState.loaded:
         final maxVal = _rides.reduce((a, b) => a > b ? a : b);
+        final trips = _recentTrips?.trips ?? const [];
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -155,11 +158,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 20),
             _buildFleetSection(),
             const SizedBox(height: 20),
-            // "Rides this week" and "Recent trips" below remain the
-            // original static/mock data — no backend endpoint for
-            // historical revenue/ride-volume reporting exists yet, and
-            // wiring one is out of scope for the driver-presence /
-            // fleet-monitoring gap this pass addresses (see docs/PRD.md).
+            // "Rides this week" below remains static/mock data — no backend
+            // endpoint for historical revenue/ride-volume reporting exists
+            // yet, and wiring one is out of scope for this pass (see
+            // docs/PRD.md).
             Container(
               padding: const EdgeInsets.all(20),
               decoration: AppComponents.cardDecoration(),
@@ -201,28 +203,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             const SizedBox(height: 20),
             AppComponents.sectionTitle("Recent trips"),
-            ...mockTripRecords.take(4).map((t) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: AppComponents.cardDecoration(),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text("${t.riderName}  →  ${t.driverName}", style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
-                              const SizedBox(height: 4),
-                              Text("${t.pickup} to ${t.destination} · ${formatFriendlyDate(t.date)}", style: const TextStyle(fontSize: 11.5, color: Colors.black54)),
-                            ],
+            if (trips.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(child: Text("No trips yet", style: TextStyle(color: Colors.black54))),
+              )
+            else
+              ...trips.map((t) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: AppComponents.cardDecoration(),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text("${t.riderName}  →  ${t.driverName}", style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+                                const SizedBox(height: 4),
+                                Text("${t.pickup} to ${t.destination}", style: const TextStyle(fontSize: 11.5, color: Colors.black54)),
+                              ],
+                            ),
                           ),
-                        ),
-                        Text("₦${t.fare.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.w700)),
-                      ],
+                          Text("₦${t.fare.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.w700)),
+                        ],
+                      ),
                     ),
-                  ),
-                )),
+                  )),
           ],
         );
     }

@@ -26,7 +26,7 @@ class DriverInformationScreen extends StatefulWidget {
 
 class _DriverInformationScreenState extends State<DriverInformationScreen> {
   late final DriverApi _api =
-      DriverApi(baseUrl: dotenv.env['API_BASE_URL'] ?? '', authTokenProvider: const NoAuthTokenProvider());
+      DriverApi(baseUrl: dotenv.env['API_BASE_URL'] ?? '', authTokenProvider: const CognitoAuthTokenProvider());
 
   static const _languages = ["English", "French", "Yoruba", "Igbo", "Hausa"];
   String _preferredLanguage = _languages.first;
@@ -41,12 +41,9 @@ class _DriverInformationScreenState extends State<DriverInformationScreen> {
       _submitError = null;
     });
     try {
-      // This is the actual profile-creation call (POST /drivers/me) — not a
-      // decorative "Continue" button. Cognito sign-in isn't wired into this
-      // app yet (see AuthTokenProvider's doc comment), so today this
-      // honestly fails with "You need to sign in again." rather than
-      // pretending to succeed; once Cognito exists client-side, this call
-      // works unchanged.
+      // The actual profile-creation call (POST /drivers/me) — authenticated
+      // with the real Cognito access token from sign-up (see
+      // CognitoAuthTokenProvider / auth_service.dart).
       await _api.createDriverProfile(
         firstName: widget.firstName,
         lastName: widget.lastName,
@@ -95,7 +92,7 @@ class _DriverInformationScreenState extends State<DriverInformationScreen> {
               ),
               const SizedBox(height: 24),
               DropdownButtonFormField<String>(
-                value: _preferredLanguage,
+                initialValue: _preferredLanguage,
                 decoration: const InputDecoration(labelText: "Preferred language", border: OutlineInputBorder()),
                 items: _languages.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                 onChanged: (value) {

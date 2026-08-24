@@ -25,6 +25,51 @@ class DashboardKpis {
       );
 }
 
+/// One row of GET /api/trips — used for the dashboard's "Recent trips" list.
+class RecentTrip {
+  final String id;
+  final String riderName;
+  final String driverName;
+  final String pickup;
+  final String destination;
+  final double fare;
+
+  const RecentTrip({
+    required this.id,
+    required this.riderName,
+    required this.driverName,
+    required this.pickup,
+    required this.destination,
+    required this.fare,
+  });
+
+  factory RecentTrip.fromJson(Map<String, dynamic> json) {
+    final rider = json['rider'] as Map<String, dynamic>?;
+    final driver = json['driver'] as Map<String, dynamic>?;
+    final driverUser = driver?['user'] as Map<String, dynamic>?;
+    return RecentTrip(
+      id: json['id'] as String? ?? '',
+      riderName: rider == null ? 'Unknown' : '${rider['firstName'] ?? ''} ${rider['lastName'] ?? ''}'.trim(),
+      driverName: driverUser == null ? 'Unassigned' : '${driverUser['firstName'] ?? ''} ${driverUser['lastName'] ?? ''}'.trim(),
+      pickup: json['pickup'] as String? ?? '',
+      destination: json['destination'] as String? ?? '',
+      fare: ((json['finalFare'] ?? json['estimatedFare'] ?? 0) as num).toDouble(),
+    );
+  }
+}
+
+class RecentTripsPage {
+  final List<RecentTrip> trips;
+  final int total;
+
+  const RecentTripsPage({required this.trips, required this.total});
+
+  factory RecentTripsPage.fromJson(Map<String, dynamic> json) => RecentTripsPage(
+        trips: ((json['data'] as List?) ?? []).map((t) => RecentTrip.fromJson(t as Map<String, dynamic>)).toList(),
+        total: (json['total'] as num?)?.toInt() ?? 0,
+      );
+}
+
 class FleetCounts {
   final int total;
   final int online;
@@ -385,6 +430,11 @@ class AdminApi {
   Future<FleetPresence> fetchFleetPresence() async {
     final res = await _send('GET', '/api/admin/drivers/presence', fallback: 'Unable to load fleet presence');
     return FleetPresence.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  Future<RecentTripsPage> fetchRecentTrips({int pageSize = 5}) async {
+    final res = await _send('GET', '/api/trips?pageSize=$pageSize', fallback: 'Unable to load recent trips');
+    return RecentTripsPage.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
   Future<PagedDrivers> fetchDrivers({int page = 1, int pageSize = 20}) async {

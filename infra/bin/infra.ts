@@ -23,7 +23,12 @@ const allowedOrigins = (app.node.tryGetContext("allowedOrigins") ?? "https://adm
   .split(",")
   .map((origin: string) => origin.trim())
   .filter(Boolean);
-const alertEmail = app.node.tryGetContext("alertEmail") ?? "alerts@ravelgo.example";
+const alertEmail = app.node.tryGetContext("alertEmail");
+if (!alertEmail || alertEmail.endsWith(".example")) {
+  throw new Error(
+    'A real alertEmail is required. Pass --context alertEmail=you@example.com'
+  );
+}
 const monthlyBudgetUsd = Number(app.node.tryGetContext("monthlyBudgetUsd") ?? 100);
 
 // IN-06: a second, independent environment in the same AWS account/region —
@@ -46,6 +51,7 @@ const api = new ApiStack(app, stackName("RavelGo-Api"), {
   dbSecurityGroup: data.dbSecurityGroup,
   documentsBucket: storage.documentsBucket,
   assetsBucket: storage.assetsBucket,
+  pendingAssetsBucket: storage.pendingAssetsBucket,
   assetsCloudFrontDomain: storage.assetsDistribution.distributionDomainName,
   cognitoUserPoolId: auth.userPool.userPoolId,
   cognitoUserPoolClientId: auth.userPoolClient.userPoolClientId,
@@ -59,6 +65,7 @@ new MonitoringStack(app, stackName("RavelGo-Monitoring"), {
   dbInstance: data.dbInstance,
   alertEmail,
   monthlyBudgetUsd,
+  envName,
 });
 
 // CI/CD (GitHub OIDC + deploy role) stays production-only: AWS only allows

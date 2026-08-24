@@ -81,6 +81,34 @@ export function broadcastDriverLocation(tripId: string, location: DriverLocation
   broadcastToTrip(tripId, { type: "location", tripId, ...location });
 }
 
+const driverSockets = new Map<string, Set<WebSocket>>();
+
+export function registerDriverSocket(driverId: string, socket: WebSocket) {
+  let sockets = driverSockets.get(driverId);
+  if (!sockets) {
+    sockets = new Set();
+    driverSockets.set(driverId, sockets);
+  }
+  sockets.add(socket);
+}
+
+export function unregisterDriverSocket(driverId: string, socket: WebSocket) {
+  const sockets = driverSockets.get(driverId);
+  if (sockets) {
+    sockets.delete(socket);
+    if (sockets.size === 0) driverSockets.delete(driverId);
+  }
+}
+
+export function notifyDriverNewTrip(driverId: string, trip: { id: string; pickup: string; destination: string; estimatedFare: number }) {
+  const sockets = driverSockets.get(driverId);
+  if (!sockets || sockets.size === 0) return;
+  const message = JSON.stringify({ type: "trip:request", ...trip });
+  for (const socket of sockets) {
+    if (socket.readyState === socket.OPEN) socket.send(message);
+  }
+}
+
 // Test-only: without this, `resetDb()` between test files would leave stale
 // state (rooms, cached locations) in this in-memory hub across whichever
 // tests happen to run in the same process — reuse the exact "reset shared

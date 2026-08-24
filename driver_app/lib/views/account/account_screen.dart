@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/services/auth_service.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/account/profile_screen.dart';
 import 'package:ravelgo_driver_app/views/assistance/driver_assistance_screen.dart';
@@ -96,10 +97,14 @@ class AccountScreen extends StatelessWidget {
                 AppComponents.tile(
                   title: "Log out",
                   leading: Icons.logout,
-                  onTap: () => Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    (route) => false,
-                  ),
+                  onTap: () async {
+                    await AuthService().signOut();
+                    if (!context.mounted) return;
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      (route) => false,
+                    );
+                  },
                 ),
               ],
             ),
