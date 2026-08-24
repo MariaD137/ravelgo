@@ -115,15 +115,15 @@ class AppComponents {
     );
   }
 
-  static Widget outlineButton({required String text, required VoidCallback? onPressed}) {
+  static Widget outlineButton({required String text, required VoidCallback? onPressed, Color? color}) {
     return SizedBox(
       width: double.infinity,
       height: 50,
       child: OutlinedButton(
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
-          foregroundColor: Colors.black,
-          side: const BorderSide(color: AppColors.border),
+          foregroundColor: color ?? Colors.black,
+          side: BorderSide(color: color ?? AppColors.border),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
         child: Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),

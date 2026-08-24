@@ -190,6 +190,7 @@ paths:
                 email: { type: string, format: email }
                 phoneNumber: { type: string }
                 preferredLanguage: { type: string, default: English }
+                quietModePreferred: { type: boolean, default: false }
       responses:
         "201":
           description: Driver profile

@@ -35,6 +35,7 @@ const createDriverSchema = z.object({
   email: z.string().email(),
   phoneNumber: z.string().optional(),
   preferredLanguage: z.string().default("English"),
+  quietModePreferred: z.boolean().default(false),
 });
 
 // Driver: create my profile (called once, right after Cognito sign-up completes
@@ -43,7 +44,7 @@ driversRouter.post("/drivers/me", requireAuth, requireRole("Driver"), async (req
   const parsed = createDriverSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const { preferredLanguage, ...userFields } = parsed.data;
+  const { preferredLanguage, quietModePreferred, ...userFields } = parsed.data;
 
   const user = await prisma.user.upsert({
     where: { cognitoSub: req.user!.sub },
@@ -54,7 +55,7 @@ driversRouter.post("/drivers/me", requireAuth, requireRole("Driver"), async (req
   const driver = await prisma.driver.upsert({
     where: { userId: user.id },
     update: {},
-    create: { userId: user.id, preferredLanguage },
+    create: { userId: user.id, preferredLanguage, quietModePreferred },
   });
 
   res.status(201).json(driver);

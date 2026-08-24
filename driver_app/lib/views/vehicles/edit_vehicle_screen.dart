@@ -3,31 +3,39 @@ import 'package:ravelgo_driver_app/models/vehicle.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 
-class AddVehicleScreen extends StatefulWidget {
+class EditVehicleScreen extends StatefulWidget {
+  final Vehicle vehicle;
   final DriverApi api;
-  // When reached from "My Vehicles", this screen pops back to the list on
-  // success (default). During onboarding it's a forward step instead — the
-  // caller passes onSaved to continue to the next onboarding screen rather
-  // than popping to a screen that doesn't exist in that stack.
-  final VoidCallback? onSaved;
-  const AddVehicleScreen({super.key, required this.api, this.onSaved});
+  const EditVehicleScreen({super.key, required this.vehicle, required this.api});
 
   @override
-  State<AddVehicleScreen> createState() => _AddVehicleScreenState();
+  State<EditVehicleScreen> createState() => _EditVehicleScreenState();
 }
 
-class _AddVehicleScreenState extends State<AddVehicleScreen> {
+class _EditVehicleScreenState extends State<EditVehicleScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _brand = TextEditingController();
-  final _model = TextEditingController();
-  final _colour = TextEditingController();
-  final _plate = TextEditingController();
-  final _year = TextEditingController();
-  final _vin = TextEditingController();
-  VehicleType _vehicleType = VehicleType.sedan;
+  late final TextEditingController _brand;
+  late final TextEditingController _model;
+  late final TextEditingController _colour;
+  late final TextEditingController _plate;
+  late final TextEditingController _year;
+  late final TextEditingController _vin;
+  late VehicleType _vehicleType;
 
   bool _submitting = false;
   String? _submitError;
+
+  @override
+  void initState() {
+    super.initState();
+    _brand = TextEditingController(text: widget.vehicle.brand);
+    _model = TextEditingController(text: widget.vehicle.model);
+    _colour = TextEditingController(text: widget.vehicle.colour);
+    _plate = TextEditingController(text: widget.vehicle.plateNumber);
+    _year = TextEditingController(text: widget.vehicle.year);
+    _vin = TextEditingController(text: widget.vehicle.vin ?? "");
+    _vehicleType = widget.vehicle.vehicleType;
+  }
 
   @override
   void dispose() {
@@ -40,19 +48,12 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     super.dispose();
   }
 
-  String? _requiredValidator(String? value, {int minLength = 1}) {
-    if (value == null || value.trim().length < minLength) {
-      return "Required";
-    }
-    return null;
-  }
+  String? _requiredValidator(String? value) => (value == null || value.trim().isEmpty) ? "Required" : null;
 
   String? _yearValidator(String? value) {
     if (value == null || value.trim().isEmpty) return "Required";
     final year = int.tryParse(value.trim());
     if (year == null || value.trim().length != 4) return "Enter a 4-digit year";
-    final currentYear = DateTime.now().year;
-    if (year < 1980 || year > currentYear + 1) return "Enter a realistic year";
     return null;
   }
 
@@ -64,7 +65,8 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       _submitError = null;
     });
     try {
-      await widget.api.createVehicle(
+      await widget.api.updateVehicle(
+        widget.vehicle.id,
         brand: _brand.text.trim(),
         model: _model.text.trim(),
         colour: _colour.text.trim(),
@@ -74,15 +76,14 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
         vehicleType: _vehicleType,
       );
       if (!mounted) return;
-      if (widget.onSaved != null) {
-        widget.onSaved!();
-      } else {
-        Navigator.pop(context, true);
-      }
+      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _submitError = e is DriverApiException ? e.message : "Unable to save this vehicle";
+        // The backend 404s a PATCH to a vehicle that no longer belongs to
+        // (or exists for) this driver — surfaced as-is rather than a
+        // generic error, since it means the driver's local copy is stale.
+        _submitError = e is DriverApiException ? e.message : "Unable to save your changes";
         _submitting = false;
       });
     }
@@ -91,7 +92,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Add Vehicle")),
+      appBar: AppBar(title: const Text("Edit Vehicle")),
       body: Form(
         key: _formKey,
         child: SingleChildScrollView(
@@ -101,13 +102,13 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
             children: [
               TextFormField(
                 controller: _brand,
-                decoration: const InputDecoration(labelText: "Make *", hintText: "e.g. Toyota", border: OutlineInputBorder()),
+                decoration: const InputDecoration(labelText: "Make *", border: OutlineInputBorder()),
                 validator: _requiredValidator,
               ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _model,
-                decoration: const InputDecoration(labelText: "Model *", hintText: "e.g. Camry", border: OutlineInputBorder()),
+                decoration: const InputDecoration(labelText: "Model *", border: OutlineInputBorder()),
                 validator: _requiredValidator,
               ),
               const SizedBox(height: 16),
@@ -135,16 +136,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
               TextFormField(
                 controller: _vin,
                 textCapitalization: TextCapitalization.characters,
-                decoration: const InputDecoration(
-                  labelText: "VIN (optional)",
-                  hintText: "17-character vehicle identification number",
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) return null;
-                  if (value.trim().length < 5) return "VIN looks too short";
-                  return null;
-                },
+                decoration: const InputDecoration(labelText: "VIN (optional)", border: OutlineInputBorder()),
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<VehicleType>(
@@ -157,15 +149,6 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                   if (value != null) setState(() => _vehicleType = value);
                 },
               ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.04), borderRadius: BorderRadius.circular(10)),
-                child: const Text(
-                  "You'll be able to add photos and required documents (registration, insurance, inspection) from the vehicle's page after saving it. Your vehicle enters PENDING verification as soon as you save it.",
-                  style: TextStyle(fontSize: 12.5, color: Colors.black54),
-                ),
-              ),
               if (_submitError != null) ...[
                 const SizedBox(height: 16),
                 Container(
@@ -177,7 +160,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
               const SizedBox(height: 28),
               _submitting
                   ? const Center(child: CircularProgressIndicator())
-                  : AppComponents.primaryButton(text: "Save vehicle", onPressed: _submit),
+                  : AppComponents.primaryButton(text: "Save changes", onPressed: _submit),
             ],
           ),
         ),

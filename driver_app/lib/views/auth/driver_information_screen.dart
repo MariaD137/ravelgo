@@ -1,9 +1,81 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:ravelgo_driver_app/services/auth_session.dart';
+import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
-import 'package:ravelgo_driver_app/views/auth/vehicle_information_screen.dart';
+import 'package:ravelgo_driver_app/views/auth/verify_account_screen.dart';
+import 'package:ravelgo_driver_app/views/vehicles/add_vehicle_screen.dart';
 
-class DriverInformationScreen extends StatelessWidget {
-  const DriverInformationScreen({super.key});
+class DriverInformationScreen extends StatefulWidget {
+  final String firstName;
+  final String lastName;
+  final String email;
+  final String phoneNumber;
+
+  const DriverInformationScreen({
+    super.key,
+    required this.firstName,
+    required this.lastName,
+    required this.email,
+    required this.phoneNumber,
+  });
+
+  @override
+  State<DriverInformationScreen> createState() => _DriverInformationScreenState();
+}
+
+class _DriverInformationScreenState extends State<DriverInformationScreen> {
+  late final DriverApi _api =
+      DriverApi(baseUrl: dotenv.env['API_BASE_URL'] ?? '', authTokenProvider: const NoAuthTokenProvider());
+
+  static const _languages = ["English", "French", "Yoruba", "Igbo", "Hausa"];
+  String _preferredLanguage = _languages.first;
+  bool _quietModePreferred = false;
+
+  bool _submitting = false;
+  String? _submitError;
+
+  Future<void> _continue() async {
+    setState(() {
+      _submitting = true;
+      _submitError = null;
+    });
+    try {
+      // This is the actual profile-creation call (POST /drivers/me) — not a
+      // decorative "Continue" button. Cognito sign-in isn't wired into this
+      // app yet (see AuthTokenProvider's doc comment), so today this
+      // honestly fails with "You need to sign in again." rather than
+      // pretending to succeed; once Cognito exists client-side, this call
+      // works unchanged.
+      await _api.createDriverProfile(
+        firstName: widget.firstName,
+        lastName: widget.lastName,
+        email: widget.email,
+        phoneNumber: widget.phoneNumber,
+        preferredLanguage: _preferredLanguage,
+        quietModePreferred: _quietModePreferred,
+      );
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AddVehicleScreen(
+            api: _api,
+            onSaved: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => const VerifyAccountScreen()),
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _submitError = e is DriverApiException ? e.message : "Unable to save your profile";
+        _submitting = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,35 +94,33 @@ class DriverInformationScreen extends StatelessWidget {
                 style: TextStyle(fontSize: 14, color: Colors.black54),
               ),
               const SizedBox(height: 24),
-              const TextField(decoration: InputDecoration(labelText: "Driver's License Number", border: OutlineInputBorder())),
-              const SizedBox(height: 16),
-              const TextField(decoration: InputDecoration(labelText: "Years of driving experience", border: OutlineInputBorder())),
-              const SizedBox(height: 16),
               DropdownButtonFormField<String>(
+                value: _preferredLanguage,
                 decoration: const InputDecoration(labelText: "Preferred language", border: OutlineInputBorder()),
-                items: const ["English", "French", "Yoruba", "Igbo", "Hausa"]
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                    .toList(),
-                onChanged: (_) {},
+                items: _languages.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                onChanged: (value) {
+                  if (value != null) setState(() => _preferredLanguage = value);
+                },
               ),
               const SizedBox(height: 16),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text("Prefer quiet rides (no small talk)"),
-                value: false,
-                onChanged: (_) {},
+                value: _quietModePreferred,
+                onChanged: (value) => setState(() => _quietModePreferred = value),
               ),
-              const SizedBox(height: 24),
-              AppComponents.uploadBox("Upload driver's license"),
-              const SizedBox(height: 12),
-              AppComponents.uploadBox("Upload background check consent"),
+              if (_submitError != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                  child: Text(_submitError!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+                ),
+              ],
               const SizedBox(height: 28),
-              AppComponents.primaryButton(
-                text: "Continue",
-                onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const VehicleInformationScreen()));
-                },
-              ),
+              _submitting
+                  ? const Center(child: CircularProgressIndicator())
+                  : AppComponents.primaryButton(text: "Continue", onPressed: _continue),
             ],
           ),
         ),
