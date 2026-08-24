@@ -71,6 +71,18 @@ holds) so broadcasts fan out across instances.
   `src/services/matching.ts` runs synchronously inside `POST /api/trips`,
   see that file's own notes on why a synchronous "first available driver"
   match is the right starting point rather than a queue/worker.
+- **RT-05 — admin fleet presence**: a platform-wide room (not scoped to one
+  trip), Admin-only. An Admin-authenticated connection sends
+  `{"type":"subscribe:fleet"}` and receives `driver:online`,
+  `driver:offline`, `driver:suspended`, `driver:trip_started`, and
+  `driver:trip_completed` events for every driver, not just ones on a trip
+  the admin is already watching — see `PATCH /api/drivers/me/online`,
+  `PATCH /api/drivers/:id/status`, and `PATCH /api/trips/:id/status` in
+  `src/routes/`, and `joinFleetRoom`/`broadcastFleetEvent` in
+  `src/realtime/hub.ts`. `GET /api/admin/drivers/presence` is the
+  HTTP-polling equivalent (a point-in-time snapshot) for an admin client
+  that isn't WS-connected. Same in-memory, single-instance caveat as the
+  rest of this hub — see "The trade-off, on the record" above.
 
 ## Wire protocol (client-facing)
 
@@ -81,13 +93,20 @@ missing token closes the socket immediately (code `4401`).
 Client → server messages (JSON):
 ```
 {"type":"subscribe","tripId":"..."}      // join a trip's room, if authorized
+{"type":"subscribe:fleet"}               // Admin only — join the platform-wide fleet presence room
 {"type":"location","lat":0,"lng":0}      // driver only — pushes their location
 ```
 
 Server → client messages (JSON):
 ```
 {"type":"subscribed","tripId":"..."}
+{"type":"subscribed:fleet"}
 {"type":"error","message":"..."}
 {"type":"trip:status","tripId":"...","status":"...","finalFare":null}
 {"type":"location","tripId":"...","driverId":"...","lat":0,"lng":0,"updatedAt":"..."}
+{"type":"driver:online","driverId":"...","at":"..."}
+{"type":"driver:offline","driverId":"...","at":"..."}
+{"type":"driver:suspended","driverId":"..."}
+{"type":"driver:trip_started","driverId":"...","tripId":"..."}
+{"type":"driver:trip_completed","driverId":"...","tripId":"..."}
 ```

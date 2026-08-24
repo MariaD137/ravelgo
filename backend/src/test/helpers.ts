@@ -58,6 +58,7 @@ export async function resetDb() {
   await prisma.driverDocument.deleteMany();
   await prisma.trip.deleteMany();
   await prisma.vehicle.deleteMany();
+  await prisma.driverOnlineSession.deleteMany();
   await prisma.driver.deleteMany();
   await prisma.user.deleteMany();
 }

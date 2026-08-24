@@ -2,7 +2,7 @@ import type { Server as HttpServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import { verifier } from "../middleware/auth";
 import { prisma } from "../db/prisma";
-import { broadcastDriverLocation, joinTripRoom, leaveAllRooms, recordDriverLocation } from "./hub";
+import { broadcastDriverLocation, joinFleetRoom, joinTripRoom, leaveAllRooms, recordDriverLocation } from "./hub";
 
 interface ConnectionUser {
   sub: string;
@@ -35,6 +35,17 @@ async function handleSubscribe(socket: WebSocket, user: ConnectionUser, tripId: 
   }
   joinTripRoom(tripId, socket);
   send(socket, { type: "subscribed", tripId });
+}
+
+// Admin-only: join the platform-wide fleet presence room. A driver or rider
+// socket asking for this gets a plain error, same shape as the trip-room
+// authorization failure above — never a silent partial grant.
+function handleFleetSubscribe(socket: WebSocket, user: ConnectionUser) {
+  if (!user.groups.includes("Admin")) {
+    return send(socket, { type: "error", message: "Only Admin can subscribe to fleet presence" });
+  }
+  joinFleetRoom(socket);
+  send(socket, { type: "subscribed:fleet" });
 }
 
 async function handleLocation(socket: WebSocket, user: ConnectionUser, lat: unknown, lng: unknown) {
@@ -96,6 +107,8 @@ export function attachRealtime(server: HttpServer) {
       const message = parsed as Record<string, unknown>;
       if (message.type === "subscribe") {
         void handleSubscribe(socket, user, message.tripId);
+      } else if (message.type === "subscribe:fleet") {
+        handleFleetSubscribe(socket, user);
       } else if (message.type === "location") {
         void handleLocation(socket, user, message.lat, message.lng);
       } else {

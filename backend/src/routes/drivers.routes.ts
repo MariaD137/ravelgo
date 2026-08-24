@@ -3,6 +3,10 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { Errors } from "../lib/errors";
+import { getOnlineHoursToday, setDriverOnline } from "../services/presence";
+import { broadcastFleetEvent } from "../realtime/hub";
+import { PLATFORM_FEE_PERCENT } from "../services/payouts";
 
 export const driversRouter = Router();
 
@@ -65,6 +69,81 @@ driversRouter.get("/drivers/me", requireAuth, requireRole("Driver"), async (req,
   res.json(driver);
 });
 
+const onlineSchema = z.object({ isOnline: z.boolean() });
+
+// Driver: go online / offline. This is the authoritative presence toggle —
+// the Flutter client must call this rather than only flipping local widget
+// state, since the backend (not the app) is the source of truth for
+// whether a driver is online, and it's what the admin fleet view and the
+// driver's own online-hours summary are both computed from.
+//
+// Enforces the existing PENDING_REVIEW / ACTIVE / SUSPENDED approval state
+// machine: only an ACTIVE driver may go online. SUSPENDED can still go
+// offline (never trapped online), matching the emergency-suspend flow in
+// PATCH /drivers/:id/status below.
+driversRouter.patch("/drivers/me/online", requireAuth, requireRole("Driver"), async (req, res, next) => {
+  try {
+    const parsed = onlineSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+    if (!driver) throw Errors.notFound("Driver profile");
+
+    const updated = await setDriverOnline(driver.id, driver.status, parsed.data.isOnline);
+    broadcastFleetEvent(updated.isOnline ? "driver:online" : "driver:offline", {
+      driverId: updated.id,
+      at: updated.lastOnlineAt!.toISOString(),
+    });
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Driver: daily dashboard summary — replaces what was hardcoded in the
+// driver app's home screen (today's earnings, trips today, online hours).
+// Every figure here is computed from persisted rows for the *calling*
+// driver only (scoped by cognitoSub, same as GET /drivers/me above) —
+// never accepts a driver id, so a driver can't read another driver's
+// summary by guessing/changing one.
+driversRouter.get("/drivers/me/summary", requireAuth, requireRole("Driver"), async (req, res, next) => {
+  try {
+    const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+    if (!driver) throw Errors.notFound("Driver profile");
+
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const tripsToday = await prisma.trip.findMany({
+      where: { driverId: driver.id, status: "COMPLETED", completedAt: { gte: startOfDay } },
+      include: { payment: true },
+    });
+
+    const grossFareToday = tripsToday.reduce(
+      (sum, trip) => sum + (trip.payment?.status === "SUCCEEDED" ? trip.payment.amount : 0),
+      0,
+    );
+    const platformFeeToday = grossFareToday * PLATFORM_FEE_PERCENT;
+    const netEarningsToday = grossFareToday - platformFeeToday;
+
+    const onlineHoursToday = await getOnlineHoursToday(driver.id);
+
+    res.json({
+      isOnline: driver.isOnline,
+      lastOnlineAt: driver.lastOnlineAt,
+      tripsToday: tripsToday.length,
+      grossFareToday,
+      platformFeeToday,
+      netEarningsToday,
+      onlineHoursToday: Math.round(onlineHoursToday * 100) / 100,
+      rating: driver.rating,
+      totalTrips: driver.totalTrips,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Admin: get a single driver with documents.
 // Registered after the literal "/drivers/me" routes above — Express matches
 // path segments in registration order, so ":id" would otherwise swallow
@@ -83,17 +162,29 @@ const statusSchema = z.object({
 });
 
 // Admin: suspend / reactivate a driver
-driversRouter.patch("/drivers/:id/status", requireAuth, requireRole("Admin"), async (req, res) => {
-  const parsed = statusSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+driversRouter.patch("/drivers/:id/status", requireAuth, requireRole("Admin"), async (req, res, next) => {
+  try {
+    const parsed = statusSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const driver = await prisma.driver.update({
-    where: { id: req.params.id },
-    data: { status: parsed.data.status },
-  });
-  res.json(driver);
+    let driver = await prisma.driver.update({
+      where: { id: req.params.id },
+      data: { status: parsed.data.status },
+    });
+
+    // A driver being suspended can't be left showing "online" to the fleet
+    // — force them offline through the same presence service used for a
+    // driver's own toggle, so the online-hours session log stays correct.
+    if (parsed.data.status === "SUSPENDED" && driver.isOnline) {
+      driver = await setDriverOnline(driver.id, driver.status, false);
+    }
+
+    if (parsed.data.status === "SUSPENDED") {
+      broadcastFleetEvent("driver:suspended", { driverId: driver.id });
+    }
+
+    res.json(driver);
+  } catch (err) {
+    next(err);
+  }
 });
-
-// Driver: toggle online preference is handled client-side / via a lightweight presence
-// table in a later iteration; ride matching (websocket/App Sync) is intentionally out
-// of scope for this MVP skeleton.

@@ -7,6 +7,11 @@
 
 import { prisma } from "../db/prisma";
 
+// Platform takes 20% commission (configurable). Exported so any other
+// gross-fare → driver-earnings calculation (e.g. the driver's own daily
+// summary) uses the same rate instead of a second hardcoded copy.
+export const PLATFORM_FEE_PERCENT = 0.2;
+
 interface PayoutCalculation {
   driverId: string;
   grossAmount: number; // Total from completed trips
@@ -50,9 +55,7 @@ export async function calculatePayoutForPeriod(
     return sum + (trip.payment?.status === "SUCCEEDED" ? trip.payment.amount : 0);
   }, 0);
 
-  // Platform takes 20% commission (configurable)
-  const platformFeePercent = 0.2;
-  const platformFee = grossAmount * platformFeePercent;
+  const platformFee = grossAmount * PLATFORM_FEE_PERCENT;
 
   // Check if driver has active subscription (subscription fee offset)
   const subscription = await prisma.driverSubscription.findUnique({

@@ -206,6 +206,45 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Driver" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /drivers/me/online:
+    patch:
+      tags: [Drivers]
+      summary: Go online / offline (Driver)
+      description: >
+        Authoritative presence toggle — the backend is the source of truth,
+        not the Flutter client's local state. Requires status ACTIVE to go
+        online (403 for PENDING_REVIEW or SUSPENDED); a SUSPENDED driver can
+        always go offline. Idempotent: repeated calls with the same value
+        never open a second session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [isOnline]
+              properties:
+                isOnline: { type: boolean }
+      responses:
+        "200":
+          description: Updated driver (with new isOnline/lastOnlineAt)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Driver" }
+        "403":
+          description: Driver's approval status doesn't allow going online (PENDING_REVIEW or SUSPENDED)
+        "404": { $ref: "#/components/responses/NotFound" }
+  /drivers/me/summary:
+    get:
+      tags: [Drivers]
+      summary: My own daily dashboard summary (Driver)
+      responses:
+        "200":
+          description: Today's stats for the calling driver
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverSummary" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /drivers/me/subscription:
     post:
       tags: [Subscriptions]
@@ -790,6 +829,23 @@ paths:
                   onlineDrivers: { type: integer }
                   pendingApprovals: { type: integer }
 
+  /admin/drivers/presence:
+    get:
+      tags: [Admin]
+      summary: Fleet-wide driver presence (Admin)
+      description: >
+        Point-in-time snapshot of fleet counts and per-driver presence
+        (status, online state, current trip, vehicle, last known
+        location). Live updates for the same events are available over the
+        existing WebSocket — an Admin-authenticated connection sends
+        {"type":"subscribe:fleet"} — see docs/realtime-architecture.md.
+      responses:
+        "200":
+          description: Fleet counts and driver list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FleetPresence" }
+
   /courier-requests:
     post:
       tags: [Courier]
@@ -1336,6 +1392,57 @@ components:
         totalTrips: { type: integer }
         preferredLanguage: { type: string }
         subscriptionActive: { type: boolean }
+        isOnline: { type: boolean, description: Persisted presence — backend is the source of truth, not the client }
+        lastOnlineAt: { type: string, format: date-time, nullable: true }
+
+    DriverSummary:
+      type: object
+      description: The calling driver's own daily dashboard summary. Scoped strictly to /drivers/me — never accepts a driver id.
+      properties:
+        isOnline: { type: boolean }
+        lastOnlineAt: { type: string, format: date-time, nullable: true }
+        tripsToday: { type: integer }
+        grossFareToday: { type: number, description: Sum of what riders paid today, before the platform commission }
+        platformFeeToday: { type: number, description: RavelGo's commission on grossFareToday }
+        netEarningsToday: { type: number, description: grossFareToday minus platformFeeToday — what the driver actually earns }
+        onlineHoursToday: { type: number, description: Computed from persisted DriverOnlineSession rows, not a client-side timer }
+        rating: { type: number }
+        totalTrips: { type: integer }
+
+    FleetPresence:
+      type: object
+      properties:
+        counts:
+          type: object
+          properties:
+            total: { type: integer }
+            online: { type: integer }
+            offline: { type: integer }
+            active: { type: integer }
+            pendingReview: { type: integer }
+            suspended: { type: integer }
+        drivers:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              email: { type: string }
+              status: { $ref: "#/components/schemas/DriverStatus" }
+              isOnline: { type: boolean }
+              onlineSince: { type: string, format: date-time, nullable: true }
+              currentTrip: { type: object, nullable: true, properties: { id: { type: string }, status: { type: string } } }
+              vehicle: { type: string, nullable: true }
+              location:
+                description: The driver's last WS-reported location, or the literal string "Location unavailable" — never fabricated coordinates
+                oneOf:
+                  - type: object
+                    properties:
+                      lat: { type: number }
+                      lng: { type: number }
+                      updatedAt: { type: string, format: date-time }
+                  - { type: string, enum: ["Location unavailable"] }
 
     VehicleInput:
       type: object
@@ -1612,9 +1719,9 @@ components:
               items:
                 type: object
                 properties:
-                  field: { type: string, description: Field name or path (e.g., "email", "address.zipCode") }
+                  field: { type: string, description: 'Field name or path (e.g., "email", "address.zipCode")' }
                   message: { type: string, description: Error message for this field }
-                  code: { type: string, nullable: true, description: Error code (e.g., "too_small", "invalid_email") }
+                  code: { type: string, nullable: true, description: 'Error code (e.g., "too_small", "invalid_email")' }
             timestamp:
               type: string
               format: date-time

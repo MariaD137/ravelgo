@@ -216,6 +216,50 @@ treats the following as launch-blocking requirements, not nice-to-haves:
    WebSocket reconnect behavior need E2E coverage beyond current unit/
    integration tests (~70% coverage).
 
+### 9.1 Driver presence & fleet monitoring — resolved on the backend, driver/admin apps partially wired
+
+A prior review of this platform against §6.2–6.3 found two concrete gaps:
+the driver app's home dashboard (today's earnings/trips/online hours) was
+hardcoded, and the admin dashboard's "online drivers" count conflated
+verification status (`Driver.status = ACTIVE`) with actual presence, with
+no real-time or fleet-wide visibility. These are now fixed on the backend
+and wired into both apps' UI (still gated by the mock-data / no-Cognito-auth
+launch blocker above, which this work does not resolve):
+
+- `Driver.isOnline` / `lastOnlineAt` are persisted; `DriverOnlineSession`
+  logs open/close spans so online *duration* is computed from real data,
+  not a client-side timer. `PATCH /api/drivers/me/online` is the
+  authoritative toggle, enforcing the existing PENDING_REVIEW/ACTIVE/
+  SUSPENDED state machine (only ACTIVE can go online; SUSPENDED can always
+  go offline).
+- `GET /api/drivers/me/summary` replaces the driver app's hardcoded home
+  screen stats — today's trips, gross fare, platform fee, net earnings, and
+  online hours, strictly scoped to the calling driver.
+- `GET /api/admin/dashboard`'s `onlineDrivers` now counts real presence
+  instead of verification status; `GET /api/admin/drivers/presence` adds
+  fleet-wide counts and a per-driver list (status, presence, current trip,
+  vehicle, last known location — or the honest string `"Location
+  unavailable"`, never fabricated coordinates).
+- A `subscribe:fleet` WebSocket channel (Admin-only) pushes
+  `driver:online`/`offline`/`suspended`/`trip_started`/`trip_completed`
+  events fleet-wide, reusing the existing single-container `ws` hub — see
+  `docs/realtime-architecture.md`'s RT-05.
+- `driver_app`'s home screen and `admin_app`'s dashboard now call these
+  endpoints (loading/empty/error/retry states), through a `DriverApi`/
+  `AdminApi` client behind a pluggable `AuthTokenProvider` seam — not a
+  Cognito integration itself, since neither Flutter app has one yet. Until
+  Cognito sign-in exists client-side, both screens will show "Unable to
+  load dashboard: You need to sign in again." on a real device, which is
+  the honest behavior given launch blocker #1 above, not a new bug.
+- Acceptance rate (offer → accepted/declined/expired) was **not**
+  implemented: there is no TripOffer/DriverOffer or driver-assignment
+  system in this codebase (ride matching is a synchronous "first available
+  driver" assignment — see `backend/src/services/matching.ts`). Building an
+  offer/decline system is materially larger scope than this presence work
+  and is not tracked elsewhere in this document; if driver acceptance-rate
+  reporting is wanted, it should be scoped as its own item once (or if) a
+  multi-offer dispatch flow replaces the current synchronous matcher.
+
 ## 10. Launch requirements (must-have before public launch)
 
 1. Real backend integration across all three apps (no mock data in

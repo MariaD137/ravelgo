@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
-import { broadcastTripStatus, getLatestDriverLocation } from "../realtime/hub";
+import { broadcastFleetEvent, broadcastTripStatus, getLatestDriverLocation } from "../realtime/hub";
 import { matchDriverToTrip } from "../services/matching";
 
 export const tripsRouter = Router();
@@ -68,6 +68,11 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
     },
   });
   broadcastTripStatus(trip.id, trip.status, trip.finalFare);
+  if (trip.driverId && trip.status === "IN_PROGRESS") {
+    broadcastFleetEvent("driver:trip_started", { driverId: trip.driverId, tripId: trip.id });
+  } else if (trip.driverId && trip.status === "COMPLETED") {
+    broadcastFleetEvent("driver:trip_completed", { driverId: trip.driverId, tripId: trip.id });
+  }
   res.json(trip);
 });
 

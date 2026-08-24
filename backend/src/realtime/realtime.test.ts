@@ -176,3 +176,54 @@ test("GET /trips/:id/driver-location 404s before any location has been reported"
   const res = await request(baseUrl).get(`/api/trips/${trip.id}/driver-location`).set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 404);
 });
+
+test("subscribe:fleet rejects a non-Admin socket (Driver and Rider alike)", async () => {
+  const token = mockAuthAs({ sub: "some-driver", groups: ["Driver"] });
+  const socket = new WebSocket(`${wsUrl}?token=${token}`);
+  await waitForOpen(socket);
+  socket.send(JSON.stringify({ type: "subscribe:fleet" }));
+  const reply = await waitForMessage(socket);
+
+  assert.equal(reply.type, "error");
+  socket.close();
+});
+
+test("subscribe:fleet accepts an Admin socket and delivers driver:online/offline from PATCH .../online", async () => {
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "fleet-driver-1", role: "DRIVER", firstName: "F", lastName: "D", email: "fd@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE" } });
+
+  const adminToken = mockAuthAs({ sub: "fleet-admin-1", groups: ["Admin"] });
+  const adminSocket = new WebSocket(`${wsUrl}?token=${adminToken}`);
+  await waitForOpen(adminSocket);
+  adminSocket.send(JSON.stringify({ type: "subscribe:fleet" }));
+  const ack = await waitForMessage(adminSocket);
+  assert.equal(ack.type, "subscribed:fleet");
+
+  const onlineEventPromise = waitForMessage(adminSocket);
+  restoreAuth();
+  const driverToken = mockAuthAs({ sub: "fleet-driver-1", groups: ["Driver"] });
+  const onlineRes = await request(baseUrl)
+    .patch("/api/drivers/me/online")
+    .set("Authorization", `Bearer ${driverToken}`)
+    .send({ isOnline: true });
+  assert.equal(onlineRes.status, 200);
+
+  const onlineEvent = await onlineEventPromise;
+  assert.equal(onlineEvent.type, "driver:online");
+  assert.equal(onlineEvent.driverId, driver.id);
+
+  const offlineEventPromise = waitForMessage(adminSocket);
+  const offlineRes = await request(baseUrl)
+    .patch("/api/drivers/me/online")
+    .set("Authorization", `Bearer ${driverToken}`)
+    .send({ isOnline: false });
+  assert.equal(offlineRes.status, 200);
+
+  const offlineEvent = await offlineEventPromise;
+  assert.equal(offlineEvent.type, "driver:offline");
+  assert.equal(offlineEvent.driverId, driver.id);
+
+  adminSocket.close();
+});

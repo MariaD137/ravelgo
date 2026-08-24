@@ -135,6 +135,12 @@ model Driver {
   preferredLanguage String       @default("English")
   quietModePreferred Boolean     @default(false)
   subscriptionActive Boolean     @default(false)
+  // Persisted presence — the backend is the source of truth for online/offline,
+  // not the Flutter client. isOnline/lastOnlineAt give O(1) reads for the admin
+  // fleet list; DriverOnlineSession below is the append-only log used to
+  // compute actual online *duration* for the driver's own daily summary.
+  isOnline          Boolean      @default(false)
+  lastOnlineAt      DateTime?
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
@@ -145,6 +151,24 @@ model Driver {
   rentalListings    RentalListing[]
   courierRequestsHandled CourierRequest[] @relation("CourierDriver")
   subscription      DriverSubscription?
+  onlineSessions    DriverOnlineSession[]
+}
+
+// One row per online→offline span. `endedAt: null` means the session is
+// still open (the driver is currently online) — at most one open session
+// per driver at a time, enforced in src/services/presence.ts rather than a
+// DB constraint (Postgres partial unique indexes aren't expressible in the
+// Prisma schema DSL without a raw migration, and the service already runs
+// the open/close as a single transaction).
+model DriverOnlineSession {
+  id        String    @id @default(uuid())
+  driverId  String
+  driver    Driver    @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([driverId, startedAt])
 }
 
 model Vehicle {
