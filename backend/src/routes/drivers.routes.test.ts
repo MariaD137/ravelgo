@@ -225,3 +225,30 @@ test("GET /api/drivers/me/summary computes online hours from persisted sessions,
   assert.equal(res.status, 200);
   assert.equal(res.body.onlineHoursToday, 2);
 });
+
+test("GET /api/drivers/:id (Admin) nests vehicle photos with URLs and splits driver-level vs vehicle-level documents", async () => {
+  const driver = await createDriver("driver-detail-1", "ACTIVE");
+  const vehicle = await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Toyota", model: "Camry", colour: "Black", plateNumber: "DETAIL-1", year: "2021" },
+  });
+  await prisma.vehiclePhoto.create({ data: { vehicleId: vehicle.id, fileKey: "driver-detail-1/front.jpg", photoType: "FRONT" } });
+  await prisma.driverDocument.create({ data: { driverId: driver.id, title: "License", documentType: "DRIVERS_LICENSE" } });
+  await prisma.driverDocument.create({
+    data: { driverId: driver.id, vehicleId: vehicle.id, title: "Registration", documentType: "VEHICLE_REGISTRATION" },
+  });
+
+  const token = mockAuthAs({ sub: "admin-sub-detail-1", groups: ["Admin"] });
+  const res = await request(app).get(`/api/drivers/${driver.id}`).set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.vehicles.length, 1);
+  assert.equal(res.body.vehicles[0].photos.length, 1);
+  assert.equal(res.body.vehicles[0].photos[0].photoType, "FRONT");
+  assert.ok("url" in res.body.vehicles[0].photos[0]);
+  assert.equal(res.body.vehicles[0].documents.length, 1);
+  assert.equal(res.body.vehicles[0].documents[0].title, "Registration");
+  // Driver-level documents list excludes the vehicle-scoped one — it's
+  // already nested under the vehicle above, not duplicated here.
+  assert.equal(res.body.documents.length, 1);
+  assert.equal(res.body.documents[0].title, "License");
+});

@@ -57,6 +57,7 @@ export async function resetDb() {
   await prisma.carPaddyRequest.deleteMany();
   await prisma.driverDocument.deleteMany();
   await prisma.trip.deleteMany();
+  await prisma.vehiclePhoto.deleteMany();
   await prisma.vehicle.deleteMany();
   await prisma.driverOnlineSession.deleteMany();
   await prisma.driver.deleteMany();

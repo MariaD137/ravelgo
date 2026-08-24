@@ -7,6 +7,7 @@ import { Errors } from "../lib/errors";
 import { getOnlineHoursToday, setDriverOnline } from "../services/presence";
 import { broadcastFleetEvent } from "../realtime/hub";
 import { PLATFORM_FEE_PERCENT } from "../services/payouts";
+import { publicAssetUrl } from "../lib/assetUrl";
 
 export const driversRouter = Router();
 
@@ -144,17 +145,36 @@ driversRouter.get("/drivers/me/summary", requireAuth, requireRole("Driver"), asy
   }
 });
 
-// Admin: get a single driver with documents.
+// Admin: get a single driver with their vehicles (each with photos),
+// driver-level documents, and per-vehicle documents — everything the admin
+// verification screen needs in one call.
 // Registered after the literal "/drivers/me" routes above — Express matches
 // path segments in registration order, so ":id" would otherwise swallow
 // "me" and shadow the driver's own-profile routes with this Admin check.
 driversRouter.get("/drivers/:id", requireAuth, requireRole("Admin"), async (req, res) => {
   const driver = await prisma.driver.findUnique({
     where: { id: req.params.id },
-    include: { user: true, vehicles: true, documents: true },
+    include: {
+      user: true,
+      vehicles: {
+        include: { photos: { orderBy: { displayOrder: "asc" } }, documents: true },
+        orderBy: { createdAt: "desc" },
+      },
+      // Driver-level documents only (license, background check) — a
+      // vehicle-scoped document (registration, insurance) is already
+      // nested under its own vehicle above, so it isn't duplicated here.
+      documents: { where: { vehicleId: null } },
+    },
   });
   if (!driver) return res.status(404).json({ error: "Driver not found" });
-  res.json(driver);
+
+  res.json({
+    ...driver,
+    vehicles: driver.vehicles.map((vehicle) => ({
+      ...vehicle,
+      photos: vehicle.photos.map((photo) => ({ ...photo, url: publicAssetUrl(photo.fileKey) })),
+    })),
+  });
 });
 
 const statusSchema = z.object({

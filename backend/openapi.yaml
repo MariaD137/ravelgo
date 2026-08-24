@@ -348,6 +348,18 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Vehicle" }
   /vehicles/{id}:
+    get:
+      tags: [Vehicles]
+      summary: One of my own vehicles, with photos and documents (Driver)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Vehicle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Vehicle" }
+        "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [Vehicles]
       summary: Update one of my own vehicles (Driver)
@@ -364,6 +376,100 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Vehicle" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /vehicles/{id}/deactivate:
+    patch:
+      tags: [Vehicles]
+      summary: Safely deactivate one of my own vehicles (Driver)
+      description: Soft-deactivation only (isActive:false) — never a hard delete, so verification history and anything referencing this vehicle survives.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Deactivated vehicle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Vehicle" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /vehicles/{id}/resubmit:
+    post:
+      tags: [Vehicles]
+      summary: Resubmit a rejected vehicle for re-review (Driver)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Vehicle reset to PENDING
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Vehicle" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Vehicle is not currently REJECTED/RESUBMISSION_REQUIRED
+  /vehicles/{id}/photos:
+    post:
+      tags: [Vehicles]
+      summary: Attach a photo to one of my own vehicles (Driver)
+      description: fileKey must have been issued to the caller by POST /uploads/presign — a fileKey from another user's namespace is rejected.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fileKey]
+              properties:
+                fileKey: { type: string }
+                photoType: { $ref: "#/components/schemas/VehiclePhotoType" }
+                displayOrder: { type: integer, default: 0 }
+      responses:
+        "201":
+          description: Registered photo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VehiclePhoto" }
+        "403":
+          description: fileKey was not issued to the caller
+        "404": { $ref: "#/components/responses/NotFound" }
+  /vehicles/{id}/photos/{photoId}:
+    delete:
+      tags: [Vehicles]
+      summary: Remove a photo from one of my own vehicles (Driver)
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - name: photoId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /vehicles/{id}/review:
+    patch:
+      tags: [Vehicles]
+      summary: Approve or reject a vehicle (Admin)
+      description: A reason is mandatory when rejecting.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [APPROVED, REJECTED] }
+                reason: { type: string, description: Required when status is REJECTED }
+      responses:
+        "200":
+          description: Reviewed vehicle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Vehicle" }
+        "400":
+          description: Missing rejection reason
 
   /rentals:
     post:
@@ -629,6 +735,7 @@ paths:
     post:
       tags: [Documents]
       summary: Register an uploaded document's metadata (Driver)
+      description: fileKey must have been issued to the caller by POST /uploads/presign; vehicleId (if given) must be one of the caller's own vehicles.
       requestBody:
         required: true
         content:
@@ -639,16 +746,67 @@ paths:
               properties:
                 title: { type: string }
                 fileKey: { type: string }
+                documentType: { $ref: "#/components/schemas/DriverDocumentType" }
+                vehicleId: { type: string }
+                expiryDate: { type: string, format: date-time }
       responses:
         "201":
           description: Document
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DriverDocument" }
+        "403":
+          description: fileKey was not issued to the caller
+        "404": { $ref: "#/components/responses/NotFound" }
+  /documents/{id}/resubmit:
+    post:
+      tags: [Documents]
+      summary: Replace a rejected document's file and resend for review (Driver)
+      description: Only valid when the document's current status is REJECTED. Reuses the same row — no orphan duplicate is created.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fileKey]
+              properties:
+                fileKey: { type: string }
+      responses:
+        "200":
+          description: Document reset to PENDING with the new file
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverDocument" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Document is not currently REJECTED
+  /documents/{id}/view:
+    get:
+      tags: [Documents]
+      summary: A short-lived signed URL to view a document's file (owning Driver, or any Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Signed view URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  viewUrl: { type: string }
+                  expiresIn: { type: integer, example: 300 }
+        "403":
+          description: Not authorized to view this document
+        "404": { $ref: "#/components/responses/NotFound" }
   /documents/{id}/review:
     patch:
       tags: [Documents]
       summary: Approve/reject a document (Admin)
+      description: rejectionReason is mandatory when status is REJECTED.
       parameters:
         - $ref: "#/components/parameters/id"
       requestBody:
@@ -660,12 +818,15 @@ paths:
               required: [status]
               properties:
                 status: { type: string, enum: [APPROVED, REJECTED] }
+                rejectionReason: { type: string, description: Required when status is REJECTED }
       responses:
         "200":
           description: Updated document
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DriverDocument" }
+        "400":
+          description: Missing rejection reason
 
   /support-tickets:
     post:
@@ -736,18 +897,26 @@ paths:
   /uploads/presign:
     post:
       tags: [Uploads]
-      summary: Get a short-lived S3 upload URL (any authenticated user)
+      summary: Get a short-lived S3 upload URL (Driver or Admin)
+      description: >
+        contentType is checked against a per-bucket allowlist (documents:
+        application/pdf, image/jpeg, image/png, image/webp; assets:
+        image/jpeg, image/png, image/webp). fileSize is checked against a
+        per-bucket max (documents 10MB, assets 8MB) and bound into the
+        presigned request's signature, so the returned URL cannot be used
+        to upload more bytes than declared.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [bucket, fileName, contentType]
+              required: [bucket, fileName, contentType, fileSize]
               properties:
                 bucket: { type: string, enum: [documents, assets] }
                 fileName: { type: string }
                 contentType: { type: string }
+                fileSize: { type: integer, description: Declared file size in bytes }
       responses:
         "200":
           description: Presigned URL
@@ -759,6 +928,8 @@ paths:
                   uploadUrl: { type: string }
                   fileKey: { type: string }
                   expiresIn: { type: integer }
+        "400":
+          description: Unsupported content type, or file too large, for the chosen bucket
 
   /car-paddy:
     post:
@@ -1452,7 +1623,26 @@ components:
         colour: { type: string }
         plateNumber: { type: string }
         year: { type: string }
+        vin: { type: string, nullable: true }
+        vehicleType: { $ref: "#/components/schemas/VehicleType" }
         isPrimary: { type: boolean }
+
+    VehicleType: { type: string, enum: [SEDAN, SUV, VAN, TRUCK, MOTORCYCLE, LUXURY, OTHER] }
+    VehicleVerificationStatus: { type: string, enum: [PENDING, APPROVED, REJECTED, RESUBMISSION_REQUIRED] }
+    VehiclePhotoType: { type: string, enum: [FRONT, REAR, LEFT_SIDE, RIGHT_SIDE, INTERIOR, OTHER] }
+    DriverDocumentType:
+      type: string
+      enum: [DRIVERS_LICENSE, VEHICLE_REGISTRATION, INSURANCE, INSPECTION, ROADWORTHINESS, BACKGROUND_CHECK, PROOF_OF_ADDRESS, OTHER]
+
+    VehiclePhoto:
+      type: object
+      properties:
+        id: { type: string }
+        vehicleId: { type: string }
+        fileKey: { type: string }
+        photoType: { $ref: "#/components/schemas/VehiclePhotoType" }
+        displayOrder: { type: integer }
+        url: { type: string, nullable: true, description: Public CloudFront URL, or null if ASSETS_CLOUDFRONT_DOMAIN isn't configured }
 
     Vehicle:
       allOf:
@@ -1462,6 +1652,17 @@ components:
             id: { type: string }
             driverId: { type: string }
             listedForRental: { type: boolean }
+            isActive: { type: boolean }
+            verificationStatus: { $ref: "#/components/schemas/VehicleVerificationStatus" }
+            verificationReason: { type: string, nullable: true }
+            verifiedAt: { type: string, format: date-time, nullable: true }
+            verifiedById: { type: string, nullable: true }
+            photos:
+              type: array
+              items: { $ref: "#/components/schemas/VehiclePhoto" }
+            documents:
+              type: array
+              items: { $ref: "#/components/schemas/DriverDocument" }
 
     RentalListing:
       type: object
@@ -1491,9 +1692,15 @@ components:
       properties:
         id: { type: string }
         driverId: { type: string }
+        vehicleId: { type: string, nullable: true, description: Present for a vehicle-scoped document; absent for a driver-level one }
         title: { type: string }
+        documentType: { $ref: "#/components/schemas/DriverDocumentType" }
         status: { type: string, enum: [NOT_UPLOADED, PENDING, APPROVED, EXPIRING_SOON, REJECTED] }
         fileKey: { type: string, nullable: true }
+        expiryDate: { type: string, format: date-time, nullable: true }
+        rejectionReason: { type: string, nullable: true }
+        reviewedAt: { type: string, format: date-time, nullable: true }
+        reviewedById: { type: string, nullable: true }
 
     SupportTicket:
       type: object

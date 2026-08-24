@@ -14,6 +14,10 @@ export interface ApiStackProps extends cdk.StackProps {
   dbSecurityGroup: ec2.SecurityGroup;
   documentsBucket: s3.Bucket;
   assetsBucket: s3.Bucket;
+  // The assets bucket's CloudFront distribution domain — lets the API build
+  // a public vehicle-photo URL without presigning (see lib/assetUrl.ts on
+  // the backend). Comes from StorageStack's assetsDistribution.
+  assetsCloudFrontDomain: string;
   cognitoUserPoolId: string;
   cognitoUserPoolClientId: string;
   // Comma-joined into ALLOWED_ORIGINS — env.ts throws at container boot in
@@ -124,6 +128,7 @@ export class ApiStack extends cdk.Stack {
               { name: "COGNITO_CLIENT_ID", value: props.cognitoUserPoolClientId },
               { name: "DOCUMENTS_BUCKET", value: props.documentsBucket.bucketName },
               { name: "ASSETS_BUCKET", value: props.assetsBucket.bucketName },
+              { name: "ASSETS_CLOUDFRONT_DOMAIN", value: props.assetsCloudFrontDomain },
               { name: "ALLOWED_ORIGINS", value: props.allowedOrigins.join(",") },
             ],
             runtimeEnvironmentSecrets: [
