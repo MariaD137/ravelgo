@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:ravelgo_admin/utils/jwt.dart';
 
 class AuthService {
   static final AuthService _instance = AuthService._();
@@ -24,21 +25,42 @@ class AuthService {
     return _storage.read(key: _accessTokenKey);
   }
 
-  Future<bool> isLoggedIn() async {
+  /// Decodes the stored access token's JWT payload — the same token and
+  /// the same `cognito:groups` claim the backend's own verifier reads from
+  /// (see backend/src/middleware/auth.ts). This is never a security
+  /// boundary: it's not signature-verified here, and the backend enforces
+  /// requireRole("Admin") independently on every request regardless of
+  /// what this returns. It only decides what the UI shows before the
+  /// first API call would otherwise reveal a 403.
+  Future<Map<String, dynamic>?> _decodedAccessTokenPayload() async {
     final token = await getAccessToken();
-    if (token == null) return false;
-    try {
-      final parts = token.split('.');
-      if (parts.length != 3) return false;
-      final payload = jsonDecode(
-        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
-      );
-      final exp = payload['exp'] as int?;
-      if (exp == null) return false;
-      return DateTime.fromMillisecondsSinceEpoch(exp * 1000).isAfter(DateTime.now());
-    } catch (_) {
-      return false;
-    }
+    if (token == null) return null;
+    return decodeJwtPayload(token);
+  }
+
+  Future<bool> isLoggedIn() async {
+    final payload = await _decodedAccessTokenPayload();
+    if (payload == null) return false;
+    final exp = payload['exp'] as int?;
+    if (exp == null) return false;
+    return DateTime.fromMillisecondsSinceEpoch(exp * 1000).isAfter(DateTime.now());
+  }
+
+  /// The Cognito groups on the currently stored access token, or an empty
+  /// list if there's no session or the token doesn't carry the claim.
+  Future<List<String>> getCognitoGroups() async {
+    final payload = await _decodedAccessTokenPayload();
+    final groups = payload?['cognito:groups'];
+    if (groups is List) return groups.map((g) => g.toString()).toList();
+    return const [];
+  }
+
+  /// Whether the signed-in user's own access token carries the given
+  /// Cognito group. See _decodedAccessTokenPayload's doc comment — this is
+  /// a UI-only convenience, not the real authorization check.
+  Future<bool> isInGroup(String group) async {
+    final groups = await getCognitoGroups();
+    return groups.contains(group);
   }
 
   Future<Map<String, dynamic>> signIn(String email, String password) async {

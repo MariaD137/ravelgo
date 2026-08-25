@@ -168,6 +168,61 @@ test("PATCH /api/trips/:id/status denies a Driver who isn't assigned to the trip
   assert.equal(noDriverRes.status, 403);
 });
 
+test("PATCH /api/trips/:id/status lets a Rider cancel their own trip", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-10", role: "RIDER", firstName: "W", lastName: "X", email: "w@example.com" },
+  });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "REQUESTED" },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-10", groups: ["Rider"] });
+  const res = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "CANCELLED" });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "CANCELLED");
+});
+
+test("PATCH /api/trips/:id/status denies a Rider cancelling someone else's trip", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-11", role: "RIDER", firstName: "Y", lastName: "Z", email: "y@example.com" },
+  });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "REQUESTED" },
+  });
+
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-12", role: "RIDER", firstName: "AA", lastName: "BB", email: "aa@example.com" },
+  });
+  const strangerToken = mockAuthAs({ sub: "rider-sub-12", groups: ["Rider"] });
+  const res = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${strangerToken}`)
+    .send({ status: "CANCELLED" });
+
+  assert.equal(res.status, 403);
+});
+
+test("PATCH /api/trips/:id/status denies a Rider trying to set any status other than CANCELLED", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-13", role: "RIDER", firstName: "CC", lastName: "DD", email: "cc@example.com" },
+  });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "REQUESTED" },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-13", groups: ["Rider"] });
+  const res = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "MATCHED" });
+
+  assert.equal(res.status, 403);
+});
+
 test("GET /api/trips (Admin monitor) rejects a Rider caller", async () => {
   const token = mockAuthAs({ sub: "rider-sub-5", groups: ["Rider"] });
   const res = await request(app).get("/api/trips").set("Authorization", `Bearer ${token}`);

@@ -24,9 +24,21 @@ class _SplashScreenState extends State<SplashScreen> {
     final isLoggedIn = await AuthService().isLoggedIn();
     if (!mounted) return;
 
+    // A remembered session might belong to an account that's since been
+    // removed from the Admin group (or never was one) — re-check group
+    // membership on every launch, not just at sign-in time. See
+    // admin_login_screen.dart's _signIn for why this is UI-only, not the
+    // real authorization boundary.
+    final isAdmin = isLoggedIn && await AuthService().isInGroup('Admin');
+    if (!mounted) return;
+    if (isLoggedIn && !isAdmin) {
+      await AuthService().signOut();
+    }
+    if (!mounted) return;
+
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (context) => isLoggedIn ? const AdminShell() : const AdminLoginScreen(),
+        builder: (context) => isAdmin ? const AdminShell() : const AdminLoginScreen(),
       ),
     );
   }

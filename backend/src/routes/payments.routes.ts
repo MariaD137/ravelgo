@@ -79,6 +79,36 @@ paymentsRouter.post("/trips/:id/charge", requireAuth, requireRole("Driver", "Adm
   res.status(201).json(payment);
 }));
 
+// Rider: the Stripe PaymentIntent clientSecret for their own trip's
+// currently-pending CARD charge, so the mobile app can present the
+// PaymentSheet. POST /trips/:id/charge (Driver/Admin-only, above) creates
+// the PaymentIntent and returns this secret in its own response, but that
+// caller is never the rider — this is the rider's only way to retrieve it
+// afterward. Exposes nothing beyond the secret for a PENDING payment the
+// rider already owns; does not create, modify, or read any other payment.
+paymentsRouter.get("/trips/:id/payment-secret", requireAuth, requireRole("Rider"), asyncHandler(async (req, res) => {
+  const rider = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
+  if (!rider) return res.status(404).json({ error: "Rider not found" });
+
+  const trip = await prisma.trip.findUnique({ where: { id: req.params.id } });
+  if (!trip) return res.status(404).json({ error: "Trip not found" });
+  if (trip.riderId !== rider.id) return res.status(403).json({ error: "Not authorized to view this trip's payment" });
+
+  const payment = await withUserContext(rider.id, (tx) =>
+    tx.payment.findUnique({ where: { tripId: trip.id } }),
+  );
+  if (!payment) return res.status(404).json({ error: "No payment has been created for this trip yet" });
+  if (payment.status !== "PENDING") {
+    return res.status(409).json({ error: "This payment is no longer pending" });
+  }
+  if (payment.method !== "CARD" || !payment.providerReference) {
+    return res.status(409).json({ error: "This payment does not require a client-side confirmation" });
+  }
+
+  const intent = await stripeClient.paymentIntents.retrieve(payment.providerReference);
+  res.json({ paymentId: payment.id, clientSecret: intent.client_secret });
+}));
+
 // Rider (who owns the payment) or Admin: a receipt for a charged trip
 paymentsRouter.get("/payments/:id/receipt", requireAuth, asyncHandler(async (req, res) => {
   const isAdmin = req.user!.groups.includes("Admin");

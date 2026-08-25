@@ -12,6 +12,12 @@ import 'package:ravelgo_admin/views/dashboard/dashboard_screen.dart';
 class _FakeAuth implements AuthTokenProvider {
   @override
   Future<String?> getAccessToken() async => 'fake-token';
+
+  @override
+  Future<bool> refreshAccessToken() async => false;
+
+  @override
+  Future<void> clearSession() async {}
 }
 
 http.Response _dashboardResponse({int activeTrips = 0, int onlineDrivers = 0, int pendingApprovals = 0}) {

@@ -11,6 +11,12 @@ import 'package:ravelgo_admin/views/drivers/driver_list_screen.dart';
 class _FakeAuth implements AuthTokenProvider {
   @override
   Future<String?> getAccessToken() async => 'fake-token';
+
+  @override
+  Future<bool> refreshAccessToken() async => false;
+
+  @override
+  Future<void> clearSession() async {}
 }
 
 AdminApi _apiWithHandler(Future<http.Response> Function(http.Request) handler) {

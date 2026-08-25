@@ -81,19 +81,29 @@ const updateStatusSchema = z
     path: ["durationMinutes"],
   });
 
-// Driver: advance trip status (accept, start, complete)
-tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin"), asyncHandler(async (req, res) => {
+// Driver: advance trip status (accept, start, complete). Rider: cancel
+// their own trip only — never any other transition, never someone else's
+// trip. Both restrictions are enforced below, not by requireRole alone.
+tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin", "Rider"), asyncHandler(async (req, res) => {
   const parsed = updateStatusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const existing = await prisma.trip.findUnique({
     where: { id: req.params.id },
-    include: { driver: { include: { user: true } } },
+    include: { rider: true, driver: { include: { user: true } } },
   });
   if (!existing) return res.status(404).json({ error: "Trip not found" });
 
   const isAdmin = req.user!.groups.includes("Admin");
-  if (!isAdmin) {
+  const isRider = req.user!.groups.includes("Rider");
+  if (isRider && !isAdmin) {
+    if (existing.rider.cognitoSub !== req.user!.sub) {
+      return res.status(403).json({ error: "Not authorized to update this trip" });
+    }
+    if (parsed.data.status !== "CANCELLED") {
+      return res.status(403).json({ error: "Riders may only cancel a trip" });
+    }
+  } else if (!isAdmin) {
     if (!existing.driver || existing.driver.user.cognitoSub !== req.user!.sub) {
       return res.status(403).json({ error: "Not authorized to update this trip" });
     }

@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, mockPaymentIntentCreate, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, mockPaymentIntentCreate, mockPaymentIntentRetrieve, restoreAuth, resetDb } from "../test/helpers";
 import { withBypass } from "../lib/rls";
 
 beforeEach(resetDb);
@@ -73,6 +73,88 @@ test("POST /api/trips/:id/charge (CARD) creates a Stripe PaymentIntent, PENDING 
     .set("Authorization", `Bearer ${token}`)
     .send({ method: "CARD" });
   assert.equal(second.status, 409);
+});
+
+test("GET /api/trips/:id/payment-secret returns the clientSecret for the rider's own pending CARD payment", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 14.5, status: "COMPLETED" },
+  });
+
+  const intentId = mockPaymentIntentCreate();
+  const driverToken = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
+  const charge = await request(app)
+    .post(`/api/trips/${trip.id}/charge`)
+    .set("Authorization", `Bearer ${driverToken}`)
+    .send({ method: "CARD" });
+  assert.equal(charge.status, 201);
+
+  restoreAuth();
+  mockPaymentIntentRetrieve(intentId);
+  const riderToken = mockAuthAs({ sub: "rider-sub-1", groups: ["Rider"] });
+  const res = await request(app)
+    .get(`/api/trips/${trip.id}/payment-secret`)
+    .set("Authorization", `Bearer ${riderToken}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.paymentId, charge.body.id);
+  assert.equal(res.body.clientSecret, `${intentId}_secret_test`);
+});
+
+test("GET /api/trips/:id/payment-secret 403s for a rider who isn't party to the trip", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  await prisma.user.create({
+    data: { cognitoSub: "stranger-sub", role: "RIDER", firstName: "S", lastName: "T", email: "s@example.com" },
+  });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 14.5, status: "COMPLETED" },
+  });
+
+  const intentId = mockPaymentIntentCreate();
+  const driverToken = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
+  await request(app).post(`/api/trips/${trip.id}/charge`).set("Authorization", `Bearer ${driverToken}`).send({ method: "CARD" });
+
+  restoreAuth();
+  mockPaymentIntentRetrieve(intentId);
+  const strangerToken = mockAuthAs({ sub: "stranger-sub", groups: ["Rider"] });
+  const res = await request(app)
+    .get(`/api/trips/${trip.id}/payment-secret`)
+    .set("Authorization", `Bearer ${strangerToken}`);
+
+  assert.equal(res.status, 403);
+});
+
+test("GET /api/trips/:id/payment-secret 404s when no payment has been created yet", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 14.5, status: "COMPLETED" },
+  });
+
+  const riderToken = mockAuthAs({ sub: "rider-sub-1", groups: ["Rider"] });
+  const res = await request(app)
+    .get(`/api/trips/${trip.id}/payment-secret`)
+    .set("Authorization", `Bearer ${riderToken}`);
+
+  assert.equal(res.status, 404);
+});
+
+test("GET /api/trips/:id/payment-secret 409s once the payment is no longer pending", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 14.5, status: "COMPLETED" },
+  });
+  await withBypass((tx) =>
+    tx.payment.create({
+      data: { tripId: trip.id, userId: rider.id, amount: 14.5, method: "CARD", status: "SUCCEEDED", providerReference: "pi_done", paidAt: new Date() },
+    }),
+  );
+
+  const riderToken = mockAuthAs({ sub: "rider-sub-1", groups: ["Rider"] });
+  const res = await request(app)
+    .get(`/api/trips/${trip.id}/payment-secret`)
+    .set("Authorization", `Bearer ${riderToken}`);
+
+  assert.equal(res.status, 409);
 });
 
 test("POST /api/trips/:id/charge (CASH) settles immediately, no Stripe call involved", async () => {

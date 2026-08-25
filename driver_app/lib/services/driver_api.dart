@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
@@ -17,6 +18,10 @@ class DriverApiException implements Exception {
   @override
   String toString() => message;
 }
+
+/// Internal-only: signals a 401 so _sendWithRetry can refresh and retry
+/// once. Never escapes to a caller.
+class _NeedsRefreshException implements Exception {}
 
 /// The calling driver's own daily dashboard summary — mirrors
 /// GET /api/drivers/me/summary. Every field here comes from the backend;
@@ -90,24 +95,29 @@ class DriverApi {
       if (error is String) return error;
     } catch (_) {
       // Response body wasn't the standardized {error:{message}} shape —
-      // fall through to the generic message below.
+      // fall through to a status-appropriate message below.
     }
-    return fallback;
+    switch (res.statusCode) {
+      case 400:
+        return 'That request was invalid. Please check the details and try again.';
+      case 403:
+        return "You don't have permission to do that.";
+      case 404:
+        return 'Not found.';
+      case 409:
+        return 'This conflicts with the current state — please refresh and try again.';
+      case 422:
+        return 'Some of the information provided is invalid.';
+      case 429:
+        return 'Too many requests. Please wait a moment and try again.';
+      default:
+        if (res.statusCode >= 500) return 'The server ran into a problem. Please try again shortly.';
+        return fallback;
+    }
   }
 
   Future<DriverSummary> fetchSummary() async {
-    final http.Response res;
-    try {
-      res = await _client.get(Uri.parse('$baseUrl/api/drivers/me/summary'), headers: await _authHeaders());
-    } on DriverApiException {
-      rethrow;
-    } catch (_) {
-      throw const DriverApiException('Unable to load dashboard');
-    }
-
-    if (res.statusCode != 200) {
-      throw DriverApiException(_errorMessage(res, 'Unable to load dashboard'));
-    }
+    final res = await _get('/api/drivers/me/summary', fallback: 'Unable to load dashboard');
     return DriverSummary.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
@@ -116,22 +126,12 @@ class DriverApi {
   /// review or suspended) if the toggle is rejected — callers must not
   /// flip local UI state until this resolves successfully.
   Future<bool> setOnline(bool isOnline) async {
-    final http.Response res;
-    try {
-      res = await _client.patch(
-        Uri.parse('$baseUrl/api/drivers/me/online'),
-        headers: await _authHeaders(),
-        body: jsonEncode({'isOnline': isOnline}),
-      );
-    } on DriverApiException {
-      rethrow;
-    } catch (_) {
-      throw const DriverApiException('Unable to update your status');
-    }
-
-    if (res.statusCode != 200) {
-      throw DriverApiException(_errorMessage(res, 'Unable to update your status'));
-    }
+    final res = await _send(
+      'PATCH',
+      '/api/drivers/me/online',
+      body: {'isOnline': isOnline},
+      fallback: 'Unable to update your status',
+    );
     final json = jsonDecode(res.body) as Map<String, dynamic>;
     return json['isOnline'] as bool;
   }
@@ -370,11 +370,16 @@ class DriverApi {
 
   /// PUTs raw bytes straight to S3 using the presigned URL — never goes
   /// through this app's own backend, and never carries an Authorization
-  /// header (the URL's signature is the only credential S3 checks).
+  /// header (the URL's signature is the only credential S3 checks), so
+  /// there's no 401/refresh path here — only a timeout/network guard.
   Future<void> _putToS3(String uploadUrl, Uint8List bytes, String contentType) async {
     final http.Response res;
     try {
-      res = await _client.put(Uri.parse(uploadUrl), headers: {'Content-Type': contentType}, body: bytes);
+      res = await _client
+          .put(Uri.parse(uploadUrl), headers: {'Content-Type': contentType}, body: bytes)
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw const DriverApiException('Upload timed out — check your connection and try again');
     } catch (_) {
       throw const DriverApiException('Upload failed — check your connection and try again');
     }
@@ -385,6 +390,44 @@ class DriverApi {
 
   Future<http.Response> _get(String path, {required String fallback}) => _send('GET', path, fallback: fallback);
 
+  static const _timeout = Duration(seconds: 15);
+
+  /// One request+response attempt, scoped to the token available at call
+  /// time. Throws _NeedsRefreshException on a 401 instead of surfacing it
+  /// directly — see _send below, which is what callers actually use.
+  Future<http.Response> _attempt(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+  }) async {
+    final uri = Uri.parse('$baseUrl$path');
+    final headers = await _authHeaders();
+    final http.Response res;
+    switch (method) {
+      case 'GET':
+        res = await _client.get(uri, headers: headers).timeout(_timeout);
+        break;
+      case 'POST':
+        res = await _client.post(uri, headers: headers, body: body == null ? null : jsonEncode(body)).timeout(_timeout);
+        break;
+      case 'PATCH':
+        res = await _client.patch(uri, headers: headers, body: body == null ? null : jsonEncode(body)).timeout(_timeout);
+        break;
+      case 'DELETE':
+        res = await _client.delete(uri, headers: headers).timeout(_timeout);
+        break;
+      default:
+        throw ArgumentError('Unsupported method $method');
+    }
+    if (res.statusCode == 401) throw _NeedsRefreshException();
+    return res;
+  }
+
+  /// Runs one request, and on a 401 refreshes the session via
+  /// [authTokenProvider] and retries exactly once with the refreshed
+  /// token — never more than that. If refresh fails (or the retry is
+  /// still a 401), clears the session so the app stops presenting itself
+  /// as signed in with a token the backend will only ever reject.
   Future<http.Response> _send(
     String method,
     String path, {
@@ -392,28 +435,27 @@ class DriverApi {
     required String fallback,
     int expectedStatus = 200,
   }) async {
-    final http.Response res;
+    http.Response res;
     try {
-      final uri = Uri.parse('$baseUrl$path');
-      final headers = await _authHeaders();
-      switch (method) {
-        case 'GET':
-          res = await _client.get(uri, headers: headers);
-          break;
-        case 'POST':
-          res = await _client.post(uri, headers: headers, body: body == null ? null : jsonEncode(body));
-          break;
-        case 'PATCH':
-          res = await _client.patch(uri, headers: headers, body: body == null ? null : jsonEncode(body));
-          break;
-        case 'DELETE':
-          res = await _client.delete(uri, headers: headers);
-          break;
-        default:
-          throw ArgumentError('Unsupported method $method');
+      try {
+        res = await _attempt(method, path, body: body);
+      } on _NeedsRefreshException {
+        final refreshed = await authTokenProvider.refreshAccessToken();
+        if (!refreshed) {
+          await authTokenProvider.clearSession();
+          throw const DriverApiException('Your session has expired. Please sign in again.');
+        }
+        try {
+          res = await _attempt(method, path, body: body);
+        } on _NeedsRefreshException {
+          await authTokenProvider.clearSession();
+          throw const DriverApiException('Your session has expired. Please sign in again.');
+        }
       }
     } on DriverApiException {
       rethrow;
+    } on TimeoutException {
+      throw const DriverApiException('The request timed out. Please try again.');
     } catch (_) {
       throw DriverApiException(fallback);
     }

@@ -16,6 +16,7 @@ class _VerifyAccountScreenState extends State<VerifyAccountScreen> {
       List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
   bool _isLoading = false;
+  bool _isResending = false;
   String? _errorMessage;
 
   @override
@@ -69,9 +70,23 @@ class _VerifyAccountScreenState extends State<VerifyAccountScreen> {
   }
 
   Future<void> _resendCode() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Verification code resent to ${widget.email}')),
-    );
+    if (_isResending) return; // duplicate-submit protection
+    setState(() => _isResending = true);
+
+    final result = await AuthService().resendConfirmationCode(widget.email);
+
+    if (!mounted) return;
+    setState(() => _isResending = false);
+
+    if (result['success'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Verification code resent to ${widget.email}')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result['error'] as String? ?? 'Unable to resend the code')),
+      );
+    }
   }
 
   @override
@@ -133,7 +148,10 @@ class _VerifyAccountScreenState extends State<VerifyAccountScreen> {
               ),
               const SizedBox(height: 20),
               Center(
-                child: TextButton(onPressed: _resendCode, child: const Text("Resend code")),
+                child: TextButton(
+                  onPressed: _isResending ? null : _resendCode,
+                  child: Text(_isResending ? "Sending..." : "Resend code"),
+                ),
               ),
               const Spacer(),
               const Text(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:ravelgo_admin/services/auth_session.dart';
@@ -9,6 +10,10 @@ class AdminApiException implements Exception {
   @override
   String toString() => message;
 }
+
+/// Internal-only: signals a 401 so _send can refresh and retry once. Never
+/// escapes to a caller.
+class _NeedsRefreshException implements Exception {}
 
 /// GET /api/admin/dashboard — top-line KPIs shown on the admin dashboard.
 class DashboardKpis {
@@ -384,11 +389,56 @@ class AdminApi {
       if (error is Map<String, dynamic> && error['message'] is String) return error['message'] as String;
       if (error is String) return error;
     } catch (_) {
-      // Not the standardized {error:{message}} shape — use the fallback.
+      // Not the standardized {error:{message}} shape — fall through to a
+      // status-appropriate message below.
     }
-    return fallback;
+    switch (res.statusCode) {
+      case 400:
+        return 'That request was invalid. Please check the details and try again.';
+      case 403:
+        return "You don't have permission to do that.";
+      case 404:
+        return 'Not found.';
+      case 409:
+        return 'This conflicts with the current state — please refresh and try again.';
+      case 422:
+        return 'Some of the information provided is invalid.';
+      case 429:
+        return 'Too many requests. Please wait a moment and try again.';
+      default:
+        if (res.statusCode >= 500) return 'The server ran into a problem. Please try again shortly.';
+        return fallback;
+    }
   }
 
+  static const _timeout = Duration(seconds: 15);
+
+  /// One request+response attempt, scoped to the token available at call
+  /// time. Throws _NeedsRefreshException on a 401 instead of surfacing it
+  /// directly — see _send below, which is what callers actually use.
+  Future<http.Response> _attempt(String method, String path, {Map<String, dynamic>? body}) async {
+    final uri = Uri.parse('$baseUrl$path');
+    final headers = await _authHeaders();
+    final http.Response res;
+    switch (method) {
+      case 'GET':
+        res = await _client.get(uri, headers: headers).timeout(_timeout);
+        break;
+      case 'PATCH':
+        res = await _client.patch(uri, headers: headers, body: body == null ? null : jsonEncode(body)).timeout(_timeout);
+        break;
+      default:
+        throw ArgumentError('Unsupported method $method');
+    }
+    if (res.statusCode == 401) throw _NeedsRefreshException();
+    return res;
+  }
+
+  /// Runs one request, and on a 401 refreshes the session via
+  /// [authTokenProvider] and retries exactly once with the refreshed
+  /// token — never more than that. If refresh fails (or the retry is still
+  /// a 401), clears the session so the app stops presenting itself as
+  /// signed in with a token the backend will only ever reject.
   Future<http.Response> _send(
     String method,
     String path, {
@@ -396,22 +446,27 @@ class AdminApi {
     required String fallback,
     int expectedStatus = 200,
   }) async {
-    final http.Response res;
+    http.Response res;
     try {
-      final uri = Uri.parse('$baseUrl$path');
-      final headers = await _authHeaders();
-      switch (method) {
-        case 'GET':
-          res = await _client.get(uri, headers: headers);
-          break;
-        case 'PATCH':
-          res = await _client.patch(uri, headers: headers, body: body == null ? null : jsonEncode(body));
-          break;
-        default:
-          throw ArgumentError('Unsupported method $method');
+      try {
+        res = await _attempt(method, path, body: body);
+      } on _NeedsRefreshException {
+        final refreshed = await authTokenProvider.refreshAccessToken();
+        if (!refreshed) {
+          await authTokenProvider.clearSession();
+          throw const AdminApiException('Your session has expired. Please sign in again.');
+        }
+        try {
+          res = await _attempt(method, path, body: body);
+        } on _NeedsRefreshException {
+          await authTokenProvider.clearSession();
+          throw const AdminApiException('Your session has expired. Please sign in again.');
+        }
       }
     } on AdminApiException {
       rethrow;
+    } on TimeoutException {
+      throw const AdminApiException('The request timed out. Please try again.');
     } catch (_) {
       throw AdminApiException(fallback);
     }

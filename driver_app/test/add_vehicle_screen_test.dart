@@ -11,6 +11,12 @@ import 'package:ravelgo_driver_app/views/vehicles/add_vehicle_screen.dart';
 class _FakeAuth implements AuthTokenProvider {
   @override
   Future<String?> getAccessToken() async => 'fake-token';
+
+  @override
+  Future<bool> refreshAccessToken() async => false;
+
+  @override
+  Future<void> clearSession() async {}
 }
 
 void main() {

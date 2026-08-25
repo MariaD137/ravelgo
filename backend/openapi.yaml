@@ -593,7 +593,11 @@ paths:
   /trips/{id}/status:
     patch:
       tags: [Trips]
-      summary: Advance trip status (Driver or Admin)
+      summary: Advance trip status (Driver or Admin), or cancel it (Rider, own trip only)
+      description: >-
+        A Driver (assigned to the trip) or Admin may set any valid
+        transition. A Rider may only set CANCELLED, and only on a trip they
+        own — any other status or trip from a Rider caller is a 403.
       parameters:
         - $ref: "#/components/parameters/id"
       requestBody:
@@ -670,6 +674,35 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: Trip not eligible to be charged, or already charged
+
+  /trips/{id}/payment-secret:
+    get:
+      tags: [Payments]
+      summary: The Stripe PaymentIntent clientSecret for my own trip's pending CARD payment (Rider)
+      description: >-
+        POST /trips/{id}/charge (Driver/Admin-only) creates the
+        PaymentIntent and returns this secret in its own response, but that
+        caller is never the rider who needs it to present the Stripe
+        PaymentSheet — this is the rider's own way to retrieve it
+        afterward. 404 if no payment exists yet for this trip; 409 if the
+        payment is no longer PENDING or doesn't need client confirmation
+        (e.g. CASH/WALLET).
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: The payment id and its PaymentIntent clientSecret
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paymentId: { type: string }
+                  clientSecret: { type: string, nullable: true }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Payment is no longer pending, or doesn't require client-side confirmation
 
   /payments/{id}/receipt:
     get:

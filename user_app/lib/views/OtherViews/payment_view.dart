@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:ravelgo_user/services/api_client.dart';
 import 'package:ravelgo_user/services/payment_service.dart';
 
 class PaymentView extends StatefulWidget {
@@ -12,6 +14,8 @@ class _PaymentScreenState extends State<PaymentView> {
   String _selectedMethod = 'CARD';
   List<dynamic> _paymentHistory = [];
   bool _isLoading = false;
+  String? _historyError;
+  final Set<String> _payingIds = {};
 
   @override
   void initState() {
@@ -20,7 +24,10 @@ class _PaymentScreenState extends State<PaymentView> {
   }
 
   Future<void> _loadPaymentHistory() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _historyError = null;
+    });
     try {
       final history = await PaymentService().getPaymentHistory();
       if (!mounted) return;
@@ -28,9 +35,50 @@ class _PaymentScreenState extends State<PaymentView> {
         _paymentHistory = history;
         _isLoading = false;
       });
-    } catch (e) {
+    } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _historyError = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _historyError = 'Unable to load payment history.';
+      });
+    }
+  }
+
+  /// Presents the Stripe PaymentSheet for a trip's already-created pending
+  /// CARD charge. Returning normally from PaymentService.payForTrip means
+  /// Stripe accepted the confirmation — the Payment row itself only moves
+  /// to SUCCEEDED once the backend's webhook processes it asynchronously,
+  /// so this refreshes history afterward rather than assuming success.
+  Future<void> _payNow(String tripId, String paymentId) async {
+    setState(() => _payingIds.add(paymentId));
+    try {
+      await PaymentService().payForTrip(tripId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Payment submitted. This may take a moment to confirm.')),
+      );
+      await _loadPaymentHistory();
+    } on StripeException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.error.message)),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to complete payment. Please try again.')),
+      );
+    } finally {
+      if (mounted) setState(() => _payingIds.remove(paymentId));
     }
   }
 
@@ -108,6 +156,19 @@ class _PaymentScreenState extends State<PaymentView> {
                       const SizedBox(height: 12),
                       if (_isLoading)
                         const Center(child: CircularProgressIndicator())
+                      else if (_historyError != null)
+                        Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Column(
+                              children: [
+                                Text(_historyError!, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
+                                const SizedBox(height: 8),
+                                TextButton(onPressed: _loadPaymentHistory, child: const Text('Retry')),
+                              ],
+                            ),
+                          ),
+                        )
                       else if (_paymentHistory.isEmpty)
                         const Center(
                           child: Padding(
@@ -116,14 +177,39 @@ class _PaymentScreenState extends State<PaymentView> {
                           ),
                         )
                       else
-                        ...(_paymentHistory.map((payment) => ListTile(
-                          title: Text('${payment['trip']?['pickup'] ?? 'Trip'} → ${payment['trip']?['destination'] ?? ''}'),
-                          subtitle: Text('${payment['method']} - ${payment['status']}'),
-                          trailing: Text(
-                            '\$${(payment['amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                        ))),
+                        ...(_paymentHistory.map((payment) {
+                          final paymentId = payment['id'] as String;
+                          final tripId = payment['tripId'] as String? ?? payment['trip']?['id'] as String?;
+                          final isPending = payment['status'] == 'PENDING' && payment['method'] == 'CARD';
+                          final isPaying = _payingIds.contains(paymentId);
+                          return ListTile(
+                            title: Text('${payment['trip']?['pickup'] ?? 'Trip'} → ${payment['trip']?['destination'] ?? ''}'),
+                            subtitle: Text('${payment['method']} - ${payment['status']}'),
+                            trailing: isPending && tripId != null
+                                ? SizedBox(
+                                    width: 96,
+                                    child: ElevatedButton(
+                                      onPressed: isPaying ? null : () => _payNow(tripId, paymentId),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.amber,
+                                        foregroundColor: Colors.black,
+                                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      ),
+                                      child: isPaying
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(strokeWidth: 2),
+                                            )
+                                          : const Text('Pay now', style: TextStyle(fontSize: 12)),
+                                    ),
+                                  )
+                                : Text(
+                                    '\$${(payment['amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                          );
+                        })),
                     ],
                   ),
                 ),
