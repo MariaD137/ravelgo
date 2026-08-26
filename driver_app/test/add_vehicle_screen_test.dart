@@ -47,7 +47,11 @@ void main() {
       authTokenProvider: _FakeAuth(),
       client: MockClient((req) async {
         sentBody = jsonDecode(req.body) as Map<String, dynamic>;
-        return http.Response(jsonEncode({'id': 'v1', ...sentBody!, 'photos': []}), 201);
+        // Vehicle.fromJson requires driverId (non-nullable) — omitting it
+        // here would make the response fail to parse, which _submit()'s
+        // own catch block swallows silently, masking a passing test as a
+        // pop that mysteriously never happens.
+        return http.Response(jsonEncode({'id': 'v1', 'driverId': 'd1', ...sentBody!, 'photos': []}), 201);
       }),
     );
 
