@@ -100,7 +100,7 @@ class _DriverListScreenState extends State<DriverListScreen> {
             padding: const EdgeInsets.all(16),
             physics: const AlwaysScrollableScrollPhysics(),
             itemCount: _drivers.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (context, i) {
               final d = _drivers[i];
               final vehicleLabel = d.vehicles.isEmpty ? "No vehicle on file" : "${d.vehicles.first.brand} ${d.vehicles.first.model}";

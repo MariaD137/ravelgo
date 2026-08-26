@@ -67,7 +67,7 @@ class _PaymentScreenState extends State<PaymentView> {
     } on StripeException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.error.message)),
+        SnackBar(content: Text(e.error.message ?? 'Payment could not be completed.')),
       );
     } on ApiException catch (e) {
       if (!mounted) return;

@@ -124,7 +124,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
             padding: const EdgeInsets.all(16),
             physics: const AlwaysScrollableScrollPhysics(),
             itemCount: _vehicles.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (context, i) {
               final v = _vehicles[i];
               final (badgeColor, badgeLabel) = _verificationBadge(v.verificationStatus);
@@ -145,7 +145,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                           clipBehavior: Clip.antiAlias,
                           decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10)),
                           child: photoUrl != null
-                              ? Image.network(photoUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.directions_car, color: Colors.black54))
+                              ? Image.network(photoUrl, fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.directions_car, color: Colors.black54))
                               : const Icon(Icons.directions_car, color: Colors.black54),
                         ),
                         const SizedBox(width: 12),

@@ -167,7 +167,7 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
             padding: const EdgeInsets.all(16),
             physics: const AlwaysScrollableScrollPhysics(),
             itemCount: _driverDocumentTypes.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (context, i) {
               final type = _driverDocumentTypes[i];
               final matches = _documents.where((d) => d.documentType == type && d.vehicleId == null).toList();

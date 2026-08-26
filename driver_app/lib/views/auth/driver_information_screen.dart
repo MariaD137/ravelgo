@@ -60,7 +60,7 @@ class _DriverInformationScreenState extends State<DriverInformationScreen> {
             api: _api,
             onSaved: () => Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (context) => const VerifyAccountScreen()),
+              MaterialPageRoute(builder: (context) => VerifyAccountScreen(email: widget.email)),
             ),
           ),
         ),

@@ -259,13 +259,13 @@ class _DriverDetailScreenState extends State<DriverDetailScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: vehicle.photos.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 6),
+                  separatorBuilder: (_, _) => const SizedBox(width: 6),
                   itemBuilder: (context, i) {
                     final photo = vehicle.photos[i];
                     return ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: photo.url != null
-                          ? Image.network(photo.url!, width: 72, height: 72, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined))
+                          ? Image.network(photo.url!, width: 72, height: 72, fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined))
                           : Container(width: 72, height: 72, color: AppColors.background, child: const Icon(Icons.image_outlined)),
                     );
                   },

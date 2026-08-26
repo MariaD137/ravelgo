@@ -314,6 +314,7 @@ class DriverApi {
         'title': title,
         'fileKey': presigned['fileKey'],
         'documentType': driverDocumentTypeToJson(documentType),
+        // ignore: use_null_aware_elements
         if (vehicleId != null) 'vehicleId': vehicleId,
         if (expiryDate != null) 'expiryDate': expiryDate.toIso8601String(),
       },

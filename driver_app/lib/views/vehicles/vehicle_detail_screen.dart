@@ -278,7 +278,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: vehicle.photos.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
               itemBuilder: (context, i) {
                 final photo = vehicle.photos[i];
                 return Stack(
@@ -289,7 +289,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen> {
                       clipBehavior: Clip.antiAlias,
                       decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), color: AppColors.background),
                       child: photo.url != null
-                          ? Image.network(photo.url!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined))
+                          ? Image.network(photo.url!, fit: BoxFit.cover, errorBuilder: (_, _, _) => const Icon(Icons.broken_image_outlined))
                           : const Icon(Icons.image_outlined),
                     ),
                     Positioned(

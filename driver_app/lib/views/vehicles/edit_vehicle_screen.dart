@@ -140,7 +140,7 @@ class _EditVehicleScreenState extends State<EditVehicleScreen> {
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<VehicleType>(
-                value: _vehicleType,
+                initialValue: _vehicleType,
                 decoration: const InputDecoration(labelText: "Vehicle type *", border: OutlineInputBorder()),
                 items: VehicleType.values
                     .map((type) => DropdownMenuItem(value: type, child: Text(vehicleTypeLabel(type))))

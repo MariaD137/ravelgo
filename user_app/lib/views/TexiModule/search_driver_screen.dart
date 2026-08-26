@@ -23,7 +23,6 @@ class SearchDriverScreen extends StatefulWidget {
 class _SearchDriverScreenState extends State<SearchDriverScreen> {
   late Map<String, dynamic> _trip;
   Timer? _pollTimer;
-  bool _cancelling = false;
   String? _error;
 
   @override
@@ -281,7 +280,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: _cancelling ? null : _openCancelSheet,
+        onPressed: _openCancelSheet,
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.yellow[700],
           foregroundColor: Colors.black,

@@ -513,6 +513,7 @@ class AdminApi {
     await _send(
       'PATCH',
       '/api/documents/$documentId/review',
+      // ignore: use_null_aware_elements
       body: {'status': status, if (rejectionReason != null) 'rejectionReason': rejectionReason},
       fallback: 'Unable to review this document',
     );
@@ -524,6 +525,7 @@ class AdminApi {
     await _send(
       'PATCH',
       '/api/vehicles/$vehicleId/review',
+      // ignore: use_null_aware_elements
       body: {'status': status, if (reason != null) 'reason': reason},
       fallback: 'Unable to review this vehicle',
     );
