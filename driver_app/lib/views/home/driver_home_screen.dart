@@ -61,7 +61,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = e is DriverApiException ? e.message : "Unable to load dashboard";
+        _errorMessage = e is DriverApiException ? e.message : "Please check your connection and try again.";
         _state = _SummaryLoadState.error;
       });
     }
@@ -102,15 +102,21 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
           ),
         );
       case _SummaryLoadState.error:
+        const errorTitle = "Unable to load dashboard";
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: AppComponents.cardDecoration(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text("Unable to load dashboard", style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 4),
-              Text(_errorMessage, style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
+              const Text(errorTitle, style: TextStyle(fontWeight: FontWeight.w600)),
+              // Only shown when the backend/network gave a more specific
+              // reason than the generic title above — otherwise this would
+              // just repeat the same sentence twice.
+              if (_errorMessage != errorTitle) ...[
+                const SizedBox(height: 4),
+                Text(_errorMessage, style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
+              ],
               const SizedBox(height: 12),
               AppComponents.outlineButton(text: "Try again", onPressed: _loadSummary),
             ],

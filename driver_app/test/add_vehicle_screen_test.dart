@@ -32,6 +32,7 @@ void main() {
     );
 
     await tester.pumpWidget(MaterialApp(home: AddVehicleScreen(api: api)));
+    await tester.ensureVisible(find.text('Save vehicle'));
     await tester.tap(find.text('Save vehicle'));
     await tester.pump();
 
@@ -70,6 +71,7 @@ void main() {
     await tester.enterText(find.widgetWithText(TextFormField, 'Plate number *'), 'ABC-123');
     await tester.enterText(find.widgetWithText(TextFormField, 'Year *'), '2021');
 
+    await tester.ensureVisible(find.text('Save vehicle'));
     await tester.tap(find.text('Save vehicle'));
     await tester.pumpAndSettle();
 

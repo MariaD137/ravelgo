@@ -44,7 +44,7 @@ class _DriverListScreenState extends State<DriverListScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = e is AdminApiException ? e.message : "Unable to load drivers";
+        _errorMessage = e is AdminApiException ? e.message : "Please check your connection and try again.";
         _state = _LoadState.error;
       });
     }
@@ -77,14 +77,19 @@ class _DriverListScreenState extends State<DriverListScreen> {
       case _LoadState.loading:
         return const Center(child: CircularProgressIndicator());
       case _LoadState.error:
+        const errorTitle = "Unable to load drivers";
         return Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text("Unable to load drivers", style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 6),
-              Text(_errorMessage, style: const TextStyle(fontSize: 12.5, color: Colors.black54), textAlign: TextAlign.center),
+              const Text(errorTitle, style: TextStyle(fontWeight: FontWeight.w600)),
+              // Only shown when the backend/network gave a more specific
+              // reason than the generic title above.
+              if (_errorMessage != errorTitle) ...[
+                const SizedBox(height: 6),
+                Text(_errorMessage, style: const TextStyle(fontSize: 12.5, color: Colors.black54), textAlign: TextAlign.center),
+              ],
               const SizedBox(height: 16),
               AppComponents.outlineButton(text: "Try again", onPressed: _load),
             ],

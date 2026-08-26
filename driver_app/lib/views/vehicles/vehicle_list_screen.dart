@@ -45,7 +45,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = e is DriverApiException ? e.message : "Unable to load your vehicles";
+        _errorMessage = e is DriverApiException ? e.message : "Please check your connection and try again.";
         _state = _LoadState.error;
       });
     }
@@ -85,14 +85,19 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
           children: [CircularProgressIndicator(), SizedBox(height: 12), Text("Loading your vehicles...", style: TextStyle(color: Colors.black54))],
         )));
       case _LoadState.error:
+        const errorTitle = "Unable to load your vehicles";
         return Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
               const SizedBox(height: 40),
-              const Text("Unable to load your vehicles", style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 6),
-              Text(_errorMessage, style: const TextStyle(fontSize: 12.5, color: Colors.black54), textAlign: TextAlign.center),
+              const Text(errorTitle, style: TextStyle(fontWeight: FontWeight.w600)),
+              // Only shown when the backend/network gave a more specific
+              // reason than the generic title above.
+              if (_errorMessage != errorTitle) ...[
+                const SizedBox(height: 6),
+                Text(_errorMessage, style: const TextStyle(fontSize: 12.5, color: Colors.black54), textAlign: TextAlign.center),
+              ],
               const SizedBox(height: 16),
               AppComponents.outlineButton(text: "Try again", onPressed: _load),
             ],

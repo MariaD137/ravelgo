@@ -57,7 +57,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = e is AdminApiException ? e.message : "Unable to load dashboard";
+        _errorMessage = e is AdminApiException ? e.message : "Please check your connection and try again.";
         _state = _LoadState.error;
       });
     }
@@ -134,15 +134,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         );
       case _LoadState.error:
+        const errorTitle = "Unable to load dashboard";
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: AppComponents.cardDecoration(),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text("Unable to load dashboard", style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 4),
-              Text(_errorMessage, style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
+              const Text(errorTitle, style: TextStyle(fontWeight: FontWeight.w600)),
+              // Only shown when the backend/network gave a more specific
+              // reason than the generic title above.
+              if (_errorMessage != errorTitle) ...[
+                const SizedBox(height: 4),
+                Text(_errorMessage, style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
+              ],
               const SizedBox(height: 12),
               AppComponents.outlineButton(text: "Try again", onPressed: _load),
             ],
@@ -171,7 +176,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const Text("Rides this week", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                   const SizedBox(height: 16),
                   SizedBox(
-                    height: 120,
+                    height: 130,
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: List.generate(_rides.length, (i) {
