@@ -1,0 +1,52 @@
+name: App Screenshots
+
+# On-demand only (Actions tab -> Run workflow, or gh workflow run) — booting
+# an Android emulator per app is slow and this isn't a correctness gate
+# (flutter-ci.yml already covers analyze/test on every push/PR), so it
+# doesn't run automatically.
+on:
+  workflow_dispatch:
+
+jobs:
+  screenshots:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [user_app, driver_app, admin_app]
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      - name: Set up placeholder .env
+        run: cp .env.example .env
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # Captures only the cold-start screens reachable with no signed-in
+      # session and no live backend (splash -> login) — see
+      # integration_test/screenshot_test.dart for exactly what's captured
+      # and why.
+      - name: Run screenshot integration test on an Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: cd ${{ matrix.app }} && flutter drive --driver=test_driver/integration_test.dart --target=integration_test/screenshot_test.dart
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ matrix.app }}
+          path: ${{ matrix.app }}/screenshots/*.png
+          if-no-files-found: error
