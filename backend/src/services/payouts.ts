@@ -69,8 +69,7 @@ export async function calculatePayoutForPeriod(
     return sum + (trip.payment?.status === "SUCCEEDED" ? trip.payment.amount : 0);
   }, 0);
 
-  const platformFeePercent = env.PLATFORM_FEE_PERCENT;
-  const platformFee = grossAmount * platformFeePercent;
+  const platformFee = grossAmount * env.PLATFORM_FEE_PERCENT;
 
   // Check if driver has active subscription (subscription fee offset)
   const subscription = await prisma.driverSubscription.findUnique({

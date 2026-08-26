@@ -1,170 +1,151 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_admin/models/driver_record.dart';
-import 'package:ravelgo_admin/services/api_client.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:ravelgo_admin/services/admin_api.dart';
+import 'package:ravelgo_admin/services/auth_session.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/views/drivers/driver_detail_screen.dart';
 
+enum _LoadState { loading, loaded, error }
+
 class DriverListScreen extends StatefulWidget {
   final bool embedded;
-  const DriverListScreen({super.key, this.embedded = false});
+  // Injectable for tests; production call sites (AdminShell) omit this and
+  // get the real dotenv-configured client.
+  final AdminApi? api;
+  const DriverListScreen({super.key, this.embedded = false, this.api});
 
   @override
   State<DriverListScreen> createState() => _DriverListScreenState();
 }
 
 class _DriverListScreenState extends State<DriverListScreen> {
-  bool _loading = true;
-  String? _error;
-  List<Map<String, dynamic>> _drivers = [];
+  late final AdminApi _api = widget.api ??
+      AdminApi(baseUrl: dotenv.env['API_BASE_URL'] ?? '', authTokenProvider: const CognitoAuthTokenProvider());
+
+  _LoadState _state = _LoadState.loading;
+  List<AdminDriverSummary> _drivers = [];
+  String _errorMessage = "Unable to load drivers";
 
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _load();
   }
 
-  Future<void> _loadData() async {
+  Future<void> _load() async {
+    setState(() => _state = _LoadState.loading);
     try {
-      final response = await ApiClient().get('/drivers');
-      final page = response as Map<String, dynamic>;
+      final paged = await _api.fetchDrivers(pageSize: 100);
       if (!mounted) return;
       setState(() {
-        _drivers = List<Map<String, dynamic>>.from(page['data'] ?? []);
-        _loading = false;
+        _drivers = paged.drivers;
+        _state = _LoadState.loaded;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString();
-        _loading = false;
+        _errorMessage = e is AdminApiException ? e.message : "Please check your connection and try again.";
+        _state = _LoadState.error;
       });
     }
   }
 
-  DriverRecord _toDriverRecord(Map<String, dynamic> json) {
-    final user = json['user'] as Map<String, dynamic>? ?? {};
-    final vehicles = json['vehicles'] as List? ?? [];
-    final statusStr = json['status'] as String? ?? 'PENDING_REVIEW';
-    DriverStatus status;
-    switch (statusStr) {
-      case 'ACTIVE':
-        status = DriverStatus.active;
-        break;
-      case 'SUSPENDED':
-        status = DriverStatus.suspended;
-        break;
-      default:
-        status = DriverStatus.pendingReview;
-    }
-
-    String vehicle = 'No vehicle';
-    if (vehicles.isNotEmpty) {
-      final v = vehicles[0] as Map<String, dynamic>;
-      vehicle = '${v['brand'] ?? ''} ${v['model'] ?? ''}'.trim();
-    }
-
-    return DriverRecord(
-      id: json['id'] ?? '',
-      name: '${user['firstName'] ?? ''} ${user['lastName'] ?? ''}'.trim(),
-      email: user['email'] ?? '',
-      vehicle: vehicle,
-      rating: (json['rating'] ?? 5.0).toDouble(),
-      totalTrips: json['totalTrips'] ?? 0,
-      status: status,
-      subscriptionActive: json['subscriptionActive'] == true,
-    );
-  }
-
-  Color _statusColor(DriverStatus s) {
-    switch (s) {
-      case DriverStatus.active:
+  Color _statusColor(String status) {
+    switch (status) {
+      case "ACTIVE":
         return AppColors.success;
-      case DriverStatus.pendingReview:
-        return AppColors.warning;
-      case DriverStatus.suspended:
+      case "SUSPENDED":
         return AppColors.danger;
+      default:
+        return AppColors.warning;
     }
   }
 
-  String _statusLabel(DriverStatus s) {
-    switch (s) {
-      case DriverStatus.active:
+  String _statusLabel(String status) {
+    switch (status) {
+      case "ACTIVE":
         return "Active";
-      case DriverStatus.pendingReview:
-        return "Pending review";
-      case DriverStatus.suspended:
+      case "SUSPENDED":
         return "Suspended";
+      default:
+        return "Pending review";
+    }
+  }
+
+  Widget _buildBody() {
+    switch (_state) {
+      case _LoadState.loading:
+        return const Center(child: CircularProgressIndicator());
+      case _LoadState.error:
+        const errorTitle = "Unable to load drivers";
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(errorTitle, style: TextStyle(fontWeight: FontWeight.w600)),
+              // Only shown when the backend/network gave a more specific
+              // reason than the generic title above.
+              if (_errorMessage != errorTitle) ...[
+                const SizedBox(height: 6),
+                Text(_errorMessage, style: const TextStyle(fontSize: 12.5, color: Colors.black54), textAlign: TextAlign.center),
+              ],
+              const SizedBox(height: 16),
+              AppComponents.outlineButton(text: "Try again", onPressed: _load),
+            ],
+          ),
+        );
+      case _LoadState.loaded:
+        if (_drivers.isEmpty) {
+          return const Center(child: Text("No drivers yet", style: TextStyle(color: Colors.black54)));
+        }
+        return RefreshIndicator(
+          onRefresh: _load,
+          child: ListView.separated(
+            padding: const EdgeInsets.all(16),
+            physics: const AlwaysScrollableScrollPhysics(),
+            itemCount: _drivers.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
+            itemBuilder: (context, i) {
+              final d = _drivers[i];
+              final vehicleLabel = d.vehicles.isEmpty ? "No vehicle on file" : "${d.vehicles.first.brand} ${d.vehicles.first.model}";
+              return InkWell(
+                onTap: () async {
+                  await Navigator.push(context, MaterialPageRoute(builder: (_) => DriverDetailScreen(driverId: d.id, api: _api)));
+                  _load();
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: AppComponents.cardDecoration(),
+                  child: Row(
+                    children: [
+                      const CircleAvatar(radius: 22, backgroundColor: Color(0xFFF0F0F0), child: Icon(Icons.person, color: Colors.black45)),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(d.name.isEmpty ? d.email : d.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 4),
+                            Text("$vehicleLabel · ${d.totalTrips} trips · ★ ${d.rating.toStringAsFixed(1)}", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                          ],
+                        ),
+                      ),
+                      AppComponents.badge(_statusLabel(d.status), color: _statusColor(d.status)),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      final loader = const Center(child: CircularProgressIndicator());
-      if (widget.embedded) return loader;
-      return Scaffold(appBar: AppBar(title: const Text("Drivers")), body: loader);
-    }
-
-    if (_error != null) {
-      final errorView = Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.error_outline, size: 48, color: Colors.red),
-              const SizedBox(height: 12),
-              Text('Failed to load drivers', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
-              const SizedBox(height: 8),
-              Text(_error!, style: const TextStyle(fontSize: 12, color: Colors.black54), textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              ElevatedButton(onPressed: () { setState(() { _loading = true; _error = null; }); _loadData(); }, child: const Text("Retry")),
-            ],
-          ),
-        ),
-      );
-      if (widget.embedded) return errorView;
-      return Scaffold(appBar: AppBar(title: const Text("Drivers")), body: errorView);
-    }
-
-    final body = RefreshIndicator(
-      onRefresh: _loadData,
-      child: _drivers.isEmpty
-          ? ListView(children: const [SizedBox(height: 100), Center(child: Text("No drivers found", style: TextStyle(color: Colors.black54)))])
-          : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: _drivers.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 10),
-              itemBuilder: (context, i) {
-                final d = _toDriverRecord(_drivers[i]);
-                return InkWell(
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DriverDetailScreen(driver: d))),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: AppComponents.cardDecoration(),
-                    child: Row(
-                      children: [
-                        const CircleAvatar(radius: 22, backgroundColor: Color(0xFFF0F0F0), child: Icon(Icons.person, color: Colors.black45)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(d.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                              const SizedBox(height: 4),
-                              Text("${d.vehicle} · ${d.totalTrips} trips · ★ ${d.rating}", style: const TextStyle(fontSize: 12, color: Colors.black54)),
-                            ],
-                          ),
-                        ),
-                        AppComponents.badge(_statusLabel(d.status), color: _statusColor(d.status)),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-    );
-
+    final body = _buildBody();
     if (widget.embedded) return body;
     return Scaffold(appBar: AppBar(title: const Text("Drivers")), body: body);
   }

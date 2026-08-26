@@ -1,23 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/models/vehicle.dart';
-import 'package:ravelgo_driver_app/services/api_client.dart';
+import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 
 class AddVehicleScreen extends StatefulWidget {
-  const AddVehicleScreen({super.key});
+  final DriverApi api;
+  // When reached from "My Vehicles", this screen pops back to the list on
+  // success (default). During onboarding it's a forward step instead — the
+  // caller passes onSaved to continue to the next onboarding screen rather
+  // than popping to a screen that doesn't exist in that stack.
+  final VoidCallback? onSaved;
+  const AddVehicleScreen({super.key, required this.api, this.onSaved});
 
   @override
   State<AddVehicleScreen> createState() => _AddVehicleScreenState();
 }
 
 class _AddVehicleScreenState extends State<AddVehicleScreen> {
+  final _formKey = GlobalKey<FormState>();
   final _brand = TextEditingController();
   final _model = TextEditingController();
   final _colour = TextEditingController();
   final _plate = TextEditingController();
   final _year = TextEditingController();
-  bool _isLoading = false;
-  String? _errorMessage;
+  final _vin = TextEditingController();
+  VehicleType _vehicleType = VehicleType.sedan;
+
+  bool _submitting = false;
+  String? _submitError;
 
   @override
   void dispose() {
@@ -26,52 +36,54 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     _colour.dispose();
     _plate.dispose();
     _year.dispose();
+    _vin.dispose();
     super.dispose();
   }
 
-  Future<void> _saveVehicle() async {
-    final brand = _brand.text.trim();
-    final model = _model.text.trim();
-    final colour = _colour.text.trim();
-    final plate = _plate.text.trim();
-    final year = _year.text.trim();
-
-    if (brand.isEmpty || model.isEmpty || colour.isEmpty || plate.isEmpty || year.isEmpty) {
-      setState(() => _errorMessage = 'Please fill in all fields');
-      return;
+  String? _requiredValidator(String? value, {int minLength = 1}) {
+    if (value == null || value.trim().length < minLength) {
+      return "Required";
     }
+    return null;
+  }
+
+  String? _yearValidator(String? value) {
+    if (value == null || value.trim().isEmpty) return "Required";
+    final year = int.tryParse(value.trim());
+    if (year == null || value.trim().length != 4) return "Enter a 4-digit year";
+    final currentYear = DateTime.now().year;
+    if (year < 1980 || year > currentYear + 1) return "Enter a realistic year";
+    return null;
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
 
     setState(() {
-      _isLoading = true;
-      _errorMessage = null;
+      _submitting = true;
+      _submitError = null;
     });
-
     try {
-      await ApiClient().post('/vehicles', body: {
-        'brand': brand,
-        'model': model,
-        'colour': colour,
-        'plateNumber': plate,
-        'year': year,
-      });
-
-      if (!mounted) return;
-
-      Navigator.pop(
-        context,
-        Vehicle(
-          brand: brand,
-          model: model,
-          colour: colour,
-          plateNumber: plate,
-          year: year,
-        ),
+      await widget.api.createVehicle(
+        brand: _brand.text.trim(),
+        model: _model.text.trim(),
+        colour: _colour.text.trim(),
+        plateNumber: _plate.text.trim(),
+        year: _year.text.trim(),
+        vin: _vin.text.trim().isEmpty ? null : _vin.text.trim(),
+        vehicleType: _vehicleType,
       );
+      if (!mounted) return;
+      if (widget.onSaved != null) {
+        widget.onSaved!();
+      } else {
+        Navigator.pop(context, true);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _isLoading = false;
-        _errorMessage = 'Failed to save vehicle. Please try again.';
+        _submitError = e is DriverApiException ? e.message : "Unable to save this vehicle";
+        _submitting = false;
       });
     }
   }
@@ -80,46 +92,94 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Add Vehicle")),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_errorMessage != null) ...[
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.red[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red[200]!),
-                ),
-                child: Text(
-                  _errorMessage!,
-                  style: TextStyle(color: Colors.red[800], fontSize: 14),
-                ),
+      body: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: _brand,
+                decoration: const InputDecoration(labelText: "Make *", hintText: "e.g. Toyota", border: OutlineInputBorder()),
+                validator: _requiredValidator,
               ),
               const SizedBox(height: 16),
+              TextFormField(
+                controller: _model,
+                decoration: const InputDecoration(labelText: "Model *", hintText: "e.g. Camry", border: OutlineInputBorder()),
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _colour,
+                decoration: const InputDecoration(labelText: "Colour *", border: OutlineInputBorder()),
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _plate,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(labelText: "Plate number *", border: OutlineInputBorder()),
+                validator: _requiredValidator,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _year,
+                keyboardType: TextInputType.number,
+                maxLength: 4,
+                decoration: const InputDecoration(labelText: "Year *", border: OutlineInputBorder(), counterText: ""),
+                validator: _yearValidator,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _vin,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: "VIN (optional)",
+                  hintText: "17-character vehicle identification number",
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) return null;
+                  if (value.trim().length < 5) return "VIN looks too short";
+                  return null;
+                },
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<VehicleType>(
+                initialValue: _vehicleType,
+                decoration: const InputDecoration(labelText: "Vehicle type *", border: OutlineInputBorder()),
+                items: VehicleType.values
+                    .map((type) => DropdownMenuItem(value: type, child: Text(vehicleTypeLabel(type))))
+                    .toList(),
+                onChanged: (value) {
+                  if (value != null) setState(() => _vehicleType = value);
+                },
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.04), borderRadius: BorderRadius.circular(10)),
+                child: const Text(
+                  "You'll be able to add photos and required documents (registration, insurance, inspection) from the vehicle's page after saving it. Your vehicle enters PENDING verification as soon as you save it.",
+                  style: TextStyle(fontSize: 12.5, color: Colors.black54),
+                ),
+              ),
+              if (_submitError != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                  child: Text(_submitError!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+                ),
+              ],
+              const SizedBox(height: 28),
+              _submitting
+                  ? const Center(child: CircularProgressIndicator())
+                  : AppComponents.primaryButton(text: "Save vehicle", onPressed: _submit),
             ],
-            TextField(controller: _brand, decoration: const InputDecoration(labelText: "Brand", border: OutlineInputBorder())),
-            const SizedBox(height: 16),
-            TextField(controller: _model, decoration: const InputDecoration(labelText: "Model", border: OutlineInputBorder())),
-            const SizedBox(height: 16),
-            TextField(controller: _colour, decoration: const InputDecoration(labelText: "Colour", border: OutlineInputBorder())),
-            const SizedBox(height: 16),
-            TextField(controller: _plate, decoration: const InputDecoration(labelText: "Plate number", border: OutlineInputBorder())),
-            const SizedBox(height: 16),
-            TextField(controller: _year, decoration: const InputDecoration(labelText: "Year", border: OutlineInputBorder()), keyboardType: TextInputType.number),
-            const SizedBox(height: 24),
-            AppComponents.uploadBox("Upload vehicle registration (Car Papers)"),
-            const SizedBox(height: 28),
-            _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : AppComponents.primaryButton(
-                    text: "Save vehicle",
-                    onPressed: _saveVehicle,
-                  ),
-          ],
+          ),
         ),
       ),
     );

@@ -13,6 +13,12 @@ export interface DriverLocation {
 const tripRooms = new Map<string, Set<WebSocket>>();
 const latestDriverLocation = new Map<string, DriverLocation>();
 
+// Admin-only fleet presence room — separate from tripRooms because it's not
+// scoped to one trip; every socket in here gets every driver's presence
+// event platform-wide. Membership is Admin-only, enforced in
+// realtime/server.ts before joinFleetRoom is ever called.
+const fleetRoom = new Set<WebSocket>();
+
 export function joinTripRoom(tripId: string, socket: WebSocket) {
   let room = tripRooms.get(tripId);
   if (!room) {
@@ -25,6 +31,26 @@ export function joinTripRoom(tripId: string, socket: WebSocket) {
 export function leaveAllRooms(socket: WebSocket) {
   for (const room of tripRooms.values()) {
     room.delete(socket);
+  }
+  fleetRoom.delete(socket);
+}
+
+export function joinFleetRoom(socket: WebSocket) {
+  fleetRoom.add(socket);
+}
+
+export type FleetEventType =
+  | "driver:online"
+  | "driver:offline"
+  | "driver:suspended"
+  | "driver:trip_started"
+  | "driver:trip_completed";
+
+export function broadcastFleetEvent(type: FleetEventType, payload: Record<string, unknown>) {
+  if (fleetRoom.size === 0) return;
+  const message = JSON.stringify({ type, ...payload });
+  for (const socket of fleetRoom) {
+    if (socket.readyState === socket.OPEN) socket.send(message);
   }
 }
 
@@ -90,4 +116,5 @@ export function notifyDriverNewTrip(driverId: string, trip: { id: string; pickup
 export function resetRealtimeState() {
   tripRooms.clear();
   latestDriverLocation.clear();
+  fleetRoom.clear();
 }

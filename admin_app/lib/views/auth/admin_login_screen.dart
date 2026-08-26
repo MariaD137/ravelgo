@@ -42,17 +42,37 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
     if (!mounted) return;
 
-    if (result['success'] == true) {
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const AdminShell()),
-        (route) => false,
-      );
-    } else {
+    if (result['success'] != true) {
       setState(() {
         _isLoading = false;
         _errorMessage = result['error'] as String?;
       });
+      return;
     }
+
+    // A real Cognito sign-in succeeding only proves this is a real
+    // RavelGo account, not that it's an admin one — every backend admin
+    // route independently enforces requireRole("Admin") regardless of
+    // this check (see AuthService.isInGroup's doc comment), but there's no
+    // reason to let a Rider/Driver account sit in the admin shell UI
+    // watching every screen 403 when we can tell right away.
+    final isAdmin = await AuthService().isInGroup('Admin');
+    if (!mounted) return;
+
+    if (!isAdmin) {
+      await AuthService().signOut();
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'This account is not authorized for RavelGo Admin.';
+      });
+      return;
+    }
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const AdminShell()),
+      (route) => false,
+    );
   }
 
   @override

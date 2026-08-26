@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_user/views/HomeView/home.dart';
+import 'package:ravelgo_user/services/api_client.dart';
+import 'package:ravelgo_user/services/trip_service.dart';
 
 class CancelRideScreen extends StatefulWidget {
-  const CancelRideScreen({super.key});
+  final String tripId;
+
+  const CancelRideScreen({super.key, required this.tripId});
 
   @override
   State<CancelRideScreen> createState() => _CancelRideScreenState();
@@ -10,6 +13,8 @@ class CancelRideScreen extends StatefulWidget {
 
 class _CancelRideScreenState extends State<CancelRideScreen> {
   int? selectedReasonIndex;
+  bool _submitting = false;
+  String? _error;
   final List<String> reasons = [
     "Long pick up time",
     "Accidental request",
@@ -17,6 +22,26 @@ class _CancelRideScreenState extends State<CancelRideScreen> {
     "Driver asked to cancel",
     "Driver not at pick up point",
   ];
+
+  Future<void> _confirmCancel() async {
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await TripService().cancelTrip(widget.tripId);
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _error = 'Unable to cancel this trip. Please try again.');
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +58,7 @@ class _CancelRideScreenState extends State<CancelRideScreen> {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: _submitting ? null : () => Navigator.pop(context, false),
                   ),
                   const SizedBox(width: 16),
                 ],
@@ -43,17 +68,25 @@ class _CancelRideScreenState extends State<CancelRideScreen> {
                 "What was the issue?",
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
-              SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 0),
-                    ...List.generate(reasons.length, (index) => _buildRadioTile(index)),
-                    _buildOtherOption(),
-                    const SizedBox(height: 0),
-                  ],
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 0),
+                      ...List.generate(reasons.length, (index) => _buildRadioTile(index)),
+                      _buildOtherOption(),
+                      const SizedBox(height: 0),
+                    ],
+                  ),
                 ),
               ),
+              if (_error != null) ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+                ),
+              ],
               Container(
                 padding: const EdgeInsets.all(4),
                 color: Colors.grey.shade300,
@@ -62,16 +95,11 @@ class _CancelRideScreenState extends State<CancelRideScreen> {
                   style: TextStyle(fontSize: 13),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: selectedReasonIndex == null ? null : () {
-                    Navigator.pop(context); // First close the sheet
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (_) => const HomePage()),
-                    );
-                  },
+                  onPressed: (selectedReasonIndex == null || _submitting) ? null : _confirmCancel,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: selectedReasonIndex == null ? Colors.yellow[100] : Colors.yellow[700],
                     foregroundColor: Colors.black,
@@ -80,7 +108,13 @@ class _CancelRideScreenState extends State<CancelRideScreen> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
-                  child: const Text("DONE"),
+                  child: _submitting
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text("DONE"),
                 ),
               )
             ],

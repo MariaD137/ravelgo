@@ -151,6 +151,79 @@ class AuthService {
     await _storage.deleteAll();
   }
 
+  /// Starts a real Cognito password-reset: sends a confirmation code to the
+  /// account's verified email/phone. Never returns success unless Cognito
+  /// itself returned 200 — a caller must not show "code sent" on a network
+  /// failure or a Cognito error.
+  Future<Map<String, dynamic>> forgotPassword(String email) async {
+    final http = HttpClient();
+    final uri = Uri.parse(_cognitoUrl);
+    final request = await http.postUrl(uri);
+    request.headers.set('Content-Type', 'application/x-amz-json-1.1');
+    request.headers.set('X-Amz-Target', 'AWSCognitoIdentityProviderService.ForgotPassword');
+    request.write(jsonEncode({
+      'ClientId': _clientId,
+      'Username': email,
+    }));
+    final response = await request.close();
+    final body = jsonDecode(await response.transform(utf8.decoder).join());
+
+    if (response.statusCode != 200) {
+      final errorType = body['__type'] ?? 'UnknownError';
+      final message = body['message'] ?? 'Unable to send a reset code';
+      return {'success': false, 'error': _friendlyError(errorType, message)};
+    }
+    return {'success': true};
+  }
+
+  /// Completes a password reset with the code from [forgotPassword] and a
+  /// new password.
+  Future<Map<String, dynamic>> confirmForgotPassword(String email, String code, String newPassword) async {
+    final http = HttpClient();
+    final uri = Uri.parse(_cognitoUrl);
+    final request = await http.postUrl(uri);
+    request.headers.set('Content-Type', 'application/x-amz-json-1.1');
+    request.headers.set('X-Amz-Target', 'AWSCognitoIdentityProviderService.ConfirmForgotPassword');
+    request.write(jsonEncode({
+      'ClientId': _clientId,
+      'Username': email,
+      'ConfirmationCode': code,
+      'Password': newPassword,
+    }));
+    final response = await request.close();
+    final body = jsonDecode(await response.transform(utf8.decoder).join());
+
+    if (response.statusCode != 200) {
+      final errorType = body['__type'] ?? 'UnknownError';
+      final message = body['message'] ?? 'Unable to reset your password';
+      return {'success': false, 'error': _friendlyError(errorType, message)};
+    }
+    return {'success': true};
+  }
+
+  /// Re-sends the sign-up confirmation code (the same code confirmSignUp
+  /// expects) to a not-yet-confirmed account.
+  Future<Map<String, dynamic>> resendConfirmationCode(String email) async {
+    final http = HttpClient();
+    final uri = Uri.parse(_cognitoUrl);
+    final request = await http.postUrl(uri);
+    request.headers.set('Content-Type', 'application/x-amz-json-1.1');
+    request.headers.set('X-Amz-Target', 'AWSCognitoIdentityProviderService.ResendConfirmationCode');
+    request.write(jsonEncode({
+      'ClientId': _clientId,
+      'Username': email,
+    }));
+    final response = await request.close();
+    final body = jsonDecode(await response.transform(utf8.decoder).join());
+
+    if (response.statusCode != 200) {
+      final errorType = body['__type'] ?? 'UnknownError';
+      final message = body['message'] ?? 'Unable to resend the code';
+      return {'success': false, 'error': _friendlyError(errorType, message)};
+    }
+    return {'success': true};
+  }
+
   String _friendlyError(String type, String message) {
     switch (type) {
       case 'NotAuthorizedException':
@@ -167,6 +240,10 @@ class AuthService {
         return 'Verification code has expired, please request a new one';
       case 'UserNotConfirmedException':
         return 'Please verify your email before signing in';
+      case 'LimitExceededException':
+        return 'Too many attempts. Please wait a few minutes and try again';
+      case 'InvalidParameterException':
+        return 'This account cannot be reset this way — please contact support';
       default:
         return message;
     }

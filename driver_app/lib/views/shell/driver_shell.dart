@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
-import 'package:ravelgo_driver_app/services/api_client.dart';
+import 'package:ravelgo_driver_app/services/auth_session.dart';
+import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/account/account_screen.dart';
 import 'package:ravelgo_driver_app/views/earnings/earnings_screen.dart';
@@ -19,23 +21,30 @@ class _DriverShellState extends State<DriverShell> {
   int _index = 0;
   DriverProfile _profile = const DriverProfile();
 
+  late final DriverApi _driverApi = DriverApi(
+    baseUrl: dotenv.env['API_BASE_URL'] ?? '',
+    authTokenProvider: const CognitoAuthTokenProvider(),
+  );
+
+  // The backend is the source of truth for presence — this only flips
+  // _profile.isOnline after the API confirms the change. A rejected
+  // toggle (e.g. pending review / suspended) surfaces the backend's own
+  // reason instead of silently changing the switch.
   Future<void> _setOnline(bool value) async {
-    setState(() => _profile = _profile.copyWith(isOnline: value));
     try {
-      await ApiClient().patch('/drivers/me/online', body: {'online': value});
-    } catch (e) {
+      final confirmed = await _driverApi.setOnline(value);
       if (!mounted) return;
-      setState(() => _profile = _profile.copyWith(isOnline: !value));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to update online status. Please try again.')),
-      );
+      setState(() => _profile = _profile.copyWith(isOnline: confirmed));
+    } on DriverApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final pages = [
-      DriverHomeScreen(profile: _profile, onOnlineToggle: _setOnline),
+      DriverHomeScreen(profile: _profile, onOnlineToggle: _setOnline, api: _driverApi),
       const MyTripsScreen(embedded: true),
       const EarningsScreen(embedded: true),
       const AccountScreen(embedded: true),

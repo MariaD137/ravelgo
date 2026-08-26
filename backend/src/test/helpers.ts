@@ -46,6 +46,18 @@ export function mockPaymentIntentCreate(id = `pi_test_${Date.now()}`) {
   return id;
 }
 
+/**
+ * Stubs stripeClient.paymentIntents.retrieve so GET /trips/:id/payment-secret
+ * tests never make a real network call to Stripe — same pattern as
+ * mockPaymentIntentCreate() above, for the PaymentIntent id it created.
+ */
+export function mockPaymentIntentRetrieve(id: string) {
+  mock.method(stripeClient.paymentIntents, "retrieve", async () => ({
+    id,
+    client_secret: `${id}_secret_test`,
+  }));
+}
+
 // Delete in FK-safe order (children before parents). Payment/Payout/
 // DriverBankAccount have FORCE ROW LEVEL SECURITY (see
 // prisma/migrations/*_enable_rls_financial_tables), which also governs
@@ -70,7 +82,9 @@ export async function resetDb() {
     await tx.driverDocument.deleteMany();
     await tx.driverBankAccount.deleteMany();
     await tx.trip.deleteMany();
+    await tx.vehiclePhoto.deleteMany();
     await tx.vehicle.deleteMany();
+    await tx.driverOnlineSession.deleteMany();
     await tx.driver.deleteMany();
     await tx.surgeZone.deleteMany();
     await tx.pricingRule.deleteMany();

@@ -1,9 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:ravelgo_user/views/TexiModule/find_driver_screen.dart';
+import 'package:ravelgo_user/services/api_client.dart';
+import 'package:ravelgo_user/services/trip_service.dart';
+import 'package:ravelgo_user/views/TexiModule/search_driver_screen.dart';
+
+class _RideTier {
+  final String name;
+  final double fare;
+  final String eta;
+  final String seats;
+  const _RideTier(this.name, this.fare, this.eta, this.seats);
+}
+
+const _tiers = [
+  _RideTier('Just ride', 8000, '2min', '4'),
+  _RideTier('EV', 6000, '2min', '4'),
+  _RideTier('Lite', 5000, '4min', '3'),
+];
 
 class SelectRide extends StatefulWidget {
-  const SelectRide({super.key});
+  final String pickup;
+  final String destination;
+
+  const SelectRide({super.key, required this.pickup, required this.destination});
 
   @override
   State<SelectRide> createState() => _SelectRideState();
@@ -11,8 +30,46 @@ class SelectRide extends StatefulWidget {
 
 class _SelectRideState extends State<SelectRide> {
   GoogleMapController? mapController;
-
   final LatLng _center = const LatLng(6.6018, 3.3515); // Sample: Lagos
+
+  int _selectedTier = 0;
+  bool _submitting = false;
+  String? _error;
+
+  Future<void> _requestRide() async {
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+
+    final tier = _tiers[_selectedTier];
+    try {
+      final created = await TripService().requestTrip(
+        pickup: widget.pickup,
+        destination: widget.destination,
+        estimatedFare: tier.fare,
+        category: tier.name,
+      );
+      // The create response never includes the driver relation (see
+      // backend/src/routes/trips.routes.ts) — fetch the full trip so a
+      // synchronous match already shows real driver info immediately.
+      final tripId = created['id'] as String;
+      final trip = await TripService().getTrip(tripId);
+
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => SearchDriverScreen(trip: trip)),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _error = 'Unable to request a ride. Please try again.');
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,16 +110,16 @@ class _SelectRideState extends State<SelectRide> {
 
           // Bottom draggable sheet
           DraggableScrollableSheet(
-            initialChildSize: 0.35,
-            minChildSize: 0.35,
-            maxChildSize: 0.65,
+            initialChildSize: 0.4,
+            minChildSize: 0.4,
+            maxChildSize: 0.7,
             builder: (_, controller) {
               return Container(
                 decoration: const BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 ),
-                padding: const EdgeInsets.only(left: 12,top: 12,right: 12),
+                padding: const EdgeInsets.only(left: 12, top: 12, right: 12),
                 child: Column(
                   children: [
                     const Text(
@@ -73,13 +130,16 @@ class _SelectRideState extends State<SelectRide> {
                       child: ListView(
                         controller: controller,
                         children: [
-                          rideCard("Just ride", "#8000", "2min", "4", isSelected: true),
-                          rideCard("EV", "#6000", "2min", "4"),
-                          rideCard("Lite", "#5000", "4min", "3"),
+                          for (var i = 0; i < _tiers.length; i++)
+                            rideCard(i, isSelected: i == _selectedTier),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    if (_error != null) ...[
+                      Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 13)),
+                      const SizedBox(height: 8),
+                    ],
+                    const SizedBox(height: 4),
 
                     // Payment and Delivery Row
                     Row(
@@ -123,12 +183,14 @@ class _SelectRideState extends State<SelectRide> {
                               backgroundColor: Colors.yellow.shade600,
                               padding: const EdgeInsets.symmetric(vertical: 14),
                             ),
-                            onPressed: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(builder: (context) => FindDriverScreen()),
-                              );
-                            },
-                            child: const Text("Select Just ride", style: TextStyle(color: Colors.black)),
+                            onPressed: _submitting ? null : _requestRide,
+                            child: _submitting
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : Text("Select ${_tiers[_selectedTier].name}", style: const TextStyle(color: Colors.black)),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -145,7 +207,6 @@ class _SelectRideState extends State<SelectRide> {
                     ),
                     const SizedBox(height: 0),
                   ],
-
                 ),
               );
             },
@@ -163,64 +224,62 @@ class _SelectRideState extends State<SelectRide> {
         borderRadius: BorderRadius.circular(30),
       ),
       child: Row(
-        children:  [
+        children: [
           IconButton(
-            icon: const Icon(Icons.arrow_back,color: Colors.black,),
+            icon: const Icon(Icons.arrow_back, color: Colors.black),
             onPressed: () => Navigator.pop(context),
           ),
-          SizedBox(width: 8),
+          const SizedBox(width: 8),
           Expanded(
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: "Denco court 1",
-                border: InputBorder.none,
-              ),
+            child: Text(
+              widget.destination,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14),
             ),
           ),
-          Icon(Icons.add),
         ],
       ),
     );
   }
 
-  Widget rideCard(String type, String fare, String eta, String seats, {bool isSelected = false}) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12,left: 5,right: 5),
-      decoration: BoxDecoration(
-        border: isSelected ? Border.all(color: Colors.green, style: BorderStyle.solid, width: 1.5, strokeAlign: BorderSide.strokeAlignOutside) : Border.all(color: Colors.grey, style: BorderStyle.solid, width: 1, strokeAlign: BorderSide.strokeAlignOutside) ,
-        borderRadius: BorderRadius.circular(12),
-        color: Colors.white,
-      ),
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          const Icon(Icons.directions_car),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(type, style: const TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Text(eta),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.person, size: 16),
-                    Text(seats),
-                  ],
-                )
-              ],
+  Widget rideCard(int index, {bool isSelected = false}) {
+    final tier = _tiers[index];
+    return GestureDetector(
+      onTap: () => setState(() => _selectedTier = index),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12, left: 5, right: 5),
+        decoration: BoxDecoration(
+          border: isSelected
+              ? Border.all(color: Colors.green, style: BorderStyle.solid, width: 1.5, strokeAlign: BorderSide.strokeAlignOutside)
+              : Border.all(color: Colors.grey, style: BorderStyle.solid, width: 1, strokeAlign: BorderSide.strokeAlignOutside),
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.white,
+        ),
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            const Icon(Icons.directions_car),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(tier.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text(tier.eta),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.person, size: 16),
+                      Text(tier.seats),
+                    ],
+                  )
+                ],
+              ),
             ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(fare, style: const TextStyle(fontWeight: FontWeight.w600)),
-              const Text("#2444", style: TextStyle(fontSize: 12, color: Colors.grey)),
-            ],
-          )
-        ],
+            Text('NGN ${tier.fare.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+        ),
       ),
     );
   }

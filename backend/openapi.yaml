@@ -121,9 +121,10 @@ paths:
                 properties:
                   completedTrips: { type: integer }
                   currentTier:
+                    type: object
+                    nullable: true
                     oneOf:
                       - $ref: "#/components/schemas/LoyaltyTier"
-                      - nullable: true
         "404": { $ref: "#/components/responses/NotFound" }
   /riders/{id}:
     get:
@@ -190,6 +191,7 @@ paths:
                 email: { type: string, format: email }
                 phoneNumber: { type: string }
                 preferredLanguage: { type: string, default: English }
+                quietModePreferred: { type: boolean, default: false }
       responses:
         "201":
           description: Driver profile
@@ -205,6 +207,45 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Driver" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /drivers/me/online:
+    patch:
+      tags: [Drivers]
+      summary: Go online / offline (Driver)
+      description: >
+        Authoritative presence toggle — the backend is the source of truth,
+        not the Flutter client's local state. Requires status ACTIVE to go
+        online (403 for PENDING_REVIEW or SUSPENDED); a SUSPENDED driver can
+        always go offline. Idempotent: repeated calls with the same value
+        never open a second session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [isOnline]
+              properties:
+                isOnline: { type: boolean }
+      responses:
+        "200":
+          description: Updated driver (with new isOnline/lastOnlineAt)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Driver" }
+        "403":
+          description: Driver's approval status doesn't allow going online (PENDING_REVIEW or SUSPENDED)
+        "404": { $ref: "#/components/responses/NotFound" }
+  /drivers/me/summary:
+    get:
+      tags: [Drivers]
+      summary: My own daily dashboard summary (Driver)
+      responses:
+        "200":
+          description: Today's stats for the calling driver
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverSummary" }
         "404": { $ref: "#/components/responses/NotFound" }
   /drivers/me/subscription:
     post:
@@ -309,6 +350,18 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Vehicle" }
   /vehicles/{id}:
+    get:
+      tags: [Vehicles]
+      summary: One of my own vehicles, with photos and documents (Driver)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Vehicle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Vehicle" }
+        "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [Vehicles]
       summary: Update one of my own vehicles (Driver)
@@ -325,6 +378,100 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Vehicle" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /vehicles/{id}/deactivate:
+    patch:
+      tags: [Vehicles]
+      summary: Safely deactivate one of my own vehicles (Driver)
+      description: Soft-deactivation only (isActive:false) — never a hard delete, so verification history and anything referencing this vehicle survives.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Deactivated vehicle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Vehicle" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /vehicles/{id}/resubmit:
+    post:
+      tags: [Vehicles]
+      summary: Resubmit a rejected vehicle for re-review (Driver)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Vehicle reset to PENDING
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Vehicle" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Vehicle is not currently REJECTED/RESUBMISSION_REQUIRED
+  /vehicles/{id}/photos:
+    post:
+      tags: [Vehicles]
+      summary: Attach a photo to one of my own vehicles (Driver)
+      description: fileKey must have been issued to the caller by POST /uploads/presign — a fileKey from another user's namespace is rejected.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fileKey]
+              properties:
+                fileKey: { type: string }
+                photoType: { $ref: "#/components/schemas/VehiclePhotoType" }
+                displayOrder: { type: integer, default: 0 }
+      responses:
+        "201":
+          description: Registered photo
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VehiclePhoto" }
+        "403":
+          description: fileKey was not issued to the caller
+        "404": { $ref: "#/components/responses/NotFound" }
+  /vehicles/{id}/photos/{photoId}:
+    delete:
+      tags: [Vehicles]
+      summary: Remove a photo from one of my own vehicles (Driver)
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - name: photoId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /vehicles/{id}/review:
+    patch:
+      tags: [Vehicles]
+      summary: Approve or reject a vehicle (Admin)
+      description: A reason is mandatory when rejecting.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [APPROVED, REJECTED] }
+                reason: { type: string, description: Required when status is REJECTED }
+      responses:
+        "200":
+          description: Reviewed vehicle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Vehicle" }
+        "400":
+          description: Missing rejection reason
 
   /rentals:
     post:
@@ -446,7 +593,11 @@ paths:
   /trips/{id}/status:
     patch:
       tags: [Trips]
-      summary: Advance trip status (Driver or Admin)
+      summary: Advance trip status (Driver or Admin), or cancel it (Rider, own trip only)
+      description: >-
+        A Driver (assigned to the trip) or Admin may set any valid
+        transition. A Rider may only set CANCELLED, and only on a trip they
+        own — any other status or trip from a Rider caller is a 403.
       parameters:
         - $ref: "#/components/parameters/id"
       requestBody:
@@ -524,6 +675,35 @@ paths:
         "409":
           description: Trip not eligible to be charged, or already charged
 
+  /trips/{id}/payment-secret:
+    get:
+      tags: [Payments]
+      summary: The Stripe PaymentIntent clientSecret for my own trip's pending CARD payment (Rider)
+      description: >-
+        POST /trips/{id}/charge (Driver/Admin-only) creates the
+        PaymentIntent and returns this secret in its own response, but that
+        caller is never the rider who needs it to present the Stripe
+        PaymentSheet — this is the rider's own way to retrieve it
+        afterward. 404 if no payment exists yet for this trip; 409 if the
+        payment is no longer PENDING or doesn't need client confirmation
+        (e.g. CASH/WALLET).
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: The payment id and its PaymentIntent clientSecret
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paymentId: { type: string }
+                  clientSecret: { type: string, nullable: true }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Payment is no longer pending, or doesn't require client-side confirmation
+
   /payments/{id}/receipt:
     get:
       tags: [Payments]
@@ -590,6 +770,7 @@ paths:
     post:
       tags: [Documents]
       summary: Register an uploaded document's metadata (Driver)
+      description: fileKey must have been issued to the caller by POST /uploads/presign; vehicleId (if given) must be one of the caller's own vehicles.
       requestBody:
         required: true
         content:
@@ -600,16 +781,67 @@ paths:
               properties:
                 title: { type: string }
                 fileKey: { type: string }
+                documentType: { $ref: "#/components/schemas/DriverDocumentType" }
+                vehicleId: { type: string }
+                expiryDate: { type: string, format: date-time }
       responses:
         "201":
           description: Document
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DriverDocument" }
+        "403":
+          description: fileKey was not issued to the caller
+        "404": { $ref: "#/components/responses/NotFound" }
+  /documents/{id}/resubmit:
+    post:
+      tags: [Documents]
+      summary: Replace a rejected document's file and resend for review (Driver)
+      description: Only valid when the document's current status is REJECTED. Reuses the same row — no orphan duplicate is created.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fileKey]
+              properties:
+                fileKey: { type: string }
+      responses:
+        "200":
+          description: Document reset to PENDING with the new file
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverDocument" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Document is not currently REJECTED
+  /documents/{id}/view:
+    get:
+      tags: [Documents]
+      summary: A short-lived signed URL to view a document's file (owning Driver, or any Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Signed view URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  viewUrl: { type: string }
+                  expiresIn: { type: integer, example: 300 }
+        "403":
+          description: Not authorized to view this document
+        "404": { $ref: "#/components/responses/NotFound" }
   /documents/{id}/review:
     patch:
       tags: [Documents]
       summary: Approve/reject a document (Admin)
+      description: rejectionReason is mandatory when status is REJECTED.
       parameters:
         - $ref: "#/components/parameters/id"
       requestBody:
@@ -621,12 +853,15 @@ paths:
               required: [status]
               properties:
                 status: { type: string, enum: [APPROVED, REJECTED] }
+                rejectionReason: { type: string, description: Required when status is REJECTED }
       responses:
         "200":
           description: Updated document
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DriverDocument" }
+        "400":
+          description: Missing rejection reason
 
   /support-tickets:
     post:
@@ -697,18 +932,26 @@ paths:
   /uploads/presign:
     post:
       tags: [Uploads]
-      summary: Get a short-lived S3 upload URL (any authenticated user)
+      summary: Get a short-lived S3 upload URL (Driver or Admin)
+      description: >
+        contentType is checked against a per-bucket allowlist (documents:
+        application/pdf, image/jpeg, image/png, image/webp; assets:
+        image/jpeg, image/png, image/webp). fileSize is checked against a
+        per-bucket max (documents 10MB, assets 8MB) and bound into the
+        presigned request's signature, so the returned URL cannot be used
+        to upload more bytes than declared.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [bucket, fileName, contentType]
+              required: [bucket, fileName, contentType, fileSize]
               properties:
                 bucket: { type: string, enum: [documents, assets] }
                 fileName: { type: string }
                 contentType: { type: string }
+                fileSize: { type: integer, description: Declared file size in bytes }
       responses:
         "200":
           description: Presigned URL
@@ -720,6 +963,8 @@ paths:
                   uploadUrl: { type: string }
                   fileKey: { type: string }
                   expiresIn: { type: integer }
+        "400":
+          description: Unsupported content type, or file too large, for the chosen bucket
 
   /car-paddy:
     post:
@@ -789,6 +1034,23 @@ paths:
                   activeTrips: { type: integer }
                   onlineDrivers: { type: integer }
                   pendingApprovals: { type: integer }
+
+  /admin/drivers/presence:
+    get:
+      tags: [Admin]
+      summary: Fleet-wide driver presence (Admin)
+      description: >
+        Point-in-time snapshot of fleet counts and per-driver presence
+        (status, online state, current trip, vehicle, last known
+        location). Live updates for the same events are available over the
+        existing WebSocket — an Admin-authenticated connection sends
+        {"type":"subscribe:fleet"} — see docs/realtime-architecture.md.
+      responses:
+        "200":
+          description: Fleet counts and driver list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FleetPresence" }
 
   /courier-requests:
     post:
@@ -1336,6 +1598,57 @@ components:
         totalTrips: { type: integer }
         preferredLanguage: { type: string }
         subscriptionActive: { type: boolean }
+        isOnline: { type: boolean, description: "Persisted presence — backend is the source of truth, not the client" }
+        lastOnlineAt: { type: string, format: date-time, nullable: true }
+
+    DriverSummary:
+      type: object
+      description: The calling driver's own daily dashboard summary. Scoped strictly to /drivers/me — never accepts a driver id.
+      properties:
+        isOnline: { type: boolean }
+        lastOnlineAt: { type: string, format: date-time, nullable: true }
+        tripsToday: { type: integer }
+        grossFareToday: { type: number, description: "Sum of what riders paid today, before the platform commission" }
+        platformFeeToday: { type: number, description: RavelGo's commission on grossFareToday }
+        netEarningsToday: { type: number, description: grossFareToday minus platformFeeToday — what the driver actually earns }
+        onlineHoursToday: { type: number, description: "Computed from persisted DriverOnlineSession rows, not a client-side timer" }
+        rating: { type: number }
+        totalTrips: { type: integer }
+
+    FleetPresence:
+      type: object
+      properties:
+        counts:
+          type: object
+          properties:
+            total: { type: integer }
+            online: { type: integer }
+            offline: { type: integer }
+            active: { type: integer }
+            pendingReview: { type: integer }
+            suspended: { type: integer }
+        drivers:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              name: { type: string }
+              email: { type: string }
+              status: { $ref: "#/components/schemas/DriverStatus" }
+              isOnline: { type: boolean }
+              onlineSince: { type: string, format: date-time, nullable: true }
+              currentTrip: { type: object, nullable: true, properties: { id: { type: string }, status: { type: string } } }
+              vehicle: { type: string, nullable: true }
+              location:
+                description: The driver's last WS-reported location, or the literal string "Location unavailable" — never fabricated coordinates
+                oneOf:
+                  - type: object
+                    properties:
+                      lat: { type: number }
+                      lng: { type: number }
+                      updatedAt: { type: string, format: date-time }
+                  - { type: string, enum: ["Location unavailable"] }
 
     VehicleInput:
       type: object
@@ -1345,7 +1658,26 @@ components:
         colour: { type: string }
         plateNumber: { type: string }
         year: { type: string }
+        vin: { type: string, nullable: true }
+        vehicleType: { $ref: "#/components/schemas/VehicleType" }
         isPrimary: { type: boolean }
+
+    VehicleType: { type: string, enum: [SEDAN, SUV, VAN, TRUCK, MOTORCYCLE, LUXURY, OTHER] }
+    VehicleVerificationStatus: { type: string, enum: [PENDING, APPROVED, REJECTED, RESUBMISSION_REQUIRED] }
+    VehiclePhotoType: { type: string, enum: [FRONT, REAR, LEFT_SIDE, RIGHT_SIDE, INTERIOR, OTHER] }
+    DriverDocumentType:
+      type: string
+      enum: [DRIVERS_LICENSE, VEHICLE_REGISTRATION, INSURANCE, INSPECTION, ROADWORTHINESS, BACKGROUND_CHECK, PROOF_OF_ADDRESS, OTHER]
+
+    VehiclePhoto:
+      type: object
+      properties:
+        id: { type: string }
+        vehicleId: { type: string }
+        fileKey: { type: string }
+        photoType: { $ref: "#/components/schemas/VehiclePhotoType" }
+        displayOrder: { type: integer }
+        url: { type: string, nullable: true, description: "Public CloudFront URL, or null if ASSETS_CLOUDFRONT_DOMAIN isn't configured" }
 
     Vehicle:
       allOf:
@@ -1355,6 +1687,17 @@ components:
             id: { type: string }
             driverId: { type: string }
             listedForRental: { type: boolean }
+            isActive: { type: boolean }
+            verificationStatus: { $ref: "#/components/schemas/VehicleVerificationStatus" }
+            verificationReason: { type: string, nullable: true }
+            verifiedAt: { type: string, format: date-time, nullable: true }
+            verifiedById: { type: string, nullable: true }
+            photos:
+              type: array
+              items: { $ref: "#/components/schemas/VehiclePhoto" }
+            documents:
+              type: array
+              items: { $ref: "#/components/schemas/DriverDocument" }
 
     RentalListing:
       type: object
@@ -1384,9 +1727,15 @@ components:
       properties:
         id: { type: string }
         driverId: { type: string }
+        vehicleId: { type: string, nullable: true, description: Present for a vehicle-scoped document; absent for a driver-level one }
         title: { type: string }
+        documentType: { $ref: "#/components/schemas/DriverDocumentType" }
         status: { type: string, enum: [NOT_UPLOADED, PENDING, APPROVED, EXPIRING_SOON, REJECTED] }
         fileKey: { type: string, nullable: true }
+        expiryDate: { type: string, format: date-time, nullable: true }
+        rejectionReason: { type: string, nullable: true }
+        reviewedAt: { type: string, format: date-time, nullable: true }
+        reviewedById: { type: string, nullable: true }
 
     SupportTicket:
       type: object

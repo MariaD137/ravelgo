@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/services/auth_service.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/auth/create_account_screen.dart';
+import 'package:ravelgo_driver_app/views/auth/forgot_password_screen.dart';
 import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -57,52 +58,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _forgotPassword() {
-    final resetEmailController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Reset password"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              "Enter your email address and we'll help you reset your password.",
-              style: TextStyle(fontSize: 14, color: Colors.black54),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: resetEmailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              final email = resetEmailController.text.trim();
-              if (email.isNotEmpty) {
-                ScaffoldMessenger.of(this.context).showSnackBar(
-                  const SnackBar(
-                    content: Text('If an account exists with that email, you will receive password reset instructions. You can also contact support at drivers@ravelgo.com.'),
-                    duration: Duration(seconds: 5),
-                  ),
-                );
-              }
-            },
-            child: const Text("Send reset link"),
-          ),
-        ],
-      ),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (context) => const ForgotPasswordScreen()));
   }
 
   @override

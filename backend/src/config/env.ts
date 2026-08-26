@@ -18,10 +18,16 @@ const rawEnvSchema = z.object({
   AWS_REGION: z.string().default("us-east-1"),
   DOCUMENTS_BUCKET: z.string().optional(),
   ASSETS_BUCKET: z.string().optional(),
-  // Uploads land here first, never here in AssetsBucket directly — the
-  // upload-processor Lambda (infra/lambda/upload-processor) only copies an
-  // object into AssetsBucket (the one CloudFront actually serves) after it
-  // passes MIME/magic-byte validation. See infra/lib/storage-stack.ts.
+  // The assets bucket's CloudFront distribution domain (e.g.
+  // "d123abc.cloudfront.net") — lets the API build a public photo URL
+  // without presigning. See infra/lib/storage-stack.ts's assetsDistribution
+  // and lib/assetUrl.ts. Optional: local dev without a deployed
+  // distribution just gets `url: null` back instead of a broken link.
+  ASSETS_CLOUDFRONT_DOMAIN: z.string().optional(),
+  // Uploads land here first, never in AssetsBucket/DocumentsBucket directly —
+  // the upload-processor Lambda (infra/lambda/upload-processor) only copies
+  // an object into its final bucket after it passes MIME/magic-byte
+  // validation. See infra/lib/storage-stack.ts.
   PENDING_ASSETS_BUCKET: z.string().optional(),
   // Comma-separated list of allowed origins for CORS, e.g.
   // "https://app.ravelgo.com,https://admin.ravelgo.com". Empty in
@@ -54,6 +60,7 @@ export interface Env {
   AWS_REGION: string;
   DOCUMENTS_BUCKET?: string;
   ASSETS_BUCKET?: string;
+  ASSETS_CLOUDFRONT_DOMAIN?: string;
   PENDING_ASSETS_BUCKET?: string;
   ALLOWED_ORIGINS: string[];
   STRIPE_SECRET_KEY?: string;
@@ -106,6 +113,7 @@ function loadEnv(): Env {
     AWS_REGION: data.AWS_REGION,
     DOCUMENTS_BUCKET: data.DOCUMENTS_BUCKET,
     ASSETS_BUCKET: data.ASSETS_BUCKET,
+    ASSETS_CLOUDFRONT_DOMAIN: data.ASSETS_CLOUDFRONT_DOMAIN,
     PENDING_ASSETS_BUCKET: data.PENDING_ASSETS_BUCKET,
     ALLOWED_ORIGINS: allowedOrigins,
     STRIPE_SECRET_KEY: data.STRIPE_SECRET_KEY,

@@ -102,72 +102,173 @@ enum PayoutStatus {
   CANCELLED
 }
 
-model User {
-  id                String   @id @default(uuid())
-  cognitoSub        String   @unique
-  role              Role     @default(RIDER)
-  firstName         String
-  lastName          String
-  email             String   @unique
-  phoneNumber       String?
-  isLoyaltyMember   Boolean  @default(false)
-  suspended         Boolean  @default(false)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+enum VehicleVerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  RESUBMISSION_REQUIRED
+}
 
-  driverProfile     Driver?
-  ridesAsRider      Trip[]   @relation("RiderTrips")
-  supportTickets    SupportTicket[]
-  courierRequestsSent CourierRequest[] @relation("CourierSender")
-  emergencyAlerts   EmergencyAlert[]
-  payments          Payment[]
+enum VehicleType {
+  SEDAN
+  SUV
+  VAN
+  TRUCK
+  MOTORCYCLE
+  LUXURY
+  OTHER
+}
+
+enum VehiclePhotoType {
+  FRONT
+  REAR
+  LEFT_SIDE
+  RIGHT_SIDE
+  INTERIOR
+  OTHER
+}
+
+// What kind of document this is, independent of its free-text `title` (kept
+// for backward compatibility with existing rows/UI copy). Defaults to OTHER
+// so existing documents created before this field existed remain valid.
+enum DriverDocumentType {
+  DRIVERS_LICENSE
+  VEHICLE_REGISTRATION
+  INSURANCE
+  INSPECTION
+  ROADWORTHINESS
+  BACKGROUND_CHECK
+  PROOF_OF_ADDRESS
+  OTHER
+}
+
+model User {
+  id              String   @id @default(uuid())
+  cognitoSub      String   @unique
+  role            Role     @default(RIDER)
+  firstName       String
+  lastName        String
+  email           String   @unique
+  phoneNumber     String?
+  isLoyaltyMember Boolean  @default(false)
+  suspended       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  driverProfile        Driver?
+  ridesAsRider         Trip[]                @relation("RiderTrips")
+  supportTickets       SupportTicket[]
+  courierRequestsSent  CourierRequest[]      @relation("CourierSender")
+  emergencyAlerts      EmergencyAlert[]
+  payments             Payment[]
   promotionRedemptions PromotionRedemption[]
-  bankAccount       DriverBankAccount?
-  payouts           Payout[]
+  bankAccount          DriverBankAccount?
+  payouts              Payout[]
+  // Admin-side reverse relations for who reviewed what — never trust a
+  // client-supplied reviewer id; these are always set server-side from the
+  // authenticated Admin caller's own User row (see routes).
+  documentsReviewed    DriverDocument[]      @relation("DocumentReviewer")
+  vehiclesVerified     Vehicle[]             @relation("VehicleVerifier")
 
   @@index([role])
 }
 
 model Driver {
-  id                String       @id @default(uuid())
-  userId            String       @unique
-  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status            DriverStatus @default(PENDING_REVIEW)
-  rating            Float        @default(5.0)
-  totalTrips        Int          @default(0)
-  preferredLanguage String       @default("English")
-  quietModePreferred Boolean     @default(false)
-  subscriptionActive Boolean     @default(false)
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  id                 String       @id @default(uuid())
+  userId             String       @unique
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status             DriverStatus @default(PENDING_REVIEW)
+  rating             Float        @default(5.0)
+  totalTrips         Int          @default(0)
+  preferredLanguage  String       @default("English")
+  quietModePreferred Boolean      @default(false)
+  subscriptionActive Boolean      @default(false)
+  // Persisted presence — the backend is the source of truth for online/offline,
+  // not the Flutter client. isOnline/lastOnlineAt give O(1) reads for the admin
+  // fleet list; DriverOnlineSession below is the append-only log used to
+  // compute actual online *duration* for the driver's own daily summary.
+  isOnline           Boolean      @default(false)
+  lastOnlineAt       DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
-  vehicles          Vehicle[]
-  documents         DriverDocument[]
-  tripsAsDriver     Trip[]       @relation("DriverTrips")
-  carPaddyRequests  CarPaddyRequest[]
-  rentalListings    RentalListing[]
-  courierRequestsHandled CourierRequest[] @relation("CourierDriver")
-  subscription      DriverSubscription?
+  vehicles               Vehicle[]
+  documents              DriverDocument[]
+  tripsAsDriver          Trip[]                @relation("DriverTrips")
+  carPaddyRequests       CarPaddyRequest[]
+  rentalListings         RentalListing[]
+  courierRequestsHandled CourierRequest[]      @relation("CourierDriver")
+  subscription           DriverSubscription?
+  onlineSessions         DriverOnlineSession[]
 
   @@index([status])
 }
 
-model Vehicle {
-  id               String   @id @default(uuid())
-  driverId         String
-  driver           Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  brand            String
-  model            String
-  colour           String
-  plateNumber      String   @unique
-  year             String
-  isPrimary        Boolean  @default(false)
-  listedForRental  Boolean  @default(false)
-  createdAt        DateTime @default(now())
+// One row per online→offline span. `endedAt: null` means the session is
+// still open (the driver is currently online) — at most one open session
+// per driver at a time, enforced in src/services/presence.ts rather than a
+// DB constraint (Postgres partial unique indexes aren't expressible in the
+// Prisma schema DSL without a raw migration, and the service already runs
+// the open/close as a single transaction).
+model DriverOnlineSession {
+  id        String    @id @default(uuid())
+  driverId  String
+  driver    Driver    @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+  createdAt DateTime  @default(now())
 
-  rentalListings   RentalListing[]
+  @@index([driverId, startedAt])
+}
+
+model Vehicle {
+  id                 String                    @id @default(uuid())
+  driverId           String
+  driver             Driver                    @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  brand              String
+  model              String
+  colour             String
+  plateNumber        String                    @unique
+  year               String
+  vin                String?
+  vehicleType        VehicleType               @default(OTHER)
+  isPrimary          Boolean                   @default(false)
+  listedForRental    Boolean                   @default(false)
+  // Soft-deactivation — verification history and any past trips/rentals tied
+  // to this vehicle must survive a driver "removing" it, so this is a flag,
+  // never a hard delete (see PATCH /vehicles/:id/deactivate).
+  isActive           Boolean                   @default(true)
+  // Every new vehicle starts PENDING — there's no separate "draft" state in
+  // this product; creating a vehicle is the submission.
+  verificationStatus VehicleVerificationStatus @default(PENDING)
+  verificationReason String?
+  verifiedAt         DateTime?
+  verifiedById       String?
+  verifiedBy         User?                     @relation("VehicleVerifier", fields: [verifiedById], references: [id])
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  rentalListings RentalListing[]
+  photos         VehiclePhoto[]
+  documents      DriverDocument[]
 
   @@index([driverId])
+}
+
+// FRONT/REAR/etc. photos for one vehicle — deliberately a separate table
+// (not a comma-separated string column) so a vehicle can hold any number of
+// photos per type and each can be added/removed independently.
+model VehiclePhoto {
+  id           String           @id @default(uuid())
+  vehicleId    String
+  vehicle      Vehicle          @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  fileKey      String
+  photoType    VehiclePhotoType @default(OTHER)
+  displayOrder Int              @default(0)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([vehicleId, displayOrder])
 }
 
 model Trip {
@@ -192,7 +293,7 @@ model Trip {
   requestedAt     DateTime   @default(now())
   completedAt     DateTime?
 
-  payment       Payment?
+  payment         Payment?
   emergencyAlerts EmergencyAlert[]
 
   @@index([riderId])
@@ -202,40 +303,52 @@ model Trip {
 }
 
 model DriverDocument {
-  id         String         @id @default(uuid())
-  driverId   String
-  driver     Driver         @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  title      String
-  status     DocumentStatus @default(NOT_UPLOADED)
-  fileKey    String?
-  expiryDate DateTime?
-  updatedAt  DateTime       @updatedAt
+  id              String             @id @default(uuid())
+  driverId        String
+  driver          Driver             @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  // Vehicle-specific documents (registration, insurance, inspection) point
+  // here; driver-level documents (license, background check) leave this
+  // null. Optional and defaulted rather than backfilled, since existing
+  // rows predate the concept of a vehicle-scoped document.
+  vehicleId       String?
+  vehicle         Vehicle?           @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  title           String
+  documentType    DriverDocumentType @default(OTHER)
+  status          DocumentStatus     @default(NOT_UPLOADED)
+  fileKey         String?
+  expiryDate      DateTime?
+  rejectionReason String?
+  reviewedAt      DateTime?
+  reviewedById    String?
+  reviewedBy      User?              @relation("DocumentReviewer", fields: [reviewedById], references: [id])
+  updatedAt       DateTime           @updatedAt
 
   @@index([driverId])
+  @@index([vehicleId])
 }
 
 model CarPaddyRequest {
-  id           String         @id @default(uuid())
-  driverId     String
-  driver       Driver         @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  plateNumber  String
-  status       CarPaddyStatus @default(SUBMITTED)
-  submittedAt  DateTime       @default(now())
-  reviewedAt   DateTime?
+  id          String         @id @default(uuid())
+  driverId    String
+  driver      Driver         @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  plateNumber String
+  status      CarPaddyStatus @default(SUBMITTED)
+  submittedAt DateTime       @default(now())
+  reviewedAt  DateTime?
 
   @@index([driverId])
 }
 
 model RentalListing {
-  id         String               @id @default(uuid())
-  driverId   String
-  driver     Driver               @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  vehicleId  String
-  vehicle    Vehicle              @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  dailyRate  Float
-  location   String
-  status     RentalListingStatus  @default(PENDING_APPROVAL)
-  createdAt  DateTime             @default(now())
+  id        String              @id @default(uuid())
+  driverId  String
+  driver    Driver              @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicleId String
+  vehicle   Vehicle             @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  dailyRate Float
+  location  String
+  status    RentalListingStatus @default(PENDING_APPROVAL)
+  createdAt DateTime            @default(now())
 
   @@index([driverId])
   @@index([vehicleId])
@@ -254,21 +367,21 @@ model SupportTicket {
 }
 
 model CourierRequest {
-  id                  String        @id @default(uuid())
-  senderId             String
-  sender               User          @relation("CourierSender", fields: [senderId], references: [id])
-  driverId             String?
-  driver               Driver?       @relation("CourierDriver", fields: [driverId], references: [id])
-  pickupAddress        String
-  dropoffAddress       String
-  packageDescription   String
-  recipientName        String
-  recipientPhone       String
-  estimatedFare        Float
-  finalFare            Float?
-  status               CourierStatus @default(REQUESTED)
-  requestedAt          DateTime      @default(now())
-  deliveredAt          DateTime?
+  id                 String        @id @default(uuid())
+  senderId           String
+  sender             User          @relation("CourierSender", fields: [senderId], references: [id])
+  driverId           String?
+  driver             Driver?       @relation("CourierDriver", fields: [driverId], references: [id])
+  pickupAddress      String
+  dropoffAddress     String
+  packageDescription String
+  recipientName      String
+  recipientPhone     String
+  estimatedFare      Float
+  finalFare          Float?
+  status             CourierStatus @default(REQUESTED)
+  requestedAt        DateTime      @default(now())
+  deliveredAt        DateTime?
 
   @@index([senderId])
   @@index([driverId])
@@ -316,18 +429,18 @@ model DriverSubscription {
 }
 
 model Payment {
-  id                 String        @id @default(uuid())
-  tripId             String        @unique
-  trip               Trip          @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  userId             String
-  user               User          @relation(fields: [userId], references: [id])
-  amount             Float
-  currency           String        @default("USD")
-  method             PaymentMethod @default(CARD)
-  status             PaymentStatus @default(PENDING)
-  providerReference  String?
-  createdAt          DateTime      @default(now())
-  paidAt             DateTime?
+  id                String        @id @default(uuid())
+  tripId            String        @unique
+  trip              Trip          @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User          @relation(fields: [userId], references: [id])
+  amount            Float
+  currency          String        @default("USD")
+  method            PaymentMethod @default(CARD)
+  status            PaymentStatus @default(PENDING)
+  providerReference String?
+  createdAt         DateTime      @default(now())
+  paidAt            DateTime?
 
   @@index([userId])
   @@index([providerReference])
@@ -346,17 +459,17 @@ model LoyaltyTier {
 }
 
 model Promotion {
-  id               String    @id @default(uuid())
-  code             String    @unique
-  description      String
-  discountPercent  Float
-  active           Boolean   @default(true)
-  expiresAt        DateTime?
-  maxRedemptions   Int?
-  redemptionCount  Int       @default(0)
-  createdAt        DateTime  @default(now())
+  id              String    @id @default(uuid())
+  code            String    @unique
+  description     String
+  discountPercent Float
+  active          Boolean   @default(true)
+  expiresAt       DateTime?
+  maxRedemptions  Int?
+  redemptionCount Int       @default(0)
+  createdAt       DateTime  @default(now())
 
-  redemptions      PromotionRedemption[]
+  redemptions PromotionRedemption[]
 }
 
 model PromotionRedemption {
@@ -375,13 +488,13 @@ model PromotionRedemption {
 // the schema, since "at most one active row" isn't expressible as a
 // constraint here.
 model PricingRule {
-  id         String   @id @default(uuid())
-  name       String   @unique
-  baseFare   Float
-  perKm      Float
-  perMinute  Float
-  active     Boolean  @default(true)
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid())
+  name      String   @unique
+  baseFare  Float
+  perKm     Float
+  perMinute Float
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
 }
 
 model SurgeZone {
@@ -396,34 +509,34 @@ model SurgeZone {
 }
 
 model DriverBankAccount {
-  id              String   @id @default(uuid())
-  driverId        String   @unique
-  driver          User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  id                String   @id @default(uuid())
+  driverId          String   @unique
+  driver            User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
   accountHolderName String
-  bankName        String
-  accountNumber   String
-  routingNumber   String
-  accountType     String   @default("CHECKING") // CHECKING, SAVINGS
-  isVerified      Boolean  @default(false)
+  bankName          String
+  accountNumber     String
+  routingNumber     String
+  accountType       String   @default("CHECKING") // CHECKING, SAVINGS
+  isVerified        Boolean  @default(false)
   verificationToken String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 model Payout {
-  id              String      @id @default(uuid())
-  driverId        String
-  driver          User        @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  amount          Float
-  currency        String      @default("USD")
-  status          PayoutStatus @default(PENDING)
-  period          String      // e.g., "2024-07" for weekly/monthly payout period
-  transactionId   String?     // Stripe or payment provider transaction ID
-  failureReason   String?
-  notes           String?
-  completedAt     DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id            String       @id @default(uuid())
+  driverId      String
+  driver        User         @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  amount        Float
+  currency      String       @default("USD")
+  status        PayoutStatus @default(PENDING)
+  period        String // e.g., "2024-07" for weekly/monthly payout period
+  transactionId String? // Stripe or payment provider transaction ID
+  failureReason String?
+  notes         String?
+  completedAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   // A driver can have at most one payout per period — the database-level
   // backstop behind the check-then-create in payouts.routes.ts/services;

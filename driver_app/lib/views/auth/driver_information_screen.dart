@@ -1,64 +1,75 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver_app/services/api_client.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:ravelgo_driver_app/services/auth_session.dart';
+import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
-import 'package:ravelgo_driver_app/views/auth/vehicle_information_screen.dart';
+import 'package:ravelgo_driver_app/views/auth/verify_account_screen.dart';
+import 'package:ravelgo_driver_app/views/vehicles/add_vehicle_screen.dart';
 
 class DriverInformationScreen extends StatefulWidget {
+  final String firstName;
+  final String lastName;
   final String email;
-  const DriverInformationScreen({super.key, required this.email});
+  final String phoneNumber;
+
+  const DriverInformationScreen({
+    super.key,
+    required this.firstName,
+    required this.lastName,
+    required this.email,
+    required this.phoneNumber,
+  });
 
   @override
   State<DriverInformationScreen> createState() => _DriverInformationScreenState();
 }
 
 class _DriverInformationScreenState extends State<DriverInformationScreen> {
-  final _licenseController = TextEditingController();
-  final _experienceController = TextEditingController();
-  String _selectedLanguage = 'English';
-  bool _quietMode = false;
-  bool _isLoading = false;
-  String? _errorMessage;
+  late final DriverApi _api =
+      DriverApi(baseUrl: dotenv.env['API_BASE_URL'] ?? '', authTokenProvider: const CognitoAuthTokenProvider());
 
-  @override
-  void dispose() {
-    _licenseController.dispose();
-    _experienceController.dispose();
-    super.dispose();
-  }
+  static const _languages = ["English", "French", "Yoruba", "Igbo", "Hausa"];
+  String _preferredLanguage = _languages.first;
+  bool _quietModePreferred = false;
 
-  Future<void> _submit() async {
-    final license = _licenseController.text.trim();
-    final experience = _experienceController.text.trim();
+  bool _submitting = false;
+  String? _submitError;
 
-    if (license.isEmpty || experience.isEmpty) {
-      setState(() => _errorMessage = 'Please fill in all required fields');
-      return;
-    }
-
+  Future<void> _continue() async {
     setState(() {
-      _isLoading = true;
-      _errorMessage = null;
+      _submitting = true;
+      _submitError = null;
     });
-
     try {
-      await ApiClient().post('/drivers/me', body: {
-        'licenseNumber': license,
-        'yearsOfExperience': int.tryParse(experience) ?? 0,
-        'preferredLanguage': _selectedLanguage,
-        'quietModePreferred': _quietMode,
-      });
-
+      // The actual profile-creation call (POST /drivers/me) — authenticated
+      // with the real Cognito access token from sign-up (see
+      // CognitoAuthTokenProvider / auth_service.dart).
+      await _api.createDriverProfile(
+        firstName: widget.firstName,
+        lastName: widget.lastName,
+        email: widget.email,
+        phoneNumber: widget.phoneNumber,
+        preferredLanguage: _preferredLanguage,
+        quietModePreferred: _quietModePreferred,
+      );
       if (!mounted) return;
-
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => VehicleInformationScreen(email: widget.email)),
+        MaterialPageRoute(
+          builder: (context) => AddVehicleScreen(
+            api: _api,
+            onSaved: () => Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (context) => VerifyAccountScreen(email: widget.email)),
+            ),
+          ),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _isLoading = false;
-        _errorMessage = 'Failed to save driver information. Please try again.';
+        _submitError = e is DriverApiException ? e.message : "Unable to save your profile";
+        _submitting = false;
       });
     }
   }
@@ -80,59 +91,33 @@ class _DriverInformationScreenState extends State<DriverInformationScreen> {
                 style: TextStyle(fontSize: 14, color: Colors.black54),
               ),
               const SizedBox(height: 24),
-              if (_errorMessage != null) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.red[50],
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.red[200]!),
-                  ),
-                  child: Text(
-                    _errorMessage!,
-                    style: TextStyle(color: Colors.red[800], fontSize: 14),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-              TextField(
-                controller: _licenseController,
-                decoration: const InputDecoration(labelText: "Driver's License Number", border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _experienceController,
-                decoration: const InputDecoration(labelText: "Years of driving experience", border: OutlineInputBorder()),
-                keyboardType: TextInputType.number,
-              ),
-              const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                initialValue: _selectedLanguage,
+                initialValue: _preferredLanguage,
                 decoration: const InputDecoration(labelText: "Preferred language", border: OutlineInputBorder()),
-                items: const ["English", "French", "Yoruba", "Igbo", "Hausa"]
-                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
-                    .toList(),
+                items: _languages.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
                 onChanged: (value) {
-                  if (value != null) setState(() => _selectedLanguage = value);
+                  if (value != null) setState(() => _preferredLanguage = value);
                 },
               ),
               const SizedBox(height: 16),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text("Prefer quiet rides (no small talk)"),
-                value: _quietMode,
-                onChanged: (value) => setState(() => _quietMode = value),
+                value: _quietModePreferred,
+                onChanged: (value) => setState(() => _quietModePreferred = value),
               ),
-              const SizedBox(height: 24),
-              AppComponents.uploadBox("Upload driver's license"),
-              const SizedBox(height: 12),
-              AppComponents.uploadBox("Upload background check consent"),
+              if (_submitError != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
+                  child: Text(_submitError!, style: const TextStyle(color: AppColors.danger, fontSize: 13)),
+                ),
+              ],
               const SizedBox(height: 28),
-              AppComponents.primaryButton(
-                text: _isLoading ? "Saving..." : "Continue",
-                onPressed: _isLoading ? null : _submit,
-              ),
+              _submitting
+                  ? const Center(child: CircularProgressIndicator())
+                  : AppComponents.primaryButton(text: "Continue", onPressed: _continue),
             ],
           ),
         ),
