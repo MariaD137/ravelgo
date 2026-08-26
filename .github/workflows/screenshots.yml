@@ -4,8 +4,18 @@ name: App Screenshots
 # an Android emulator per app is slow and this isn't a correctness gate
 # (flutter-ci.yml already covers analyze/test on every push/PR), so it
 # doesn't run automatically.
+#
+# TEMPORARY: the push trigger below exists only to get this workflow's
+# first-ever run (workflow_dispatch can't be invoked via the API until a
+# workflow file has run at least once, or exists on the repo's default
+# branch — neither was true yet). Remove this push trigger once that
+# first run has produced screenshots.
 on:
   workflow_dispatch:
+  push:
+    branches: [claude/ravelgo-prd-wu3xd9]
+    paths:
+      - ".github/workflows/screenshots.yml"
 
 jobs:
   screenshots:
