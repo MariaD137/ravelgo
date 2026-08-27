@@ -117,6 +117,16 @@ test("Payment: WITH CHECK blocks inserting a row owned by someone other than the
   );
 });
 
+test("Payout: WITH CHECK blocks inserting a row owned by a different driver", async () => {
+  const { driverUser: driverUserA } = await createRiderAndDriver();
+  const { driverUser: driverUserB } = await createRiderAndDriver();
+
+  await assert.rejects(
+    () => withUserContext(driverUserA.id, (tx) => tx.payout.create({ data: { driverId: driverUserB.id, amount: 30, period: "2026-01" } })),
+    /row-level security/i,
+  );
+});
+
 test("Payout: withUserContext scopes strictly to the given driver", async () => {
   const { driverUser: driverUserA } = await createRiderAndDriver();
   const { driverUser: driverUserB } = await createRiderAndDriver();
