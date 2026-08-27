@@ -932,39 +932,45 @@ paths:
   /uploads/presign:
     post:
       tags: [Uploads]
-      summary: Get a short-lived S3 upload URL (Driver or Admin)
+      summary: Get a short-lived, size-capped S3 upload URL (Driver or Admin)
       description: >
         contentType is checked against a per-bucket allowlist (documents:
-        application/pdf, image/jpeg, image/png, image/webp; assets:
-        image/jpeg, image/png, image/webp). fileSize is checked against a
-        per-bucket max (documents 10MB, assets 8MB) and bound into the
-        presigned request's signature, so the returned URL cannot be used
-        to upload more bytes than declared.
+        application/pdf, image/jpeg, image/png, image/webp, image/heic,
+        image/heif; assets: image/jpeg, image/png, image/webp, image/heic,
+        image/heif). The returned POST policy caps the upload at a per-bucket
+        max (documents 10MB, assets 8MB), bound into the presigned request's
+        signature, so it cannot be used to upload more bytes than declared.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [bucket, fileName, contentType, fileSize]
+              required: [bucket, fileName, contentType]
               properties:
                 bucket: { type: string, enum: [documents, assets] }
                 fileName: { type: string }
-                contentType: { type: string }
-                fileSize: { type: integer, description: Declared file size in bytes }
+                contentType: { type: string, enum: [image/jpeg, image/png, image/webp, image/heic, image/heif, application/pdf] }
       responses:
         "200":
-          description: Presigned URL
+          description: >
+            Presigned POST fields. Upload by POSTing multipart/form-data to `url`,
+            with every entry in `fields` as a form field and the file itself as the
+            last field. S3 rejects the upload if its size exceeds `maxBytes`.
+            "assets" uploads land in a private staging bucket and only become
+            publicly served after validation passes.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  uploadUrl: { type: string }
+                  url: { type: string }
+                  fields: { type: object, additionalProperties: { type: string } }
                   fileKey: { type: string }
+                  maxBytes: { type: integer }
                   expiresIn: { type: integer }
         "400":
-          description: Unsupported content type, or file too large, for the chosen bucket
+          description: Unsupported content type for the chosen bucket, or an unusable fileName
 
   /car-paddy:
     post:

@@ -20,6 +20,7 @@ class ActiveTripScreen extends StatefulWidget {
 class _ActiveTripScreenState extends State<ActiveTripScreen> {
   _TripStage _stage = _TripStage.toPickup;
   bool _isLoading = false;
+  DateTime? _tripStartedAt;
 
   String get _stageLabel {
     switch (_stage) {
@@ -47,6 +48,12 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
     }
   }
 
+  // "Arrived at pickup" and "Arrived at destination" are pure UI stages —
+  // the backend's trip status machine (VALID_TRIP_TRANSITIONS in
+  // trips.routes.ts) only knows MATCHED, IN_PROGRESS, COMPLETED, CANCELLED,
+  // DISPUTED, so only the two transitions that cross one of those
+  // boundaries (arrivedPickup -> inProgress, arrivedDestination -> complete)
+  // call the API; the others just advance local state.
   Future<void> _advance() async {
     if (_stage == _TripStage.arrivedDestination) {
       await _completeTrip();
@@ -55,28 +62,10 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
 
     final nextStage = _TripStage.values[_stage.index + 1];
 
-    if (widget.tripId != null) {
+    if (nextStage == _TripStage.inProgress && widget.tripId != null) {
       setState(() => _isLoading = true);
       try {
-        String status;
-        Map<String, dynamic> body;
-        switch (nextStage) {
-          case _TripStage.arrivedPickup:
-            status = 'ARRIVED_AT_PICKUP';
-            body = {'status': status};
-            break;
-          case _TripStage.inProgress:
-            status = 'IN_PROGRESS';
-            body = {'status': status};
-            break;
-          case _TripStage.arrivedDestination:
-            status = 'ARRIVED_AT_DESTINATION';
-            body = {'status': status};
-            break;
-          default:
-            body = {};
-        }
-        await ApiClient().patch('/trips/${widget.tripId}/status', body: body);
+        await ApiClient().patch('/trips/${widget.tripId}/status', body: {'status': 'IN_PROGRESS'});
       } catch (e) {
         if (!mounted) return;
         setState(() => _isLoading = false);
@@ -85,6 +74,7 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
         );
         return;
       }
+      _tripStartedAt = DateTime.now();
     }
 
     if (!mounted) return;
@@ -97,11 +87,29 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
   Future<void> _completeTrip() async {
     if (widget.tripId != null) {
       setState(() => _isLoading = true);
+      // durationMinutes is the actual elapsed time since IN_PROGRESS, not
+      // the pre-trip ETA estimate — calculateFinalFare (backend/services/
+      // fare.ts) requires a positive number, so a trip that completes in
+      // under a minute (e.g. testing) still reports 1.
+      final elapsedMinutes = _tripStartedAt == null
+          ? 1
+          : DateTime.now().difference(_tripStartedAt!).inMinutes.clamp(1, 999999);
       try {
         await ApiClient().patch('/trips/${widget.tripId}/status', body: {
           'status': 'COMPLETED',
-          'finalFare': widget.request.estimatedFare,
+          'distanceKm': widget.request.distanceKm,
+          'durationMinutes': elapsedMinutes,
         });
+        // Creates the Payment row (and, for CARD, the Stripe PaymentIntent)
+        // the rider's payment screen needs — without this call a completed
+        // trip has no charge to pay and GET /trips/:id/payment-secret 404s
+        // forever. Best-effort: a failure here shouldn't strand the driver
+        // mid-completion, since the trip itself already transitioned.
+        try {
+          await ApiClient().post('/trips/${widget.tripId}/charge', body: {'method': 'CARD'});
+        } catch (_) {
+          // Non-fatal — an Admin can charge the trip manually if this fails.
+        }
       } catch (e) {
         if (!mounted) return;
         setState(() => _isLoading = false);

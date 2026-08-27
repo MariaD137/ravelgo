@@ -2,15 +2,6 @@
 ALTER TABLE "Trip" ADD COLUMN     "distanceKm" DOUBLE PRECISION,
 ADD COLUMN     "durationMinutes" DOUBLE PRECISION;
 
--- CreateTable
-CREATE TABLE "WebhookEvent" (
-    "id" TEXT NOT NULL,
-    "type" TEXT NOT NULL,
-    "processedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "WebhookEvent_pkey" PRIMARY KEY ("id")
-);
-
 -- CreateIndex
 CREATE INDEX "CarPaddyRequest_driverId_idx" ON "CarPaddyRequest"("driverId");
 

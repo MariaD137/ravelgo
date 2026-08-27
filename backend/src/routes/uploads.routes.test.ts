@@ -34,6 +34,8 @@ test("POST /api/uploads/presign returns a signed POST policy scoped to the calle
 
   assert.equal(res.status, 200);
   assert.match(res.body.url, /^https:\/\//);
+  assert.equal(typeof res.body.fields, "object");
+  assert.equal(res.body.fields.key, res.body.fileKey);
   assert.match(res.body.fileKey, /^user-sub-1\//);
   assert.match(res.body.fileKey, /license\.pdf$/);
   assert.ok(res.body.fields);

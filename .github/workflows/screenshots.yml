@@ -4,12 +4,28 @@ name: App Screenshots
 # an Android emulator per app is slow and this isn't a correctness gate
 # (flutter-ci.yml already covers analyze/test on every push/PR), so it
 # doesn't run automatically.
+#
+# TEMPORARY: the push trigger below exists only to get this workflow's
+# first-ever run (workflow_dispatch can't be invoked via the API until a
+# workflow file has run at least once, or exists on the repo's default
+# branch — neither was true yet). Remove this push trigger once that
+# first run has produced screenshots.
 on:
   workflow_dispatch:
+  push:
+    branches: [claude/ravelgo-prd-wu3xd9]
+    paths:
+      - ".github/workflows/screenshots.yml"
 
 jobs:
   screenshots:
-    runs-on: macos-latest
+    # Not macos-latest: GitHub's Apple Silicon macOS runners are themselves
+    # virtualized, and nested HVF hardware acceleration isn't available
+    # inside them (confirmed by two failed runs, both ending in "HVF
+    # error: HV_UNSUPPORTED" / "failed to initialize HVF" regardless of
+    # the Android image's CPU arch). Linux runners have real KVM access
+    # instead, and are the action's own documented working example.
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -30,6 +46,12 @@ jobs:
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
 
       # Captures only the cold-start screens reachable with no signed-in
       # session and no live backend (splash -> login) — see

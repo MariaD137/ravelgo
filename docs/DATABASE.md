@@ -78,6 +78,65 @@ cd backend && npx prisma migrate dev
 npm run prisma:seed
 ```
 
+## Row-Level Security
+
+Three tables — `DriverBankAccount`, `Payment`, `Payout` — have Postgres
+row-level security enabled and **forced** (`ENABLE ROW LEVEL SECURITY` +
+`FORCE ROW LEVEL SECURITY`), added in
+`prisma/migrations/20260820120100_enable_rls_financial_tables`. This is a
+database-level backstop behind the app-layer `requireAuth`/`requireRole` +
+ownership checks on every route — not a replacement for them. If an app-layer
+`where` clause is ever missing or wrong on one of these three tables, the
+database itself refuses to return or write another user's row instead of
+silently leaking it.
+
+**Why FORCE, not just ENABLE:** Postgres exempts a table's owner from RLS by
+default. This app uses a single Postgres role for both migrations and
+runtime queries, so without FORCE, RLS would silently do nothing at all —
+the owning role would bypass every policy.
+
+**Why not just table ownership / a single connection string:** FORCE RLS
+still gets bypassed unconditionally by a true Postgres superuser, regardless
+of the FORCE setting — this is a hard Postgres rule, not a bug. AWS RDS's
+master user is *not* a real superuser (this is deliberate on AWS's part, for
+exactly this reason), so production is fine. Locally and in CI, the stock
+`postgres:16` Docker image's bootstrap `POSTGRES_USER` **is** a real
+superuser by default — and it can't simply be demoted:
+`ALTER ROLE ravelgo NOSUPERUSER` fails with "the bootstrap user must have
+the SUPERUSER attribute" (confirmed against a real run), because Postgres
+specifically refuses to let the cluster's original bootstrap role ever lose
+SUPERUSER, no matter who issues the ALTER ROLE — including itself.
+`backend-ci.yml` instead creates a *second*, ordinary role
+(`ravelgo_app`) right after migrations apply, grants it the same table
+access, and points the rest of the job's queries at it via `DATABASE_URL` —
+a role that never ran `CREATE TABLE` is neither the owner nor a superuser,
+so RLS applies to it automatically, no FORCE or demotion needed. Do the
+same locally if you want to test RLS behavior against `prisma migrate dev`
+(see Development Database below) — without a second non-owner role,
+`backend/src/lib/rls.test.ts`'s "a query with no session context set sees
+zero rows" assertions will fail in the *other* direction (the owning
+superuser sees the rows regardless of policy).
+
+**How the app sets the session context:** see `backend/src/lib/rls.ts`.
+`withUserContext(userId, fn)` runs `fn` inside a transaction with
+`app.user_id` set via `set_config(..., true)` (the `true` = session-*local*,
+so it never leaks across pooled connections or other requests); the
+`DriverBankAccount`/`Payment`/`Payout` policies allow a row through when its
+owner column matches `app.user_id`. `withBypass(fn)` sets `app.bypass =
+'true'` instead, for code that's already been authorized a different way —
+an Admin-gated route, the Stripe webhook (authorized by signature, not by
+being a specific user), or test fixture setup. Every route touching these
+three tables uses one of these two helpers; a plain `prisma.payout.findMany()`
+outside of either will now always return zero rows.
+
+**Adding RLS to another table:** write a migration enabling + forcing RLS
+and a policy shaped like the three existing ones (owner-column match OR
+`app.bypass = 'true'`), then convert every read/write of that table to go
+through `withUserContext`/`withBypass` — including test fixtures that create
+rows directly, and any `include`/join from an unprotected table into it
+(Prisma's `include: { payment: true }` in `services/payouts.ts` is exactly
+this case: the join still hits the RLS-protected table).
+
 ## Dangerous Operations
 
 Never run these against production without explicit approval:
