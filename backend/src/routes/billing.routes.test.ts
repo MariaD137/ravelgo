@@ -187,8 +187,11 @@ test("a replayed event id is not reprocessed a second time", async () => {
 
   // Manually revert the side effect the first delivery caused, so a second
   // (incorrect) processing pass would be observable — proves the replay is
-  // actually skipped, not just idempotent by coincidence.
-  await prisma.payment.update({ where: { id: payment.id }, data: { status: "PENDING", paidAt: null } });
+  // actually skipped, not just idempotent by coincidence. Payment has
+  // FORCE ROW LEVEL SECURITY, so this (like every other direct Payment
+  // access in this file) has to go through withBypass — a plain
+  // prisma.payment call outside a session context matches zero rows.
+  await withBypass((tx) => tx.payment.update({ where: { id: payment.id }, data: { status: "PENDING", paidAt: null } }));
 
   const replay = await request(app)
     .post("/api/billing/webhook")
@@ -198,7 +201,7 @@ test("a replayed event id is not reprocessed a second time", async () => {
   assert.equal(replay.status, 200);
   assert.equal(replay.body.duplicate, true);
 
-  const stillPending = await prisma.payment.findUnique({ where: { id: payment.id } });
+  const stillPending = await withBypass((tx) => tx.payment.findUnique({ where: { id: payment.id } }));
   assert.equal(stillPending?.status, "PENDING");
 });
 
