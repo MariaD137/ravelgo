@@ -83,7 +83,7 @@ npm run prisma:seed
 Three tables — `DriverBankAccount`, `Payment`, `Payout` — have Postgres
 row-level security enabled and **forced** (`ENABLE ROW LEVEL SECURITY` +
 `FORCE ROW LEVEL SECURITY`), added in
-`prisma/migrations/20260814210000_enable_rls_financial_tables`. This is a
+`prisma/migrations/20260820120100_enable_rls_financial_tables`. This is a
 database-level backstop behind the app-layer `requireAuth`/`requireRole` +
 ownership checks on every route — not a replacement for them. If an app-layer
 `where` clause is ever missing or wrong on one of these three tables, the

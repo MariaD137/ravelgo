@@ -957,6 +957,8 @@ paths:
             Presigned POST fields. Upload by POSTing multipart/form-data to `url`,
             with every entry in `fields` as a form field and the file itself as the
             last field. S3 rejects the upload if its size exceeds `maxBytes`.
+            "assets" uploads land in a private staging bucket and only become
+            publicly served after validation passes.
           content:
             application/json:
               schema:
