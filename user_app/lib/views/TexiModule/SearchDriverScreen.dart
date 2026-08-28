@@ -3,6 +3,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/views/TexiModule/CancelRideScreen.dart';
 import 'package:ravelgo_user_app/views/TexiModule/RequestDriverScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class SearchDriverScreen extends StatefulWidget {
   const SearchDriverScreen({super.key});
@@ -110,7 +111,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
       margin: const EdgeInsets.only(top: 0),
       padding: const EdgeInsets.only(left: 8,right: 8,top: 8,bottom: 18),
       decoration: BoxDecoration(
-        color: Colors.yellow[700],
+        color: AppColors.primary,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
       child: Column(children: [
@@ -164,7 +165,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
           Container(
             padding: const EdgeInsets.all(35),
             decoration: BoxDecoration(
-              color: Colors.yellow[100],
+              color: AppColors.primaryTint,
               shape: BoxShape.circle,
             ),
             child: Column(
@@ -236,7 +237,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
             ElevatedButton(
               onPressed: null,
               style: ElevatedButton.styleFrom(
-                disabledBackgroundColor: Colors.yellow[100],
+                disabledBackgroundColor: AppColors.primaryTint,
               ),
               child: const Text("+ 100", style: TextStyle(color: Colors.black38)),
             ),
@@ -248,7 +249,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
                 });
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.yellow[700],
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.black,
               ),
               child: const Text("+ 100"),
@@ -285,7 +286,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
         ElevatedButton(
           onPressed: null,
           style: ElevatedButton.styleFrom(
-            disabledBackgroundColor: Colors.yellow[100],
+            disabledBackgroundColor: AppColors.primaryTint,
           ),
           child: const Text("+ 100", style: TextStyle(color: Colors.black38)),
         ),
@@ -295,7 +296,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
             setState(() => offerAmount += 100);
           },
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.yellow[700],
+            backgroundColor: AppColors.primary,
             foregroundColor: Colors.black,
           ),
           child: const Text("+ 100"),
@@ -334,7 +335,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
               );
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.yellow[700],
+              backgroundColor: AppColors.primary,
               foregroundColor: Colors.black,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               padding: const EdgeInsets.symmetric(vertical: 14),
@@ -346,7 +347,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
         ElevatedButton(
           onPressed: () {},
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.yellow[700],
+            backgroundColor: AppColors.primary,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             padding: const EdgeInsets.all(14),
           ),

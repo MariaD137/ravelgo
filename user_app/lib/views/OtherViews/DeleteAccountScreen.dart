@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class DeleteAccountScreen extends StatefulWidget {
   const DeleteAccountScreen({super.key});
@@ -50,7 +51,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                       setState(() => _selectedReasonIndex = index);
                     },
                     title: Text(_reasons[index]),
-                    activeColor: Colors.yellow[700],
+                    activeColor: AppColors.primary,
                     controlAffinity: ListTileControlAffinity.leading,
                     checkboxShape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(4),
@@ -70,7 +71,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                   // Handle account deletion logic
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.yellow[700],
+                  backgroundColor: AppColors.primary,
                   foregroundColor: Colors.black,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),

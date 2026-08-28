@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 /// driver_app and admin_app's own AppColors so the three apps read as one
 /// product instead of each screen picking its own near-duplicate shade.
 class AppColors {
-  static const primary = Color(0xFFFFD500);
-  static const primaryDark = Color(0xFF665600);
-  static const primaryTint = Color(0xFFFFF6CC);
+  static const primary = Color(0xFFEF4B37);
+  static const primaryDark = Color(0xFFC23A28);
+  static const primaryTint = Color(0xFFFDE4DF);
   static const background = Color(0xFFF6F6F6);
   static const surface = Colors.white;
   static const border = Color(0xFFE0E0E0);

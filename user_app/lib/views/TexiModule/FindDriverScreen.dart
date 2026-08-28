@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/views/TexiModule/SearchDriverScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class FindDriverScreen extends StatefulWidget {
   const FindDriverScreen({super.key});
@@ -181,7 +182,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
             ElevatedButton(
               onPressed: null,
               style: ElevatedButton.styleFrom(
-                disabledBackgroundColor: Colors.yellow[100],
+                disabledBackgroundColor: AppColors.primaryTint,
               ),
               child: const Text("+ 100", style: TextStyle(color: Colors.black38)),
             ),
@@ -193,7 +194,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
                 });
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.yellow[700],
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.black,
               ),
               child: const Text("+ 100"),
@@ -247,7 +248,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
               );
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.amber,
+              backgroundColor: AppColors.primary,
               foregroundColor: Colors.black,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               padding: const EdgeInsets.symmetric(vertical: 14),
@@ -259,7 +260,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
         ElevatedButton(
           onPressed: () {},
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.amber,
+            backgroundColor: AppColors.primary,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             padding: const EdgeInsets.all(14),
           ),

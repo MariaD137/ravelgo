@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:ravelgo_user_app/views/Popup/ColourPicker.dart';
 import 'package:ravelgo_user_app/views/bottommenu/BottomNavigationView.dart';
 import 'AddPhoto.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class VehicleInformationScreen extends StatefulWidget {
   @override
@@ -175,7 +176,7 @@ class _VehicleInformationScreenState extends State<VehicleInformationScreen> {
                     );
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.yellow[700],
+                    backgroundColor: AppColors.primary,
                     foregroundColor: Colors.black,
                   ),
                   child: Padding(

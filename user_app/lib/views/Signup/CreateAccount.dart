@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/Signup/VerifyAccount.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class CreateAccountScreen extends StatelessWidget {
   final _fieldDecoration = InputDecoration(
@@ -49,7 +50,7 @@ class CreateAccountScreen extends StatelessWidget {
                       MaterialPageRoute(builder: (context) => VerifyAccountScreen()),
                     )
                   },
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.yellow[700], foregroundColor: Colors.black, disabledBackgroundColor: Colors.yellow[100]),
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.black, disabledBackgroundColor: AppColors.primaryTint),
                   child: Padding(
                     padding: EdgeInsets.symmetric(vertical: 16),
                     child: Text('Register as a driver', style: TextStyle(fontSize: 16)),

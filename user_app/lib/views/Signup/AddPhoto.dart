@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:ravelgo_user_app/views/Signup/VehicleInformation.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class AddPhotoScreen extends StatelessWidget {
   final ImagePicker _picker = ImagePicker();
@@ -44,7 +45,7 @@ class AddPhotoScreen extends StatelessWidget {
                     MaterialPageRoute(builder: (context) => VehicleInformationScreen()),
                   )
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.yellow[700], foregroundColor: Colors.black),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.black),
                 child: Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text('Next')),
               ),
             ),

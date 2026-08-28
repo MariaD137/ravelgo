@@ -70,7 +70,7 @@ class ChoosePlanScreen extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.primaryTint,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.yellow.shade700),
+              border: Border.all(color: AppColors.primary),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -111,7 +111,7 @@ class ChoosePlanScreen extends StatelessWidget {
                   height: 44,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.yellow,
+                      backgroundColor: AppColors.primary,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),

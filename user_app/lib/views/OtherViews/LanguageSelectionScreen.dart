@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class LanguageSelectionScreen extends StatefulWidget {
   const LanguageSelectionScreen({super.key});
@@ -88,7 +89,7 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.yellow[700]!),
+        border: Border.all(color: AppColors.primary),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(

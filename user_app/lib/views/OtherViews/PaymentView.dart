@@ -103,7 +103,7 @@ class _PaymentScreenState extends State<PaymentView> {
                         leading: Image.asset('assets/ic_cash.png'),
                         title: Text('Cash'),
                         trailing: Checkbox(
-                          activeColor:Colors.yellow,
+                          activeColor:AppColors.primary,
                           value: isCashSelected,
                           onChanged: (bool? value) {
                             setState(() {
@@ -116,7 +116,7 @@ class _PaymentScreenState extends State<PaymentView> {
                         leading: Image.asset('assets/ic_transfer.png'),
                         title: Text('Transfer'),
                         trailing: Checkbox(
-                          activeColor:Colors.yellow,
+                          activeColor:AppColors.primary,
                           value: !isCashSelected,
                           onChanged: (bool? value) {
                             setState(() {
@@ -199,7 +199,7 @@ class _PaymentScreenState extends State<PaymentView> {
           duration: const Duration(milliseconds: 250),
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
-            color: isSelected ? Colors.amber : Colors.transparent,
+            color: isSelected ? AppColors.primary : Colors.transparent,
             borderRadius: BorderRadius.horizontal(
               left: index == 0 ? const Radius.circular(30) : Radius.zero,
               right: index == 1 ? const Radius.circular(30) : Radius.zero,

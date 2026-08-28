@@ -116,7 +116,7 @@ class DriverCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Icon(Icons.verified, color: Colors.amber),
+                const Icon(Icons.verified, color: AppColors.primary),
               ],
             ),
             const SizedBox(height: 12),
@@ -154,7 +154,7 @@ class DriverCard extends StatelessWidget {
                   child: ElevatedButton(
                     onPressed: () {},
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.yellow[700],
+                      backgroundColor: AppColors.primary,
                       foregroundColor: Colors.black,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8)),

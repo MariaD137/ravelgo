@@ -68,7 +68,7 @@ class Login extends StatelessWidget {
                 child: TextButton(
                   child: Text(
                     'Forgot Password?',
-                    style: TextStyle(color: Colors.yellow[700]),
+                    style: TextStyle(color: AppColors.primary),
                   ),
                   onPressed: () {
                     // Navigator.push(context,
@@ -89,7 +89,7 @@ class Login extends StatelessWidget {
                     },
                   child: Text('Sign in'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.yellow[700],
+                    backgroundColor: AppColors.primary,
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                     textStyle: TextStyle(fontSize: 18),
                   ),

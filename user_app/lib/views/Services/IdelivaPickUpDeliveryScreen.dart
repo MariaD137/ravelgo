@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/HomeView/scheduled_rides_screen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class PickDeliveryScreen extends StatelessWidget {
   final List<Map<String, String>> deliveryRequests = [
@@ -142,7 +143,7 @@ class PickDeliveryScreen extends StatelessWidget {
                               Expanded(
                                 child: ElevatedButton(
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.yellow[700],
+                                    backgroundColor: AppColors.primary,
                                     padding: EdgeInsets.symmetric(vertical: 12),
                                   ),
                                   onPressed: () {},

@@ -25,7 +25,7 @@ class PlanReviewSummaryScreen extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: AppColors.primaryTint,
-              border: Border.all(color: Colors.yellow.shade700),
+              border: Border.all(color: AppColors.primary),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
@@ -53,7 +53,7 @@ class PlanReviewSummaryScreen extends StatelessWidget {
                   height: 44,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.yellow,
+                      backgroundColor: AppColors.primary,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: () {
@@ -114,7 +114,7 @@ class PlanReviewSummaryScreen extends StatelessWidget {
           height: 52,
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.yellow,
+              backgroundColor: AppColors.primary,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             onPressed: () {

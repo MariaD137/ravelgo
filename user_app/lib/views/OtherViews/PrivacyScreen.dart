@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/OtherViews/PrivacyScreenDetail.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 class PrivacyScreen extends StatelessWidget {
   const PrivacyScreen({super.key});
 
@@ -49,7 +50,7 @@ class PrivacyScreen extends StatelessWidget {
                     width: double.infinity,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.yellow[700],
+                        backgroundColor: AppColors.primary,
                         foregroundColor: Colors.black,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),

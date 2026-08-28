@@ -9,6 +9,7 @@ class DashboardScreen extends StatelessWidget {
 
   static const _rides = [128.0, 142.0, 96.0, 180.0, 210.0, 260.0, 174.0];
   static const _days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  static const _chartBarMaxHeight = 100.0;
 
   @override
   Widget build(BuildContext context) {
@@ -16,19 +17,21 @@ class DashboardScreen extends StatelessWidget {
     final body = ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-          childAspectRatio: 1.5,
-          children: [
-            AppComponents.statCard("Active rides now", "24", Icons.directions_car_filled_outlined),
-            AppComponents.statCard("Online drivers", "112", Icons.badge_outlined, color: AppColors.success),
-            AppComponents.statCard("Revenue today", "₦482,300", Icons.payments_outlined, color: AppColors.info),
-            AppComponents.statCard("Pending approvals", "7", Icons.pending_actions_outlined, color: AppColors.warning),
-          ],
+        LayoutBuilder(
+          builder: (context, constraints) {
+            const spacing = 12.0;
+            final cardWidth = (constraints.maxWidth - spacing) / 2;
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: [
+                SizedBox(width: cardWidth, child: AppComponents.statCard("Active rides now", "24", Icons.directions_car_filled_outlined)),
+                SizedBox(width: cardWidth, child: AppComponents.statCard("Online drivers", "112", Icons.badge_outlined, color: AppColors.success)),
+                SizedBox(width: cardWidth, child: AppComponents.statCard("Revenue today", "₦482,300", Icons.payments_outlined, color: AppColors.info)),
+                SizedBox(width: cardWidth, child: AppComponents.statCard("Pending approvals", "7", Icons.pending_actions_outlined, color: AppColors.warning)),
+              ],
+            );
+          },
         ),
         const SizedBox(height: 20),
         Container(
@@ -39,16 +42,16 @@ class DashboardScreen extends StatelessWidget {
             children: [
               const Text("Rides this week", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
               const SizedBox(height: 16),
-              SizedBox(
-                height: 120,
+              IntrinsicHeight(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: List.generate(_rides.length, (i) {
-                    final h = 100 * (_rides[i] / maxVal);
+                    final h = _chartBarMaxHeight * (_rides[i] / maxVal);
                     return Expanded(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                         child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             Container(

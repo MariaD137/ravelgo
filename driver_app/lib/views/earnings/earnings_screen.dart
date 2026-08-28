@@ -7,6 +7,7 @@ class EarningsScreen extends StatelessWidget {
 
   static const _week = [12000.0, 18500.0, 9000.0, 22000.0, 15600.0, 27400.0, 18400.0];
   static const _days = ["M", "T", "W", "T", "F", "S", "S"];
+  static const _chartBarMaxHeight = 100.0;
 
   @override
   Widget build(BuildContext context) {
@@ -27,16 +28,16 @@ class EarningsScreen extends StatelessWidget {
                 Text("₦${_week.reduce((a, b) => a + b).toStringAsFixed(0)}",
                     style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 20),
-                SizedBox(
-                  height: 120,
+                IntrinsicHeight(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: List.generate(_week.length, (i) {
-                      final h = 100 * (_week[i] / maxVal);
+                      final h = _chartBarMaxHeight * (_week[i] / maxVal);
                       return Expanded(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 4),
                           child: Column(
+                            mainAxisSize: MainAxisSize.min,
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
                               Container(

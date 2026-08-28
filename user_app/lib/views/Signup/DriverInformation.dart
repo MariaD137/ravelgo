@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'AddPhoto.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class DriverInformationScreen extends StatelessWidget {
   final _decoration = InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16));
@@ -65,7 +66,7 @@ class DriverInformationScreen extends StatelessWidget {
                     MaterialPageRoute(builder: (context) => AddPhotoScreen()),
                   )
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.yellow[700], foregroundColor: Colors.black),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.black),
                 child: Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text('Next')),
               ),
             ),

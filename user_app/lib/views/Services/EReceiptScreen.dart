@@ -70,7 +70,7 @@ class EReceiptScreen extends StatelessWidget {
               // Download PDF or share receipt
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.yellow,
+              backgroundColor: AppColors.primary,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),

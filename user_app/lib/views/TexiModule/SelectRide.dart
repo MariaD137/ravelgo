@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/views/TexiModule/FindDriverScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class SelectRide extends StatefulWidget {
   const SelectRide({super.key});
@@ -121,7 +122,7 @@ class _SelectRideState extends State<SelectRide> {
                         Expanded(
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.yellow.shade600,
+                              backgroundColor: AppColors.primary,
                               padding: const EdgeInsets.symmetric(vertical: 14),
                             ),
                             onPressed: () {

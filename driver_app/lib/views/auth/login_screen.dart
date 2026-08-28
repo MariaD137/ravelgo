@@ -50,7 +50,7 @@ class LoginScreen extends StatelessWidget {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: () {},
-                  child: Text('Forgot Password?', style: TextStyle(color: Colors.yellow[700])),
+                  child: Text('Forgot Password?', style: TextStyle(color: AppColors.primaryDark)),
                 ),
               ),
               const SizedBox(height: 24),

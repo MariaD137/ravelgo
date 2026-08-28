@@ -114,7 +114,7 @@ class _PostCarScreenState extends State<PostCarScreen> {
         child: ElevatedButton(
           style: ElevatedButton.styleFrom(
             minimumSize: const Size(double.infinity, 50),
-            backgroundColor: Colors.yellow.shade600,
+            backgroundColor: AppColors.primary,
             foregroundColor: Colors.black,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
@@ -221,7 +221,7 @@ class UploadSection extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                       height: 50,
                       decoration: BoxDecoration(
-                        color: Colors.yellow.shade50,
+                        color: AppColors.primaryTint,
                       ),
                       child:Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,

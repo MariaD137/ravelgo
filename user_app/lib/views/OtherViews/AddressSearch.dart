@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class AddressSearch extends StatefulWidget {
   final String addressType; // "Home" or "Work"
@@ -55,7 +56,7 @@ class _AddressSearchState extends State<AddressSearch> {
   Widget _buildSearchBar() {
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.yellow[700]!),
+        border: Border.all(color: AppColors.primary),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(

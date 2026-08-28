@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class UpdatePassword extends StatefulWidget {
   const UpdatePassword({super.key});
@@ -95,7 +96,7 @@ class _UpdatePasswordState extends State<UpdatePassword> {
       height: 50,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.yellow[700],
+          backgroundColor: AppColors.primary,
           foregroundColor: Colors.black,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),

@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/Signup/DriverInformation.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class VerifyAccountScreen extends StatelessWidget {
   final _decoration = InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16));
@@ -29,7 +30,7 @@ class VerifyAccountScreen extends StatelessWidget {
                     MaterialPageRoute(builder: (context) => DriverInformationScreen()),
                   );
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.yellow[700], foregroundColor: Colors.black),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.black),
                 child: Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text('Verify')),
               ),
             ),

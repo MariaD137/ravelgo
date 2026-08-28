@@ -112,7 +112,7 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.yellow[700],
+                    backgroundColor: AppColors.primary,
                     padding: EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -142,7 +142,7 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
                       TextSpan(
                         text: "Register",
                         style: TextStyle(
-                        color: Colors.amber[800],
+                        color: AppColors.primaryDark,
                         fontWeight: FontWeight.w600,
                       ),
                     recognizer: TapGestureRecognizer()

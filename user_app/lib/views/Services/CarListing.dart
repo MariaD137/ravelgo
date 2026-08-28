@@ -80,7 +80,7 @@ class _CarListingState extends State<CarListing> {
                         const SizedBox(height: 10),
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.yellow,
+                            backgroundColor: AppColors.primary,
                           ),
                           onPressed: () {},
                           child: const Text('Subscribe to be a Member',style:TextStyle(color: Colors.black,fontSize: 12),),
@@ -196,7 +196,7 @@ class CarCard extends StatelessWidget {
                     height: 32,
                     child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.yellow,
+                        backgroundColor: AppColors.primary,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
@@ -277,7 +277,7 @@ class CarCardBig extends StatelessWidget {
                 children: [
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.yellow,
+                      backgroundColor: AppColors.primary,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
