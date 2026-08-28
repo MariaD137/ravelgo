@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/components/RideOptionCard.dart';
-import 'package:ravelgo_driver/views//Services/CarRentalScreen.dart';
-import 'package:ravelgo_driver/views/Services/IdelivaOnboardingScreen.dart';
-import 'package:ravelgo_driver/components/RideOptionCard.dart';
-import 'package:ravelgo_driver/views/TexiModule/FindRoute.dart';
+import 'package:ravelgo_user_app/components/RideOptionCard.dart';
+import 'package:ravelgo_user_app/views//Services/CarRentalScreen.dart';
+import 'package:ravelgo_user_app/views/Services/IdelivaOnboardingScreen.dart';
+import 'package:ravelgo_user_app/components/RideOptionCard.dart';
+import 'package:ravelgo_user_app/views/TexiModule/FindRoute.dart';
 
 class ServicesView extends StatefulWidget {
   const ServicesView({super.key});

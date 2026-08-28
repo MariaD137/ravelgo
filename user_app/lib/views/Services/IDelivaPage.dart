@@ -1,8 +1,8 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Services/BasicDetailsPage.dart';
-import 'package:ravelgo_driver/views/Services/ReferralCodePage.dart';
-import 'package:ravelgo_driver/views/Services/VehicleInfoPage.dart';
+import 'package:ravelgo_user_app/views/Services/BasicDetailsPage.dart';
+import 'package:ravelgo_user_app/views/Services/ReferralCodePage.dart';
+import 'package:ravelgo_user_app/views/Services/VehicleInfoPage.dart';
 
 class IDelivaPage extends StatefulWidget {
   const IDelivaPage({super.key});

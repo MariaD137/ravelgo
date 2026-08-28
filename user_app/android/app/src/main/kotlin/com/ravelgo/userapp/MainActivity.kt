@@ -1,4 +1,4 @@
-package com.ravelgo.driver.ravelgo_driver
+package com.ravelgo.userapp
 
 import io.flutter.embedding.android.FlutterActivity
 

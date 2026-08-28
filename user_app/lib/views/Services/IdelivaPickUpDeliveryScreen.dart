@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/HomeView/scheduled_rides_screen.dart';
+import 'package:ravelgo_user_app/views/HomeView/scheduled_rides_screen.dart';
 
 class PickDeliveryScreen extends StatelessWidget {
   final List<Map<String, String>> deliveryRequests = [

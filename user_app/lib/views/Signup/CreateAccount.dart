@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Signup/VerifyAccount.dart';
+import 'package:ravelgo_user_app/views/Signup/VerifyAccount.dart';
 
 class CreateAccountScreen extends StatelessWidget {
   final _fieldDecoration = InputDecoration(

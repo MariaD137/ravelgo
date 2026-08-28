@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/components/basic_components.dart';
-import 'package:ravelgo_driver/views/Services/BrandModelPage.dart';
+import 'package:ravelgo_user_app/components/basic_components.dart';
+import 'package:ravelgo_user_app/views/Services/BrandModelPage.dart';
 
 class BrandPage extends StatelessWidget {
   const BrandPage({super.key});

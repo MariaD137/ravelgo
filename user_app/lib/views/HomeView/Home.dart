@@ -2,11 +2,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:ravelgo_driver/components/LocationService.dart';
-import 'package:ravelgo_driver/components/ride_controller.dart';
-import 'package:ravelgo_driver/views/AppDrawer/AppDrawer.dart';
-import 'package:ravelgo_driver/views/HomeView/ride_view_popup.dart';
-import 'package:ravelgo_driver/views/User/invite_a_friend.dart';
+import 'package:ravelgo_user_app/components/LocationService.dart';
+import 'package:ravelgo_user_app/components/ride_controller.dart';
+import 'package:ravelgo_user_app/views/AppDrawer/AppDrawer.dart';
+import 'package:ravelgo_user_app/views/HomeView/ride_view_popup.dart';
+import 'package:ravelgo_user_app/views/User/invite_a_friend.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/OtherViews/PrivacyScreenDetail.dart';
+import 'package:ravelgo_user_app/views/OtherViews/PrivacyScreenDetail.dart';
 class PrivacyScreen extends StatelessWidget {
   const PrivacyScreen({super.key});
 

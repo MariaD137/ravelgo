@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/components/basic_components.dart';
+import 'package:ravelgo_user_app/components/basic_components.dart';
 
 class PhotoLicensePage extends StatelessWidget {
   const PhotoLicensePage({super.key});
