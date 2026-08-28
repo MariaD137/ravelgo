@@ -250,14 +250,17 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text("NGN 7,000", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text("NGN ${offerAmount.toStringAsFixed(0)}",
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             Spacer(),
             ElevatedButton(
-              onPressed: null,
+              onPressed: offerAmount > 3500
+                  ? () => setState(() => offerAmount -= 100)
+                  : null,
               style: ElevatedButton.styleFrom(
                 disabledBackgroundColor: AppColors.primaryTint,
               ),
-              child: const Text("+ 100", style: TextStyle(color: AppColors.textMuted)),
+              child: const Text("- 100"),
             ),
             const SizedBox(width: 12),
             ElevatedButton(
@@ -302,11 +305,13 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
     return Row(
       children: [
         ElevatedButton(
-          onPressed: null,
+          onPressed: offerAmount > 3500
+              ? () => setState(() => offerAmount -= 100)
+              : null,
           style: ElevatedButton.styleFrom(
             disabledBackgroundColor: AppColors.primaryTint,
           ),
-          child: const Text("+ 100", style: TextStyle(color: AppColors.textMuted)),
+          child: const Text("- 100"),
         ),
         const SizedBox(width: 12),
         ElevatedButton(
