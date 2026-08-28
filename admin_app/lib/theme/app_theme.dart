@@ -130,7 +130,6 @@ class AppComponents {
   }
 
   static Widget statCard(String label, String value, IconData icon, {Color? color}) {
-    final c = color ?? AppColors.primary;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: cardDecoration(),
@@ -141,7 +140,7 @@ class AppComponents {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(color: AppColors.border.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(10)),
-            child: Icon(icon, color: c == AppColors.primary ? AppColors.primaryDark : c, size: 20),
+            child: Icon(icon, color: AppColors.textSecondary, size: 20),
           ),
           const SizedBox(height: 12),
           Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),

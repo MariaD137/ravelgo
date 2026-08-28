@@ -30,8 +30,8 @@ class DriverAssistanceScreen extends StatelessWidget {
                     children: [
                       Container(
                         padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
-                        child: Icon(a.$3, color: AppColors.primaryDark),
+                        decoration: BoxDecoration(color: AppColors.border.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(10)),
+                        child: Icon(a.$3, color: AppColors.textSecondary),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
