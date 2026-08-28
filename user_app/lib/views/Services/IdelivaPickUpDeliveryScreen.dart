@@ -56,12 +56,12 @@ class PickDeliveryScreen extends StatelessWidget {
                     },
                     child: Row(
                       children: const [
-                        Icon(Icons.calendar_month, color: Colors.green),
+                        Icon(Icons.calendar_month, color: AppColors.success),
                         SizedBox(width: 4),
                         Text(
                           "Scheduled requests",
                           style: TextStyle(
-                            color: Colors.green,
+                            color: AppColors.success,
                             fontSize: 14,
                           ),
                         ),
@@ -112,7 +112,7 @@ class PickDeliveryScreen extends StatelessWidget {
                           SizedBox(height: 6),
                           Row(
                             children: [
-                              Icon(Icons.radio_button_checked, color: Colors.green),
+                              Icon(Icons.radio_button_checked, color: AppColors.success),
                               SizedBox(width: 8),
                               Text(item['pickup'] ?? ""),
                             ],

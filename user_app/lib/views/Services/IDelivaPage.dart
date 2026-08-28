@@ -20,6 +20,19 @@ class _IDelivaPageState extends State<IDelivaPage> {
 
   bool get isAllDone => basicDone && vehicleDone && referralDone;
 
+  void _showDocumentUnavailable(String title) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(title),
+        content: Text("The $title document is not available in this build yet."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK")),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -165,21 +178,21 @@ class _IDelivaPageState extends State<IDelivaPage> {
                             TextSpan(
                               text: "Terms and Condition",
                               style: const TextStyle(
-                                color: Colors.green,
+                                color: AppColors.success,
                                 decoration: TextDecoration.underline,
                               ),
                               recognizer: TapGestureRecognizer()
-                                ..onTap = () {},
+                                ..onTap = () => _showDocumentUnavailable("Terms and Conditions"),
                             ),
                             const TextSpan(text: " and "),
                             TextSpan(
                               text: "Privacy Policy",
                               style: const TextStyle(
-                                color: Colors.green,
+                                color: AppColors.success,
                                 decoration: TextDecoration.underline,
                               ),
                               recognizer: TapGestureRecognizer()
-                                ..onTap = () {},
+                                ..onTap = () => _showDocumentUnavailable("Privacy Policy"),
                             ),
                           ],
                         ),
@@ -236,7 +249,7 @@ class _IDelivaPageState extends State<IDelivaPage> {
 
             /// STATUS ICON
             if (isDone)
-              const Icon(Icons.check_circle, color: Colors.green, size: 20),
+              const Icon(Icons.check_circle, color: AppColors.success, size: 20),
 
             const SizedBox(width: 8),
 

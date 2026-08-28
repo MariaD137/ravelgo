@@ -58,7 +58,7 @@ class UserSummary extends StatelessWidget {
                 children: const [
                   Icon(
                     Icons.star,
-                    color: Colors.green,
+                    color: AppColors.success,
                     size: 20,
                   ),
                   SizedBox(width: 6),

@@ -227,7 +227,7 @@ class _AccountviewState extends State<Accountview> {
                   _menuRow(
                     icon: Icons.delete_outline,
                     label: 'Delete account',
-                    labelColor: Colors.red,
+                    labelColor: AppColors.error,
                     onTap: (){
                       Navigator.push(
                         context,

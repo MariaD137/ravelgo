@@ -187,7 +187,7 @@ class CarCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.green, width: 1),
+            border: Border.all(color: AppColors.success, width: 1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
@@ -263,7 +263,7 @@ class CarCardBig extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.green, width: 1),
+            border: Border.all(color: AppColors.success, width: 1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
