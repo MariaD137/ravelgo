@@ -95,7 +95,25 @@ class _DriverDetailScreenState extends State<DriverDetailScreen> {
                       const SizedBox(width: 10),
                       Expanded(child: Text(doc.$1, style: const TextStyle(fontSize: 13.5))),
                       if (!doc.$2)
-                        TextButton(onPressed: () {}, child: const Text("Review")),
+                        TextButton(
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: Text(doc.$1),
+                                  content: const Text(
+                                      'Document preview requires the document-storage service, '
+                                      'which is not connected in this build. Use the driver\'s '
+                                      'submitted files once storage is wired.'),
+                                  actions: [
+                                    TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('OK')),
+                                  ],
+                                ),
+                              );
+                            },
+                            child: const Text("Review")),
                     ],
                   ),
                 ),

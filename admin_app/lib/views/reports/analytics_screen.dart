@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 
 class AnalyticsScreen extends StatelessWidget {
@@ -70,7 +71,21 @@ class AnalyticsScreen extends StatelessWidget {
           const SizedBox(height: 16),
           _barChart("Driver online hours this week", _hours),
           const SizedBox(height: 20),
-          AppComponents.outlineButton(text: "Export report", onPressed: () {}),
+          // Export builds a real CSV of the on-screen data and copies it to
+          // the clipboard (no file-save plugin is configured in this build).
+          AppComponents.outlineButton(
+              text: "Export report (copy CSV)",
+              onPressed: () {
+                final days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+                final buffer = StringBuffer("day,revenue_ngn,online_hours\n");
+                for (var i = 0; i < days.length; i++) {
+                  buffer.writeln("${days[i]},${_revenue[i]},${_hours[i]}");
+                }
+                Clipboard.setData(ClipboardData(text: buffer.toString()));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Report CSV copied to clipboard - paste it into a spreadsheet'),
+                ));
+              }),
         ],
       ),
     );

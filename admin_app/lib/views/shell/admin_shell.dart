@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/views/dashboard/dashboard_screen.dart';
 import 'package:ravelgo_admin/views/drivers/driver_list_screen.dart';
+import 'package:ravelgo_admin/views/notifications/notifications_screen.dart';
 import 'package:ravelgo_admin/views/shell/side_menu_admin.dart';
 import 'package:ravelgo_admin/views/support/support_tickets_screen.dart';
 import 'package:ravelgo_admin/views/trips/trip_monitoring_screen.dart';
@@ -35,7 +36,10 @@ class _AdminShellState extends State<AdminShell> {
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
         actions: [
-          IconButton(icon: const Icon(Icons.notifications_none), onPressed: () {}),
+          IconButton(
+              icon: const Icon(Icons.notifications_none),
+              onPressed: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
         ],
       ),
       body: pages[_index],

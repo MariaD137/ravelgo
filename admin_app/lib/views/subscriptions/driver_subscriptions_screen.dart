@@ -26,11 +26,62 @@ class DriverSubscriptionsScreen extends StatelessWidget {
             decoration: AppComponents.cardDecoration(),
             child: Column(
               children: [
-                AppComponents.tile(title: "Weekly", subtitle: "₦3,500 / week", leading: Icons.calendar_view_week, onTap: () {}),
+                AppComponents.tile(
+                    title: "Weekly",
+                    subtitle: "₦3,500 / week",
+                    leading: Icons.calendar_view_week,
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Weekly plan'),
+                          content: const Text('₦3,500 / week\n\n7-day driver access with standard matching priority.'),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Close')),
+                          ],
+                        ),
+                      );
+                    }),
                 AppComponents.divider(),
-                AppComponents.tile(title: "Monthly", subtitle: "₦12,000 / month", leading: Icons.calendar_month_outlined, onTap: () {}),
+                AppComponents.tile(
+                    title: "Monthly",
+                    subtitle: "₦12,000 / month",
+                    leading: Icons.calendar_month_outlined,
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Monthly plan'),
+                          content: const Text('₦12,000 / month\n\n30-day access with priority matching and reduced commission.'),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Close')),
+                          ],
+                        ),
+                      );
+                    }),
                 AppComponents.divider(),
-                AppComponents.tile(title: "Quarterly", subtitle: "₦32,000 / quarter", leading: Icons.event_repeat_outlined, onTap: () {}),
+                AppComponents.tile(
+                    title: "Quarterly",
+                    subtitle: "₦32,000 / quarter",
+                    leading: Icons.event_repeat_outlined,
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Quarterly plan'),
+                          content: const Text('₦32,000 / quarter\n\n90-day access with top matching priority, reduced commission and Car Paddy discounts.'),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text('Close')),
+                          ],
+                        ),
+                      );
+                    }),
               ],
             ),
           ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/views/settings/change_password_screen.dart';
 
 class AdminProfileScreen extends StatelessWidget {
   const AdminProfileScreen({super.key});
@@ -19,7 +20,10 @@ class AdminProfileScreen extends StatelessWidget {
             const SizedBox(height: 16),
             _lockedField("Role", "Super Admin"),
             const SizedBox(height: 24),
-            AppComponents.outlineButton(text: "Change password", onPressed: () {}),
+            AppComponents.outlineButton(
+                text: "Change password",
+                onPressed: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const ChangePasswordScreen()))),
           ],
         ),
       ),

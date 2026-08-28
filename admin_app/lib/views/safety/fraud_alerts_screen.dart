@@ -1,10 +1,42 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_admin/models/admin_actions_state.dart';
 import 'package:ravelgo_admin/models/fraud_alert.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/utils/date_utils.dart';
 
-class FraudAlertsScreen extends StatelessWidget {
+/// Fraud alerts with working dismiss/investigate.
+/// LOCAL STATE ONLY: decisions are recorded in AdminActionsState and the
+/// card updates; persisting them is the safety-API integration point.
+class FraudAlertsScreen extends StatefulWidget {
   const FraudAlertsScreen({super.key});
+
+  @override
+  State<FraudAlertsScreen> createState() => _FraudAlertsScreenState();
+}
+
+class _FraudAlertsScreenState extends State<FraudAlertsScreen> {
+  Future<void> _dismiss(FraudAlert a) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Dismiss alert?'),
+        content: Text('Dismiss "${a.title}" (${a.id}) as a false positive?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Dismiss')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => AdminActionsState.instance.decideFraud(a.id, 'dismissed'));
+  }
+
+  void _investigate(FraudAlert a) {
+    setState(() => AdminActionsState.instance.decideFraud(a.id, 'investigating'));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('${a.id} marked under investigation (recorded locally)'),
+    ));
+  }
 
   Color _severityColor(AlertSeverity s) {
     switch (s) {
@@ -33,7 +65,9 @@ class FraudAlertsScreen extends StatelessWidget {
               style: TextStyle(fontSize: 12.5),
             ),
           ),
-          ...mockFraudAlerts.map((a) => Container(
+          ...mockFraudAlerts.map((a) {
+            final decision = AdminActionsState.instance.fraudDecisions[a.id];
+            return Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(14),
                 decoration: AppComponents.cardDecoration(),
@@ -52,16 +86,28 @@ class FraudAlertsScreen extends StatelessWidget {
                     const SizedBox(height: 6),
                     Text(formatFriendlyDate(a.detectedAt), style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                     const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(child: AppComponents.outlineButton(text: "Dismiss", onPressed: () {})),
-                        const SizedBox(width: 10),
-                        Expanded(child: AppComponents.outlineButton(text: "Investigate", color: AppColors.danger, onPressed: () {})),
-                      ],
-                    ),
+                    if (decision == 'dismissed')
+                      AppComponents.badge('Dismissed', color: AppColors.textMuted)
+                    else if (decision == 'investigating')
+                      AppComponents.badge('Under investigation', color: AppColors.warning)
+                    else
+                      Row(
+                        children: [
+                          Expanded(
+                              child: AppComponents.outlineButton(
+                                  text: "Dismiss", onPressed: () => _dismiss(a))),
+                          const SizedBox(width: 10),
+                          Expanded(
+                              child: AppComponents.outlineButton(
+                                  text: "Investigate",
+                                  color: AppColors.danger,
+                                  onPressed: () => _investigate(a))),
+                        ],
+                      ),
                   ],
                 ),
-              )),
+              );
+          }),
         ],
       ),
     );
