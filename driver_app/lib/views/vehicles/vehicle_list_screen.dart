@@ -58,7 +58,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                   ),
                 ),
                 if (v.isPrimary) AppComponents.badge("Primary"),
-                if (v.listedForRental) AppComponents.badge("For rental", color: Colors.blue),
+                if (v.listedForRental) AppComponents.badge("For rental", color: AppColors.info),
               ],
             ),
           );

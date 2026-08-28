@@ -13,7 +13,7 @@ class MyDocumentsScreen extends StatelessWidget {
       case DocumentStatus.pending:
         return AppColors.primaryDark;
       case DocumentStatus.expiringSoon:
-        return Colors.orange;
+        return AppColors.warning;
       case DocumentStatus.rejected:
         return AppColors.danger;
       case DocumentStatus.notUploaded:

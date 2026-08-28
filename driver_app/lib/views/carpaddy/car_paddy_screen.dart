@@ -47,7 +47,7 @@ class _CarPaddyScreenState extends State<CarPaddyScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text("Current license", style: TextStyle(fontWeight: FontWeight.w700)),
-                      AppComponents.badge("Expiring soon", color: Colors.orange),
+                      AppComponents.badge("Expiring soon", color: AppColors.warning),
                     ],
                   ),
                   const SizedBox(height: 8),

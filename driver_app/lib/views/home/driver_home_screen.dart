@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
 import 'package:ravelgo_driver_app/models/ride_request.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
+import 'package:ravelgo_driver_app/views/notifications/notifications_screen.dart';
 import 'package:ravelgo_driver_app/views/riderequest/incoming_request_sheet.dart';
 import 'package:ravelgo_driver_app/views/trip/active_trip_screen.dart';
 
@@ -57,7 +58,13 @@ class DriverHomeScreen extends StatelessWidget {
                         child: const CircleAvatar(backgroundColor: AppColors.surface, child: Icon(Icons.menu, color: AppColors.textPrimary)),
                       ),
                     ),
-                    const CircleAvatar(backgroundColor: AppColors.surface, child: Icon(Icons.notifications_none, color: AppColors.textPrimary)),
+                    GestureDetector(
+                      onTap: () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+                      child: const CircleAvatar(
+                          backgroundColor: AppColors.surface,
+                          child: Icon(Icons.notifications_none, color: AppColors.textPrimary)),
+                    ),
                   ],
                 ),
               ),

@@ -28,7 +28,7 @@ class _TripCompleteScreenState extends State<TripCompleteScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.check_circle, color: Colors.green, size: 56),
+              const Icon(Icons.check_circle, color: AppColors.success, size: 56),
               const SizedBox(height: 12),
               const Text("Trip completed", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
               const SizedBox(height: 20),

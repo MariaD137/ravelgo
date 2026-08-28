@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
+import 'package:ravelgo_driver_app/views/earnings/cash_out_screen.dart';
+import 'package:ravelgo_driver_app/views/earnings/payout_history_screen.dart';
+import 'package:ravelgo_driver_app/views/incentives/incentives_screen.dart';
 
 class EarningsScreen extends StatelessWidget {
   final bool embedded;
@@ -72,11 +75,26 @@ class EarningsScreen extends StatelessWidget {
             decoration: AppComponents.cardDecoration(),
             child: Column(
               children: [
-                AppComponents.tile(title: "Cash out to bank", subtitle: "Instant transfer to linked account", leading: Icons.account_balance_outlined, onTap: () {}),
+                AppComponents.tile(
+                    title: "Cash out to bank",
+                    subtitle: "Request a transfer to your linked account",
+                    leading: Icons.account_balance_outlined,
+                    onTap: () => Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const CashOutScreen()))),
                 AppComponents.divider(),
-                AppComponents.tile(title: "Payout history", subtitle: "View past transfers", leading: Icons.history, onTap: () {}),
+                AppComponents.tile(
+                    title: "Payout history",
+                    subtitle: "View past transfers",
+                    leading: Icons.history,
+                    onTap: () => Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const PayoutHistoryScreen()))),
                 AppComponents.divider(),
-                AppComponents.tile(title: "Skill-based incentives", subtitle: "Bonuses for milestones & ratings", leading: Icons.emoji_events_outlined, onTap: () {}),
+                AppComponents.tile(
+                    title: "Skill-based incentives",
+                    subtitle: "Bonuses for milestones & ratings",
+                    leading: Icons.emoji_events_outlined,
+                    onTap: () => Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const IncentivesScreen()))),
               ],
             ),
           ),

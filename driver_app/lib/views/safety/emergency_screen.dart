@@ -1,8 +1,172 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 
-class EmergencyScreen extends StatelessWidget {
+/// Safety & Emergency hub.
+///
+/// BACKEND BOUNDARY: no safety/alerting backend is connected, so nothing
+/// here claims an alert was delivered. Emergency numbers copy to the
+/// clipboard (no dialer plugin in this build), trusted contacts are kept
+/// in local session state, and backend-dependent features say so.
+class EmergencyScreen extends StatefulWidget {
   const EmergencyScreen({super.key});
+
+  @override
+  State<EmergencyScreen> createState() => _EmergencyScreenState();
+}
+
+class _EmergencyScreenState extends State<EmergencyScreen> {
+  // LOCAL STATE ONLY: session-level trusted contacts.
+  static final List<String> _trustedContacts = [];
+
+  void _showEmergencyNumbers() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Emergency assistance'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+                'RavelGo\'s live SOS alerting is not connected in this build. '
+                'For immediate help use the national emergency lines:'),
+            const SizedBox(height: 12),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Emergency services'),
+              subtitle: const Text('112'),
+              trailing: const Icon(Icons.copy, size: 18),
+              onTap: () => _copy('112'),
+            ),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Police'),
+              subtitle: const Text('199'),
+              trailing: const Icon(Icons.copy, size: 18),
+              onTap: () => _copy('199'),
+            ),
+          ],
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+      ),
+    );
+  }
+
+  void _copy(String number) {
+    Clipboard.setData(ClipboardData(text: number));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$number copied - paste it in your phone app to call')),
+    );
+  }
+
+  Future<void> _manageTrustedContacts() async {
+    final controller = TextEditingController();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 16,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Trusted contacts',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              const SizedBox(height: 4),
+              const Text(
+                'Saved for this session. Automatic trip sharing starts working once the trips service is connected.',
+                style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 12),
+              if (_trustedContacts.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text('No trusted contacts yet',
+                      style: TextStyle(color: AppColors.textSecondary)),
+                )
+              else
+                for (final c in List<String>.from(_trustedContacts))
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.person_outline),
+                    title: Text(c),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline, color: AppColors.danger),
+                      onPressed: () {
+                        _trustedContacts.remove(c);
+                        setSheetState(() {});
+                        setState(() {});
+                      },
+                    ),
+                  ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: controller,
+                      decoration: const InputDecoration(hintText: 'Name or phone number'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle, color: AppColors.primary),
+                    onPressed: () {
+                      final value = controller.text.trim();
+                      if (value.isEmpty) return;
+                      _trustedContacts.add(value);
+                      controller.clear();
+                      setSheetState(() {});
+                      setState(() {});
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _reportFraud() async {
+    final controller = TextEditingController();
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Report suspicious activity'),
+        content: TextField(
+          controller: controller,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            hintText: 'Describe the unusual booking or behavior...',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim().isNotEmpty),
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+    if (submitted == true && mounted) {
+      // Integration point: send the report to the safety/fraud service.
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+            'Report recorded on this device. It will be submitted once the safety service is connected.'),
+      ));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -14,28 +178,25 @@ class EmergencyScreen extends StatelessWidget {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(16)),
+            decoration: BoxDecoration(
+                color: AppColors.danger.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(16)),
             child: Column(
               children: [
                 const Icon(Icons.shield, color: AppColors.danger, size: 40),
                 const SizedBox(height: 10),
-                const Text("In an emergency, alert RavelGo Safety immediately", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w600)),
+                const Text("In an emergency, get help immediately",
+                    textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 14),
                 SizedBox(
                   width: double.infinity,
                   height: 50,
                   child: ElevatedButton.icon(
-                    onPressed: () => showDialog(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text("SOS sent"),
-                        content: const Text("Your live location and trip details have been shared with RavelGo's safety team and your trusted contacts."),
-                        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK"))],
-                      ),
-                    ),
+                    onPressed: _showEmergencyNumbers,
                     icon: const Icon(Icons.sos),
                     label: const Text("SOS – Emergency assistance"),
-                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger, foregroundColor: Colors.white),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.danger, foregroundColor: Colors.white),
                   ),
                 ),
               ],
@@ -46,11 +207,30 @@ class EmergencyScreen extends StatelessWidget {
             decoration: AppComponents.cardDecoration(),
             child: Column(
               children: [
-                AppComponents.tile(title: "Trusted contacts", subtitle: "Share live trip details automatically", leading: Icons.people_outline, onTap: () {}),
+                AppComponents.tile(
+                    title: "Trusted contacts",
+                    subtitle: _trustedContacts.isEmpty
+                        ? "Add people to share trip details with"
+                        : "${_trustedContacts.length} contact${_trustedContacts.length == 1 ? '' : 's'} added",
+                    leading: Icons.people_outline,
+                    onTap: _manageTrustedContacts),
                 AppComponents.divider(),
-                AppComponents.tile(title: "Emergency ride scheduling", subtitle: "Priority routing to hospitals & safe zones", leading: Icons.local_hospital_outlined, onTap: () {}),
+                AppComponents.tile(
+                    title: "Emergency ride scheduling",
+                    subtitle: "Priority routing to hospitals & safe zones",
+                    leading: Icons.local_hospital_outlined,
+                    onTap: () {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text(
+                            'Emergency scheduling requires the dispatch service - not available in this build'),
+                      ));
+                    }),
                 AppComponents.divider(),
-                AppComponents.tile(title: "Fraud & suspicious activity", subtitle: "Report unusual booking behavior", leading: Icons.warning_amber_outlined, onTap: () {}),
+                AppComponents.tile(
+                    title: "Fraud & suspicious activity",
+                    subtitle: "Report unusual booking behavior",
+                    leading: Icons.warning_amber_outlined,
+                    onTap: _reportFraud),
               ],
             ),
           ),

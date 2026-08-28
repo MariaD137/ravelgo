@@ -1,9 +1,43 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
 
-class VerifyAccountScreen extends StatelessWidget {
+/// AUTH BOUNDARY: no verification backend is connected, so no code is sent.
+/// "Resend code" is rate-limited UI that states the boundary honestly.
+class VerifyAccountScreen extends StatefulWidget {
   const VerifyAccountScreen({super.key});
+
+  @override
+  State<VerifyAccountScreen> createState() => _VerifyAccountScreenState();
+}
+
+class _VerifyAccountScreenState extends State<VerifyAccountScreen> {
+  int _resendCooldown = 0;
+  Timer? _cooldownTimer;
+
+  @override
+  void dispose() {
+    _cooldownTimer?.cancel();
+    super.dispose();
+  }
+
+  void _resend() {
+    if (_resendCooldown > 0) return;
+    // Integration point: request a new OTP from the auth service here.
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Verification service not connected yet - code delivery requires the auth backend.'),
+    ));
+    setState(() => _resendCooldown = 30);
+    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return timer.cancel();
+      setState(() {
+        _resendCooldown -= 1;
+        if (_resendCooldown <= 0) timer.cancel();
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +70,12 @@ class VerifyAccountScreen extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               Center(
-                child: TextButton(onPressed: () {}, child: const Text("Resend code")),
+                child: TextButton(
+                  onPressed: _resendCooldown > 0 ? null : _resend,
+                  child: Text(_resendCooldown > 0
+                      ? "Resend code (${_resendCooldown}s)"
+                      : "Resend code"),
+                ),
               ),
               const Spacer(),
               const Text(
