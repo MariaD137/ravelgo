@@ -31,7 +31,10 @@ class _SplashScreenState extends State<SplashScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Image.asset('assets/logo.png'),
+              const Text(
+                "RavelGo",
+                style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: AppColors.textPrimary, letterSpacing: -0.5),
+              ),
               const SizedBox(height: 12),
               const Text("ADMIN", style: TextStyle(color: AppColors.primary, letterSpacing: 4, fontWeight: FontWeight.bold)),
             ],
