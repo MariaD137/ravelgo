@@ -30,7 +30,7 @@ class FAQScreen extends StatelessWidget {
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: Align(alignment: Alignment.centerLeft, child: Text(f.$2, style: const TextStyle(color: Colors.black54))),
+                    child: Align(alignment: Alignment.centerLeft, child: Text(f.$2, style: const TextStyle(color: AppColors.textSecondary))),
                   ),
                 ],
               ),

@@ -17,7 +17,7 @@ class MyDocumentsScreen extends StatelessWidget {
       case DocumentStatus.rejected:
         return AppColors.danger;
       case DocumentStatus.notUploaded:
-        return Colors.grey;
+        return AppColors.textMuted;
     }
   }
 
@@ -58,7 +58,7 @@ class MyDocumentsScreen extends StatelessWidget {
                       Text(d.title, style: const TextStyle(fontWeight: FontWeight.w600)),
                       const SizedBox(height: 4),
                       if (d.expiryDate != null)
-                        Text("Expires ${formatShortDate(d.expiryDate!)}", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                        Text("Expires ${formatShortDate(d.expiryDate!)}", style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                     ],
                   ),
                 ),

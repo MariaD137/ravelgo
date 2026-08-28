@@ -8,7 +8,7 @@ class CreateAccountScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -19,7 +19,7 @@ class CreateAccountScreen extends StatelessWidget {
               const SizedBox(height: 12),
               const Text(
                 "Let's get you set up to start earning with RavelGo",
-                style: TextStyle(fontSize: 15, color: Colors.black54),
+                style: TextStyle(fontSize: 15, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 24),
               const TextField(decoration: InputDecoration(labelText: 'Full name', border: OutlineInputBorder())),

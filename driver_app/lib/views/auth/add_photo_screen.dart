@@ -8,7 +8,7 @@ class AddPhotoScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -20,7 +20,7 @@ class AddPhotoScreen extends StatelessWidget {
               Center(
                 child: Stack(
                   children: [
-                    const CircleAvatar(radius: 60, backgroundColor: Color(0xFFF0F0F0), child: Icon(Icons.person, size: 60, color: Colors.black26)),
+                    const CircleAvatar(radius: 60, backgroundColor: AppColors.surfaceElevated, child: Icon(Icons.person, size: 60, color: AppColors.textMuted)),
                     Positioned(
                       bottom: 0,
                       right: 0,
@@ -37,7 +37,7 @@ class AddPhotoScreen extends StatelessWidget {
               const Center(
                 child: Text(
                   "Riders will see this photo when matched with you",
-                  style: TextStyle(fontSize: 13, color: Colors.black54),
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                 ),
               ),
               const Spacer(),

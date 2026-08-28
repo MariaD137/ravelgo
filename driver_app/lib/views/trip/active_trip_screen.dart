@@ -95,7 +95,7 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
   Widget build(BuildContext context) {
     final r = widget.request;
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -106,8 +106,8 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
                   top: 12,
                   left: 12,
                   child: CircleAvatar(
-                    backgroundColor: Colors.white,
-                    child: IconButton(icon: const Icon(Icons.shield_outlined, color: Colors.red), onPressed: () {
+                    backgroundColor: AppColors.surfaceElevated,
+                    child: IconButton(icon: const Icon(Icons.shield_outlined, color: AppColors.error), onPressed: () {
                       Navigator.push(context, MaterialPageRoute(builder: (_) => const EmergencyScreen()));
                     }),
                   ),
@@ -124,14 +124,14 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        const CircleAvatar(radius: 22, backgroundColor: Color(0xFFF0F0F0), child: Icon(Icons.person, color: Colors.black45)),
+                        const CircleAvatar(radius: 22, backgroundColor: AppColors.surfaceElevated, child: Icon(Icons.person, color: AppColors.textSecondary)),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(r.riderName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                              Text(_stage.index < 2 ? r.pickup : r.destination, style: const TextStyle(fontSize: 12.5, color: Colors.black54)),
+                              Text(_stage.index < 2 ? r.pickup : r.destination, style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
                             ],
                           ),
                         ),

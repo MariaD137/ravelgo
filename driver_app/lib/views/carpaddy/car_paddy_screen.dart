@@ -51,7 +51,7 @@ class _CarPaddyScreenState extends State<CarPaddyScreen> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  const Text("Vehicle registration (Car Papers) expires Aug 2, 2026", style: TextStyle(fontSize: 13, color: Colors.black54)),
+                  const Text("Vehicle registration (Car Papers) expires Aug 2, 2026", style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
                 ],
               ),
             ),

@@ -63,7 +63,7 @@ class _IncomingRequestSheetState extends State<IncomingRequestSheet> {
     final r = widget.request;
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      decoration: const BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -82,7 +82,7 @@ class _IncomingRequestSheetState extends State<IncomingRequestSheet> {
           const SizedBox(height: 16),
           Row(
             children: [
-              const CircleAvatar(radius: 22, backgroundColor: Color(0xFFF0F0F0), child: Icon(Icons.person, color: Colors.black45)),
+              const CircleAvatar(radius: 22, backgroundColor: AppColors.surfaceElevated, child: Icon(Icons.person, color: AppColors.textSecondary)),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -92,7 +92,7 @@ class _IncomingRequestSheetState extends State<IncomingRequestSheet> {
                     Row(children: [
                       const Icon(Icons.star, size: 14, color: AppColors.primary),
                       const SizedBox(width: 4),
-                      Text("${r.riderRating}", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                      Text("${r.riderRating}", style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                     ]),
                   ],
                 ),
@@ -116,7 +116,7 @@ class _IncomingRequestSheetState extends State<IncomingRequestSheet> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("${r.distanceKm} km · ${r.etaMinutes} min away", style: const TextStyle(fontSize: 13, color: Colors.black54)),
+              Text("${r.distanceKm} km · ${r.etaMinutes} min away", style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
               Text(
                 _counterOffer != null ? "₦${_counterOffer!.toStringAsFixed(0)} (proposed)" : "₦${r.estimatedFare.toStringAsFixed(0)}",
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -143,7 +143,7 @@ class _IncomingRequestSheetState extends State<IncomingRequestSheet> {
   Widget _row(IconData icon, String text) {
     return Row(
       children: [
-        Icon(icon, size: 16, color: Colors.black54),
+        Icon(icon, size: 16, color: AppColors.textSecondary),
         const SizedBox(width: 8),
         Expanded(child: Text(text, style: const TextStyle(fontSize: 13.5))),
       ],

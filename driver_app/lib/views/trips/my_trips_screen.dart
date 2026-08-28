@@ -39,13 +39,13 @@ class MyTripsScreen extends StatelessWidget {
                             children: [
                               Text("${t.pickup} → ${t.destination}", style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                               const SizedBox(height: 4),
-                              Text(formatFriendlyDate(t.date), style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                              Text(formatFriendlyDate(t.date), style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                             ],
                           ),
                         ),
                         Text(
                           cancelled ? "Cancelled" : "₦${t.fare.toStringAsFixed(0)}",
-                          style: TextStyle(fontWeight: FontWeight.w700, color: cancelled ? AppColors.danger : Colors.black),
+                          style: TextStyle(fontWeight: FontWeight.w700, color: cancelled ? AppColors.danger : AppColors.textPrimary),
                         ),
                       ],
                     ),

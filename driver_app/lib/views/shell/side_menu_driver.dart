@@ -22,7 +22,7 @@ class SideMenuDriver extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       child: SafeArea(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -32,7 +32,7 @@ class SideMenuDriver extends StatelessWidget {
               color: AppColors.background,
               child: Row(
                 children: [
-                  const CircleAvatar(radius: 28, backgroundColor: Colors.white, child: Icon(Icons.person, color: Colors.black45)),
+                  const CircleAvatar(radius: 28, backgroundColor: AppColors.surfaceElevated, child: Icon(Icons.person, color: AppColors.textSecondary)),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
@@ -44,7 +44,7 @@ class SideMenuDriver extends StatelessWidget {
                           children: [
                             const Icon(Icons.star, color: AppColors.primary, size: 14),
                             const SizedBox(width: 4),
-                            Text("${profile.rating}  ·  ${profile.totalTrips} trips", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                            Text("${profile.rating}  ·  ${profile.totalTrips} trips", style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                           ],
                         ),
                       ],
@@ -87,7 +87,7 @@ class SideMenuDriver extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Row(
           children: [
-            Icon(icon, size: 21, color: Colors.black87),
+            Icon(icon, size: 21, color: AppColors.textSecondary),
             const SizedBox(width: 16),
             Expanded(child: Text(label, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500))),
           ],

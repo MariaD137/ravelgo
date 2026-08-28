@@ -38,7 +38,7 @@ class _DriverShellState extends State<DriverShell> {
         currentIndex: _index,
         onTap: (i) => setState(() => _index = i),
         selectedItemColor: AppColors.primaryDark,
-        unselectedItemColor: Colors.grey,
+        unselectedItemColor: AppColors.textMuted,
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: "Home"),

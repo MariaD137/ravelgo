@@ -22,7 +22,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
       appBar: AppBar(title: const Text("My Vehicles")),
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.primary,
-        foregroundColor: Colors.black,
+        foregroundColor: AppColors.textPrimary,
         onPressed: () async {
           final v = await Navigator.push<Vehicle>(context, MaterialPageRoute(builder: (_) => const AddVehicleScreen()));
           if (v != null) setState(() => _vehicles.add(v));
@@ -44,7 +44,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10)),
-                  child: const Icon(Icons.directions_car, color: Colors.black54),
+                  child: const Icon(Icons.directions_car, color: AppColors.textSecondary),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -53,7 +53,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                     children: [
                       Text("${v.brand} ${v.model} · ${v.colour}", style: const TextStyle(fontWeight: FontWeight.w600)),
                       const SizedBox(height: 4),
-                      Text("${v.plateNumber} · ${v.year}", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                      Text("${v.plateNumber} · ${v.year}", style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                     ],
                   ),
                 ),

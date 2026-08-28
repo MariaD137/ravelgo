@@ -9,7 +9,7 @@ class LoginScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.background,
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -24,7 +24,7 @@ class LoginScreen extends StatelessWidget {
               const SizedBox(height: 8),
               Text(
                 'Welcome back! Sign in to go online and start earning',
-                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                style: const TextStyle(fontSize: 16, color: AppColors.textSecondary),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
@@ -71,7 +71,7 @@ class LoginScreen extends StatelessWidget {
                 child: Text.rich(
                   TextSpan(
                     text: "New driver? ",
-                    style: const TextStyle(color: Colors.black),
+                    style: const TextStyle(color: AppColors.textPrimary),
                     children: [
                       TextSpan(text: "Create an account", style: TextStyle(color: AppColors.primaryDark)),
                     ],

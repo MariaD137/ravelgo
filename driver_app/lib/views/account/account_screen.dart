@@ -33,7 +33,7 @@ class AccountScreen extends StatelessWidget {
               decoration: AppComponents.cardDecoration(),
               child: Row(
                 children: [
-                  const CircleAvatar(radius: 26, backgroundColor: Color(0xFFF0F0F0), child: Icon(Icons.person, color: Colors.black45)),
+                  const CircleAvatar(radius: 26, backgroundColor: AppColors.surfaceElevated, child: Icon(Icons.person, color: AppColors.textSecondary)),
                   const SizedBox(width: 14),
                   const Expanded(
                     child: Column(
@@ -41,7 +41,7 @@ class AccountScreen extends StatelessWidget {
                       children: [
                         Text("Thelma Ibeh", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                         SizedBox(height: 4),
-                        Text("View & edit profile", style: TextStyle(fontSize: 12, color: Colors.black54)),
+                        Text("View & edit profile", style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                       ],
                     ),
                   ),

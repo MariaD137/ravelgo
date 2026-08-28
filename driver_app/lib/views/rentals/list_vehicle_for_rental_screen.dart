@@ -22,7 +22,7 @@ class _ListVehicleForRentalScreenState extends State<ListVehicleForRentalScreen>
           children: [
             const Text(
               "Partner with RavelGo to rent your car out directly through the app when you're not driving it.",
-              style: TextStyle(fontSize: 14, color: Colors.black54),
+              style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 20),
             const TextField(decoration: InputDecoration(labelText: "Vehicle", border: OutlineInputBorder(), hintText: "Toyota Camry, Black")),

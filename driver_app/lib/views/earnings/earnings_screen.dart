@@ -23,7 +23,7 @@ class EarningsScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("This week", style: TextStyle(color: Colors.black54, fontSize: 13)),
+                const Text("This week", style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
                 const SizedBox(height: 4),
                 Text("₦${_week.reduce((a, b) => a + b).toStringAsFixed(0)}",
                     style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
@@ -48,7 +48,7 @@ class EarningsScreen extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(height: 6),
-                              Text(_days[i], style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                              Text(_days[i], style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                             ],
                           ),
                         ),

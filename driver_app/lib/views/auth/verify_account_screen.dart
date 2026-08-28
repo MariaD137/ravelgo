@@ -8,7 +8,7 @@ class VerifyAccountScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -17,7 +17,7 @@ class VerifyAccountScreen extends StatelessWidget {
             children: [
               AppComponents.header(context, "Verify your account"),
               const SizedBox(height: 24),
-              const Text("Enter the 6-digit code sent to your phone number", style: TextStyle(fontSize: 14, color: Colors.black54)),
+              const Text("Enter the 6-digit code sent to your phone number", style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
               const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -41,7 +41,7 @@ class VerifyAccountScreen extends StatelessWidget {
               const Spacer(),
               const Text(
                 "Your application will be reviewed within 24-48 hours. You can go online as soon as your documents are approved.",
-                style: TextStyle(fontSize: 12, color: Colors.black54),
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 12),
               AppComponents.primaryButton(

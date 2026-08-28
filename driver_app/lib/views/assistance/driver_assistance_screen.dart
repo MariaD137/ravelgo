@@ -18,7 +18,7 @@ class DriverAssistanceScreen extends StatelessWidget {
         children: [
           const Text(
             "AI-powered tools suggest fuel-efficient routes and warn you about hazards, speed traps and construction zones in real time.",
-            style: TextStyle(fontSize: 14, color: Colors.black54),
+            style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 20),
           ...alerts.map((a) => Padding(
@@ -40,7 +40,7 @@ class DriverAssistanceScreen extends StatelessWidget {
                           children: [
                             Text(a.$1, style: const TextStyle(fontWeight: FontWeight.w600)),
                             const SizedBox(height: 2),
-                            Text(a.$2, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                            Text(a.$2, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                           ],
                         ),
                       ),

@@ -19,7 +19,7 @@ class TripDetailScreen extends StatelessWidget {
           children: [
             AppComponents.badge(cancelled ? "Cancelled" : "Completed", color: cancelled ? AppColors.danger : AppColors.success),
             const SizedBox(height: 12),
-            Text(formatFriendlyDate(trip.date), style: const TextStyle(color: Colors.black54)),
+            Text(formatFriendlyDate(trip.date), style: const TextStyle(color: AppColors.textSecondary)),
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(16),
@@ -79,7 +79,7 @@ class TripDetailScreen extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 16, color: Colors.black54),
+        Icon(icon, size: 16, color: AppColors.textSecondary),
         const SizedBox(width: 8),
         Expanded(child: Text(text)),
       ],

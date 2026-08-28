@@ -21,7 +21,7 @@ class _TripCompleteScreenState extends State<TripCompleteScreen> {
     final earnings = r.estimatedFare - platformFee;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -48,7 +48,7 @@ class _TripCompleteScreenState extends State<TripCompleteScreen> {
               const SizedBox(height: 28),
               const Text("Rate your rider", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
               const SizedBox(height: 4),
-              const Text("Your rating is anonymous and helps keep RavelGo safe", style: TextStyle(fontSize: 12, color: Colors.black54)),
+              const Text("Your rating is anonymous and helps keep RavelGo safe", style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
               const SizedBox(height: 12),
               Row(
                 children: List.generate(5, (i) {

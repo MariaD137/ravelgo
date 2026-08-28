@@ -8,7 +8,7 @@ class DriverInformationScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -19,7 +19,7 @@ class DriverInformationScreen extends StatelessWidget {
               const SizedBox(height: 12),
               const Text(
                 "This information is used for the Driver Matching Algorithm to pair you with the right riders",
-                style: TextStyle(fontSize: 14, color: Colors.black54),
+                style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 24),
               const TextField(decoration: InputDecoration(labelText: "Driver's License Number", border: OutlineInputBorder())),
