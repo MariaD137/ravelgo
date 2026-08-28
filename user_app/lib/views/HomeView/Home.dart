@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/LocationService.dart';
 import 'package:ravelgo_user_app/components/ride_controller.dart';
+import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/views/AppDrawer/AppDrawer.dart';
 import 'package:ravelgo_user_app/views/HomeView/ride_view_popup.dart';
 import 'package:ravelgo_user_app/views/User/invite_a_friend.dart';
@@ -88,7 +89,7 @@ class _HomePageState extends State<HomePage> {
               return Stack(
                 children: [
                   // Map / image background
-                  GoogleMap(
+                  SafeGoogleMap(
                     mapType: MapType.hybrid,
                     onMapCreated: _onMapCreated,
                     initialCameraPosition: _initialCameraPosition,
