@@ -135,7 +135,7 @@ class AppComponents {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: (color ?? AppColors.primary).withValues(alpha: 0.15),
+        color: AppColors.border.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(

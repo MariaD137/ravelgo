@@ -140,7 +140,7 @@ class AppComponents {
         children: [
           Container(
             padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: c.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(10)),
+            decoration: BoxDecoration(color: AppColors.border.withValues(alpha: 0.5), borderRadius: BorderRadius.circular(10)),
             child: Icon(icon, color: c == AppColors.primary ? AppColors.primaryDark : c, size: 20),
           ),
           const SizedBox(height: 12),
