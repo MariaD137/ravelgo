@@ -82,7 +82,7 @@ class DriverHomeScreen extends StatelessWidget {
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                         ),
-                        Switch(value: profile.isOnline, activeColor: AppColors.primaryDark, onChanged: onOnlineToggle),
+                        Switch(value: profile.isOnline, onChanged: onOnlineToggle),
                       ],
                     ),
                   ),

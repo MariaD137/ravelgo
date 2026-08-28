@@ -1,38 +1,39 @@
 import 'package:flutter/material.dart';
 
-/// RavelGo design tokens - matte charcoal/graphite surfaces with a
-/// restrained coral accent. Semantic roles only: a color is used for what
-/// it means (success/warning/error/disabled), never picked for decoration.
+/// RavelGo design tokens - premium black-and-white surfaces, Turo-inspired.
+/// White is the dominant background, black is the primary action color.
+/// Semantic roles only: a color is used for what it means
+/// (success/warning/error/disabled), never picked for decoration.
 /// Kept in sync with driver_app and admin_app's own AppColors so the three
 /// apps read as one product instead of each screen picking its own shade.
 class AppColors {
-  // Surfaces (darkest to lightest)
-  static const background = Color(0xFF121214);
-  static const surface = Color(0xFF1B1C1F);
-  static const surfaceElevated = Color(0xFF232428);
-  static const surfaceVariant = Color(0xFF2A2B30);
+  // Surfaces (white is dominant; elevated/variant are light neutral grays)
+  static const background = Color(0xFFFFFFFF);
+  static const surface = Color(0xFFFFFFFF);
+  static const surfaceElevated = Color(0xFFF5F5F5);
+  static const surfaceVariant = Color(0xFFF5F5F5);
 
   // Text
-  static const textPrimary = Color(0xFFF2F1EF);
-  static const textSecondary = Color(0xFFA8A8AD);
-  static const textMuted = Color(0xFF6E6E74);
+  static const textPrimary = Color(0xFF000000);
+  static const textSecondary = Color(0xFF555555);
+  static const textMuted = Color(0xFF888888);
 
   // Structure
-  static const border = Color(0xFF33343A);
-  static const divider = Color(0xFF2A2B30);
+  static const border = Color(0xFFE5E5E5);
+  static const divider = Color(0xFFE5E5E5);
 
-  // Brand accent
-  static const primary = Color(0xFFEF4B37);
-  static const primaryDark = Color(0xFFC23A28);
-  static const primaryTint = Color(0xFF3A2620);
-  static const primaryContainer = Color(0xFF3A2620);
+  // Primary action color (black, per the Turo-inspired direction)
+  static const primary = Color(0xFF000000);
+  static const primaryDark = Color(0xFF1A1A1A);
+  static const primaryTint = Color(0xFFF0F0F0);
+  static const primaryContainer = Color(0xFFF5F5F5);
 
   // Semantic
-  static const success = Color(0xFF4CAF7D);
-  static const warning = Color(0xFFD9A441);
-  static const error = Color(0xFFE0544A);
-  static const info = Color(0xFF5B8DEF);
-  static const disabled = Color(0xFF4A4B52);
+  static const success = Color(0xFF2E7D32);
+  static const warning = Color(0xFFED6C02);
+  static const error = Color(0xFFD32F2F);
+  static const info = Color(0xFF1565C0);
+  static const disabled = Color(0xFFE5E5E5);
 
   // Legacy aliases kept for screens not yet migrated off these names.
   static const danger = error;
@@ -78,12 +79,12 @@ class AppTypography {
 ThemeData buildAppTheme() {
   return ThemeData(
     useMaterial3: true,
-    brightness: Brightness.dark,
+    brightness: Brightness.light,
     scaffoldBackgroundColor: AppColors.background,
     fontFamily: "Roboto",
     colorScheme: ColorScheme.fromSeed(
       seedColor: AppColors.primary,
-      brightness: Brightness.dark,
+      brightness: Brightness.light,
       primary: AppColors.primary,
       surface: AppColors.surface,
       error: AppColors.error,
@@ -119,8 +120,9 @@ ThemeData buildAppTheme() {
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.primary,
-        foregroundColor: Colors.black,
+        foregroundColor: Colors.white,
         disabledBackgroundColor: AppColors.disabled,
+        disabledForegroundColor: AppColors.textMuted,
         elevation: 0,
         textStyle: AppTypography.button,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.medium)),
@@ -129,7 +131,7 @@ ThemeData buildAppTheme() {
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         foregroundColor: AppColors.textPrimary,
-        side: const BorderSide(color: AppColors.border),
+        side: const BorderSide(color: AppColors.primary),
         textStyle: AppTypography.button,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.medium)),
       ),
@@ -139,7 +141,7 @@ ThemeData buildAppTheme() {
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: AppColors.surfaceElevated,
+      fillColor: AppColors.surface,
       hintStyle: const TextStyle(color: AppColors.textMuted),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(AppRadius.medium),
@@ -162,8 +164,15 @@ ThemeData buildAppTheme() {
     ),
     iconTheme: const IconThemeData(color: AppColors.textSecondary),
     dialogTheme: DialogThemeData(
-      backgroundColor: AppColors.surfaceElevated,
+      backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.large)),
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.selected) ? AppColors.primary : AppColors.surface),
+      trackColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.selected) ? AppColors.textSecondary : AppColors.disabled),
+      trackOutlineColor: WidgetStateProperty.all(AppColors.border),
     ),
   );
 }
