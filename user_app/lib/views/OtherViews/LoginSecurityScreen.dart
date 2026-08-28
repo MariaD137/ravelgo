@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/views/OtherViews/UpdatePassword.dart';
 
 class LoginSecurityScreen extends StatelessWidget {
   const LoginSecurityScreen({super.key});
@@ -22,6 +23,20 @@ class LoginSecurityScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.password_outlined),
+              title: const Text("Change password", style: TextStyle(fontSize: 16)),
+              trailing: const Icon(Icons.chevron_right, color: Colors.black45),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const UpdatePassword()),
+                );
+              },
+            ),
+            const Divider(),
+            const SizedBox(height: 20),
             const Text(
               "Linking a social account enables you to sign in to Ravel Go without using your phone number. "
                   "Your social account will only be used for login purposes, and we will not access or share any information without your consent.",

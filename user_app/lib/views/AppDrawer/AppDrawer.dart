@@ -61,65 +61,6 @@ class SideMenu extends StatelessWidget {
 
             ),
 
-            SizedBox(height: 10),
-
-            // YELLOW UPDATE CARD
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryTint,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.transparent,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Image.asset("assets/update_download.png",height: 30,width: 30,),
-                    ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Your app needs an update',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w600, fontSize: 15,color: AppColors.textSecondary),
-                                ),
-                              ),
-                              GestureDetector(
-                                onTap: () => Navigator.pop(context),
-                                child: Icon(Icons.close, size: 18, color: Colors.black54),
-                              )
-                            ],
-                          ),
-                          SizedBox(height: 2),
-                          Text('New features and improvements',
-                              style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-                          SizedBox(height: 4),
-                          Text('Update now',
-                              style: TextStyle(
-                                  color: AppColors.primaryDark,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
             SizedBox(height: 20),
 
             // MENU ITEMS
@@ -129,7 +70,10 @@ class SideMenu extends StatelessWidget {
                 child: ListView(
                   padding: EdgeInsets.only(top: 0),
                   children: [
-                    _menuItem(assetsImg: "assets/trip_history.png", label: "Trip history", onTap: () {}),
+                    _menuItem(assetsImg: "assets/trip_history.png", label: "Trip history", onTap: () {
+                      BottomNavigationView.globalKey.currentState?.changeTab(2);
+                      Navigator.pop(context);
+                    }),
                     _menuItem(assetsImg: "assets/service.png", label: "Services", onTap: () {
                       BottomNavigationView.globalKey.currentState?.changeTab(1);
                       Navigator.pop(context);

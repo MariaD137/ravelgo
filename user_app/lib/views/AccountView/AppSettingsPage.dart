@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/AccountView/VoiceOverPage.dart';
+import 'package:ravelgo_user_app/views/AccountView/SoundVoicesPage.dart';
+import 'package:ravelgo_user_app/views/OtherViews/LanguageSelectionScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class AppSettingsPage extends StatelessWidget {
@@ -58,7 +60,13 @@ class AppSettingsPage extends StatelessWidget {
                         _divider(),
                         _settingsTile(
                           title: "Sound and voice",
-                          onTap: () {},
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) => const SoundVoicesPage()),
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -71,7 +79,13 @@ class AppSettingsPage extends StatelessWidget {
                         _settingsTile(
                           title: "Language",
                           value: "English",
-                          onTap: () {},
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) => const LanguageSelectionScreen()),
+                            );
+                          },
                         ),
                         // _divider(),
                         // _settingsTile(

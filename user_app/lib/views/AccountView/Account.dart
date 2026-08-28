@@ -2,10 +2,14 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/AccountView/AppSettingsPage.dart';
 import 'package:ravelgo_user_app/views/AccountView/CommunicationsPage.dart';
+import 'package:ravelgo_user_app/views/Login/login.dart';
 import 'package:ravelgo_user_app/views/OtherViews/AboutView.dart';
+import 'package:ravelgo_user_app/views/OtherViews/DeleteAccountScreen.dart';
+import 'package:ravelgo_user_app/views/OtherViews/LoginSecurityScreen.dart';
 import 'package:ravelgo_user_app/views/OtherViews/PaymentView.dart';
 import 'package:ravelgo_user_app/views/OtherViews/PersonalInfo.dart';
 import 'package:ravelgo_user_app/views/OtherViews/PrivacyScreen.dart';
+import 'package:ravelgo_user_app/views/OtherViews/SupportView.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class Accountview extends StatelessWidget {
@@ -121,6 +125,30 @@ class Accountview extends StatelessWidget {
                     );
                   }
                 ),
+                _divider(),
+                _menuRow(
+                  icon: Icons.lock_outline,
+                  label: 'Login & Security',
+                  onTap: (){
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const LoginSecurityScreen()),
+                    );
+                  }
+                ),
+                _divider(),
+                _menuRow(
+                  icon: Icons.support_agent_outlined,
+                  label: 'Contact support',
+                  onTap: (){
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const SupportView()),
+                    );
+                  }
+                ),
               ],
             ),
 
@@ -145,12 +173,24 @@ class Accountview extends StatelessWidget {
                   _menuRow(
                     icon: Icons.logout,
                     label: 'Log out',
+                    onTap: (){
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(builder: (context) => Login()),
+                        (route) => false,
+                      );
+                    }
                   ),
                   _divider(),
                   _menuRow(
                     icon: Icons.delete_outline,
                     label: 'Delete account',
                     labelColor: Colors.red,
+                    onTap: (){
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const DeleteAccountScreen()),
+                      );
+                    }
                   ),
                 ],
               ),
