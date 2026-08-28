@@ -2,9 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/AccountView/AppSettingsPage.dart';
 import 'package:ravelgo_user_app/views/AccountView/CommunicationsPage.dart';
-import 'package:ravelgo_user_app/views/AccountView/Subscription.dart';
-import 'package:ravelgo_user_app/views/Driver_Portal/ravel_driver_portal_screen.dart';
 import 'package:ravelgo_user_app/views/OtherViews/AboutView.dart';
+import 'package:ravelgo_user_app/views/OtherViews/PaymentView.dart';
+import 'package:ravelgo_user_app/views/OtherViews/PersonalInfo.dart';
 import 'package:ravelgo_user_app/views/OtherViews/PrivacyScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
@@ -59,28 +59,23 @@ class Accountview extends StatelessWidget {
             _section(
               children: [
                 _menuRow(
-                  icon: Icons.home_outlined,
-                  label: 'Ravel driver portal',
+                  icon: Icons.person_outline,
+                  label: 'Personal Info',
                   onTap: (){
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => RavelDriverPortalScreen()),
+                      MaterialPageRoute(builder: (context) => const PersonalInfo()),
                     );
                   }
                 ),
                 _divider(),
                 _menuRow(
-                  icon: Icons.directions_car_outlined,
-                  label: 'Vehicle document',
-                ),
-                _divider(),
-                _menuRow(
-                  icon: Icons.subscriptions_outlined,
-                  label: 'Subscription',
+                  icon: Icons.payment_outlined,
+                  label: 'Payment methods',
                   onTap: (){
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => SubscriptionPage()),
+                      MaterialPageRoute(builder: (context) => PaymentView()),
                     );
                   }
                 ),
