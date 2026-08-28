@@ -8,7 +8,7 @@ class AdminLoginScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -19,7 +19,7 @@ class AdminLoginScreen extends StatelessWidget {
                 const SizedBox(height: 40),
                 const Text("RavelGo Admin", style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                const Text("Sign in to manage drivers, riders, trips and operations", style: TextStyle(fontSize: 14, color: Colors.black54)),
+                const Text("Sign in to manage drivers, riders, trips and operations", style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
                 const SizedBox(height: 32),
                 const TextField(decoration: InputDecoration(labelText: "Work email", border: OutlineInputBorder())),
                 const SizedBox(height: 16),
@@ -44,7 +44,7 @@ class AdminLoginScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 const Center(
-                  child: Text("Access is restricted to authorized RavelGo staff.", style: TextStyle(fontSize: 12, color: Colors.black45)),
+                  child: Text("Access is restricted to authorized RavelGo staff.", style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                 ),
               ],
             ),

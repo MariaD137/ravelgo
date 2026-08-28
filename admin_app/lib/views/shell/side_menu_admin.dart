@@ -20,7 +20,7 @@ class SideMenuAdmin extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       child: SafeArea(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -30,7 +30,7 @@ class SideMenuAdmin extends StatelessWidget {
               color: AppColors.background,
               child: Row(
                 children: [
-                  const CircleAvatar(radius: 26, backgroundColor: Colors.white, child: Icon(Icons.admin_panel_settings_outlined, color: Colors.black87)),
+                  const CircleAvatar(radius: 26, backgroundColor: AppColors.surface, child: Icon(Icons.admin_panel_settings_outlined, color: AppColors.textPrimary)),
                   const SizedBox(width: 14),
                   const Expanded(
                     child: Column(
@@ -38,7 +38,7 @@ class SideMenuAdmin extends StatelessWidget {
                       children: [
                         Text("Ops Admin", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                         SizedBox(height: 2),
-                        Text("admin@ravelgo.com", style: TextStyle(fontSize: 12, color: Colors.black54)),
+                        Text("admin@ravelgo.com", style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                       ],
                     ),
                   ),
@@ -80,7 +80,7 @@ class SideMenuAdmin extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Row(
           children: [
-            Icon(icon, size: 21, color: Colors.black87),
+            Icon(icon, size: 21, color: AppColors.textPrimary),
             const SizedBox(width: 16),
             Expanded(child: Text(label, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500))),
           ],

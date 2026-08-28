@@ -19,7 +19,7 @@ class EmergencyAlertsScreen extends StatelessWidget {
             decoration: AppComponents.cardDecoration(),
             child: Row(
               children: [
-                Icon(Icons.sos, color: e.resolved ? Colors.grey : AppColors.danger, size: 28),
+                Icon(Icons.sos, color: e.resolved ? AppColors.textMuted : AppColors.danger, size: 28),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -29,7 +29,7 @@ class EmergencyAlertsScreen extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(e.location, style: const TextStyle(fontSize: 12.5)),
                       const SizedBox(height: 2),
-                      Text(formatFriendlyDate(e.triggeredAt), style: const TextStyle(fontSize: 11, color: Colors.black45)),
+                      Text(formatFriendlyDate(e.triggeredAt), style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                     ],
                   ),
                 ),

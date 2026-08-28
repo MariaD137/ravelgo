@@ -62,7 +62,7 @@ class DashboardScreen extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 6),
-                            Text(_days[i], style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                            Text(_days[i], style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                           ],
                         ),
                       ),
@@ -88,7 +88,7 @@ class DashboardScreen extends StatelessWidget {
                         children: [
                           Text("${t.riderName}  →  ${t.driverName}", style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
                           const SizedBox(height: 4),
-                          Text("${t.pickup} to ${t.destination} · ${formatFriendlyDate(t.date)}", style: const TextStyle(fontSize: 11.5, color: Colors.black54)),
+                          Text("${t.pickup} to ${t.destination} · ${formatFriendlyDate(t.date)}", style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary)),
                         ],
                       ),
                     ),

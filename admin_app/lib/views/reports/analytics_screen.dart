@@ -38,7 +38,7 @@ class AnalyticsScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 6),
-                        Text(_days[i], style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                        Text(_days[i], style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                       ],
                     ),
                   ),

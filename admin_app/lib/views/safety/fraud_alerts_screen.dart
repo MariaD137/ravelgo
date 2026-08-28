@@ -48,9 +48,9 @@ class FraudAlertsScreen extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Text(a.description, style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                    Text(a.description, style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
                     const SizedBox(height: 6),
-                    Text(formatFriendlyDate(a.detectedAt), style: const TextStyle(fontSize: 11, color: Colors.black45)),
+                    Text(formatFriendlyDate(a.detectedAt), style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                     const SizedBox(height: 10),
                     Row(
                       children: [

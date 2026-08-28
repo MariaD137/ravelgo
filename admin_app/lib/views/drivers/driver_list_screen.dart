@@ -44,7 +44,7 @@ class DriverListScreen extends StatelessWidget {
             decoration: AppComponents.cardDecoration(),
             child: Row(
               children: [
-                const CircleAvatar(radius: 22, backgroundColor: Color(0xFFF0F0F0), child: Icon(Icons.person, color: Colors.black45)),
+                const CircleAvatar(radius: 22, backgroundColor: AppColors.surfaceElevated, child: Icon(Icons.person, color: AppColors.textSecondary)),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -52,7 +52,7 @@ class DriverListScreen extends StatelessWidget {
                     children: [
                       Text(d.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                       const SizedBox(height: 4),
-                      Text("${d.vehicle} · ${d.totalTrips} trips · ★ ${d.rating}", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                      Text("${d.vehicle} · ${d.totalTrips} trips · ★ ${d.rating}", style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                     ],
                   ),
                 ),

@@ -9,7 +9,7 @@ class CarPaddyRequestsScreen extends StatelessWidget {
   Color _statusColor(CarPaddyStatus s) {
     switch (s) {
       case CarPaddyStatus.submitted:
-        return Colors.grey;
+        return AppColors.textMuted;
       case CarPaddyStatus.inReview:
         return AppColors.warning;
       case CarPaddyStatus.approved:
@@ -53,7 +53,7 @@ class CarPaddyRequestsScreen extends StatelessWidget {
                     children: [
                       Text("${r.driverName} · ${r.plateNumber}", style: const TextStyle(fontWeight: FontWeight.w600)),
                       const SizedBox(height: 4),
-                      Text("Submitted ${formatShortDate(r.submittedOn)}", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                      Text("Submitted ${formatShortDate(r.submittedOn)}", style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                     ],
                   ),
                 ),

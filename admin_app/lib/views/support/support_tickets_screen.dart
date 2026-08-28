@@ -51,9 +51,9 @@ class SupportTicketsScreen extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 6),
-              Text("${t.category} · from ${t.from}", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+              Text("${t.category} · from ${t.from}", style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
               const SizedBox(height: 2),
-              Text(formatFriendlyDate(t.createdAt), style: const TextStyle(fontSize: 11, color: Colors.black45)),
+              Text(formatFriendlyDate(t.createdAt), style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
             ],
           ),
         );

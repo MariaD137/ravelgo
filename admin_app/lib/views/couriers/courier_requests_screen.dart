@@ -14,7 +14,7 @@ class CourierRequestsScreen extends StatelessWidget {
       case CourierRequestStatus.delivered:
         return AppColors.success;
       case CourierRequestStatus.cancelled:
-        return Colors.grey;
+        return AppColors.textMuted;
     }
   }
 
@@ -66,7 +66,7 @@ class CourierRequestsScreen extends StatelessWidget {
                       Text("${c.pickupStation} → ${c.dropoffStation}", style: const TextStyle(fontSize: 13)),
                       const SizedBox(height: 6),
                       Text("Requested by ${c.requesterName}${c.courierName != null ? ' · Courier: ${c.courierName}' : ''}",
-                          style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                       const SizedBox(height: 6),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,

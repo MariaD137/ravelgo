@@ -45,7 +45,7 @@ class DriverSubscriptionsScreen extends StatelessWidget {
                     Expanded(child: Text(d.name, style: const TextStyle(fontWeight: FontWeight.w600))),
                     AppComponents.badge(
                       d.subscriptionActive ? "Subscribed" : "Not subscribed",
-                      color: d.subscriptionActive ? AppColors.success : Colors.grey,
+                      color: d.subscriptionActive ? AppColors.success : AppColors.textMuted,
                     ),
                   ],
                 ),

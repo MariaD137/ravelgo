@@ -37,7 +37,7 @@ class LoyaltyProgramScreen extends StatelessWidget {
                         children: [
                           Text("${t.$1} · ${t.$2}", style: const TextStyle(fontWeight: FontWeight.w700)),
                           const SizedBox(height: 4),
-                          Text(t.$3, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                          Text(t.$3, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                         ],
                       ),
                     ),

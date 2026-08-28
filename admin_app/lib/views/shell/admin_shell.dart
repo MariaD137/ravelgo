@@ -31,8 +31,8 @@ class _AdminShellState extends State<AdminShell> {
       drawer: const SideMenuAdmin(),
       appBar: AppBar(
         title: Text(_titles[_index]),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        backgroundColor: AppColors.surface,
+        foregroundColor: AppColors.textPrimary,
         elevation: 0,
         actions: [
           IconButton(icon: const Icon(Icons.notifications_none), onPressed: () {}),
@@ -43,7 +43,7 @@ class _AdminShellState extends State<AdminShell> {
         currentIndex: _index,
         onTap: (i) => setState(() => _index = i),
         selectedItemColor: AppColors.primaryDark,
-        unselectedItemColor: Colors.grey,
+        unselectedItemColor: AppColors.textMuted,
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), label: "Dashboard"),

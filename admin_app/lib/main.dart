@@ -17,12 +17,7 @@ class RavelGoAdminApp extends StatelessWidget {
     return MaterialApp(
       title: "RavelGo Admin",
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        scaffoldBackgroundColor: AppColors.background,
-        colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primary, primary: AppColors.primary),
-        fontFamily: "Roboto",
-      ),
+      theme: buildAppTheme(),
       home: const SplashScreen(),
     );
   }

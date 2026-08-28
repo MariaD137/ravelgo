@@ -51,7 +51,7 @@ class RentalListingsScreen extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 6),
-                Text("Owner: ${l.ownerName} · ${l.location}", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                Text("Owner: ${l.ownerName} · ${l.location}", style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                 const SizedBox(height: 6),
                 Text("₦${l.dailyRate.toStringAsFixed(0)} / day", style: const TextStyle(fontWeight: FontWeight.w700)),
                 if (l.status == RentalListingStatus.pendingApproval) ...[

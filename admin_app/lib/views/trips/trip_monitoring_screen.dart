@@ -15,7 +15,7 @@ class TripMonitoringScreen extends StatelessWidget {
       case TripRecordStatus.completed:
         return AppColors.success;
       case TripRecordStatus.cancelled:
-        return Colors.grey;
+        return AppColors.textMuted;
       case TripRecordStatus.disputed:
         return AppColors.danger;
     }
@@ -55,9 +55,9 @@ class TripMonitoringScreen extends StatelessWidget {
                     children: [
                       Text("${t.riderName}  →  ${t.driverName}", style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
                       const SizedBox(height: 4),
-                      Text("${t.pickup} to ${t.destination}", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                      Text("${t.pickup} to ${t.destination}", style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                       const SizedBox(height: 2),
-                      Text(formatFriendlyDate(t.date), style: const TextStyle(fontSize: 11, color: Colors.black45)),
+                      Text(formatFriendlyDate(t.date), style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                     ],
                   ),
                 ),
