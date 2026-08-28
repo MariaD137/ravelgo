@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/Model/app_state.dart';
 import 'package:ravelgo_user_app/views/AccountView/AppSettingsPage.dart';
 import 'package:ravelgo_user_app/views/AccountView/CommunicationsPage.dart';
 import 'package:ravelgo_user_app/views/Login/login.dart';
@@ -14,11 +15,14 @@ import 'package:ravelgo_user_app/views/OtherViews/SupportView.dart';
 import 'package:ravelgo_user_app/views/OtherViews/WorkProfileView.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
-class Accountview extends StatelessWidget {
+class Accountview extends StatefulWidget {
   const Accountview({Key? key}) : super(key: key);
 
-  
+  @override
+  State<Accountview> createState() => _AccountviewState();
+}
 
+class _AccountviewState extends State<Accountview> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -90,22 +94,26 @@ class Accountview extends StatelessWidget {
                 _menuRow(
                   icon: Icons.home_outlined,
                   label: 'Home address',
-                  onTap: (){
-                    Navigator.push(
+                  subtitle: RiderAppState.instance.savedAddresses['Home'],
+                  onTap: () async {
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => const AddressSearch(addressType: "Home")),
                     );
+                    if (mounted) setState(() {});
                   }
                 ),
                 _divider(),
                 _menuRow(
                   icon: Icons.work_outline,
                   label: 'Work address',
-                  onTap: (){
-                    Navigator.push(
+                  subtitle: RiderAppState.instance.savedAddresses['Work'],
+                  onTap: () async {
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => const AddressSearch(addressType: "Work")),
                     );
+                    if (mounted) setState(() {});
                   }
                 ),
                 _divider(),
@@ -253,6 +261,7 @@ class Accountview extends StatelessWidget {
   Widget _menuRow({
     required IconData icon,
     required String label,
+    String? subtitle,
     Color labelColor = AppColors.textPrimary,
     VoidCallback? onTap,
   }) {
@@ -265,9 +274,21 @@ class Accountview extends StatelessWidget {
             Icon(icon, size: 22, color: AppColors.textPrimary),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                label,
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: labelColor),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: labelColor),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+                  ],
+                ],
               ),
             ),
             const Icon(Icons.chevron_right, color: AppColors.textSecondary),

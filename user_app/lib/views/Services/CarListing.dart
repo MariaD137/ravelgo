@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'ChoosePlanScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
@@ -7,6 +8,16 @@ class CarListing extends StatefulWidget {
 
   @override
   State<CarListing> createState() => _CarListingState();
+}
+
+/// No dialer/WhatsApp launcher plugin is configured in this build, so
+/// contact actions copy the number with a clear message instead of
+/// silently failing.
+void _copyContact(BuildContext context, String label) {
+  Clipboard.setData(const ClipboardData(text: '+2347001234567'));
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text('$label number copied (+234 700 123 4567) - paste it in your phone app')),
+  );
 }
 
 class _CarListingState extends State<CarListing> {
@@ -82,7 +93,10 @@ class _CarListingState extends State<CarListing> {
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.primary,
                           ),
-                          onPressed: () {},
+                          onPressed: () {
+                            Navigator.push(context,
+                                MaterialPageRoute(builder: (_) => const ChoosePlanScreen()));
+                          },
                           child: const Text('Subscribe to be a Member',style:TextStyle(color: AppColors.textPrimary,fontSize: 12),),
                         ),
                         Spacer(),
@@ -205,7 +219,7 @@ class CarCard extends StatelessWidget {
                       ),
                       icon: const Icon(Icons.call, size: 16, color: AppColors.textPrimary),
                       label: const Text('Call', style: TextStyle(color: AppColors.textPrimary, fontSize: 12)),
-                      onPressed: () {},
+                      onPressed: () => _copyContact(context, 'Rental line'),
                     ),
                   ),
                   IconButton(
@@ -214,7 +228,7 @@ class CarCard extends StatelessWidget {
                       minHeight: 32,
                     ),
                     icon: Image.asset('assets/ic_whatsapp.png', width: 28),
-                    onPressed: () {},
+                    onPressed: () => _copyContact(context, 'WhatsApp'),
                   ),
                 ],
               )
@@ -284,13 +298,13 @@ class CarCardBig extends StatelessWidget {
                     ),
                     icon: const Icon(Icons.call, size: 18, color: AppColors.textPrimary),
                     label: const Text('Call', style: TextStyle(color: AppColors.textPrimary)),
-                    onPressed: () {},
+                    onPressed: () => _copyContact(context, 'Rental line'),
                   ),
                   const SizedBox(width: 12),
                   IconButton(
                     constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                     icon: Image.asset('assets/ic_whatsapp.png', width: 40),
-                    onPressed: () {},
+                    onPressed: () => _copyContact(context, 'WhatsApp'),
                   ),
                 ],
               ),

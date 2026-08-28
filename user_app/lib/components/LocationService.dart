@@ -31,7 +31,7 @@ class LocationService {
 
       return position;
     } catch (e) {
-      print('❌ Error in getCurrentLocation(): $e');
+      debugPrint('LocationService.getCurrentLocation failed: $e');
       return null;
     }
   }

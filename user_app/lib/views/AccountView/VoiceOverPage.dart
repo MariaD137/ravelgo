@@ -9,6 +9,40 @@ class VoiceOverPage extends StatefulWidget {
 }
 
 class _VoiceOverPageState extends State<VoiceOverPage> {
+  // LOCAL STATE ONLY: session-level audio preferences.
+  final Map<String, String> _options = {
+    'Voice volume': 'Normal',
+    'Voice speed': 'Normal',
+    'Language': 'English',
+  };
+
+  Future<void> _pickOption(String title, List<String> choices) async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            ),
+            for (final c in choices)
+              ListTile(
+                title: Text(c),
+                trailing: _options[title] == c
+                    ? const Icon(Icons.check, color: AppColors.success)
+                    : null,
+                onTap: () => Navigator.pop(context, c),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (result != null) setState(() => _options[title] = result);
+  }
+
   bool isVoiceOn = true;
 
   @override
@@ -98,11 +132,14 @@ class _VoiceOverPageState extends State<VoiceOverPage> {
                     if (isVoiceOn == true)
                     _section(
                       children: [
-                        _tile("Voice volume", "Normal"),
+                        _tile("Voice volume", _options['Voice volume'],
+                            () => _pickOption('Voice volume', const ['Quiet', 'Normal', 'Loud'])),
                         _divider(),
-                        _tile("Voice speed", null),
+                        _tile("Voice speed", _options['Voice speed'],
+                            () => _pickOption('Voice speed', const ['Slow', 'Normal', 'Fast'])),
                         _divider(),
-                        _tile("Language", "English"),
+                        _tile("Language", _options['Language'],
+                            () => _pickOption('Language', const ['English', 'French', 'Yoruba', 'Hausa', 'Igbo'])),
                       ],
                     ),
                   ],
@@ -128,9 +165,9 @@ class _VoiceOverPageState extends State<VoiceOverPage> {
   }
 
   /// TILE
-  Widget _tile(String title, String? value) {
+  Widget _tile(String title, String? value, VoidCallback onTap) {
     return InkWell(
-      onTap: () {},
+      onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
         child: Row(

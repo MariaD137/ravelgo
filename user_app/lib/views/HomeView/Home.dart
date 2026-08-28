@@ -10,6 +10,8 @@ import 'package:ravelgo_user_app/views/HomeView/ride_view_popup.dart';
 import 'package:ravelgo_user_app/views/User/invite_a_friend.dart';
 import 'package:ravelgo_user_app/views/TexiModule/SelectRide.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
+import 'package:ravelgo_user_app/views/OtherViews/NotificationsScreen.dart';
+import 'package:ravelgo_user_app/views/OtherViews/SafetyScreen.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -46,8 +48,6 @@ class _HomePageState extends State<HomePage> {
       );
 
       // Optionally, animate camera here if using GoogleMapController
-    } else {
-      print("⚠️ Failed to get location.");
     }
   }
   static const CameraPosition _initialCameraPosition = CameraPosition(
@@ -100,12 +100,32 @@ class _HomePageState extends State<HomePage> {
                     }),
                   ),
 
+                  // Top-right notification bell
+                  Positioned(
+                    top: 12,
+                    right: 64,
+                    child: _circleIconButton(
+                        icon: Icons.notifications_none,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                          );
+                        }),
+                  ),
+
                   // Top-right shield button
                   Positioned(
                     top: 12,
                     right: 12,
                     child: _circleIconButton(
-                        icon: Icons.shield_outlined, onTap: () {}),
+                        icon: Icons.shield_outlined,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const SafetyScreen()),
+                          );
+                        }),
                   ),
 
 

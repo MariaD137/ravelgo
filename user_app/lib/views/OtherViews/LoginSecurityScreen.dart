@@ -44,11 +44,11 @@ class LoginSecurityScreen extends StatelessWidget {
               style: TextStyle(color: AppColors.textPrimary, height: 1.5),
             ),
             const SizedBox(height: 30),
-            _buildSocialRow('Apple', 'assets/apple_icon.png'),
+            _buildSocialRow(context, 'Apple', 'assets/apple_icon.png'),
             const Divider(),
-            _buildSocialRow('Google', 'assets/google_icon.png'),
+            _buildSocialRow(context, 'Google', 'assets/google_icon.png'),
             const Divider(),
-            _buildSocialRow('Facebook', 'assets/facebook_icon.png'),
+            _buildSocialRow(context, 'Facebook', 'assets/facebook_icon.png'),
             const Divider(),
           ],
         ),
@@ -56,7 +56,7 @@ class LoginSecurityScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSocialRow(String label, String assetPath) {
+  Widget _buildSocialRow(BuildContext context, String label, String assetPath) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: Image.asset(assetPath, height: 24, width: 24),
@@ -64,13 +64,18 @@ class LoginSecurityScreen extends StatelessWidget {
       trailing: const Text(
         "Link",
         style: TextStyle(
-          color: Colors.green,
+          color: AppColors.success,
           fontWeight: FontWeight.normal,
           fontSize: 16,
         ),
       ),
       onTap: () {
-        // Handle link logic
+        // AUTH BOUNDARY: social sign-in providers are not configured in this
+        // build, so linking cannot actually happen - say so instead of
+        // silently doing nothing.
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('$label sign-in is not configured in this build yet'),
+        ));
       },
     );
   }

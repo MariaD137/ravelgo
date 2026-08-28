@@ -13,11 +13,46 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
   final List<String> _reasons = [
     "I am no longer using my account",
-    "I want to change my hone number",
+    "I want to change my phone number",
     "I don't understand how to use the service",
     "The service is not available in my city",
     "Other",
   ];
+
+  /// Destructive action: always confirm first.
+  /// BACKEND BOUNDARY: account deletion requires the accounts service, which
+  /// is not connected in this build - after confirming, the user is told the
+  /// request could not be processed rather than being shown a fake
+  /// "account deleted" message.
+  Future<void> _confirmDelete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete your account?'),
+        content: const Text(
+            'This permanently removes your account and data. This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep account')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    // Integration point: call the account-deletion endpoint here.
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Not available yet'),
+        content: const Text(
+            'Account deletion requires the accounts service, which is not connected in '
+            'this build. Your account has NOT been deleted. Please contact support.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,11 +100,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                onPressed: _selectedReasonIndex == null
-                    ? null
-                    : () {
-                  // Handle account deletion logic
-                },
+                onPressed: _selectedReasonIndex == null ? null : _confirmDelete,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: AppColors.textPrimary,

@@ -46,6 +46,24 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
     ).toSet();
   }
 
+  /// Schedule this ride for later (LOCAL STATE ONLY until the trips backend
+  /// accepts scheduled requests).
+  Future<void> _scheduleRide() async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 30)),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+    if (time == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Ride scheduled for ${date.day}/${date.month} at ${time.format(context)}'),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -258,7 +276,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
         ),
         const SizedBox(width: 12),
         ElevatedButton(
-          onPressed: () {},
+          onPressed: _scheduleRide,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:ravelgo_user_app/components/LocationService.dart';
 import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/views/TexiModule/FindDriverScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class SelectRide extends StatefulWidget {
-  const SelectRide({super.key});
+  /// Destination chosen on the previous screen (route search); shown in the
+  /// search bar so the selection visibly carries through the flow.
+  final String? destination;
+  const SelectRide({super.key, this.destination});
 
   @override
   State<SelectRide> createState() => _SelectRideState();
@@ -13,6 +17,73 @@ class SelectRide extends StatefulWidget {
 
 class _SelectRideState extends State<SelectRide> {
   GoogleMapController? mapController;
+  String _paymentMethod = 'Cash';
+  DateTime? _scheduledFor;
+
+  /// Recenter the map on the device's real location (geolocator).
+  Future<void> _recenterOnMe() async {
+    final position = await LocationService.getCurrentLocation();
+    if (position == null || mapController == null || !mounted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not get your location - check permissions')),
+        );
+      }
+      return;
+    }
+    mapController!.animateCamera(CameraUpdate.newLatLng(
+      LatLng(position.latitude, position.longitude),
+    ));
+  }
+
+  Future<void> _pickPaymentMethod() async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Pay with', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            ),
+            for (final m in const ['Cash', 'Transfer'])
+              ListTile(
+                title: Text(m),
+                trailing: m == _paymentMethod
+                    ? const Icon(Icons.check, color: AppColors.success)
+                    : null,
+                onTap: () => Navigator.pop(context, m),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (result != null) setState(() => _paymentMethod = result);
+  }
+
+  /// Schedule this ride for later (LOCAL STATE ONLY until the trips backend
+  /// accepts scheduled requests).
+  Future<void> _scheduleRide() async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 30)),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+    if (time == null || !mounted) return;
+    setState(() {
+      _scheduledFor = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(
+          'Ride scheduled for ${_scheduledFor!.day}/${_scheduledFor!.month} at ${time.format(context)}'),
+    ));
+  }
 
   final LatLng _center = const LatLng(6.6018, 3.3515); // Sample: Lagos
 
@@ -48,7 +119,7 @@ class _SelectRideState extends State<SelectRide> {
               backgroundColor: AppColors.surface,
               child: IconButton(
                 icon: const Icon(Icons.my_location),
-                onPressed: () {},
+                onPressed: _recenterOnMe,
               ),
             ),
           ),
@@ -94,8 +165,8 @@ class _SelectRideState extends State<SelectRide> {
                             side: const BorderSide(color: AppColors.border),
                           ),
                           icon: Image.asset("assets/ic_cash_ride.png"),
-                          label: const Text("Cash"),
-                          onPressed: () {},
+                          label: Text(_paymentMethod),
+                          onPressed: _pickPaymentMethod,
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -140,7 +211,7 @@ class _SelectRideState extends State<SelectRide> {
                             shape: const CircleBorder(),
                             padding: const EdgeInsets.all(12),
                           ),
-                          onPressed: () {},
+                          onPressed: _scheduleRide,
                           child: const Icon(Icons.calendar_today, color: AppColors.surface, size: 20),
                         )
                       ],
@@ -174,7 +245,7 @@ class _SelectRideState extends State<SelectRide> {
           Expanded(
             child: TextField(
               decoration: InputDecoration(
-                hintText: "Denco court 1",
+                hintText: widget.destination ?? "Where to?",
                 border: InputBorder.none,
               ),
             ),
@@ -189,7 +260,7 @@ class _SelectRideState extends State<SelectRide> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12,left: 5,right: 5),
       decoration: BoxDecoration(
-        border: isSelected ? Border.all(color: Colors.green, style: BorderStyle.solid, width: 1.5, strokeAlign: BorderSide.strokeAlignOutside) : Border.all(color: AppColors.textMuted, style: BorderStyle.solid, width: 1, strokeAlign: BorderSide.strokeAlignOutside) ,
+        border: isSelected ? Border.all(color: AppColors.success, style: BorderStyle.solid, width: 1.5, strokeAlign: BorderSide.strokeAlignOutside) : Border.all(color: AppColors.textMuted, style: BorderStyle.solid, width: 1, strokeAlign: BorderSide.strokeAlignOutside) ,
         borderRadius: BorderRadius.circular(12),
         color: AppColors.surface,
       ),

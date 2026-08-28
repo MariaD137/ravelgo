@@ -27,11 +27,14 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
         'https://maps.googleapis.com/maps/api/place/textsearch/json?query=${Uri.encodeComponent(query)}&key=$apiKey';
 
     final response = await http.get(Uri.parse(url));
+    if (!mounted) return;
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
       setState(() => pickupPlaces = data['results']);
     } else {
-      print('Failed to fetch places');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not load places - check your connection')),
+      );
     }
   }
   void _onTextChangedDrop(String query) async {
@@ -45,11 +48,14 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
         'https://maps.googleapis.com/maps/api/place/textsearch/json?query=${Uri.encodeComponent(query)}&key=$apiKey';
 
     final response = await http.get(Uri.parse(url));
+    if (!mounted) return;
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
       setState(() => dropPlaces = data['results']);
     } else {
-      print('Failed to fetch places');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not load places - check your connection')),
+      );
     }
   }
 
@@ -100,7 +106,7 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
             child: ListTile(
               dense: true, // Makes ListTile more compact vertically
               contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-              leading: const Icon(Icons.radio_button_checked, color: Colors.green, size: 20),
+              leading: const Icon(Icons.radio_button_checked, color: AppColors.success, size: 20),
               title: TextField(
                 style: const TextStyle(fontSize: 14),
                 onChanged: _onTextChangedPickup,
@@ -154,16 +160,6 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
     );
   }
 
-  Widget _buildMyLocation() {
-    return Row(
-      children: const [
-        Icon(Icons.home, color: AppColors.textSecondary),
-        SizedBox(width: 8),
-        Text('My location', style: TextStyle(fontSize: 16)),
-      ],
-    );
-  }
-
   Widget _buildRecentPlacesList() {
     return ListView.builder(
         itemCount: pickupPlaces.length + 1, // +1 for "My Location"
@@ -182,13 +178,15 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
           } else {
             final place = pickupPlaces[index - 1]; // Offset by -1
             return ListTile(
-              leading: Icon(Icons.place),
+              leading: const Icon(Icons.place),
               title: Text(place['name']),
               subtitle: Text(place['formatted_address']),
               onTap: () {
-                // Handle place selection
+                // Carry the selected place into ride selection.
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => SelectRide()),
+                  MaterialPageRoute(
+                    builder: (context) => SelectRide(destination: place['name']),
+                  ),
                 );
               },
             );

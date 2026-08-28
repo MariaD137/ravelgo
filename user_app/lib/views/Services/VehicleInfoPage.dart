@@ -105,7 +105,7 @@ class _VehicleInfoPageState extends State<VehicleInfoPage> {
               child: vehicle != null
                   ? AppComponents.primaryButton(
                 text: "Done",
-                onPressed: () {},
+                onPressed: () => Navigator.pop(context, vehicle),
               )
                   : AppComponents.disabledButton("Done"),
             ),

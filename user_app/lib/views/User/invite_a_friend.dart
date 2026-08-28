@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:flutter/services.dart';
 import 'package:dotted_border/dotted_border.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
@@ -239,7 +240,13 @@ class InviteFriendsView extends StatelessWidget {
                 BorderRadius.circular(14),
               ),
             ),
-            onPressed: () {},
+            onPressed: () {
+              // Real platform share sheet via share_plus.
+              SharePlus.instance.share(ShareParams(
+                text: 'Join me on RavelGo and get your first ride discounted! '
+                    'Use my invite code RAVEL20 when you sign up.',
+              ));
+            },
             icon: const Icon(Icons.share,
                 color: AppColors.textPrimary),
             label: const Text(

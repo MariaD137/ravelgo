@@ -181,8 +181,34 @@ class _AddBankAccountPageState extends State<AddBankAccountPage> {
   Widget _dropdown(
       TextEditingController controller, String hint) {
     return InkWell(
-      onTap: () {
-        /// TODO: open currency selector
+      onTap: () async {
+        final result = await showModalBottomSheet<String>(
+          context: context,
+          builder: (context) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(hint,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                ),
+                for (final c in const ['NGN - Nigerian Naira', 'USD - US Dollar', 'GBP - British Pound', 'EUR - Euro'])
+                  ListTile(
+                    title: Text(c),
+                    trailing: controller.text == c
+                        ? const Icon(Icons.check, color: AppColors.success)
+                        : null,
+                    onTap: () => Navigator.pop(context, c),
+                  ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+        if (result != null) {
+          setState(() => controller.text = result);
+        }
       },
       child: Container(
         padding: const EdgeInsets.symmetric(

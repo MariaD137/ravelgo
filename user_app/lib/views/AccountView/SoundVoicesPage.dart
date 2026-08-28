@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
-class SoundVoicesPage extends StatelessWidget {
+class SoundVoicesPage extends StatefulWidget {
   const SoundVoicesPage({super.key});
+
+  @override
+  State<SoundVoicesPage> createState() => _SoundVoicesPageState();
+}
+
+class _SoundVoicesPageState extends State<SoundVoicesPage> {
+  // LOCAL STATE ONLY: the currently selected notification sound.
+  String _selected = 'Bells';
 
   @override
   Widget build(BuildContext context) {
@@ -83,7 +91,7 @@ class SoundVoicesPage extends StatelessWidget {
   /// SOUND TILE
   Widget _soundTile(String title) {
     return InkWell(
-      onTap: () {},
+      onTap: () => setState(() => _selected = title),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
         child: Row(
@@ -98,8 +106,10 @@ class SoundVoicesPage extends StatelessWidget {
               ),
             ),
 
-            /// DOWNLOAD ICON
-            Icon(Icons.download, color: AppColors.textSecondary),
+            if (_selected == title)
+              const Icon(Icons.check_circle, color: AppColors.success)
+            else
+              const Icon(Icons.download, color: AppColors.textSecondary),
           ],
         ),
       ),

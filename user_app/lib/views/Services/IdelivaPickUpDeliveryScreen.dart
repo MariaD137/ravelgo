@@ -47,10 +47,6 @@ class PickDeliveryScreen extends StatelessWidget {
                   InkWell(
                     borderRadius: BorderRadius.circular(8),
                     onTap: () {
-                      // 👉 Your action here
-                      print("Scheduled requests tapped");
-
-                      // Example navigation
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -146,7 +142,14 @@ class PickDeliveryScreen extends StatelessWidget {
                                     backgroundColor: AppColors.primary,
                                     padding: EdgeInsets.symmetric(vertical: 12),
                                   ),
-                                  onPressed: () {},
+                                  onPressed: () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content: Text(
+                                              'Delivery accepted - the sender has been notified')),
+                                    );
+                                    Navigator.pop(context);
+                                  },
                                   child: Text(
                                     "Accept",
                                     style: TextStyle(color: AppColors.textPrimary),
@@ -157,13 +160,18 @@ class PickDeliveryScreen extends StatelessWidget {
                               Expanded(
                                 child: OutlinedButton(
                                   style: OutlinedButton.styleFrom(
-                                    side: BorderSide(color: Colors.red),
+                                    side: BorderSide(color: AppColors.error),
                                     padding: EdgeInsets.symmetric(vertical: 12),
                                   ),
-                                  onPressed: () {},
+                                  onPressed: () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Delivery request declined')),
+                                    );
+                                    Navigator.pop(context);
+                                  },
                                   child: Text(
                                     "Decline",
-                                    style: TextStyle(color: Colors.red),
+                                    style: TextStyle(color: AppColors.error),
                                   ),
                                 ),
                               ),

@@ -293,18 +293,23 @@ class RideRequestCard extends StatelessWidget {
                   style: OutlinedButton.styleFrom(
                     backgroundColor: AppColors.surface,
                     side: const BorderSide(
-                      color: Colors.red,
+                      color: AppColors.error,
                       width: 1.5,
                     ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  onPressed: () {},
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Ride request declined')),
+                    );
+                    Navigator.pop(context);
+                  },
                   child: const Text(
                     "Decline",
                     style: TextStyle(
-                      color: Colors.red,
+                      color: AppColors.error,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),

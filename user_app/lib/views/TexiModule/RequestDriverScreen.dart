@@ -1,8 +1,61 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/Model/ride_lifecycle.dart';
 import 'package:ravelgo_user_app/views/HomeView/Home.dart';
+import 'package:ravelgo_user_app/views/TexiModule/RiderTripScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
-class RequestDriverScreen extends StatelessWidget {
+
+/// Driver offers for the rider's request.
+/// - Accept -> enters the accepted-driver trip lifecycle (RiderTripScreen).
+/// - Decline -> removes that offer; declining all offers returns the rider
+///   to the search state instead of leaving a dead screen.
+/// Offers are demo data until the matching backend is connected.
+class RequestDriverScreen extends StatefulWidget {
   const RequestDriverScreen({super.key});
+
+  @override
+  State<RequestDriverScreen> createState() => _RequestDriverScreenState();
+}
+
+class _RequestDriverScreenState extends State<RequestDriverScreen> {
+  final List<RideOffer> _offers = [
+    const RideOffer(
+        driverName: 'Thelma Ibeh',
+        vehicle: 'Toyota Corolla',
+        rating: 4.55,
+        fare: 'NGN 7,000',
+        etaMinutes: 10,
+        avatarAsset: 'assets/ic_avatar1.png'),
+    const RideOffer(
+        driverName: 'Chidi Eze',
+        vehicle: 'Honda Accord',
+        rating: 4.8,
+        fare: 'NGN 6,500',
+        etaMinutes: 7,
+        avatarAsset: 'assets/ic_avatar2.png'),
+    const RideOffer(
+        driverName: 'Amaka Obi',
+        vehicle: 'Kia Cerato',
+        rating: 4.7,
+        fare: 'NGN 7,200',
+        etaMinutes: 12,
+        avatarAsset: 'assets/ic_avatar3.png'),
+  ];
+
+  void _accept(RideOffer offer) {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => RiderTripScreen(offer: offer)),
+    );
+  }
+
+  void _decline(RideOffer offer) {
+    setState(() => _offers.remove(offer));
+    if (_offers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('All offers declined - keep searching for drivers')),
+      );
+      Navigator.of(context).pop();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -14,38 +67,31 @@ class RequestDriverScreen extends StatelessWidget {
           children: [
             // Header
             Container(
-              color: const Color(0xFFD5F4B0),
+              color: AppColors.surfaceElevated,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
+                    children: [
                       Text(
-                        "Found 3 Drivers",
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w600),
+                        'Found ${_offers.length} Driver${_offers.length == 1 ? '' : 's'}',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                       ),
-                      SizedBox(height: 4),
-                      Text(
-                        "Pick one, and let’s hit the road",
-                        style: TextStyle(fontSize: 13),
-                      ),
+                      const SizedBox(height: 4),
+                      const Text("Pick one, and let's hit the road", style: TextStyle(fontSize: 13)),
                     ],
                   ),
-              GestureDetector(
-                onTap: () {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (_) => const HomePage()),
-                  );
-                },
-                child: Text(
-                      "Cancel trip",
-                      style: TextStyle(
-                        color: Colors.redAccent,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(builder: (_) => const HomePage()),
+                      );
+                    },
+                    child: const Text(
+                      'Cancel trip',
+                      style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],
@@ -53,15 +99,20 @@ class RequestDriverScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
 
-            // Driver list
+            // Driver offers
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.all(16),
-                itemCount: 3,
+                itemCount: _offers.length,
                 itemBuilder: (context, index) {
+                  final offer = _offers[index];
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 16.0),
-                    child: DriverCard(),
+                    child: DriverCard(
+                      offer: offer,
+                      onAccept: () => _accept(offer),
+                      onDecline: () => _decline(offer),
+                    ),
                   );
                 },
               ),
@@ -74,7 +125,11 @@ class RequestDriverScreen extends StatelessWidget {
 }
 
 class DriverCard extends StatelessWidget {
-  const DriverCard({super.key});
+  final RideOffer offer;
+  final VoidCallback onAccept;
+  final VoidCallback onDecline;
+
+  const DriverCard({super.key, required this.offer, required this.onAccept, required this.onDecline});
 
   @override
   Widget build(BuildContext context) {
@@ -88,31 +143,26 @@ class DriverCard extends StatelessWidget {
             // Driver row
             Row(
               children: [
-                const CircleAvatar(
-                  radius: 30,
-                  backgroundImage: AssetImage('assets/driver.jpg'), // Replace with your image
-                ),
+                CircleAvatar(radius: 30, backgroundImage: AssetImage(offer.avatarAsset)),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text("Thelma Ibeh",
-                          style: TextStyle(
-                              fontWeight: FontWeight.w600, fontSize: 16)),
-                      SizedBox(height: 2),
-                      Text("Toyota Corolla",
-                          style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                      SizedBox(height: 2),
+                    children: [
+                      Text(offer.driverName,
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                      const SizedBox(height: 2),
+                      Text(offer.vehicle,
+                          style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                      const SizedBox(height: 2),
                       Row(
                         children: [
-                          Icon(Icons.star, color: Colors.green, size: 16),
-                          SizedBox(width: 4),
-                          Text("4.55 Rating",
-                              style:
-                              TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+                          const Icon(Icons.star, color: AppColors.success, size: 16),
+                          const SizedBox(width: 4),
+                          Text('${offer.rating} Rating',
+                              style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
                         ],
-                      )
+                      ),
                     ],
                   ),
                 ),
@@ -124,12 +174,10 @@ class DriverCard extends StatelessWidget {
             // Fare and distance
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: const [
-                Text("NGN 7,000",
-                    style:
-                    TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                Expanded(child: Divider(thickness: 1, color: AppColors.border)),
-                Text("10 mins away", style: TextStyle(fontSize: 12)),
+              children: [
+                Text(offer.fare, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                const Expanded(child: Divider(thickness: 1, color: AppColors.border)),
+                Text('${offer.etaMinutes} mins away', style: const TextStyle(fontSize: 12)),
               ],
             ),
             const SizedBox(height: 12),
@@ -139,31 +187,27 @@ class DriverCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () {},
+                    onPressed: onDecline,
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.red),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8)),
+                      foregroundColor: AppColors.error,
+                      side: const BorderSide(color: AppColors.error),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
-                    child: const Text("Decline",
-                        style: TextStyle(color: Colors.red)),
+                    child: const Text('Decline'),
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () {},
+                    onPressed: onAccept,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: AppColors.textPrimary,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
-                    child: const Text("Accept"),
+                    child: const Text('Accept'),
                   ),
-                )
+                ),
               ],
-            )
+            ),
           ],
         ),
       ),

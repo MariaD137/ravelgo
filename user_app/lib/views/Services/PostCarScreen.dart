@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 
@@ -17,7 +18,6 @@ class _PostCarScreenState extends State<PostCarScreen> {
 
   @override
   Widget build(BuildContext context) {
-    print(Navigator.of(context).canPop()); // should be false
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.surface,
@@ -40,7 +40,11 @@ class _PostCarScreenState extends State<PostCarScreen> {
           children: [
             Spacer(),
             ElevatedButton.icon(
-              onPressed: () {},
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("You haven't posted any cars yet")),
+                );
+              },
               icon: const Icon(Icons.remove_red_eye, size: 16),
               label: const Text('View posts'),
               style: ElevatedButton.styleFrom(
@@ -166,11 +170,26 @@ class _DropdownTile extends StatelessWidget {
   }
 }
 
-class UploadSection extends StatelessWidget {
+class UploadSection extends StatefulWidget {
   final String title;
   final bool showSave;
 
   const UploadSection({required this.title, this.showSave = false});
+
+  @override
+  State<UploadSection> createState() => _UploadSectionState();
+}
+
+class _UploadSectionState extends State<UploadSection> {
+  final ImagePicker _picker = ImagePicker();
+  XFile? _file;
+
+  Future<void> _chooseFile() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+    if (image != null && mounted) {
+      setState(() => _file = image);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -178,7 +197,7 @@ class UploadSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          title,
+          widget.title,
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 4),
@@ -227,9 +246,7 @@ class UploadSection extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           ElevatedButton(
-                            onPressed: () {
-
-                            },
+                            onPressed: _chooseFile,
                             style: ElevatedButton.styleFrom(
                               foregroundColor: AppColors.textPrimary,
                               backgroundColor: Colors.transparent,
@@ -242,7 +259,14 @@ class UploadSection extends StatelessWidget {
                             ),
                             child: const Text('Choose File', style: TextStyle(fontWeight: FontWeight.bold)),
                           ),
-                          const Text('No File Chosen', style: TextStyle(fontWeight: FontWeight.w400)),
+                          Expanded(
+                            child: Text(
+                              _file == null ? 'No File Chosen' : _file!.name,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.end,
+                              style: const TextStyle(fontWeight: FontWeight.w400),
+                            ),
+                          ),
                         ],
                       )
                     ),

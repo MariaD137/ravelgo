@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
+import 'package:ravelgo_user_app/views/RideView/RidesView.dart';
 
 class SupportView extends StatelessWidget {
   const SupportView({super.key});
@@ -66,7 +67,9 @@ class SupportView extends StatelessWidget {
               dense: true,
               title: const Text("Yesterday, 18:45"),
               trailing: const Text("#1500", style: TextStyle(color: AppColors.textMuted)),
-              onTap: () {},
+              onTap: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => RidesView()));
+              },
               contentPadding: EdgeInsets.zero,
             );
           }),
@@ -75,10 +78,12 @@ class SupportView extends StatelessWidget {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () {},
+              onPressed: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => RidesView()));
+              },
               child: const Text(
                 "View all trips",
-                style: TextStyle(color: Colors.green),
+                style: TextStyle(color: AppColors.success),
               ),
             ),
           ),
@@ -91,19 +96,19 @@ class SupportView extends StatelessWidget {
           const SizedBox(height: 12),
 
           // Help Categories
-          _helpCategoryTile('Get help with something else'),
-          _helpCategoryTile('About  Ravel Go'),
-          _helpCategoryTile('Ride booking issues'),
-          _helpCategoryTile('Pricing and payments'),
-          _helpCategoryTile('Ride experience & safety'),
-          _helpCategoryTile('Lost & Found'),
-          _helpCategoryTile('App and account issue'),
+          _helpCategoryTile(context, 'Get help with something else'),
+          _helpCategoryTile(context, 'About  Ravel Go'),
+          _helpCategoryTile(context, 'Ride booking issues'),
+          _helpCategoryTile(context, 'Pricing and payments'),
+          _helpCategoryTile(context, 'Ride experience & safety'),
+          _helpCategoryTile(context, 'Lost & Found'),
+          _helpCategoryTile(context, 'App and account issue'),
         ],
       ),
     );
   }
 
-  Widget _helpCategoryTile(String label) {
+  Widget _helpCategoryTile(BuildContext context, String label) {
     return Column(
       children: [
         ListTile(
@@ -111,7 +116,21 @@ class SupportView extends StatelessWidget {
           title: Text(label),
           trailing: const Icon(Icons.chevron_right),
           onTap: () {
-            print("Tapped: $label");
+            // Help-center articles are not published yet; tell the user how
+            // to get help instead of dead-ending.
+            showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: Text(label),
+                content: const Text(
+                    'Help articles for this topic are coming soon. For now, reach us '
+                    'through "Do you need help with something else?" below and our team '
+                    'will assist you.'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+                ],
+              ),
+            );
           },
         ),
         const Divider(height: 1),

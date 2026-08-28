@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/Model/app_state.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class LanguageSelectionScreen extends StatefulWidget {
@@ -70,11 +71,19 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
               itemCount: _filteredLanguages.length,
               itemBuilder: (context, index) {
                 final lang = _filteredLanguages[index];
+                final selected = RiderAppState.instance.language == lang["name"];
                 return ListTile(
                   leading: Text(lang["flag"]!, style: const TextStyle(fontSize: 20)),
                   title: Text(lang["name"]!),
+                  trailing: selected ? const Icon(Icons.check, color: AppColors.success) : null,
                   onTap: () {
-                    // Handle language selection
+                    // LOCAL STATE ONLY: persists the choice for this session;
+                    // wiring it into localization delivery is a follow-up.
+                    RiderAppState.instance.setLanguage(lang["name"]!);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Language set to ${lang["name"]}')),
+                    );
+                    Navigator.pop(context, lang["name"]);
                   },
                 );
               },
