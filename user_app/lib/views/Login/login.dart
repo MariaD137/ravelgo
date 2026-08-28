@@ -8,13 +8,13 @@ class Login extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         // leading: IconButton(
         //   icon: Icon(Icons.close),
-        //   color: Colors.black,
+        //   color: AppColors.textPrimary,
         //   onPressed: () => Navigator.of(context).pop(),
         // ),
       ),
@@ -37,7 +37,7 @@ class Login extends StatelessWidget {
                 'Hi! Welcome back, you’ve been missed',
                 style: TextStyle(
                   fontSize: 16,
-                  color: Colors.grey[600],
+                  color: AppColors.textSecondary,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -105,7 +105,7 @@ class Login extends StatelessWidget {
                 child: Text.rich(
                   TextSpan(
                     text: "Don’t have an account? ",
-                    style: TextStyle(color: Colors.black),
+                    style: TextStyle(color: AppColors.textPrimary),
                     children: [
                       TextSpan(
                         text: "Sign up",

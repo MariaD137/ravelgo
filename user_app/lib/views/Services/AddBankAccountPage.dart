@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/components/basic_components.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class AddBankAccountPage extends StatefulWidget {
   const AddBankAccountPage({super.key});
@@ -24,7 +25,7 @@ class _AddBankAccountPageState extends State<AddBankAccountPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFFFF),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -81,7 +82,7 @@ class _AddBankAccountPageState extends State<AddBankAccountPage> {
                       onPressed: isValid ? () {} : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.black,
+                        foregroundColor: AppColors.textPrimary,
                         disabledBackgroundColor:
                         AppColors.primary.withOpacity(0.4),
                         padding:
@@ -112,7 +113,7 @@ class _AddBankAccountPageState extends State<AddBankAccountPage> {
                         padding:
                         const EdgeInsets.symmetric(vertical: 14),
                         side: BorderSide(
-                            color: Colors.grey.shade400),
+                            color: AppColors.border),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
@@ -154,23 +155,23 @@ class _AddBankAccountPageState extends State<AddBankAccountPage> {
       decoration: InputDecoration(
         hintText: hint,
         filled: true,
-        fillColor: Colors.white,
+        fillColor: AppColors.surface,
         contentPadding:
         const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide:
-          BorderSide(color: Colors.grey.shade300),
+          BorderSide(color: AppColors.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide:
-          BorderSide(color: Colors.grey.shade300),
+          BorderSide(color: AppColors.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide:
-          const BorderSide(color: Colors.black),
+          const BorderSide(color: AppColors.textPrimary),
         ),
       ),
     );
@@ -187,9 +188,9 @@ class _AddBankAccountPageState extends State<AddBankAccountPage> {
         padding: const EdgeInsets.symmetric(
             horizontal: 14, vertical: 14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surface,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.grey.shade300),
+          border: Border.all(color: AppColors.border),
         ),
         child: Row(
           children: [
@@ -200,8 +201,8 @@ class _AddBankAccountPageState extends State<AddBankAccountPage> {
                     : controller.text,
                 style: TextStyle(
                   color: controller.text.isEmpty
-                      ? Colors.grey
-                      : Colors.black,
+                      ? AppColors.textMuted
+                      : AppColors.textPrimary,
                 ),
               ),
             ),

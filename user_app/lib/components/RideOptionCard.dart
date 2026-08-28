@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 
 class RideOptionCard extends StatelessWidget {
@@ -21,7 +22,7 @@ class RideOptionCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 20),
         decoration: BoxDecoration(
-          color: Colors.grey.shade200,
+          color: AppColors.surfaceElevated,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.transparent),
         ),
@@ -39,7 +40,7 @@ class RideOptionCard extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
-                color: Colors.black,
+                color: AppColors.textPrimary,
               ),
             ),
           ],

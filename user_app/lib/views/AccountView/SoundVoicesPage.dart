@@ -48,7 +48,7 @@ class SoundVoicesPage extends StatelessWidget {
                         "Incoming Request Sound",
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.black87,
+                          color: AppColors.textPrimary,
                         ),
                       ),
                     ),
@@ -57,7 +57,7 @@ class SoundVoicesPage extends StatelessWidget {
                     Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Column(
@@ -99,7 +99,7 @@ class SoundVoicesPage extends StatelessWidget {
             ),
 
             /// DOWNLOAD ICON
-            Icon(Icons.download, color: Colors.grey.shade600),
+            Icon(Icons.download, color: AppColors.textSecondary),
           ],
         ),
       ),
@@ -113,7 +113,7 @@ class SoundVoicesPage extends StatelessWidget {
       child: Divider(
         height: 1,
         thickness: 1,
-        color: Colors.grey.shade300,
+        color: AppColors.border,
       ),
     );
   }

@@ -10,7 +10,7 @@ class DriverInformationScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, iconTheme: IconThemeData(color: Colors.black)),
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, iconTheme: IconThemeData(color: AppColors.textPrimary)),
       body: Padding(
         padding: EdgeInsets.all(20),
         child: Column(
@@ -26,7 +26,7 @@ class DriverInformationScreen extends StatelessWidget {
             SizedBox(height: 6),
             Container(
               padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(border: Border.all(color: Colors.grey[300]!), borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(border: Border.all(color: AppColors.border!), borderRadius: BorderRadius.circular(8)),
               child: Row(children: [
                 SizedBox(width: 80, height: 80, child: localImage('/mnt/data/Driver_information.png', fit: BoxFit.cover)),
                 SizedBox(width: 12),
@@ -44,7 +44,7 @@ class DriverInformationScreen extends StatelessWidget {
             SizedBox(height: 6),
             Container(
               padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(border: Border.all(color: Colors.grey[300]!), borderRadius: BorderRadius.circular(8)),
+              decoration: BoxDecoration(border: Border.all(color: AppColors.border!), borderRadius: BorderRadius.circular(8)),
               child: Row(children: [
                 SizedBox(width: 80, height: 80, child: localImage('/mnt/data/Driver_information.png', fit: BoxFit.cover)),
                 SizedBox(width: 12),
@@ -66,7 +66,7 @@ class DriverInformationScreen extends StatelessWidget {
                     MaterialPageRoute(builder: (context) => AddPhotoScreen()),
                   )
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.black),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: AppColors.textPrimary),
                 child: Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text('Next')),
               ),
             ),

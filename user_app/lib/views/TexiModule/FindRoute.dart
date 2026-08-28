@@ -3,6 +3,7 @@ import 'package:ravelgo_user_app/views/TexiModule/SelectRide.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 
 class FindRouteScreen extends StatefulWidget {
@@ -57,15 +58,15 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
         leading: IconButton(
-          icon: const Icon(Icons.close,color: Colors.black,),
+          icon: const Icon(Icons.close,color: AppColors.textPrimary,),
           onPressed: () => Navigator.pop(context),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
         elevation: 0,
-        title: const Text('Your route', style: TextStyle(color: Colors.black)),
+        title: const Text('Your route', style: TextStyle(color: AppColors.textPrimary)),
         centerTitle: true,
       ),
       body:
@@ -93,7 +94,7 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
           child: Container(
             height: 48,
             decoration: BoxDecoration(
-              border: Border.all(color: Colors.black26),
+              border: Border.all(color: AppColors.textMuted),
               borderRadius: BorderRadius.circular(8),
             ),
             child: ListTile(
@@ -114,7 +115,7 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
           ),
         ),
         const SizedBox(width: 8), // spacing between tile and icon
-        const Icon(Icons.add, color: Colors.black),
+        const Icon(Icons.add, color: AppColors.textPrimary),
       ],
     );
   }
@@ -126,13 +127,13 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
           child: Container(
             height: 48,
             decoration: BoxDecoration(
-              border: Border.all(color: Colors.black26),
+              border: Border.all(color: AppColors.textMuted),
               borderRadius: BorderRadius.circular(8),
             ),
             child: ListTile(
               dense: true, // Makes ListTile more compact vertically
               contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-              leading: const Icon(Icons.search, color: Colors.black, size: 20),
+              leading: const Icon(Icons.search, color: AppColors.textPrimary, size: 20),
               title: TextField(
                 style: const TextStyle(fontSize: 14),
                 onChanged: _onTextChangedDrop,
@@ -156,7 +157,7 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
   Widget _buildMyLocation() {
     return Row(
       children: const [
-        Icon(Icons.home, color: Colors.black54),
+        Icon(Icons.home, color: AppColors.textSecondary),
         SizedBox(width: 8),
         Text('My location', style: TextStyle(fontSize: 16)),
       ],
@@ -170,7 +171,7 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
 
           if (index == 0) {
             return ListTile(
-              leading: const Icon(Icons.home, color: Colors.black54),
+              leading: const Icon(Icons.home, color: AppColors.textSecondary),
               title: Text("My Location"),
               onTap: () {
                 Navigator.of(context).push(

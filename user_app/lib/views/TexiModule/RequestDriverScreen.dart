@@ -102,7 +102,7 @@ class DriverCard extends StatelessWidget {
                               fontWeight: FontWeight.w600, fontSize: 16)),
                       SizedBox(height: 2),
                       Text("Toyota Corolla",
-                          style: TextStyle(fontSize: 13, color: Colors.black54)),
+                          style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
                       SizedBox(height: 2),
                       Row(
                         children: [
@@ -110,7 +110,7 @@ class DriverCard extends StatelessWidget {
                           SizedBox(width: 4),
                           Text("4.55 Rating",
                               style:
-                              TextStyle(fontSize: 13, color: Colors.black87)),
+                              TextStyle(fontSize: 13, color: AppColors.textPrimary)),
                         ],
                       )
                     ],
@@ -128,7 +128,7 @@ class DriverCard extends StatelessWidget {
                 Text("NGN 7,000",
                     style:
                     TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                Expanded(child: Divider(thickness: 1, color: Colors.black12)),
+                Expanded(child: Divider(thickness: 1, color: AppColors.border)),
                 Text("10 mins away", style: TextStyle(fontSize: 12)),
               ],
             ),
@@ -155,7 +155,7 @@ class DriverCard extends StatelessWidget {
                     onPressed: () {},
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.black,
+                      foregroundColor: AppColors.textPrimary,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8)),
                     ),

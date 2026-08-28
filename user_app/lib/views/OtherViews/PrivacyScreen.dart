@@ -7,13 +7,13 @@ class PrivacyScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
-        leading: const BackButton(color: Colors.black),
-        backgroundColor: Colors.white,
+        leading: const BackButton(color: AppColors.textPrimary),
+        backgroundColor: AppColors.surface,
         elevation: 0,
         centerTitle: true,
-        title: const Text("Privacy", style: TextStyle(color: Colors.black)),
+        title: const Text("Privacy", style: TextStyle(color: AppColors.textPrimary)),
       ),
       body: Padding(
         padding: const EdgeInsets.all(20),
@@ -27,7 +27,7 @@ class PrivacyScreen extends StatelessWidget {
             const SizedBox(height: 30),
             Container(
               decoration: BoxDecoration(
-                color: Colors.grey.shade200,
+                color: AppColors.surfaceElevated,
                 borderRadius: BorderRadius.circular(12),
               ),
               padding: const EdgeInsets.all(20),
@@ -51,7 +51,7 @@ class PrivacyScreen extends StatelessWidget {
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.black,
+                        foregroundColor: AppColors.textPrimary,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),

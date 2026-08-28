@@ -22,13 +22,13 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
-        leading: const BackButton(color: Colors.black),
-        backgroundColor: Colors.white,
+        leading: const BackButton(color: AppColors.textPrimary),
+        backgroundColor: AppColors.surface,
         elevation: 0,
         centerTitle: true,
-        title: const Text("Delete Account", style: TextStyle(color: Colors.black)),
+        title: const Text("Delete Account", style: TextStyle(color: AppColors.textPrimary)),
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -72,12 +72,12 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.black,
+                  foregroundColor: AppColors.textPrimary,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  disabledBackgroundColor: Colors.grey[300],
-                  disabledForegroundColor: Colors.black38,
+                  disabledBackgroundColor: AppColors.border,
+                  disabledForegroundColor: AppColors.textMuted,
                 ),
                 child: const Text("Delete Account"),
               ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/components/basic_components.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class PhotoLicensePage extends StatelessWidget {
   const PhotoLicensePage({super.key});
@@ -28,7 +29,7 @@ class PhotoLicensePage extends StatelessWidget {
                         height: 180,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
-                          color: Colors.grey.shade300,
+                          color: AppColors.border,
                         ),
                       ),
 

@@ -137,7 +137,7 @@ class SummaryCard extends StatelessWidget {
       // height: 70,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: const Color(0xFFE8C75F),

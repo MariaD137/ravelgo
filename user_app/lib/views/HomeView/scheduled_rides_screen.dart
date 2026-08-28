@@ -18,7 +18,7 @@ class _ScheduledRidesRequestsScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -52,7 +52,7 @@ class _ScheduledRidesRequestsScreenState
                 height: 48,
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
+                  color: AppColors.border,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -107,7 +107,7 @@ class _ScheduledRidesRequestsScreenState
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
           decoration: BoxDecoration(
-            color: isSelected ? Colors.white : Colors.transparent,
+            color: isSelected ? AppColors.surface : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),
           alignment: Alignment.center,
@@ -118,7 +118,7 @@ class _ScheduledRidesRequestsScreenState
               fontWeight: FontWeight.w500,
               color: isSelected
                   ? AppColors.primaryDark
-                  : Colors.black54,
+                  : AppColors.textSecondary,
             ),
           ),
         ),
@@ -139,7 +139,7 @@ class _ScheduledRidesRequestsScreenState
         Text(
           "A list of scheduled rides available for booking will be displayed here",
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.black54),
+          style: TextStyle(color: AppColors.textSecondary),
         ),
       ],
     );
@@ -158,7 +158,7 @@ class _ScheduledRidesRequestsScreenState
         Text(
           "All confirmed requests will be shown here",
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.black54),
+          style: TextStyle(color: AppColors.textSecondary),
         ),
       ],
     );
@@ -191,7 +191,7 @@ class RideRequestCard extends StatelessWidget {
         const Text(
           "Route",
           style: TextStyle(
-            color: Colors.black,
+            color: AppColors.textPrimary,
             fontSize: 14,
           ),
         ),
@@ -206,7 +206,7 @@ class RideRequestCard extends StatelessWidget {
             Text(
               "Denco court 1",
               style: TextStyle(
-                color: Colors.black,
+                color: AppColors.textPrimary,
                 fontSize: 15,
               ),
             ),
@@ -223,7 +223,7 @@ class RideRequestCard extends StatelessWidget {
             Text(
               "Destination",
               style: TextStyle(
-                color: Colors.black,
+                color: AppColors.textPrimary,
                 fontSize: 15,
               ),
             ),
@@ -277,7 +277,7 @@ class RideRequestCard extends StatelessWidget {
                   child: const Text(
                     "Accept",
                     style: TextStyle(
-                      color: Colors.black,
+                      color: AppColors.textPrimary,
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                     ),
@@ -291,7 +291,7 @@ class RideRequestCard extends StatelessWidget {
                 height: 50,
                 child: OutlinedButton(
                   style: OutlinedButton.styleFrom(
-                    backgroundColor: Colors.white,
+                    backgroundColor: AppColors.surface,
                     side: const BorderSide(
                       color: Colors.red,
                       width: 1.5,
@@ -328,7 +328,7 @@ class RideBorderCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         border: Border.all(color: gold, width: 1.5),
       ),
       child: Column(
@@ -351,7 +351,7 @@ class RideBorderCard extends StatelessWidget {
           const Text(
             "Route",
             style: TextStyle(
-              color: Colors.black,
+              color: AppColors.textPrimary,
               fontSize: 14,
               fontWeight: FontWeight.bold,
             ),
@@ -367,7 +367,7 @@ class RideBorderCard extends StatelessWidget {
               Text(
                 "Denco court 1",
                 style: TextStyle(
-                  color: Colors.black,
+                  color: AppColors.textPrimary,
                   fontSize: 15,
                 ),
               ),
@@ -385,7 +385,7 @@ class RideBorderCard extends StatelessWidget {
               Text(
                 "Destination",
                 style: TextStyle(
-                  color: Colors.black,
+                  color: AppColors.textPrimary,
                   fontSize: 15,
                 ),
               ),

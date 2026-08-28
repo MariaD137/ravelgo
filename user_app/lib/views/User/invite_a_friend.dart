@@ -25,7 +25,7 @@ class InviteFriendsView extends StatelessWidget {
           child:Container(
             height: 200,
             width: double.infinity,
-            color: Colors.black,
+            color: AppColors.textPrimary,
             child: SafeArea(
               bottom: false,
               child: Padding(
@@ -41,15 +41,15 @@ class InviteFriendsView extends StatelessWidget {
                             onTap: () => Navigator.pop(context),
                             child: const CircleAvatar(
                               radius: 20,
-                              backgroundColor: Colors.white,
-                              child: Icon(Icons.arrow_back, color: Colors.black),
+                              backgroundColor: AppColors.surface,
+                              child: Icon(Icons.arrow_back, color: AppColors.textPrimary),
                             ),
                           ),
                         ),
                         const Text(
                           "Invite Friends",
                           style: TextStyle(
-                            color: Colors.white,
+                            color: AppColors.surface,
                             fontSize: 20,
                             fontWeight: FontWeight.w500,
                           ),
@@ -74,11 +74,11 @@ class InviteFriendsView extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(22),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
+                    color: AppColors.textPrimary.withOpacity(0.3),
                     blurRadius: 12,
                     offset: const Offset(1, 6),
                   ),
@@ -101,7 +101,7 @@ class InviteFriendsView extends StatelessWidget {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 15,
-                      color: Colors.black54,
+                      color: AppColors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 40),
@@ -120,7 +120,7 @@ class InviteFriendsView extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
-                      color: Colors.black54,
+                      color: AppColors.textSecondary,
                     ),
                   ),
 
@@ -138,7 +138,7 @@ class InviteFriendsView extends StatelessWidget {
                           horizontal: 16, vertical: 2),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(16),
-                        color: Colors.white,
+                        color: AppColors.surface,
                       ),
                       child: Row(
                         mainAxisAlignment:
@@ -163,7 +163,7 @@ class InviteFriendsView extends StatelessWidget {
                               "Copy",
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
-                                color: Colors.black,
+                                color: AppColors.textPrimary,
                               ),
                             ),
                           )
@@ -182,7 +182,7 @@ class InviteFriendsView extends StatelessWidget {
                   //         horizontal: 16, vertical: 2),
                   //     decoration: BoxDecoration(
                   //       borderRadius: BorderRadius.circular(16),
-                  //       color: Colors.white,
+                  //       color: AppColors.surface,
                   //     ),
                   //     child: Row(
                   //       mainAxisAlignment:
@@ -207,7 +207,7 @@ class InviteFriendsView extends StatelessWidget {
                   //             "Copy",
                   //             style: TextStyle(
                   //               fontWeight: FontWeight.w600,
-                  //               color: Colors.black,
+                  //               color: AppColors.textPrimary,
                   //             ),
                   //           ),
                   //         )
@@ -241,13 +241,13 @@ class InviteFriendsView extends StatelessWidget {
             ),
             onPressed: () {},
             icon: const Icon(Icons.share,
-                color: Colors.black),
+                color: AppColors.textPrimary),
             label: const Text(
               "Share",
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: Colors.black,
+                color: AppColors.textPrimary,
               ),
             ),
           ),

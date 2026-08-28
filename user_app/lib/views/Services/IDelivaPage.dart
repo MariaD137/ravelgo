@@ -59,11 +59,11 @@ class _IDelivaPageState extends State<IDelivaPage> {
                     /// CARD
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: const [
                           BoxShadow(
-                            color: Colors.black12,
+                            color: AppColors.border,
                             blurRadius: 8,
                           )
                         ],
@@ -133,7 +133,7 @@ class _IDelivaPageState extends State<IDelivaPage> {
                           backgroundColor: isAllDone
                               ? AppColors.primary
                               : const Color(0xFFE6D89C),
-                          foregroundColor: Colors.black,
+                          foregroundColor: AppColors.textPrimary,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -159,7 +159,7 @@ class _IDelivaPageState extends State<IDelivaPage> {
                           text: "By clicking “Submit,” you agree with our ",
                           style: const TextStyle(
                             fontSize: 12,
-                            color: Colors.black54,
+                            color: AppColors.textSecondary,
                           ),
                           children: [
                             TextSpan(
@@ -226,7 +226,7 @@ class _IDelivaPageState extends State<IDelivaPage> {
                       subtitle,
                       style: const TextStyle(
                         fontSize: 12,
-                        color: Colors.black54,
+                        color: AppColors.textSecondary,
                       ),
                     ),
                   ],
@@ -254,7 +254,7 @@ class _IDelivaPageState extends State<IDelivaPage> {
       child: Divider(
         height: 1,
         thickness: 1,
-        color: Colors.grey.shade300,
+        color: AppColors.border,
       ),
     );
   }
@@ -264,7 +264,7 @@ class _IDelivaPageState extends State<IDelivaPage> {
     return BottomNavigationBar(
       currentIndex: 1,
       selectedItemColor: AppColors.primary,
-      unselectedItemColor: Colors.grey,
+      unselectedItemColor: AppColors.textMuted,
       items: const [
         BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: "Home"),
         BottomNavigationBarItem(icon: Icon(Icons.grid_view), label: "Services"),

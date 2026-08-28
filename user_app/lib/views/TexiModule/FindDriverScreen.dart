@@ -86,13 +86,13 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(30),
       ),
       child: Row(
         children:  [
           IconButton(
-            icon: const Icon(Icons.arrow_back,color: Colors.black,),
+            icon: const Icon(Icons.arrow_back,color: AppColors.textPrimary,),
             onPressed: () => Navigator.pop(context),
           ),
           SizedBox(width: 8),
@@ -114,9 +114,9 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 10)],
+        boxShadow: [BoxShadow(color: AppColors.border, blurRadius: 10)],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -184,7 +184,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
               style: ElevatedButton.styleFrom(
                 disabledBackgroundColor: AppColors.primaryTint,
               ),
-              child: const Text("+ 100", style: TextStyle(color: Colors.black38)),
+              child: const Text("+ 100", style: TextStyle(color: AppColors.textMuted)),
             ),
             const SizedBox(width: 12),
             ElevatedButton(
@@ -195,7 +195,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
-                foregroundColor: Colors.black,
+                foregroundColor: AppColors.textPrimary,
               ),
               child: const Text("+ 100"),
             ),
@@ -249,7 +249,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
-              foregroundColor: Colors.black,
+              foregroundColor: AppColors.textPrimary,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
@@ -264,7 +264,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             padding: const EdgeInsets.all(14),
           ),
-          child: const Icon(Icons.calendar_today, color: Colors.black),
+          child: const Icon(Icons.calendar_today, color: AppColors.textPrimary),
         ),
       ],
     );

@@ -120,7 +120,7 @@ class SideMenu extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 0, vertical: 0),
       child: Material(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(0),
         child: InkWell(
           onTap: onTap,
@@ -136,7 +136,7 @@ class SideMenu extends StatelessWidget {
                       style: TextStyle(
                           fontSize: 15, fontWeight: FontWeight.w500)),
                 ),
-                Icon(Icons.chevron_right, size: 20, color: Colors.black45),
+                Icon(Icons.chevron_right, size: 20, color: AppColors.textSecondary),
               ],
             ),
           ),

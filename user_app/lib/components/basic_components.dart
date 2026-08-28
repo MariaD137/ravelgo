@@ -6,17 +6,17 @@ class AppComponents {
   /// ================= HEADER =================
   static Widget header(BuildContext context, String title) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.base, vertical: AppSpacing.md),
       child: Row(
         children: [
           GestureDetector(
             onTap: () => Navigator.pop(context),
-            child: const Icon(Icons.arrow_back),
+            child: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpacing.md),
           Text(
             title,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            style: AppTypography.title.copyWith(color: AppColors.textPrimary),
           ),
         ],
       ),
@@ -26,17 +26,17 @@ class AppComponents {
   /// ================= CARD =================
   static BoxDecoration cardDecoration() {
     return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(AppRadius.medium),
+      border: Border.all(color: AppColors.border),
     );
   }
 
   /// ================= DIVIDER =================
   static Widget divider() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Divider(height: 1, thickness: 1, color: AppColors.border),
+    return const Padding(
+      padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+      child: Divider(height: 1, thickness: 1, color: AppColors.divider),
     );
   }
 
@@ -50,7 +50,7 @@ class AppComponents {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.base),
         child: Row(
           children: [
             Expanded(
@@ -59,28 +59,22 @@ class AppComponents {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: AppTypography.cardTitle.copyWith(color: AppColors.textPrimary),
                   ),
                   if (subtitle != null) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: AppSpacing.xs),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
+                      style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
                     ),
                   ],
                 ],
               ),
             ),
             if (done)
-              const Icon(Icons.check_circle, color: Colors.green, size: 18),
-            const SizedBox(width: 6),
-            const Icon(Icons.chevron_right, size: 18),
+              const Icon(Icons.check_circle, color: AppColors.success, size: 18),
+            const SizedBox(width: AppSpacing.sm),
+            const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
           ],
         ),
       ),
@@ -90,11 +84,12 @@ class AppComponents {
   /// ================= SEARCH FIELD =================
   static Widget searchField(String hint) {
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       child: TextField(
+        style: const TextStyle(color: AppColors.textPrimary),
         decoration: InputDecoration(
           hintText: hint,
-          prefixIcon: const Icon(Icons.search),
+          prefixIcon: const Icon(Icons.search, color: AppColors.textSecondary),
           border: InputBorder.none,
         ),
       ),
@@ -105,20 +100,21 @@ class AppComponents {
   static Widget inputField({String? value, String? hint}) {
     return TextField(
       controller: value != null ? TextEditingController(text: value) : null,
+      style: const TextStyle(color: AppColors.textPrimary),
       decoration: InputDecoration(
         hintText: hint,
         filled: true,
-        fillColor: Colors.white,
+        fillColor: AppColors.surfaceElevated,
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 14,
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.lg - 6,
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.small),
           borderSide: const BorderSide(color: AppColors.border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadius.small),
           borderSide: const BorderSide(color: AppColors.border),
         ),
       ),
@@ -128,19 +124,19 @@ class AppComponents {
   /// ================= LABEL =================
   static Widget label(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Text(text, style: const TextStyle(fontSize: 14)),
+      padding: const EdgeInsets.only(bottom: AppSpacing.xs + 2),
+      child: Text(text, style: AppTypography.body.copyWith(color: AppColors.textPrimary)),
     );
   }
 
   /// ================= UPLOAD BOX =================
   static Widget uploadBox() {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadius.small),
         border: Border.all(color: AppColors.border),
-        color: Colors.white,
+        color: AppColors.surface,
       ),
       child: Row(
         children: [
@@ -148,16 +144,16 @@ class AppComponents {
             width: 60,
             height: 60,
             decoration: BoxDecoration(
-              color: Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(8),
+              color: AppColors.surfaceElevated,
+              borderRadius: BorderRadius.circular(AppRadius.small),
             ),
-            child: const Icon(Icons.image_outlined),
+            child: const Icon(Icons.image_outlined, color: AppColors.textSecondary),
           ),
-          const SizedBox(width: 10),
-          const Expanded(
+          const SizedBox(width: AppSpacing.sm + 2),
+          Expanded(
             child: Text(
               "Please upload square images",
-              style: TextStyle(fontSize: 12),
+              style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
             ),
           ),
         ],
@@ -175,18 +171,7 @@ class AppComponents {
       height: 50,
       child: ElevatedButton(
         onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.black,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: Text(
-          text,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
+        child: Text(text),
       ),
     );
   }
@@ -199,7 +184,8 @@ class AppComponents {
       child: ElevatedButton(
         onPressed: null,
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFE6D89C),
+          backgroundColor: AppColors.disabled,
+          foregroundColor: AppColors.textMuted,
         ),
         child: Text(text),
       ),
@@ -210,8 +196,9 @@ class AppComponents {
   static Widget bottomNav(int index) {
     return BottomNavigationBar(
       currentIndex: index,
+      backgroundColor: AppColors.surface,
       selectedItemColor: AppColors.primary,
-      unselectedItemColor: Colors.grey,
+      unselectedItemColor: AppColors.textMuted,
       items: const [
         BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: "Home"),
         BottomNavigationBarItem(icon: Icon(Icons.grid_view), label: "Services"),
@@ -230,12 +217,12 @@ class AppComponents {
   /// ================= SectionTitle =================
   static Widget SectionTitle(String text) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.xs),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Text(
           text,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+          style: AppTypography.title.copyWith(color: AppColors.textPrimary),
         ),
       ),
     );
@@ -245,19 +232,16 @@ class AppComponents {
   static Widget Item(String title, {bool done = false, VoidCallback? onTap}) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(AppRadius.medium),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.base),
         child: Row(
           children: [
-            Expanded(child: Text(title, style: const TextStyle(fontSize: 15))),
-
+            Expanded(child: Text(title, style: AppTypography.body.copyWith(color: AppColors.textPrimary))),
             if (done)
-              const Icon(Icons.check_circle, color: Colors.green, size: 18),
-
-            const SizedBox(width: 6),
-
-            const Icon(Icons.chevron_right, size: 18),
+              const Icon(Icons.check_circle, color: AppColors.success, size: 18),
+            const SizedBox(width: AppSpacing.sm),
+            const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
           ],
         ),
       ),
@@ -269,25 +253,30 @@ class AppComponents {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-        const SizedBox(height: 4),
-        const Text(
+        Text(title, style: AppTypography.cardTitle.copyWith(color: AppColors.textPrimary)),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
           "Make sure your photos are readable and unobstructed.",
-          style: TextStyle(fontSize: 12, color: Colors.black54),
+          style: AppTypography.caption.copyWith(color: AppColors.textSecondary),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.sm),
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(AppSpacing.md),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
-            borderRadius: BorderRadius.circular(10),
-            color: Colors.white,
+            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(AppRadius.small),
+            color: AppColors.surface,
           ),
           child: Row(
             children: [
-              Container(width: 60, height: 60, color: Colors.grey.shade200),
-              const SizedBox(width: 10),
-              const Expanded(child: Text("Please upload square images")),
+              Container(width: 60, height: 60, color: AppColors.surfaceElevated),
+              const SizedBox(width: AppSpacing.sm + 2),
+              Expanded(
+                child: Text(
+                  "Please upload square images",
+                  style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary),
+                ),
+              ),
             ],
           ),
         ),

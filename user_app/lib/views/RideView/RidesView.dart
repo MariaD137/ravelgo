@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/RideView/RideDetailsView.dart';
 import 'RideDetailsView.dart'; // adjust path if needed
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class Ride {
   final DateTime dateTime;
@@ -73,10 +74,10 @@ class RidesView extends StatelessWidget {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: Colors.grey.shade200,
+                  color: AppColors.surfaceElevated,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(Icons.directions_car, color: Colors.grey.shade700),
+                child: Icon(Icons.directions_car, color: AppColors.textSecondary),
               ),
               title: Text(
                 ride.title,
@@ -89,12 +90,12 @@ class RidesView extends StatelessWidget {
                   children: [
                     Text(
                       _formatTime(ride.dateTime),
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                      style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       ride.id,
-                      style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                      style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                     ),
                   ],
                 ),
@@ -112,7 +113,7 @@ class RidesView extends StatelessWidget {
             // thin divider
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Divider(height: 1, color: Colors.grey.shade300),
+              child: Divider(height: 1, color: AppColors.border),
             ),
           ],
         ));
@@ -120,7 +121,7 @@ class RidesView extends StatelessWidget {
     });
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: SafeArea(
 
         child: Column(

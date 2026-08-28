@@ -87,7 +87,7 @@ class _VoiceOverPageState extends State<VoiceOverPage> {
                       "For a safer and more convenient ride experience, key details like new requests, pickup locations, and distances are read aloud. If your car has Bluetooth, the audio will automatically play through the speakers.",
                       style: TextStyle(
                         fontSize: 13,
-                        color: Colors.black87,
+                        color: AppColors.textPrimary,
                         height: 1.5,
                       ),
                     ),
@@ -120,7 +120,7 @@ class _VoiceOverPageState extends State<VoiceOverPage> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(children: children),
@@ -149,7 +149,7 @@ class _VoiceOverPageState extends State<VoiceOverPage> {
               Text(
                 value,
                 style: const TextStyle(
-                  color: Colors.black54,
+                  color: AppColors.textSecondary,
                 ),
               ),
 
@@ -168,7 +168,7 @@ class _VoiceOverPageState extends State<VoiceOverPage> {
       child: Divider(
         height: 1,
         thickness: 1,
-        color: Colors.grey.shade300,
+        color: AppColors.border,
       ),
     );
   }

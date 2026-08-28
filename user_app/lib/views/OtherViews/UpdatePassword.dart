@@ -20,15 +20,15 @@ class _UpdatePasswordState extends State<UpdatePassword> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
-        leading: const BackButton(color: Colors.black),
-        backgroundColor: Colors.white,
+        leading: const BackButton(color: AppColors.textPrimary),
+        backgroundColor: AppColors.surface,
         elevation: 0,
         centerTitle: true,
         title: const Text(
           "update password",
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.w500),
+          style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w500),
         ),
       ),
       body: Padding(
@@ -97,7 +97,7 @@ class _UpdatePasswordState extends State<UpdatePassword> {
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
-          foregroundColor: Colors.black,
+          foregroundColor: AppColors.textPrimary,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
         onPressed: () {

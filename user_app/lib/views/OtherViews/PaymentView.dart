@@ -18,14 +18,14 @@ class _PaymentScreenState extends State<PaymentView> {
         preferredSize: const Size.fromHeight(70),
         child: Container(
           decoration: const BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.only(
               bottomLeft: Radius.circular(24),
               bottomRight: Radius.circular(24),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black12,
+                color: AppColors.border,
                 blurRadius: 4,
                 offset: Offset(0, 2),
               ),
@@ -36,11 +36,11 @@ class _PaymentScreenState extends State<PaymentView> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: const [
-                  BackButton(color: Colors.black),
+                  BackButton(color: AppColors.textPrimary),
                   Spacer(),
                   Text(
                     'Payment',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.normal, color: Colors.black),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.normal, color: AppColors.textPrimary),
                   ),
                   Spacer(),
                   SizedBox(width: 64)
@@ -59,7 +59,7 @@ class _PaymentScreenState extends State<PaymentView> {
               Container(
               padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(25),
               ),
               child: Padding(
@@ -71,9 +71,9 @@ class _PaymentScreenState extends State<PaymentView> {
                         const SizedBox(height: 12),
                         Container(
                           decoration: BoxDecoration(
-                            color: Colors.grey.shade200,
+                            color: AppColors.surfaceElevated,
                             borderRadius: BorderRadius.circular(25),
-                            border: Border.all(color: Colors.grey.shade400),
+                            border: Border.all(color: AppColors.border),
                           ),
                           child: Row(
                             children: [
@@ -90,7 +90,7 @@ class _PaymentScreenState extends State<PaymentView> {
               Container(
                   padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
                   decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(25),
               ),
               child: Padding(
@@ -134,7 +134,7 @@ class _PaymentScreenState extends State<PaymentView> {
                       padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(25),
                       ),
                     child: Padding(
@@ -160,7 +160,7 @@ class _PaymentScreenState extends State<PaymentView> {
                     padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
                     width: double.infinity,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: AppColors.surface,
                       borderRadius: BorderRadius.circular(25),
                     ),
                     child: Padding(
@@ -210,7 +210,7 @@ class _PaymentScreenState extends State<PaymentView> {
               label,
               style: TextStyle(
                 fontWeight: FontWeight.w500,
-                color: isSelected ? Colors.black : Colors.grey.shade600,
+                color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
               ),
             ),
           ),

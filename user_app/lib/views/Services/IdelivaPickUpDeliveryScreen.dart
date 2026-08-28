@@ -21,7 +21,7 @@ class PickDeliveryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -98,7 +98,7 @@ class PickDeliveryScreen extends StatelessWidget {
                       padding: EdgeInsets.symmetric(vertical: 12),
                       decoration: BoxDecoration(
                         border: Border(
-                          bottom: BorderSide(color: Colors.grey.shade300),
+                          bottom: BorderSide(color: AppColors.border),
                         ),
                       ),
                       child: Column(
@@ -149,7 +149,7 @@ class PickDeliveryScreen extends StatelessWidget {
                                   onPressed: () {},
                                   child: Text(
                                     "Accept",
-                                    style: TextStyle(color: Colors.black),
+                                    style: TextStyle(color: AppColors.textPrimary),
                                   ),
                                 ),
                               ),

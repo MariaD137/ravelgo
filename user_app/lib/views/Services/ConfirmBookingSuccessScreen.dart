@@ -9,7 +9,7 @@ class ConfirmBookingSuccessScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -26,7 +26,7 @@ class ConfirmBookingSuccessScreen extends StatelessWidget {
                   child: const CircleAvatar(
                     radius: 20,
                     backgroundColor: AppColors.background,
-                    child: Icon(Icons.arrow_back_ios, color: Colors.black),
+                    child: Icon(Icons.arrow_back_ios, color: AppColors.textPrimary),
                   ),
                 ),
               ),
@@ -41,7 +41,7 @@ class ConfirmBookingSuccessScreen extends StatelessWidget {
               const Text(
                 'You have successfully subscribed yearly plan.\nYou can download your E-receipt Now',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.black54, fontSize: 14),
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
               ),
               const Spacer(),
 
@@ -63,7 +63,7 @@ class ConfirmBookingSuccessScreen extends StatelessWidget {
                       },
                       child: const Text(
                         'View E-receipt',
-                        style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+                        style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),
@@ -76,7 +76,7 @@ class ConfirmBookingSuccessScreen extends StatelessWidget {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        side: const BorderSide(color: Colors.black12),
+                        side: const BorderSide(color: AppColors.border),
                       ),
                       onPressed: () {
                         Navigator.pushAndRemoveUntil(
@@ -87,7 +87,7 @@ class ConfirmBookingSuccessScreen extends StatelessWidget {
                       },
                       child: const Text(
                         'Go to Rent a car',
-                        style: TextStyle(color: Colors.black),
+                        style: TextStyle(color: AppColors.textPrimary),
                       ),
                     ),
                   ),

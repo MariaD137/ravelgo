@@ -45,7 +45,7 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
                 decoration: BoxDecoration(
                   color: AppColors.background,
                   borderRadius: BorderRadius.circular(15),
-                  boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                  boxShadow: [BoxShadow(color: AppColors.border, blurRadius: 4)],
                 ),
                 child: Row(
                   children: [
@@ -125,7 +125,7 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
                   },
                   child: Text(
                     'Done',
-                    style: TextStyle(color: Colors.black),
+                    style: TextStyle(color: AppColors.textPrimary),
                   ),
                 ),
               ),
@@ -137,7 +137,7 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
               child: Text.rich(
                   TextSpan(
                     text: "Don’t have an I deliva account? ",
-                    style: const TextStyle(color: Colors.black54),
+                    style: const TextStyle(color: AppColors.textSecondary),
                     children: [
                       TextSpan(
                         text: "Register",

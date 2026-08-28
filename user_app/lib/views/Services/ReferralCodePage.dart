@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/components/basic_components.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class ReferralCodePage extends StatefulWidget {
   const ReferralCodePage({super.key});
@@ -51,23 +52,23 @@ class _ReferralCodePageState extends State<ReferralCodePage> {
                     onChanged: (_) => setState(() {}),
                     decoration: InputDecoration(
                       filled: true,
-                      fillColor: Colors.white,
+                      fillColor: AppColors.surface,
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 14),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide:
-                        BorderSide(color: Colors.grey.shade300),
+                        BorderSide(color: AppColors.border),
                       ),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide:
-                        BorderSide(color: Colors.grey.shade300),
+                        BorderSide(color: AppColors.border),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
                         borderSide:
-                        const BorderSide(color: Colors.black),
+                        const BorderSide(color: AppColors.textPrimary),
                       ),
                     ),
                   ),
@@ -90,7 +91,7 @@ class _ReferralCodePageState extends State<ReferralCodePage> {
                       : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.black,
+                    foregroundColor: AppColors.textPrimary,
                     disabledBackgroundColor:
                     AppColors.primary.withOpacity(0.4),
                     padding: const EdgeInsets.symmetric(vertical: 14),

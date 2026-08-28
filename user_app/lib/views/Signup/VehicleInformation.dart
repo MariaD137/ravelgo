@@ -26,7 +26,7 @@ class _VehicleInformationScreenState extends State<VehicleInformationScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: IconThemeData(color: Colors.black),
+        iconTheme: IconThemeData(color: AppColors.textPrimary),
       ),
       body: Padding(
         padding: EdgeInsets.all(16),
@@ -109,7 +109,7 @@ class _VehicleInformationScreenState extends State<VehicleInformationScreen> {
               Container(
                 padding: EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey[300]!),
+                  border: Border.all(color: AppColors.border!),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(children: [
@@ -141,7 +141,7 @@ class _VehicleInformationScreenState extends State<VehicleInformationScreen> {
               Container(
                 padding: EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey[300]!),
+                  border: Border.all(color: AppColors.border!),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(children: [
@@ -177,7 +177,7 @@ class _VehicleInformationScreenState extends State<VehicleInformationScreen> {
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
-                    foregroundColor: Colors.black,
+                    foregroundColor: AppColors.textPrimary,
                   ),
                   child: Padding(
                     padding: EdgeInsets.symmetric(vertical: 16),

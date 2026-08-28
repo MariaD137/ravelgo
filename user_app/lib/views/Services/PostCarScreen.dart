@@ -20,16 +20,16 @@ class _PostCarScreenState extends State<PostCarScreen> {
     print(Navigator.of(context).canPop()); // should be false
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
         centerTitle: true, // 👈 This centers the title
         title: const Text(
           'Post your car',
-          style: TextStyle(color: Colors.black),
+          style: TextStyle(color: AppColors.textPrimary),
         ),
-        leading: const BackButton(color: Colors.black),
+        leading: const BackButton(color: AppColors.textPrimary),
       ),
       body:Container(
-    color: Colors.white, // Set background color here
+    color: AppColors.surface, // Set background color here
     padding: const EdgeInsets.all(16),
     child:
     SingleChildScrollView(
@@ -44,11 +44,11 @@ class _PostCarScreenState extends State<PostCarScreen> {
               icon: const Icon(Icons.remove_red_eye, size: 16),
               label: const Text('View posts'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.grey,
+                backgroundColor: AppColors.surface,
+                foregroundColor: AppColors.textMuted,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
-                  side: const BorderSide(color: Colors.black12),
+                  side: const BorderSide(color: AppColors.border),
                 ),
               ),
             ),
@@ -115,7 +115,7 @@ class _PostCarScreenState extends State<PostCarScreen> {
           style: ElevatedButton.styleFrom(
             minimumSize: const Size(double.infinity, 50),
             backgroundColor: AppColors.primary,
-            foregroundColor: Colors.black,
+            foregroundColor: AppColors.textPrimary,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
           onPressed: () {
@@ -190,7 +190,7 @@ class UploadSection extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
+            border: Border.all(color: AppColors.border),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
@@ -200,9 +200,9 @@ class UploadSection extends StatelessWidget {
                 height: 60,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
-                  color: Colors.grey.shade200,
+                  color: AppColors.surfaceElevated,
                 ),
-                child: const Icon(Icons.image, size: 32, color: Colors.grey),
+                child: const Icon(Icons.image, size: 32, color: AppColors.textMuted),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -231,13 +231,13 @@ class UploadSection extends StatelessWidget {
 
                             },
                             style: ElevatedButton.styleFrom(
-                              foregroundColor: Colors.black,
+                              foregroundColor: AppColors.textPrimary,
                               backgroundColor: Colors.transparent,
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               elevation: 0,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(6),
-                                side: BorderSide(color: Colors.grey.shade400),
+                                side: BorderSide(color: AppColors.border),
                               ),
                             ),
                             child: const Text('Choose File', style: TextStyle(fontWeight: FontWeight.bold)),

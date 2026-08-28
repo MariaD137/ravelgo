@@ -8,7 +8,7 @@ class VerifyAccountScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, iconTheme: IconThemeData(color: Colors.black)),
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, iconTheme: IconThemeData(color: AppColors.textPrimary)),
       body: Padding(
         padding: EdgeInsets.all(20),
         child: Column(
@@ -16,7 +16,7 @@ class VerifyAccountScreen extends StatelessWidget {
           children: [
             Text('Verify your account', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
             SizedBox(height: 6),
-            Text('Verification code will be sent to this email address.', style: TextStyle(color: Colors.grey[600])),
+            Text('Verification code will be sent to this email address.', style: TextStyle(color: AppColors.textSecondary)),
             SizedBox(height: 18),
             Text('OTP'),
             SizedBox(height: 6),
@@ -30,7 +30,7 @@ class VerifyAccountScreen extends StatelessWidget {
                     MaterialPageRoute(builder: (context) => DriverInformationScreen()),
                   );
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.black),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: AppColors.textPrimary),
                 child: Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text('Verify')),
               ),
             ),

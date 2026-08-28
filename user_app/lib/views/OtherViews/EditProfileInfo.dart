@@ -19,17 +19,17 @@ class _EditPersonalInfoState extends State<EditPersonalInfo> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: const BackButton(color: Colors.black),
-        backgroundColor: Colors.white,
+        leading: const BackButton(color: AppColors.textPrimary),
+        backgroundColor: AppColors.surface,
         elevation: 0,
         centerTitle: true,
         title: const Text(
           "Edit Personal Info",
-          style: TextStyle(color: Colors.black),
+          style: TextStyle(color: AppColors.textPrimary),
         ),
       ),
       body: Container(
-        color: Colors.white,
+        color: AppColors.surface,
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: ListView(
           children: [
@@ -102,15 +102,15 @@ class _ProfilePhotoSection extends StatelessWidget {
             children: [
               const CircleAvatar(
                 radius: 40,
-                backgroundColor: Colors.grey,
-                child: Icon(Icons.person, size: 40, color: Colors.white),
+                backgroundColor: AppColors.textMuted,
+                child: Icon(Icons.person, size: 40, color: AppColors.surface),
               ),
               Positioned(
                 right: 0,
                 child: CircleAvatar(
                   radius: 12,
-                  backgroundColor: Colors.white,
-                  child: Icon(Icons.edit, size: 14, color: Colors.black),
+                  backgroundColor: AppColors.surface,
+                  child: Icon(Icons.edit, size: 14, color: AppColors.textPrimary),
                 ),
               ),
             ],
@@ -118,11 +118,11 @@ class _ProfilePhotoSection extends StatelessWidget {
           const SizedBox(height: 12),
           const Text(
             "Upload a profile photo",
-            style: TextStyle(fontSize: 14, color: Colors.black54),
+            style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
           ),
           const Text(
             "to help drivers identify you easily",
-            style: TextStyle(fontSize: 14, color: Colors.black54),
+            style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 20),
         ],

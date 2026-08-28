@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/components/basic_components.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 class DriverLicensePage extends StatelessWidget {
   const DriverLicensePage({super.key});
 
@@ -42,7 +43,7 @@ class DriverLicensePage extends StatelessWidget {
 
               const Text(
                 "if vehicle would be used for delivery",
-                style: TextStyle(fontSize: 12, color: Colors.black54),
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
               ),
 
               const SizedBox(height: 20),

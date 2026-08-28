@@ -145,7 +145,7 @@ class _HomePageState extends State<HomePage> {
   /// Small circular icon button used near map top corners
   Widget _circleIconButton({required IconData icon, required VoidCallback onTap}) {
     return Material(
-      color: Colors.white.withOpacity(0.95),
+      color: AppColors.surface.withOpacity(0.95),
       shape: CircleBorder(),
       elevation: 2,
       child: InkWell(
@@ -153,7 +153,7 @@ class _HomePageState extends State<HomePage> {
         customBorder: CircleBorder(),
         child: Padding(
           padding: EdgeInsets.all(10),
-          child: Icon(icon, size: 22, color: Colors.black87),
+          child: Icon(icon, size: 22, color: AppColors.textPrimary),
         ),
       ),
     );
@@ -173,16 +173,16 @@ class _HomePageState extends State<HomePage> {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surfaceElevated,
           borderRadius: BorderRadius.circular(28),
         ),
         child: Row(
           children: [
-            const Icon(Icons.search, color: Colors.black54),
+            const Icon(Icons.search, color: AppColors.textSecondary),
             const SizedBox(width: 12),
             const Text(
               "Where to?",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
             ),
           ],
         ),
@@ -195,10 +195,10 @@ class _HomePageState extends State<HomePage> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: borderRadius ?? BorderRadius.circular(12),
         boxShadow: [
-          BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2)),
+          BoxShadow(color: AppColors.border, blurRadius: 6, offset: Offset(0, 2)),
         ],
       ),
       child: child,
@@ -222,7 +222,7 @@ class _HomePageState extends State<HomePage> {
             ],
           ),
           Spacer(),
-          Icon(Icons.chevron_right, size: 18, color: Colors.grey[400]),
+          Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
         ],
       ),
     );
@@ -245,7 +245,7 @@ class _HomePageState extends State<HomePage> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
               decoration: const BoxDecoration(
-                color: AppColors.primary,
+                color: AppColors.surface,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(0)),
               ),
               child: Column(
@@ -257,7 +257,7 @@ class _HomePageState extends State<HomePage> {
                     height: 5,
                     margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.7),
+                      color: AppColors.border,
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
@@ -283,7 +283,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                   subtitle: const Text("Invite friends to RavelGo"),
                   trailing:
-                  const Icon(Icons.chevron_right, color: Colors.grey),
+                  const Icon(Icons.chevron_right, color: AppColors.textMuted),
                   onTap: () {
                     Navigator.push(
                       context,

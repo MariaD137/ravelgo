@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:ravelgo_user_app/views/Login/login.dart';
-import 'package:ravelgo_user_app/views/Signup/CreateAccount.dart';
 
 class SplashScreen extends StatefulWidget {
   @override
@@ -22,13 +22,14 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:  const Color(0xFF000000),
-      body:  Padding(
+      backgroundColor: AppColors.background,
+      body: const Padding(
         padding: EdgeInsets.all(80.0),
         child: Center(
-          child: Image.asset(
-            'assets/logo.png',
-          ), // You can customize this
+          child: Text(
+            "RavelGo",
+            style: TextStyle(fontSize: 34, fontWeight: FontWeight.bold, color: AppColors.primary, letterSpacing: -0.5),
+          ),
         ),
       ),
     );

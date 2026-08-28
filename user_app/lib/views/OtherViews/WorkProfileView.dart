@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class WorkProfileView extends StatelessWidget {
   const WorkProfileView({super.key});
@@ -6,12 +7,12 @@ class WorkProfileView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(70),
         child: Container(
           decoration: const BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.only(
               bottomLeft: Radius.circular(24),
               bottomRight: Radius.circular(24),
@@ -22,11 +23,11 @@ class WorkProfileView extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: const [
-                  BackButton(color: Colors.black),
+                  BackButton(color: AppColors.textPrimary),
                   Spacer(),
                   Text(
                     'Work Profile',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.normal, color: Colors.black),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.normal, color: AppColors.textPrimary),
                   ),
                   Spacer(),
                   SizedBox(width: 64)
@@ -59,7 +60,7 @@ class WorkProfileView extends StatelessWidget {
                     icon: Icons.account_balance_wallet_outlined,
                     title: 'Payment method',
                     value: 'Cash',
-                    valueColor: Colors.black,
+                    valueColor: AppColors.textPrimary,
                     iconColor: Colors.brown,
                   ),
                   Divider(height: 1),
@@ -91,18 +92,18 @@ class _SettingsTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: Icon(icon, color: iconColor ?? Colors.grey[700]),
+      leading: Icon(icon, color: iconColor ?? AppColors.textSecondary),
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: (showValue && value != null) ? [
           Text(
             title,
-            style: const TextStyle(color: Colors.grey, fontSize: 14),
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 14),
           ),
             Text(
               value!,
               style: TextStyle(
-                color: valueColor ?? Colors.black,
+                color: valueColor ?? AppColors.textPrimary,
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
               ),
@@ -111,13 +112,13 @@ class _SettingsTile extends StatelessWidget {
         ]:[ Text(
               title,
           style: const  TextStyle(
-            color:  Colors.black,
+            color:  AppColors.textPrimary,
             fontSize: 18,
             fontWeight: FontWeight.w500,
           ),
         ),],
       ),
-      trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+      trailing: const Icon(Icons.chevron_right, color: AppColors.textMuted),
       onTap: () {
         print('Tapped on $title');
       },

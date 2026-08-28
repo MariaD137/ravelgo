@@ -38,7 +38,7 @@ class _MainBottomNavigationState extends State<BottomNavigationView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: IndexedStack(
         index: _selectedIndex,
         children: [
@@ -59,7 +59,7 @@ class _MainBottomNavigationState extends State<BottomNavigationView> {
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
+                color: AppColors.textPrimary.withOpacity(0.2),
                 spreadRadius: 0.5,
                 blurRadius: 5,
                 offset: const Offset(0, -2),
@@ -72,12 +72,12 @@ class _MainBottomNavigationState extends State<BottomNavigationView> {
               topRight: Radius.circular(20),
             ),
             child: BottomNavigationBar(
-              backgroundColor: const Color(0xFFFFFFFF),
+              backgroundColor: AppColors.surfaceElevated,
               currentIndex: _selectedIndex,
               onTap: _onTabTapped,
               type: BottomNavigationBarType.fixed,
               selectedItemColor: AppColors.primary,
-              unselectedItemColor: AppColors.border,
+              unselectedItemColor: AppColors.textMuted,
               showSelectedLabels: true,
               showUnselectedLabels: true,
               items: const [

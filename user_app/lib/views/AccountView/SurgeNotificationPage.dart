@@ -55,7 +55,7 @@ class _SurgeNotificationPageState extends State<SurgeNotificationPage> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 14, vertical: 16),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
@@ -88,7 +88,7 @@ class _SurgeNotificationPageState extends State<SurgeNotificationPage> {
                     Container(
                       height: 1,
                       margin: const EdgeInsets.symmetric(horizontal: 2),
-                      color: Colors.grey.shade300,
+                      color: AppColors.border,
                     ),
 
                     const Spacer(),
@@ -102,10 +102,10 @@ class _SurgeNotificationPageState extends State<SurgeNotificationPage> {
               padding:
               const EdgeInsets.fromLTRB(16, 10, 16, 16),
               decoration: const BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black12,
+                    color: AppColors.border,
                     blurRadius: 10,
                     offset: Offset(0, -3),
                   ),
@@ -122,7 +122,7 @@ class _SurgeNotificationPageState extends State<SurgeNotificationPage> {
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.black,
+                      foregroundColor: AppColors.textPrimary,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),

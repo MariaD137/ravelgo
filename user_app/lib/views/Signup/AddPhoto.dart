@@ -10,7 +10,7 @@ class AddPhotoScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, iconTheme: IconThemeData(color: Colors.black)),
+      appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0, iconTheme: IconThemeData(color: AppColors.textPrimary)),
       body: Padding(
         padding: EdgeInsets.all(20),
         child: Column(
@@ -18,7 +18,7 @@ class AddPhotoScreen extends StatelessWidget {
             Text('Add Photo', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             SizedBox(height: 18),
             Container(
-              decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(12)),
+              decoration: BoxDecoration(color: AppColors.surfaceElevated, borderRadius: BorderRadius.circular(12)),
               padding: EdgeInsets.all(18),
               child: Column(
                 children: [
@@ -32,7 +32,7 @@ class AddPhotoScreen extends StatelessWidget {
                     }
                   }, child: Text('Add a photo')),
                   SizedBox(height: 12),
-                  Text('Please upload a clear, front-view portrait of yourself, making sure your whole face is visible and your eyes are open. Full-body pictures are not accepted.', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[700])),
+                  Text('Please upload a clear, front-view portrait of yourself, making sure your whole face is visible and your eyes are open. Full-body pictures are not accepted.', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary)),
                 ],
               ),
             ),
@@ -45,7 +45,7 @@ class AddPhotoScreen extends StatelessWidget {
                     MaterialPageRoute(builder: (context) => VehicleInformationScreen()),
                   )
                 },
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.black),
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: AppColors.textPrimary),
                 child: Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text('Next')),
               ),
             ),
@@ -63,7 +63,7 @@ Widget localImage(String path, {BoxFit fit = BoxFit.contain}) {
   return file.existsSync()
       ? Image.file(file, fit: fit)
       : Container(
-    color: Colors.grey[200],
-    child: Center(child: Icon(Icons.image, size: 60, color: Colors.grey[400])),
+    color: AppColors.surfaceElevated,
+    child: Center(child: Icon(Icons.image, size: 60, color: AppColors.textMuted)),
   );
 }

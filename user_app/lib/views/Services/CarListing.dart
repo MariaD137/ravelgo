@@ -36,7 +36,7 @@ class _CarListingState extends State<CarListing> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
         elevation: 0,
         automaticallyImplyLeading: true, // 👈 Hides the back button
         title: const TextField(
@@ -58,7 +58,7 @@ class _CarListingState extends State<CarListing> {
               height: 200,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.black,
+                color: AppColors.textPrimary,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Row(
@@ -75,7 +75,7 @@ class _CarListingState extends State<CarListing> {
                         Spacer(),
                         const Text(
                           'You can also post your car for rent on our platform',
-                          style: TextStyle(color: Colors.white,fontSize: 16,fontWeight: FontWeight.bold),
+                          style: TextStyle(color: AppColors.surface,fontSize: 16,fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 10),
                         ElevatedButton(
@@ -83,7 +83,7 @@ class _CarListingState extends State<CarListing> {
                             backgroundColor: AppColors.primary,
                           ),
                           onPressed: () {},
-                          child: const Text('Subscribe to be a Member',style:TextStyle(color: Colors.black,fontSize: 12),),
+                          child: const Text('Subscribe to be a Member',style:TextStyle(color: AppColors.textPrimary,fontSize: 12),),
                         ),
                         Spacer(),
                       ],
@@ -165,7 +165,7 @@ class CarCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: AppColors.surface,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -185,7 +185,7 @@ class CarCard extends StatelessWidget {
               const SizedBox(height: 8),
               const Text(
                 'Automatic | 5 seats | Disel',
-                style: TextStyle(color: Colors.grey, fontSize: 12),
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12),
               ),
               const Spacer(),
               Row(
@@ -203,8 +203,8 @@ class CarCard extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         minimumSize: const Size.fromHeight(32),
                       ),
-                      icon: const Icon(Icons.call, size: 16, color: Colors.black),
-                      label: const Text('Call', style: TextStyle(color: Colors.black, fontSize: 12)),
+                      icon: const Icon(Icons.call, size: 16, color: AppColors.textPrimary),
+                      label: const Text('Call', style: TextStyle(color: AppColors.textPrimary, fontSize: 12)),
                       onPressed: () {},
                     ),
                   ),
@@ -241,7 +241,7 @@ class CarCardBig extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: AppColors.surface,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -269,7 +269,7 @@ class CarCardBig extends StatelessWidget {
               const SizedBox(height: 8),
               const Text(
                 'Automatic | 5 seats | Disel',
-                style: TextStyle(color: Colors.grey, fontSize: 24),
+                style: TextStyle(color: AppColors.textMuted, fontSize: 24),
               ),
               const Spacer(),
               Row(
@@ -282,8 +282,8 @@ class CarCardBig extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    icon: const Icon(Icons.call, size: 18, color: Colors.black),
-                    label: const Text('Call', style: TextStyle(color: Colors.black)),
+                    icon: const Icon(Icons.call, size: 18, color: AppColors.textPrimary),
+                    label: const Text('Call', style: TextStyle(color: AppColors.textPrimary)),
                     onPressed: () {},
                   ),
                   const SizedBox(width: 12),

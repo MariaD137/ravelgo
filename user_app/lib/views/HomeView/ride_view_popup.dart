@@ -85,7 +85,7 @@ class _RideViewPopupState extends State<RideViewPopup> {
             height: 5,
             margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
-              color: Colors.white70,
+              color: AppColors.textSecondary,
               borderRadius: BorderRadius.circular(10),
             ),
           ),
@@ -93,7 +93,7 @@ class _RideViewPopupState extends State<RideViewPopup> {
             padding: const EdgeInsets.symmetric(
                 horizontal: 16, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(24),
             ),
             child: const Row(
@@ -137,7 +137,7 @@ class _RideViewPopupState extends State<RideViewPopup> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -215,7 +215,7 @@ class _RideViewPopupState extends State<RideViewPopup> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -241,7 +241,7 @@ class _RideViewPopupState extends State<RideViewPopup> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(

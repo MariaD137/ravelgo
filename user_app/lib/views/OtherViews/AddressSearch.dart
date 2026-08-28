@@ -21,13 +21,13 @@ class _AddressSearchState extends State<AddressSearch> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
-        leading: const BackButton(color: Colors.black),
-        backgroundColor: Colors.white,
+        leading: const BackButton(color: AppColors.textPrimary),
+        backgroundColor: AppColors.surface,
         elevation: 0,
         centerTitle: true,
-        title: Text(widget.addressType, style: const TextStyle(color: Colors.black)),
+        title: Text(widget.addressType, style: const TextStyle(color: AppColors.textPrimary)),
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -62,7 +62,7 @@ class _AddressSearchState extends State<AddressSearch> {
       child: Row(
         children: [
           const SizedBox(width: 10),
-          const Icon(Icons.search, color: Colors.black54),
+          const Icon(Icons.search, color: AppColors.textSecondary),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
@@ -74,7 +74,7 @@ class _AddressSearchState extends State<AddressSearch> {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.my_location_outlined, color: Colors.black54),
+            icon: const Icon(Icons.my_location_outlined, color: AppColors.textSecondary),
             onPressed: () {
               // Location fetch logic
             },
@@ -91,13 +91,13 @@ class _AddressSearchState extends State<AddressSearch> {
   }) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      leading: Icon(icon, color: Colors.black),
+      leading: Icon(icon, color: AppColors.textPrimary),
       title: Text(
         title,
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
       subtitle: subtitle.isNotEmpty
-          ? Text(subtitle, style: const TextStyle(color: Colors.black54))
+          ? Text(subtitle, style: const TextStyle(color: AppColors.textSecondary))
           : null,
       onTap: () {
         // Handle selection

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class PrivacyScreenDetail extends StatelessWidget {
   const PrivacyScreenDetail({super.key});
@@ -6,13 +7,13 @@ class PrivacyScreenDetail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
-        leading: const BackButton(color: Colors.black),
-        backgroundColor: Colors.white,
+        leading: const BackButton(color: AppColors.textPrimary),
+        backgroundColor: AppColors.surface,
         elevation: 0,
         centerTitle: true,
-        title: const Text("Privacy", style: TextStyle(color: Colors.black)),
+        title: const Text("Privacy", style: TextStyle(color: AppColors.textPrimary)),
       ),
       body: Padding(
         padding: const EdgeInsets.all(20),

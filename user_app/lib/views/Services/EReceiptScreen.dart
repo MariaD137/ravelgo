@@ -10,16 +10,16 @@ class EReceiptScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('E - Receipt'),
         centerTitle: true,
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
         elevation: 0,
-        leading: const BackButton(color: Colors.black),
+        leading: const BackButton(color: AppColors.textPrimary),
         titleTextStyle: const TextStyle(
-          color: Colors.black,
+          color: AppColors.textPrimary,
           fontSize: 18,
           fontWeight: FontWeight.w600,
         ),
       ),
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -52,10 +52,10 @@ class EReceiptScreen extends StatelessWidget {
       // Bottom Download Button
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.surface,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: AppColors.textPrimary.withOpacity(0.05),
               blurRadius: 10,
               offset: const Offset(0, -2),
             ),
@@ -77,7 +77,7 @@ class EReceiptScreen extends StatelessWidget {
             ),
             child: const Text(
               'Download E-receipt',
-              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
             ),
           ),
         ),
@@ -96,7 +96,7 @@ class EReceiptScreen extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: const TextStyle(color: Colors.black54, fontSize: 14)),
+          Text(title, style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
         ],
       ),
@@ -109,7 +109,7 @@ class EReceiptScreen extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(title, style: const TextStyle(color: Colors.black54, fontSize: 14)),
+          Text(title, style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
         ],
       ),

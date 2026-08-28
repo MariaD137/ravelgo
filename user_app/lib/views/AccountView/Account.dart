@@ -4,12 +4,14 @@ import 'package:ravelgo_user_app/views/AccountView/AppSettingsPage.dart';
 import 'package:ravelgo_user_app/views/AccountView/CommunicationsPage.dart';
 import 'package:ravelgo_user_app/views/Login/login.dart';
 import 'package:ravelgo_user_app/views/OtherViews/AboutView.dart';
+import 'package:ravelgo_user_app/views/OtherViews/AddressSearch.dart';
 import 'package:ravelgo_user_app/views/OtherViews/DeleteAccountScreen.dart';
 import 'package:ravelgo_user_app/views/OtherViews/LoginSecurityScreen.dart';
 import 'package:ravelgo_user_app/views/OtherViews/PaymentView.dart';
 import 'package:ravelgo_user_app/views/OtherViews/PersonalInfo.dart';
 import 'package:ravelgo_user_app/views/OtherViews/PrivacyScreen.dart';
 import 'package:ravelgo_user_app/views/OtherViews/SupportView.dart';
+import 'package:ravelgo_user_app/views/OtherViews/WorkProfileView.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class Accountview extends StatelessWidget {
@@ -20,9 +22,10 @@ class Accountview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: SafeArea(
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           children: [
             const SizedBox(height: 18),
 
@@ -80,6 +83,39 @@ class Accountview extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => PaymentView()),
+                    );
+                  }
+                ),
+                _divider(),
+                _menuRow(
+                  icon: Icons.home_outlined,
+                  label: 'Home address',
+                  onTap: (){
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const AddressSearch(addressType: "Home")),
+                    );
+                  }
+                ),
+                _divider(),
+                _menuRow(
+                  icon: Icons.work_outline,
+                  label: 'Work address',
+                  onTap: (){
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const AddressSearch(addressType: "Work")),
+                    );
+                  }
+                ),
+                _divider(),
+                _menuRow(
+                  icon: Icons.business_center_outlined,
+                  label: 'Work profile',
+                  onTap: (){
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const WorkProfileView()),
                     );
                   }
                 ),
@@ -155,8 +191,7 @@ class Accountview extends StatelessWidget {
             const SizedBox(height: 12),
 
             /// Section 3
-            Expanded(
-              child: _section(
+            _section(
                 children: [
                   _menuRow(
                     icon: Icons.campaign_outlined,
@@ -193,9 +228,10 @@ class Accountview extends StatelessWidget {
                     }
                   ),
                 ],
-              ),
             ),
+            const SizedBox(height: 18),
           ],
+          ),
         ),
       ),
     );
@@ -204,20 +240,20 @@ class Accountview extends StatelessWidget {
   /// Reusable Section Container
   Widget _section({required List<Widget> children}) {
     return Container(
-      color: Colors.white,
+      color: AppColors.surface,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Column(children: children),
     );
   }
 
   /// Divider matching the UI
-  Widget _divider() => Divider(height: 1, color: Colors.grey.shade300);
+  Widget _divider() => Divider(height: 1, color: AppColors.border);
 
   /// Standard Row UI
   Widget _menuRow({
     required IconData icon,
     required String label,
-    Color labelColor = Colors.black87,
+    Color labelColor = AppColors.textPrimary,
     VoidCallback? onTap,
   }) {
     return InkWell(
@@ -226,7 +262,7 @@ class Accountview extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 16),
         child: Row(
           children: [
-            Icon(icon, size: 22, color: Colors.black87),
+            Icon(icon, size: 22, color: AppColors.textPrimary),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -234,7 +270,7 @@ class Accountview extends StatelessWidget {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: labelColor),
               ),
             ),
-            const Icon(Icons.chevron_right, color: Colors.black45),
+            const Icon(Icons.chevron_right, color: AppColors.textSecondary),
           ],
         ),
       ),
@@ -246,6 +282,6 @@ class Accountview extends StatelessWidget {
     final file = File(path);
     return file.existsSync()
         ? Image.file(file, fit: fit)
-        : Container(color: Colors.grey.shade300, child: const Icon(Icons.person, size: 40));
+        : Container(color: AppColors.border, child: const Icon(Icons.person, size: 40));
   }
 }

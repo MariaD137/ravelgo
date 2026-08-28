@@ -45,7 +45,7 @@ class _SelectRideState extends State<SelectRide> {
             right: 16,
             bottom: 280,
             child: CircleAvatar(
-              backgroundColor: Colors.white,
+              backgroundColor: AppColors.surface,
               child: IconButton(
                 icon: const Icon(Icons.my_location),
                 onPressed: () {},
@@ -61,7 +61,7 @@ class _SelectRideState extends State<SelectRide> {
             builder: (_, controller) {
               return Container(
                 decoration: const BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 ),
                 padding: const EdgeInsets.only(left: 12,top: 12,right: 12),
@@ -88,10 +88,10 @@ class _SelectRideState extends State<SelectRide> {
                       children: [
                         ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.black,
+                            backgroundColor: AppColors.surface,
+                            foregroundColor: AppColors.textPrimary,
                             elevation: 0,
-                            side: const BorderSide(color: Colors.black12),
+                            side: const BorderSide(color: AppColors.border),
                           ),
                           icon: Image.asset("assets/ic_cash_ride.png"),
                           label: const Text("Cash"),
@@ -102,7 +102,7 @@ class _SelectRideState extends State<SelectRide> {
                           child: Container(
                             height: 48,
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
+                              color: AppColors.surfaceElevated,
                               borderRadius: BorderRadius.circular(12),
                             ),
                             padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -130,18 +130,18 @@ class _SelectRideState extends State<SelectRide> {
                                 MaterialPageRoute(builder: (context) => FindDriverScreen()),
                               );
                             },
-                            child: const Text("Select Just ride", style: TextStyle(color: Colors.black)),
+                            child: const Text("Select Just ride", style: TextStyle(color: AppColors.textPrimary)),
                           ),
                         ),
                         const SizedBox(width: 8),
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.black,
+                            backgroundColor: AppColors.textPrimary,
                             shape: const CircleBorder(),
                             padding: const EdgeInsets.all(12),
                           ),
                           onPressed: () {},
-                          child: const Icon(Icons.calendar_today, color: Colors.white, size: 20),
+                          child: const Icon(Icons.calendar_today, color: AppColors.surface, size: 20),
                         )
                       ],
                     ),
@@ -161,13 +161,13 @@ class _SelectRideState extends State<SelectRide> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(30),
       ),
       child: Row(
         children:  [
           IconButton(
-            icon: const Icon(Icons.arrow_back,color: Colors.black,),
+            icon: const Icon(Icons.arrow_back,color: AppColors.textPrimary,),
             onPressed: () => Navigator.pop(context),
           ),
           SizedBox(width: 8),
@@ -189,9 +189,9 @@ class _SelectRideState extends State<SelectRide> {
     return Container(
       margin: const EdgeInsets.only(bottom: 12,left: 5,right: 5),
       decoration: BoxDecoration(
-        border: isSelected ? Border.all(color: Colors.green, style: BorderStyle.solid, width: 1.5, strokeAlign: BorderSide.strokeAlignOutside) : Border.all(color: Colors.grey, style: BorderStyle.solid, width: 1, strokeAlign: BorderSide.strokeAlignOutside) ,
+        border: isSelected ? Border.all(color: Colors.green, style: BorderStyle.solid, width: 1.5, strokeAlign: BorderSide.strokeAlignOutside) : Border.all(color: AppColors.textMuted, style: BorderStyle.solid, width: 1, strokeAlign: BorderSide.strokeAlignOutside) ,
         borderRadius: BorderRadius.circular(12),
-        color: Colors.white,
+        color: AppColors.surface,
       ),
       padding: const EdgeInsets.all(12),
       child: Row(
@@ -219,7 +219,7 @@ class _SelectRideState extends State<SelectRide> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(fare, style: const TextStyle(fontWeight: FontWeight.w600)),
-              const Text("#2444", style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const Text("#2444", style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
             ],
           )
         ],

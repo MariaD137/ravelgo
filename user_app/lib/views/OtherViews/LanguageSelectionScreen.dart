@@ -51,13 +51,13 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
-        leading: const BackButton(color: Colors.black),
-        backgroundColor: Colors.white,
+        leading: const BackButton(color: AppColors.textPrimary),
+        backgroundColor: AppColors.surface,
         elevation: 0,
         centerTitle: true,
-        title: const Text("Select a Language", style: TextStyle(color: Colors.black)),
+        title: const Text("Select a Language", style: TextStyle(color: AppColors.textPrimary)),
       ),
       body: Column(
         children: [
@@ -94,7 +94,7 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.search, color: Colors.black54),
+          const Icon(Icons.search, color: AppColors.textSecondary),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
@@ -108,7 +108,7 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
           ),
           if (_searchController.text.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.clear, color: Colors.black45),
+              icon: const Icon(Icons.clear, color: AppColors.textSecondary),
               onPressed: () {
                 _searchController.clear();
                 _filterLanguages('');

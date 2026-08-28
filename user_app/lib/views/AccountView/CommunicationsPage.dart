@@ -47,7 +47,7 @@ class CommunicationsPage extends StatelessWidget {
                     Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Column(
@@ -127,7 +127,7 @@ class CommunicationsPage extends StatelessWidget {
       child: Divider(
         height: 1,
         thickness: 1,
-        color: Colors.grey.shade300,
+        color: AppColors.border,
       ),
     );
   }

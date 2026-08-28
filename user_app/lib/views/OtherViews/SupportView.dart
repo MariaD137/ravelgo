@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class SupportView extends StatelessWidget {
   const SupportView({super.key});
@@ -10,14 +11,14 @@ class SupportView extends StatelessWidget {
         preferredSize: const Size.fromHeight(70),
         child: Container(
           decoration: const BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.only(
               bottomLeft: Radius.circular(24),
               bottomRight: Radius.circular(24),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black12,
+                color: AppColors.border,
                 blurRadius: 4,
                 offset: Offset(0, 2),
               ),
@@ -28,11 +29,11 @@ class SupportView extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: const [
-                  BackButton(color: Colors.black),
+                  BackButton(color: AppColors.textPrimary),
                   Spacer(),
                   Text(
                     'Payment',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.normal, color: Colors.black),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.normal, color: AppColors.textPrimary),
                   ),
                   Spacer(),
                   SizedBox(width: 64)
@@ -42,7 +43,7 @@ class SupportView extends StatelessWidget {
           ),
         ),
       ),
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         children: [
@@ -55,7 +56,7 @@ class SupportView extends StatelessWidget {
           // Recent trips header
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-            color: Colors.grey.shade200,
+            color: AppColors.surfaceElevated,
             child: const Text('Your Recent trips'),
           ),
 
@@ -64,7 +65,7 @@ class SupportView extends StatelessWidget {
             return ListTile(
               dense: true,
               title: const Text("Yesterday, 18:45"),
-              trailing: const Text("#1500", style: TextStyle(color: Colors.grey)),
+              trailing: const Text("#1500", style: TextStyle(color: AppColors.textMuted)),
               onTap: () {},
               contentPadding: EdgeInsets.zero,
             );

@@ -64,7 +64,7 @@ class _CommunicationTogglePageState
                     Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Column(
@@ -76,7 +76,7 @@ class _CommunicationTogglePageState
                     Container(
                       height: 1,
                       margin: const EdgeInsets.symmetric(horizontal: 2),
-                      color: Colors.grey.shade300,
+                      color: AppColors.border,
                     ),
 
                     const Spacer(),
@@ -90,10 +90,10 @@ class _CommunicationTogglePageState
               padding:
               const EdgeInsets.fromLTRB(16, 10, 16, 16),
               decoration: const BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black12,
+                    color: AppColors.border,
                     blurRadius: 10,
                     offset: Offset(0, -3),
                   ),
@@ -110,7 +110,7 @@ class _CommunicationTogglePageState
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.black,
+                      foregroundColor: AppColors.textPrimary,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
@@ -178,7 +178,7 @@ class _CommunicationTogglePageState
               child: Divider(
                 height: 1,
                 thickness: 1,
-                color: Colors.grey.shade300,
+                color: AppColors.border,
               ),
             ),
         ],

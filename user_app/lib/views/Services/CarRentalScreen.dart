@@ -33,7 +33,7 @@ class CarRentalScreen extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                      color: AppColors.textPrimary,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -43,7 +43,7 @@ class CarRentalScreen extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: Colors.black54,
+                      color: AppColors.textSecondary,
                       height: 1.6,
                     ),
                     textAlign: TextAlign.center,
@@ -73,7 +73,7 @@ class CarRentalScreen extends StatelessWidget {
                       },
                       child: const Text(
                         'Rent a car',
-                        style: TextStyle(color: Colors.black, fontSize: 16),
+                        style: TextStyle(color: AppColors.textPrimary, fontSize: 16),
                       ),
                     ),
                   ),
@@ -83,7 +83,7 @@ class CarRentalScreen extends StatelessWidget {
                     height: 50,
                     child: OutlinedButton(
                       style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Colors.black26),
+                        side: const BorderSide(color: AppColors.textMuted),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -93,7 +93,7 @@ class CarRentalScreen extends StatelessWidget {
                       },
                       child: const Text(
                         'Post your car',
-                        style: TextStyle(color: Colors.black87, fontSize: 16),
+                        style: TextStyle(color: AppColors.textPrimary, fontSize: 16),
                       ),
                     ),
                   ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/components/basic_components.dart';
 import 'package:ravelgo_user_app/views/Services/BrandModelPage.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class BrandPage extends StatelessWidget {
   const BrandPage({super.key});
@@ -22,7 +23,7 @@ class BrandPage extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Material(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(16),
                   elevation: 2,
                   child: Column(

@@ -44,7 +44,7 @@ class EReceiptPage extends StatelessWidget {
                     Container(
                       height: 80,
                       width: double.infinity,
-                      color: Colors.white,
+                      color: AppColors.surface,
                       child: const Center(
                         child: Text("|||||||||||||||||||||||||||||",
                             style: TextStyle(letterSpacing: 2)),
@@ -89,7 +89,7 @@ class EReceiptPage extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -112,7 +112,7 @@ class EReceiptPage extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: const TextStyle(color: Colors.black54),
+            style: const TextStyle(color: AppColors.textSecondary),
           ),
         ),
         Text(
@@ -127,9 +127,9 @@ class EReceiptPage extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         boxShadow: [
-          BoxShadow(color: Colors.black12, blurRadius: 10),
+          BoxShadow(color: AppColors.border, blurRadius: 10),
         ],
       ),
       child: SizedBox(
@@ -139,7 +139,7 @@ class EReceiptPage extends StatelessWidget {
           onPressed: onTap,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
-            foregroundColor: Colors.black,
+            foregroundColor: AppColors.textPrimary,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),

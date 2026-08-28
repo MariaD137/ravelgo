@@ -111,7 +111,7 @@ class AppSettingsPage extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(children: children),
@@ -145,7 +145,7 @@ class AppSettingsPage extends StatelessWidget {
                 value,
                 style: const TextStyle(
                   fontSize: 14,
-                  color: Colors.black54,
+                  color: AppColors.textSecondary,
                 ),
               ),
 
@@ -165,7 +165,7 @@ class AppSettingsPage extends StatelessWidget {
       child: Divider(
         height: 1,
         thickness: 1,
-        color: Colors.grey.shade300,
+        color: AppColors.border,
       ),
     );
   }

@@ -47,10 +47,10 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
               return
                 Container(
                   decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               boxShadow: [
-              BoxShadow(color: Colors.black12, blurRadius: 10),
+              BoxShadow(color: AppColors.border, blurRadius: 10),
               ],
               ),
               child:
@@ -81,14 +81,14 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(30),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8)],
+        boxShadow: [BoxShadow(color: AppColors.border, blurRadius: 8)],
       ),
       child: Row(
         children:  [
           IconButton(
-            icon: const Icon(Icons.arrow_back,color: Colors.black,),
+            icon: const Icon(Icons.arrow_back,color: AppColors.textPrimary,),
             onPressed: () => Navigator.pop(context),
           ),
           SizedBox(width: 8),
@@ -119,7 +119,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
           width: 40,
           height: 5,
           decoration: BoxDecoration(
-            color: Colors.grey[400],
+            color: AppColors.textMuted,
             borderRadius: BorderRadius.circular(10),
           ),
         ),
@@ -153,9 +153,9 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(0)),
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 0)],
+        boxShadow: [BoxShadow(color: AppColors.border, blurRadius: 0)],
       ),
       child: Column(
 
@@ -172,7 +172,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
               children: [
                 const Text("Finding drivers...", style: TextStyle(fontWeight: FontWeight.w500,fontSize: 14)),
                 const SizedBox(height: 40),
-                const Text("Your offer", style: TextStyle(fontWeight: FontWeight.w500,fontSize: 16,color: Colors.grey)),
+                const Text("Your offer", style: TextStyle(fontWeight: FontWeight.w500,fontSize: 16,color: AppColors.textMuted)),
                 Text("NGN $offerAmount", textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ],
             ),
@@ -239,7 +239,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
               style: ElevatedButton.styleFrom(
                 disabledBackgroundColor: AppColors.primaryTint,
               ),
-              child: const Text("+ 100", style: TextStyle(color: Colors.black38)),
+              child: const Text("+ 100", style: TextStyle(color: AppColors.textMuted)),
             ),
             const SizedBox(width: 12),
             ElevatedButton(
@@ -250,7 +250,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
-                foregroundColor: Colors.black,
+                foregroundColor: AppColors.textPrimary,
               ),
               child: const Text("+ 100"),
             ),
@@ -288,7 +288,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
           style: ElevatedButton.styleFrom(
             disabledBackgroundColor: AppColors.primaryTint,
           ),
-          child: const Text("+ 100", style: TextStyle(color: Colors.black38)),
+          child: const Text("+ 100", style: TextStyle(color: AppColors.textMuted)),
         ),
         const SizedBox(width: 12),
         ElevatedButton(
@@ -297,7 +297,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
           },
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
-            foregroundColor: Colors.black,
+            foregroundColor: AppColors.textPrimary,
           ),
           child: const Text("+ 100"),
         ),
@@ -336,7 +336,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
-              foregroundColor: Colors.black,
+              foregroundColor: AppColors.textPrimary,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
@@ -351,7 +351,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             padding: const EdgeInsets.all(14),
           ),
-          child: const Icon(Icons.calendar_today, color: Colors.black),
+          child: const Icon(Icons.calendar_today, color: AppColors.textPrimary),
         ),
       ],
     );

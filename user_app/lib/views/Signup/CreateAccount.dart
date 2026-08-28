@@ -23,7 +23,7 @@ class CreateAccountScreen extends StatelessWidget {
               SizedBox(height: 6),
               Text('Become a driver', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
               SizedBox(height: 8),
-              Text('Fill your information below and become a driver', style: TextStyle(color: Colors.grey[600])),
+              Text('Fill your information below and become a driver', style: TextStyle(color: AppColors.textSecondary)),
               SizedBox(height: 18),
               Text('Email'),
               SizedBox(height: 6),
@@ -50,7 +50,7 @@ class CreateAccountScreen extends StatelessWidget {
                       MaterialPageRoute(builder: (context) => VerifyAccountScreen()),
                     )
                   },
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.black, disabledBackgroundColor: AppColors.primaryTint),
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: AppColors.textPrimary, disabledBackgroundColor: AppColors.primaryTint),
                   child: Padding(
                     padding: EdgeInsets.symmetric(vertical: 16),
                     child: Text('Register as a driver', style: TextStyle(fontSize: 16)),
