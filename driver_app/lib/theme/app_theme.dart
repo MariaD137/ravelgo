@@ -104,7 +104,7 @@ ThemeData buildAppTheme() {
       backgroundColor: AppColors.background,
       foregroundColor: AppColors.textPrimary,
       elevation: 0,
-      titleTextStyle: AppTypography.title,
+      titleTextStyle: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, height: 1.3, color: AppColors.textPrimary),
     ),
     cardTheme: CardThemeData(
       color: AppColors.surface,
