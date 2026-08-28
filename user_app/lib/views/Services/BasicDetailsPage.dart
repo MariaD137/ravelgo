@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class BasicDetailsPage extends StatefulWidget {
   const BasicDetailsPage({super.key});
@@ -59,7 +60,7 @@ class _BasicDetailsPageState extends State<BasicDetailsPage> {
                             child: Container(
                               padding: const EdgeInsets.all(6),
                               decoration: const BoxDecoration(
-                                color: Color(0xFFFFD500),
+                                color: AppColors.primary,
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(Icons.edit, size: 14),
@@ -206,7 +207,7 @@ class _BasicDetailsPageState extends State<BasicDetailsPage> {
                             Navigator.pop(context);
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFFD500),
+                          backgroundColor: AppColors.primary,
                           foregroundColor: Colors.black,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
@@ -267,7 +268,7 @@ class _BasicDetailsPageState extends State<BasicDetailsPage> {
   Widget _bottomNav() {
     return BottomNavigationBar(
       currentIndex: 1,
-      selectedItemColor: const Color(0xFFFFD500),
+      selectedItemColor: AppColors.primary,
       unselectedItemColor: Colors.grey,
       items: const [
         BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: "Home"),

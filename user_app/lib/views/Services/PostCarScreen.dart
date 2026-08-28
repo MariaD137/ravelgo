@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 
 
@@ -183,7 +184,7 @@ class UploadSection extends StatelessWidget {
         const SizedBox(height: 4),
         const Text(
           'Make sure your photo is clear and unobstructed.',
-          style: TextStyle(color: Color(0xFF867804)), // gold-brown style
+          style: TextStyle(color: AppColors.primaryDark), // gold-brown style
         ),
         const SizedBox(height: 12),
         Container(

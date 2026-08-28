@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class PaymentView extends StatefulWidget {
   @override
@@ -12,7 +13,7 @@ class _PaymentScreenState extends State<PaymentView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFFF8F8F8),
+      backgroundColor: AppColors.background,
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(70),
         child: Container(

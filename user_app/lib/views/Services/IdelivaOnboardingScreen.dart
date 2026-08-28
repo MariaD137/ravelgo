@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/Services/IDelivaPage.dart';
 import 'IdelivaProfileScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class IdelivaOnboardingScreen extends StatefulWidget {
   @override
@@ -42,7 +43,7 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
                 width: double.infinity,
                 padding: EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Color(0xFFF2F2F2),
+                  color: AppColors.background,
                   borderRadius: BorderRadius.circular(15),
                   boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
                 ),

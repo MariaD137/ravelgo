@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/Signup/CreateAccount.dart';
 import 'package:ravelgo_user_app/views/bottommenu/BottomNavigationView.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 
 class Login extends StatelessWidget {
@@ -108,7 +109,7 @@ class Login extends StatelessWidget {
                     children: [
                       TextSpan(
                         text: "Sign up",
-                        style: TextStyle(color: Color(0xFF665600)),
+                        style: TextStyle(color: AppColors.primaryDark),
                       ),
                     ],
                   ),

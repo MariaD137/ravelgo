@@ -17,7 +17,7 @@ class _ReferralCodePageState extends State<ReferralCodePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
 
       body: SafeArea(
         child: Column(
@@ -89,10 +89,10 @@ class _ReferralCodePageState extends State<ReferralCodePage> {
                   }
                       : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFFFD500),
+                    backgroundColor: AppColors.primary,
                     foregroundColor: Colors.black,
                     disabledBackgroundColor:
-                    const Color(0xFFFFD500).withOpacity(0.4),
+                    AppColors.primary.withOpacity(0.4),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),

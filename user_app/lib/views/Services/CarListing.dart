@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'ChoosePlanScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class CarListing extends StatefulWidget {
   const CarListing({Key? key}) : super(key: key);
@@ -33,7 +34,7 @@ class _CarListingState extends State<CarListing> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF9F9F9),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -42,9 +43,9 @@ class _CarListingState extends State<CarListing> {
           decoration: InputDecoration(
             hintText: 'Search for a car',
             prefixIcon: Icon(Icons.search),
-            border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12)),  borderSide: BorderSide(color: Color(0xFFECECEC)),),
+            border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12)),  borderSide: BorderSide(color: AppColors.background),),
             filled: true,
-            fillColor: Color(0xFFECECEC),
+            fillColor: AppColors.background,
           ),
         ),
       ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class VoiceOverPage extends StatefulWidget {
   const VoiceOverPage({super.key});
@@ -13,7 +14,7 @@ class _VoiceOverPageState extends State<VoiceOverPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -71,7 +72,7 @@ class _VoiceOverPageState extends State<VoiceOverPage> {
                                 onChanged: (value) {
                                   setState(() => isVoiceOn = value);
                                 },
-                                activeColor: const Color(0xFFFFD500),
+                                activeColor: AppColors.primary,
                               ),
                             ],
                           ),

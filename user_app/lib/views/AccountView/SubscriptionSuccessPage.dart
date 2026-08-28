@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/AccountView/EReceiptPage.dart';
 
 import 'Account.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class SubscriptionSuccessPage extends StatelessWidget {
   const SubscriptionSuccessPage({super.key});
@@ -9,7 +10,7 @@ class SubscriptionSuccessPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -104,7 +105,7 @@ class SubscriptionSuccessPage extends StatelessWidget {
                         );
                       },
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFFD500),
+                        backgroundColor: AppColors.primary,
                         foregroundColor: Colors.black,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),

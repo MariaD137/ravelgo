@@ -5,6 +5,7 @@ import 'package:ravelgo_user_app/views/bottommenu/BottomNavigationView.dart';
 import 'dart:io';
 
 import '../User/user_summary.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 
 class SideMenu extends StatelessWidget {
@@ -14,7 +15,7 @@ class SideMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     return Drawer(
       elevation: 0,
-      backgroundColor: Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -49,9 +50,9 @@ class SideMenu extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text("Thelma",
-                            style: TextStyle(fontSize: 16, color: Color(0xFF3A3A3A))),
+                            style: TextStyle(fontSize: 16, color: AppColors.textSecondary)),
                         Text("Ibeh",
-                            style: TextStyle(fontSize: 16, color: Color(0xFF3A3A3A))),
+                            style: TextStyle(fontSize: 16, color: AppColors.textSecondary)),
                       ],
                     ),
                   ],
@@ -68,7 +69,7 @@ class SideMenu extends StatelessWidget {
               child: Container(
                 padding: EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Color(0xFFFFF6C8),
+                  color: AppColors.primaryTint,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -93,7 +94,7 @@ class SideMenu extends StatelessWidget {
                                 child: Text(
                                   'Your app needs an update',
                                   style: TextStyle(
-                                      fontWeight: FontWeight.w600, fontSize: 15,color: Color(0xFF3A3A3A)),
+                                      fontWeight: FontWeight.w600, fontSize: 15,color: AppColors.textSecondary),
                                 ),
                               ),
                               GestureDetector(
@@ -104,11 +105,11 @@ class SideMenu extends StatelessWidget {
                           ),
                           SizedBox(height: 2),
                           Text('New features and improvements',
-                              style: TextStyle(color: Color(0xFF757575), fontSize: 13)),
+                              style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
                           SizedBox(height: 4),
                           Text('Update now',
                               style: TextStyle(
-                                  color: Color(0xFF665600),
+                                  color: AppColors.primaryDark,
                                   fontWeight: FontWeight.w600,
                                   fontSize: 14)),
                         ],

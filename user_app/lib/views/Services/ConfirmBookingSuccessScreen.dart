@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../bottommenu/BottomNavigationView.dart';
 import 'EReceiptScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class ConfirmBookingSuccessScreen extends StatelessWidget {
   const ConfirmBookingSuccessScreen({super.key});
@@ -24,7 +25,7 @@ class ConfirmBookingSuccessScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(24),
                   child: const CircleAvatar(
                     radius: 20,
-                    backgroundColor: Color(0xFFF1F1F1),
+                    backgroundColor: AppColors.background,
                     child: Icon(Icons.arrow_back_ios, color: Colors.black),
                   ),
                 ),

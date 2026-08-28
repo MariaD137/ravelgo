@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 
 import 'package:ravelgo_user_app/views/User/user_summary.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 
 class SideMenu extends StatelessWidget {
@@ -11,7 +12,7 @@ class SideMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     return Drawer(
       elevation: 0,
-      backgroundColor: Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -62,7 +63,7 @@ class SideMenu extends StatelessWidget {
               child: Container(
                 padding: EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Color(0xFFFFF6C8),
+                  color: AppColors.primaryTint,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class RequestDetailsView extends StatefulWidget {
   const RequestDetailsView({Key? key}) : super(key: key);
@@ -11,13 +12,13 @@ class _RequestDetailsViewState extends State<RequestDetailsView> {
   int offerAmount = 7000;
   bool autoAccept = false;
 
-  final Color gold = const Color(0xFFFFD700);
+  final Color gold = AppColors.primary;
   final Color lightGold = const Color(0xFFF3E5A0);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F4F4),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
@@ -74,7 +75,7 @@ class _RequestDetailsViewState extends State<RequestDetailsView> {
               Row(
                 children: const [
                   Icon(Icons.location_on,
-                      size: 20, color: Color(0xFF8A6A00)),
+                      size: 20, color: AppColors.primaryDark),
                   SizedBox(width: 12),
                   Text(
                     "Destination",
@@ -97,7 +98,7 @@ class _RequestDetailsViewState extends State<RequestDetailsView> {
                     TextSpan(
                       text: "NGN 8,000",
                       style: TextStyle(
-                        color: const Color(0xFF8A6A00),
+                        color: AppColors.primaryDark,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -119,7 +120,7 @@ class _RequestDetailsViewState extends State<RequestDetailsView> {
                     TextSpan(
                       text: "NGN 7,500",
                       style: TextStyle(
-                        color: const Color(0xFF8A6A00),
+                        color: AppColors.primaryDark,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

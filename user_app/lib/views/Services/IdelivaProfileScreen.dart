@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/Services/AddBankAccountPage.dart';
 import 'IdelivaPickUpDeliveryScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class IdelivaProfileScreen extends StatefulWidget {
   const IdelivaProfileScreen({super.key});
@@ -17,7 +18,7 @@ class _IdelivaProfileScreenState extends State<IdelivaProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
 
       body: SafeArea(
         child: Padding(
@@ -114,7 +115,7 @@ class _IdelivaProfileScreenState extends State<IdelivaProfileScreen> {
                           );
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFFD500),
+                          backgroundColor: AppColors.primary,
                           foregroundColor: Colors.black,
                           padding:
                           const EdgeInsets.symmetric(vertical: 14),

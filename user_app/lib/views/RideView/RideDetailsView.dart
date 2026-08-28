@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'RidesView.dart'; // adjust path if needed; this imports the Ride class
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class RideDetailsScreen extends StatelessWidget {
   final Ride ride;
@@ -123,7 +124,7 @@ class RideDetailsScreen extends StatelessWidget {
                     const SizedBox(height: 12),
                     const Text(
                       'Additional ride details can be found in your email receipt',
-                      style: TextStyle(color: Color(0xFF7A5F00)),
+                      style: TextStyle(color: AppColors.primaryDark),
                     ),
 
                     const SizedBox(height: 18),

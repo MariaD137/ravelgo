@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/components/ride_controller.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class ScheduledRidesRequestsScreen extends StatefulWidget {
   const ScheduledRidesRequestsScreen({Key? key}) : super(key: key);
@@ -116,7 +117,7 @@ class _ScheduledRidesRequestsScreenState
               fontSize: 16,
               fontWeight: FontWeight.w500,
               color: isSelected
-                  ? const Color(0xFF6B5A00)
+                  ? AppColors.primaryDark
                   : Colors.black54,
             ),
           ),
@@ -168,7 +169,7 @@ class RideRequestCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const goldColor = Color(0xFFFFD700);
+    const goldColor = AppColors.primary;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,7 +179,7 @@ class RideRequestCard extends StatelessWidget {
         const Text(
           "Tomorrow, 30 Mar, 14:30",
           style: TextStyle(
-            color: Color(0xFF665600),
+            color: AppColors.primaryDark,
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -238,14 +239,14 @@ class RideRequestCard extends StatelessWidget {
               TextSpan(
                 text: "Delivery fare: ",
                 style: TextStyle(
-                  color: Color(0xFF665600),
+                  color: AppColors.primaryDark,
                   fontSize: 14,
                 ),
               ),
               TextSpan(
                 text: "NGN 8,000",
                 style: TextStyle(
-                  color: Color(0xFF665600),
+                  color: AppColors.primaryDark,
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                 ),
@@ -322,7 +323,7 @@ class RideBorderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const gold = Color(0xFFFFD700);
+    const gold = AppColors.primary;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -338,7 +339,7 @@ class RideBorderCard extends StatelessWidget {
           const Text(
             "Tomorrow, 30 Mar, 14:30",
             style: TextStyle(
-              color: Color(0xFF665600),
+              color: AppColors.primaryDark,
               fontSize: 16,
               fontWeight: FontWeight.normal,
             ),
@@ -400,14 +401,14 @@ class RideBorderCard extends StatelessWidget {
                 TextSpan(
                   text: "Estimated fare: ",
                   style: TextStyle(
-                    color: Color(0xFF665600),
+                    color: AppColors.primaryDark,
                     fontSize: 14,
                   ),
                 ),
                 TextSpan(
                   text: "NGN 8,000",
                   style: TextStyle(
-                    color: Color(0xFF665600),
+                    color: AppColors.primaryDark,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),

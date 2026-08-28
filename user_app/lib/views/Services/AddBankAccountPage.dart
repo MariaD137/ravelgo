@@ -80,10 +80,10 @@ class _AddBankAccountPageState extends State<AddBankAccountPage> {
                     child: ElevatedButton(
                       onPressed: isValid ? () {} : null,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFFD500),
+                        backgroundColor: AppColors.primary,
                         foregroundColor: Colors.black,
                         disabledBackgroundColor:
-                        const Color(0xFFFFD500).withOpacity(0.4),
+                        AppColors.primary.withOpacity(0.4),
                         padding:
                         const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class CommunicationTogglePage extends StatefulWidget {
   final String title;
@@ -25,7 +26,7 @@ class _CommunicationTogglePageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -108,7 +109,7 @@ class _CommunicationTogglePageState
                       // Save logic
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFD500),
+                      backgroundColor: AppColors.primary,
                       foregroundColor: Colors.black,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -164,7 +165,7 @@ class _CommunicationTogglePageState
                       settings[key] = value;
                     });
                   },
-                  activeColor: const Color(0xFFFFD500),
+                  activeColor: AppColors.primary,
                 ),
               ],
             ),

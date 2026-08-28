@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/AccountView/VoiceOverPage.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class AppSettingsPage extends StatelessWidget {
   const AppSettingsPage({super.key});
@@ -7,7 +8,7 @@ class AppSettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [

@@ -7,6 +7,7 @@ import 'package:ravelgo_user_app/views/Driver_Portal/my_trips_view.dart';
 import 'package:ravelgo_user_app/views/Driver_Portal/passenger_invoice_screen.dart';
 import 'package:ravelgo_user_app/views/Driver_Portal/ravel_driver_portal_screen.dart';
 import 'package:ravelgo_user_app/views/Driver_Portal/vehicle_list_screen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 class SideMenuDriver extends StatefulWidget {
   final String initialSelectedItem;
 
@@ -192,7 +193,7 @@ class _SideMenuDriverState extends State<SideMenuDriver> {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         color:
-        isSelected ? const Color(0xFFFFF4C2) : Colors.transparent,
+        isSelected ? AppColors.primaryTint : Colors.transparent,
         child: Row(
           children: [
             Icon(icon,

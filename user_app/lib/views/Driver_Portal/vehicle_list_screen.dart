@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/Driver_Portal/side_menu_driver.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class VehicleListScreen extends StatelessWidget {
   const VehicleListScreen({Key? key}) : super(key: key);
@@ -67,7 +68,7 @@ class VehicleListScreen extends StatelessWidget {
                   // Navigate to Add Vehicle Screen
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFFD500),
+                  backgroundColor: AppColors.primary,
                   foregroundColor: Colors.black,
                   padding: const EdgeInsets.symmetric(
                       horizontal: 24, vertical: 14),
@@ -110,7 +111,7 @@ class VehicleListScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3F3F3),
+        color: AppColors.background,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
@@ -130,7 +131,7 @@ class VehicleListScreen extends StatelessWidget {
                 style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF6B5A00)),
+                    color: AppColors.primaryDark),
               ),
             ],
           ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'ConfirmBookingSuccessScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class PlanReviewSummaryScreen extends StatelessWidget {
   const PlanReviewSummaryScreen({super.key});
@@ -23,7 +24,7 @@ class PlanReviewSummaryScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF6CC),
+              color: AppColors.primaryTint,
               border: Border.all(color: Colors.yellow.shade700),
               borderRadius: BorderRadius.circular(16),
             ),
@@ -164,7 +165,7 @@ class _SummaryRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF9F9F9),
+        color: AppColors.background,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(

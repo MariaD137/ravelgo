@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/bottommenu/BottomNavigationView.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class UserSummary extends StatelessWidget {
   const UserSummary({Key? key}) : super(key: key);
@@ -8,7 +9,7 @@ class UserSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),

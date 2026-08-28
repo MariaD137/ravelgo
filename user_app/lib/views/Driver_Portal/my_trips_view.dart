@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/Driver_Portal/side_menu_driver.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class MyTripsScreen extends StatefulWidget {
   const MyTripsScreen({Key? key}) : super(key: key);
@@ -148,7 +149,7 @@ class _MyTripsScreenState extends State<MyTripsScreen> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFFFD500), width: 2),
+        border: Border.all(color: AppColors.primary, width: 2),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -180,7 +181,7 @@ class _MyTripsScreenState extends State<MyTripsScreen> {
             padding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFD500),
+              color: AppColors.primary,
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Text("Finished",
@@ -212,7 +213,7 @@ class _MyTripsScreenState extends State<MyTripsScreen> {
               style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF6B5A00)),
+                  color: AppColors.primaryDark),
             ),
           ),
         ],

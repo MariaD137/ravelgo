@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 
 class EditPersonalInfo extends StatefulWidget {
@@ -90,7 +91,7 @@ class _ProfilePhotoSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Color(0xFFF8F8F8),
+      color: AppColors.background,
       height: 180,
       width: double.infinity,// 👈 Set background color here
       child: Column(

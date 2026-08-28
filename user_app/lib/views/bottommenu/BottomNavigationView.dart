@@ -3,6 +3,7 @@ import 'package:ravelgo_user_app/views/AccountView/Account.dart';
 import 'package:ravelgo_user_app/views/HomeView/Home.dart';
 import 'package:ravelgo_user_app/views/RideView/RidesView.dart';
 import 'package:ravelgo_user_app/views/ServiceView/ServicesView.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 
 class BottomNavigationView extends StatefulWidget {
@@ -75,8 +76,8 @@ class _MainBottomNavigationState extends State<BottomNavigationView> {
               currentIndex: _selectedIndex,
               onTap: _onTabTapped,
               type: BottomNavigationBarType.fixed,
-              selectedItemColor: const Color(0xFFFFD700),
-              unselectedItemColor: const Color(0xFFABABAB),
+              selectedItemColor: AppColors.primary,
+              unselectedItemColor: AppColors.border,
               showSelectedLabels: true,
               showUnselectedLabels: true,
               items: const [

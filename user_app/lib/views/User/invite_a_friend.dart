@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:dotted_border/dotted_border.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class InviteFriendsView extends StatelessWidget {
   const InviteFriendsView({Key? key}) : super(key: key);
@@ -10,7 +11,7 @@ class InviteFriendsView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F4F4),
+      backgroundColor: AppColors.background,
       body: Stack(
         children: [
 
@@ -109,7 +110,7 @@ class InviteFriendsView extends StatelessWidget {
                   // const Icon(
                   //   Icons.groups_rounded,
                   //   size: 110,
-                  //   color: Color(0xFF7A6A00),
+                  //   color: AppColors.primaryDark,
                   // ),
 
                   const SizedBox(height: 40),
@@ -154,7 +155,7 @@ class InviteFriendsView extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 8),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFFFD700),
+                              color: AppColors.primary,
                               borderRadius:
                               BorderRadius.circular(8),
                             ),
@@ -198,7 +199,7 @@ class InviteFriendsView extends StatelessWidget {
                   //           padding: const EdgeInsets.symmetric(
                   //               horizontal: 16, vertical: 8),
                   //           decoration: BoxDecoration(
-                  //             color: const Color(0xFFFFD700),
+                  //             color: AppColors.primary,
                   //             borderRadius:
                   //             BorderRadius.circular(8),
                   //           ),
@@ -232,7 +233,7 @@ class InviteFriendsView extends StatelessWidget {
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor:
-              const Color(0xFFFFD700),
+              AppColors.primary,
               shape: RoundedRectangleBorder(
                 borderRadius:
                 BorderRadius.circular(14),

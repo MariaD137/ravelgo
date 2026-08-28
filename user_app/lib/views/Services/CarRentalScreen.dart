@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'CarListing.dart';
 import 'PostCarScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class CarRentalScreen extends StatelessWidget {
   const CarRentalScreen({Key? key}) : super(key: key);
@@ -60,7 +61,7 @@ class CarRentalScreen extends StatelessWidget {
                     height: 50,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFFCC00), // Yellow
+                        backgroundColor: AppColors.primary, // Yellow
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),

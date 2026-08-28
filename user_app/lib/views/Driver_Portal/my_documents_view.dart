@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/Driver_Portal/side_menu_driver.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class MyDocumentsScreen extends StatefulWidget {
   const MyDocumentsScreen({Key? key}) : super(key: key);
@@ -120,7 +121,7 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFFFD500), width: 2),
+        border: Border.all(color: AppColors.primary, width: 2),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -165,7 +166,7 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
           const Text(
             "Image.png",
             style: TextStyle(
-                color: Color(0xFFB58B00), fontWeight: FontWeight.w500),
+                color: AppColors.primaryDark, fontWeight: FontWeight.w500),
           ),
 
           const SizedBox(height: 16),

@@ -6,6 +6,7 @@ import 'package:ravelgo_user_app/views/AccountView/Subscription.dart';
 import 'package:ravelgo_user_app/views/Driver_Portal/ravel_driver_portal_screen.dart';
 import 'package:ravelgo_user_app/views/OtherViews/AboutView.dart';
 import 'package:ravelgo_user_app/views/OtherViews/PrivacyScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class Accountview extends StatelessWidget {
   const Accountview({Key? key}) : super(key: key);
@@ -41,7 +42,7 @@ class Accountview extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: const [
-                      Icon(Icons.star, color: Color(0xFF00B14B), size: 18),
+                      Icon(Icons.star, color: AppColors.success, size: 18),
                       SizedBox(width: 6),
                       Text(
                         '5.00 Rating',

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'PlanReviewSummaryScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class ChoosePlanScreen extends StatelessWidget {
   const ChoosePlanScreen({super.key});
@@ -67,7 +68,7 @@ class ChoosePlanScreen extends StatelessWidget {
           return Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF6CC),
+              color: AppColors.primaryTint,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.yellow.shade700),
             ),

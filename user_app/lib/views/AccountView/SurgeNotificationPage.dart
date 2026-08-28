@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class SurgeNotificationPage extends StatefulWidget {
   const SurgeNotificationPage({super.key});
@@ -14,7 +15,7 @@ class _SurgeNotificationPageState extends State<SurgeNotificationPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -77,7 +78,7 @@ class _SurgeNotificationPageState extends State<SurgeNotificationPage> {
                                 isPushEnabled = value;
                               });
                             },
-                            activeColor: const Color(0xFFFFD500),
+                            activeColor: AppColors.primary,
                           ),
                         ],
                       ),
@@ -120,7 +121,7 @@ class _SurgeNotificationPageState extends State<SurgeNotificationPage> {
                       // Save action
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFD500),
+                      backgroundColor: AppColors.primary,
                       foregroundColor: Colors.black,
                       elevation: 0,
                       shape: RoundedRectangleBorder(

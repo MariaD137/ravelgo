@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/AccountView/SubscriptionSuccessPage.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class SubscriptionPage extends StatefulWidget {
   const SubscriptionPage({super.key});
@@ -35,7 +36,7 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -109,7 +110,7 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: const Color(0xFFFFD500),
+                          color: AppColors.primary,
                           width: 1.2,
                         ),
                         color: Colors.white,
@@ -157,7 +158,7 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
                       );
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFD500),
+                      backgroundColor: AppColors.primary,
                       foregroundColor: Colors.black,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
@@ -196,7 +197,7 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isSelected
-                ? const Color(0xFFFFD500)
+                ? AppColors.primary
                 : Colors.grey.shade300,
             width: isSelected ? 1.5 : 1,
           ),
@@ -283,7 +284,7 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
         const Icon(
           Icons.check_circle_outline,
           size: 18,
-          color: Color(0xFFFFD500),
+          color: AppColors.primary,
         ),
         const SizedBox(width: 10),
         Expanded(

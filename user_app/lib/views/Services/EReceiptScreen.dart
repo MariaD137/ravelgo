@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class EReceiptScreen extends StatelessWidget {
   const EReceiptScreen({super.key});
@@ -89,7 +90,7 @@ class EReceiptScreen extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF9F9F9),
+        color: AppColors.background,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(

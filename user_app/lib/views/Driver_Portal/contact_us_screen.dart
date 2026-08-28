@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/Driver_Portal/side_menu_driver.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class ContactUsScreen extends StatelessWidget {
   const ContactUsScreen({Key? key}) : super(key: key);
@@ -57,7 +58,7 @@ class ContactUsScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF7F7F7),
+                  color: AppColors.background,
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
@@ -80,7 +81,7 @@ class ContactUsScreen extends StatelessWidget {
                     ElevatedButton(
                       onPressed: () {},
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFFFD500),
+                        backgroundColor: AppColors.primary,
                         foregroundColor: Colors.black,
                         padding: const EdgeInsets.symmetric(
                             horizontal: 40, vertical: 14),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/Services/BasicDetailsPage.dart';
 import 'package:ravelgo_user_app/views/Services/ReferralCodePage.dart';
 import 'package:ravelgo_user_app/views/Services/VehicleInfoPage.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class IDelivaPage extends StatefulWidget {
   const IDelivaPage({super.key});
@@ -22,7 +23,7 @@ class _IDelivaPageState extends State<IDelivaPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -130,7 +131,7 @@ class _IDelivaPageState extends State<IDelivaPage> {
                         } : null,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isAllDone
-                              ? const Color(0xFFFFD500)
+                              ? AppColors.primary
                               : const Color(0xFFE6D89C),
                           foregroundColor: Colors.black,
                           elevation: 0,
@@ -262,7 +263,7 @@ class _IDelivaPageState extends State<IDelivaPage> {
   Widget _bottomNav() {
     return BottomNavigationBar(
       currentIndex: 1,
-      selectedItemColor: const Color(0xFFFFD500),
+      selectedItemColor: AppColors.primary,
       unselectedItemColor: Colors.grey,
       items: const [
         BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: "Home"),

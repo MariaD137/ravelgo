@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/HomeView/Home.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 class RequestDriverScreen extends StatelessWidget {
   const RequestDriverScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

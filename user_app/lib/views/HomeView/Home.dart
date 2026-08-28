@@ -7,6 +7,7 @@ import 'package:ravelgo_user_app/components/ride_controller.dart';
 import 'package:ravelgo_user_app/views/AppDrawer/AppDrawer.dart';
 import 'package:ravelgo_user_app/views/HomeView/ride_view_popup.dart';
 import 'package:ravelgo_user_app/views/User/invite_a_friend.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -78,7 +79,7 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       key: _scaffoldKey,
       drawer: SideMenu(),
-      backgroundColor: Color(0xFFF2F2F4),
+      backgroundColor: AppColors.background,
       body: SafeArea(
 
         child:ValueListenableBuilder<bool>(
@@ -221,7 +222,7 @@ class _HomePageState extends State<HomePage> {
             children: [
               Text(label, style: TextStyle(fontSize: 15)),
               SizedBox(height: 2),
-              Text(value, style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFB08A00))),
+              Text(value, style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.primaryDark)),
             ],
           ),
           Spacer(),
@@ -236,7 +237,7 @@ class _HomePageState extends State<HomePage> {
   Widget _buildHomeSheet(ScrollController scrollController) {
     return Container(
       decoration: const BoxDecoration(
-        color: Color(0xFFB8BABE),
+        color: AppColors.border,
         borderRadius: BorderRadius.vertical(top: Radius.circular(0)),
       ),
       child: SingleChildScrollView(
@@ -250,7 +251,7 @@ class _HomePageState extends State<HomePage> {
               width: double.infinity,
               padding: const EdgeInsets.only(top: 12, bottom: 16),
               decoration: const BoxDecoration(
-                color: Color(0xFFFFD500),
+                color: AppColors.primary,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(0)),
               ),
               child: Column(
