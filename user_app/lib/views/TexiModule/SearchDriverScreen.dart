@@ -1,7 +1,6 @@
-import 'dart:ffi';
-
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/views/TexiModule/CancelRideScreen.dart';
 import 'package:ravelgo_user_app/views/TexiModule/RequestDriverScreen.dart';
 
@@ -23,7 +22,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          GoogleMap(
+          SafeGoogleMap(
             onMapCreated: (controller) => _mapController = controller,
             initialCameraPosition: const CameraPosition(
               target: LatLng(6.5244, 3.3792),

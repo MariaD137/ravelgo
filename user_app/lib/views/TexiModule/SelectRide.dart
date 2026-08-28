@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/views/TexiModule/FindDriverScreen.dart';
 
 class SelectRide extends StatefulWidget {
@@ -20,7 +21,7 @@ class _SelectRideState extends State<SelectRide> {
       body: Stack(
         children: [
           // Google Map
-          GoogleMap(
+          SafeGoogleMap(
             onMapCreated: (controller) => mapController = controller,
             initialCameraPosition: CameraPosition(
               target: _center,

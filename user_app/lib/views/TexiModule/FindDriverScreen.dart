@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/views/TexiModule/SearchDriverScreen.dart';
 
 class FindDriverScreen extends StatefulWidget {
@@ -49,7 +50,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          GoogleMap(
+          SafeGoogleMap(
             onMapCreated: (controller) {
               setState(() {
                 _mapController = controller;
