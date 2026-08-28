@@ -8,6 +8,7 @@ import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/views/AppDrawer/AppDrawer.dart';
 import 'package:ravelgo_user_app/views/HomeView/ride_view_popup.dart';
 import 'package:ravelgo_user_app/views/User/invite_a_friend.dart';
+import 'package:ravelgo_user_app/views/TexiModule/SelectRide.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class HomePage extends StatefulWidget {
@@ -19,22 +20,13 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  bool _isOnline = false;
-  int _selectedIndex = 0;
 
-  // Mock values, replace with live data
-  final String _earnText = "Earn #20,000";
-  final String _rating = "80%";
-  final String _dailyEarnings = "#0";
-  final String _acceptance = "20%";
+  // Mock value, replace with live data. Kept in sync with the rating shown
+  // on the Account screen for the same rider.
+  final String _rating = "5.00";
   late GoogleMapController _controller;
   Position? _currentPosition;
 
-  void _onMenuSelect(int index) {
-    setState(() {
-      // widget.onTabRequested?.call(index); // e.g., switch to tab index 2
-    });
-  }
   void _onMapCreated(GoogleMapController controller) {
     _controller = controller;
   }
@@ -167,29 +159,32 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// Mock toggle widget styled like the design
-  Widget _buildToggle() {
-    return GestureDetector(
-      onTap: () => setState(() => _isOnline = !_isOnline),
+  /// "Where to?" entry point into the ride-booking flow
+  Widget _buildDestinationSearch() {
+    return InkWell(
+      borderRadius: BorderRadius.circular(28),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const SelectRide()),
+        );
+      },
       child: Container(
-        width: 56,
-        height: 30,
-        padding: EdgeInsets.all(4),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: _isOnline ? Colors.green : Colors.grey.shade300,
-          borderRadius: BorderRadius.circular(20),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(28),
         ),
-        child: Align(
-          alignment: _isOnline ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            width: 22,
-            height: 22,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 2)],
+        child: Row(
+          children: [
+            const Icon(Icons.search, color: Colors.black54),
+            const SizedBox(width: 12),
+            const Text(
+              "Where to?",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -233,8 +228,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _divider() => Divider(height: 1, thickness: 1, color: Colors.grey[300]);
-
   Widget _buildHomeSheet(ScrollController scrollController) {
     return Container(
       decoration: const BoxDecoration(
@@ -247,10 +240,10 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           children: [
 
-            /// HEADER (Yellow Section)
+            /// HEADER (Where to?)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.only(top: 12, bottom: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
               decoration: const BoxDecoration(
                 color: AppColors.primary,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(0)),
@@ -269,24 +262,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
 
-                  /// Toggle + Safety Row
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Row(
-                      children: [
-                        _buildToggle(),
-                        const SizedBox(width: 10),
-                        const Text(
-                          "Get Online",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const Spacer(),
-                      ],
-                    ),
-                  ),
+                  _buildDestinationSearch(),
                 ],
               ),
             ),
@@ -305,7 +281,7 @@ class _HomePageState extends State<HomePage> {
                     "Earn ₹20,000",
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  subtitle: const Text("Invite friends to drive"),
+                  subtitle: const Text("Invite friends to RavelGo"),
                   trailing:
                   const Icon(Icons.chevron_right, color: Colors.grey),
                   onTap: () {
@@ -328,11 +304,7 @@ class _HomePageState extends State<HomePage> {
               child: _cardContainer(
                 child: Column(
                   children: [
-                    _statRow("Driver Rating / Score", _rating),
-                    _divider(),
-                    _statRow("Daily Earnings", "₹0"),
-                    _divider(),
-                    _statRow("Acceptance Rate", _acceptance),
+                    _statRow("Your Rating", _rating),
                   ],
                 ),
               ),

@@ -96,8 +96,8 @@ class InviteFriendsView extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    "Invite a new driver and get 5%\n"
-                        "discount on your next subscription!",
+                    "Invite your friends to RavelGo\n"
+                        "and earn ride rewards together!",
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 15,
