@@ -76,8 +76,10 @@ test("GET /api/pricing/quote computes a fare from the active rule, with no surge
     .set("Authorization", `Bearer ${token}`);
 
   assert.equal(res.status, 200);
-  // 2 + 1*10 + 0.2*20 = 16
-  assert.equal(res.body.estimatedFare, 16);
+  // subtotal 2 + 1*10 + 0.2*20 = 16; + 7.5% VAT (1.2) = 17.2 tax-inclusive
+  assert.equal(res.body.subtotal, 16);
+  assert.equal(res.body.tax, 1.2);
+  assert.equal(res.body.estimatedFare, 17.2);
   assert.equal(res.body.surgeMultiplier, 1);
 });
 
@@ -92,7 +94,10 @@ test("GET /api/pricing/quote applies an active surge zone's multiplier when it m
     .set("Authorization", `Bearer ${token}`);
 
   assert.equal(res.status, 200);
-  assert.equal(res.body.estimatedFare, 32);
+  // subtotal 16*2 = 32; + 7.5% VAT (2.4) = 34.4 tax-inclusive
+  assert.equal(res.body.subtotal, 32);
+  assert.equal(res.body.tax, 2.4);
+  assert.equal(res.body.estimatedFare, 34.4);
   assert.equal(res.body.surgeMultiplier, 2);
   assert.equal(res.body.surgeZone, "Downtown");
 });

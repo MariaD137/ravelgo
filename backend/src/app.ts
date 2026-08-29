@@ -28,6 +28,7 @@ import { supportRouter } from "./routes/support.routes";
 import { tripsRouter } from "./routes/trips.routes";
 import { uploadsRouter } from "./routes/uploads.routes";
 import { vehiclesRouter } from "./routes/vehicles.routes";
+import { walletRouter } from "./routes/wallet.routes";
 
 export const app = express();
 
@@ -82,6 +83,7 @@ app.use("/api", paymentsRouter);
 app.use("/api", loyaltyRouter);
 app.use("/api", payoutsRouter);
 app.use("/api", pricingRouter);
+app.use("/api", walletRouter);
 
 // 404 handler
 app.use((_req: Request, res: Response) => {

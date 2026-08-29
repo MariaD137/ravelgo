@@ -6,21 +6,25 @@ import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { stripeClient } from "../billing/stripe";
 import { MAX_MONEY_AMOUNT, toCents } from "../lib/money";
 import { sensitiveLimiter } from "../middleware/rate-limit";
+import { debitWalletForRide, InsufficientFundsError } from "../services/wallet";
 
 export const paymentsRouter = Router();
 
+// Cash is intentionally NOT a payment method: with cash the rider hands money
+// straight to the driver, RavelGo never touches it, and the platform can't
+// take its commission or remit the driver's share. Every ride is paid by CARD
+// (Stripe) or from the rider's Stripe-funded RavelGo WALLET, both of which
+// keep the funds under RavelGo's control.
 const chargeSchema = z.object({
-  method: z.enum(["CARD", "CASH", "WALLET"]).default("CARD"),
+  method: z.enum(["CARD", "WALLET"]).default("CARD"),
 });
 
-// Driver or Admin: charge the rider for a completed trip's final fare.
-// Creates a real Stripe PaymentIntent and a Payment row in PENDING —
-// PAY-01/02's actual outcome (succeeded/failed) arrives asynchronously via
-// POST /billing/webhook once the client confirms the PaymentIntent
-// (confirming it is a client-side/mobile-SDK step, out of scope for this
-// backend route). CASH/WALLET charges skip Stripe entirely and settle
-// immediately, since there's no card to authorize.
-paymentsRouter.post("/trips/:id/charge", sensitiveLimiter, requireAuth, requireRole("Driver", "Admin"), async (req, res) => {
+// Driver or Admin: charge the rider for a completed trip's final (tax-inclusive)
+// fare. CARD creates a real Stripe PaymentIntent and a PENDING Payment whose
+// outcome arrives via POST /billing/webhook. WALLET debits the rider's real
+// prepaid balance atomically and settles immediately (the funds are already
+// held by RavelGo from a prior Stripe top-up).
+paymentsRouter.post("/trips/:id/charge", sensitiveLimiter, requireAuth, requireRole("Driver", "Admin"), async (req, res, next) => {
   const parsed = chargeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -30,8 +34,8 @@ paymentsRouter.post("/trips/:id/charge", sensitiveLimiter, requireAuth, requireR
     return res.status(409).json({ error: "Trip must be COMPLETED with a finalFare before it can be charged" });
   }
   // Defense in depth: finalFare is already bounded when written (trips.routes.ts),
-  // but this is the exact value that becomes a real Stripe charge, so re-check
-  // it here rather than trusting that every write path stayed in range.
+  // but this is the exact value that becomes a real charge, so re-check it here
+  // rather than trusting that every write path stayed in range.
   if (!Number.isFinite(trip.finalFare) || trip.finalFare <= 0 || trip.finalFare > MAX_MONEY_AMOUNT) {
     return res.status(409).json({ error: "Trip finalFare is outside the chargeable range" });
   }
@@ -63,12 +67,25 @@ paymentsRouter.post("/trips/:id/charge", sensitiveLimiter, requireAuth, requireR
     return res.status(201).json({ ...payment, clientSecret: intent.client_secret });
   }
 
+  // WALLET: the rider must have a funded wallet with sufficient balance.
+  const wallet = await prisma.walletAccount.findUnique({ where: { userId: trip.riderId } });
+  if (!wallet) return res.status(409).json({ error: "Rider has no wallet; top up before paying by wallet" });
+
+  try {
+    await debitWalletForRide(wallet.id, toCents(trip.finalFare), trip.id);
+  } catch (err) {
+    if (err instanceof InsufficientFundsError) {
+      return res.status(402).json({ error: "Insufficient wallet balance" });
+    }
+    return next(err);
+  }
+
   const payment = await prisma.payment.create({
     data: {
       tripId: trip.id,
       userId: trip.riderId,
       amount: trip.finalFare,
-      method: parsed.data.method,
+      method: "WALLET",
       status: "SUCCEEDED",
       paidAt: new Date(),
     },

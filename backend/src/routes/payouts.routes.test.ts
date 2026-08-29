@@ -115,8 +115,9 @@ test("POST /payouts/calculate computes a real amount from the driver's completed
   assert.equal(res.status, 200);
   assert.equal(res.body.tripsIncluded, 1);
   assert.equal(res.body.grossAmount, 100);
-  assert.equal(res.body.platformFee, 20);
-  assert.equal(res.body.netAmount, 80);
+  // RavelGo keeps 25%; the driver's net is the remaining 75%.
+  assert.equal(res.body.platformFee, 25);
+  assert.equal(res.body.netAmount, 75);
 });
 
 test("Admin-only payout endpoints reject a Driver caller", async () => {

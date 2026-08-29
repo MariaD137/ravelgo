@@ -26,6 +26,21 @@ export const MAX_FINAL_FARE_MULTIPLIER = 2.0;
 // rejecting so it can't be used to zero out a fare the rider owes.
 export const MIN_FINAL_FARE_MULTIPLIER = 0.5;
 
+// VAT applied on top of the base fare. Nigeria VAT is 7.5%. A single global
+// rate is intentional for this stage — if per-region tax is ever needed it
+// belongs on PricingRule/SurgeZone, not scattered through the routes.
+export const TAX_RATE = 0.075;
+
+// RavelGo's cut of each completed ride, computed on the tax-inclusive total
+// the rider actually paid. The remaining share is remitted to the driver's
+// bank account by the payout system (services/payouts.ts).
+export const PLATFORM_COMMISSION_RATE = 0.25;
+
+/** Round a currency amount to whole cents (2 dp), avoiding float drift. */
+export function roundMoney(amount: number): number {
+  return Math.round(amount * 100) / 100;
+}
+
 /**
  * A zod schema for any client-supplied monetary amount: finite, strictly
  * positive, at most two decimal places (whole cents), and within the
@@ -43,4 +58,9 @@ export const moneyAmountSchema = z
 /** Round to whole cents — the canonical representation before any charge. */
 export function toCents(amount: number): number {
   return Math.round(amount * 100);
+}
+
+/** Convert integer cents (e.g. a stored wallet balance) back to a currency amount. */
+export function fromCents(cents: number): number {
+  return roundMoney(cents / 100);
 }

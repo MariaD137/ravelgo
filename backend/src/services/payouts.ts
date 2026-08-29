@@ -7,6 +7,7 @@
 
 import type { Payout, Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
+import { PLATFORM_COMMISSION_RATE, roundMoney } from "../lib/money";
 
 interface PayoutCalculation {
   driverId: string;
@@ -60,14 +61,17 @@ export async function calculatePayoutForPeriod(
       })
     : [];
 
-  // Sum up all successful payments from these trips
-  const grossAmount = trips.reduce((sum, trip) => {
-    return sum + (trip.payment?.status === "SUCCEEDED" ? trip.payment.amount : 0);
-  }, 0);
+  // Sum up all successful payments from these trips. payment.amount is the
+  // tax-inclusive total the rider paid (card or wallet), so commission below
+  // is taken on the tax-inclusive total, exactly as the product requires.
+  const grossAmount = roundMoney(
+    trips.reduce((sum, trip) => {
+      return sum + (trip.payment?.status === "SUCCEEDED" ? trip.payment.amount : 0);
+    }, 0),
+  );
 
-  // Platform takes 20% commission (configurable)
-  const platformFeePercent = 0.2;
-  const platformFee = grossAmount * platformFeePercent;
+  // RavelGo keeps PLATFORM_COMMISSION_RATE (25%); the rest is the driver's.
+  const platformFee = roundMoney(grossAmount * PLATFORM_COMMISSION_RATE);
 
   // Check if driver has active subscription (subscription fee offset)
   const subscription = driverProfile
@@ -79,8 +83,8 @@ export async function calculatePayoutForPeriod(
 
   const subscriptionFee = subscription?.status === "ACTIVE" ? subscription.plan?.priceMonthly || 0 : 0;
 
-  // Net = Gross - Platform Fee - Subscription Fee
-  const netAmount = Math.max(0, grossAmount - platformFee - subscriptionFee);
+  // Net = Gross - Platform Commission - Subscription Fee
+  const netAmount = Math.max(0, roundMoney(grossAmount - platformFee - subscriptionFee));
 
   return {
     driverId,

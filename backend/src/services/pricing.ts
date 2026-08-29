@@ -1,8 +1,15 @@
 import type { PricingRule, SurgeZone } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { Errors } from "../lib/errors";
+import { roundMoney, TAX_RATE } from "../lib/money";
 
 export interface FareBreakdown {
+  // Fare before tax (base + distance + time, times surge).
+  subtotal: number;
+  taxRate: number;
+  tax: number;
+  // Tax-inclusive total the rider actually pays and is charged/held for. This
+  // is what gets stored on the trip and what commission is computed on.
   estimatedFare: number;
   pricingRule: string;
   surgeMultiplier: number;
@@ -13,7 +20,8 @@ export interface FareBreakdown {
  * The one place a fare is computed from a rate card. Both GET /pricing/quote
  * and POST /trips call this, so a rider's quoted estimate and the estimate
  * actually stored on their trip can never diverge — and neither is ever a
- * number the client simply asserted.
+ * number the client simply asserted. The returned `estimatedFare` is the
+ * tax-inclusive total (subtotal + VAT).
  */
 export function computeFare(
   rule: Pick<PricingRule, "name" | "baseFare" | "perKm" | "perMinute">,
@@ -23,8 +31,13 @@ export function computeFare(
 ): FareBreakdown {
   const multiplier = surge?.multiplier ?? 1;
   const base = rule.baseFare + rule.perKm * distanceKm + rule.perMinute * durationMinutes;
-  const estimatedFare = Math.round(base * multiplier * 100) / 100;
+  const subtotal = roundMoney(base * multiplier);
+  const tax = roundMoney(subtotal * TAX_RATE);
+  const estimatedFare = roundMoney(subtotal + tax);
   return {
+    subtotal,
+    taxRate: TAX_RATE,
+    tax,
     estimatedFare,
     pricingRule: rule.name,
     surgeMultiplier: multiplier,

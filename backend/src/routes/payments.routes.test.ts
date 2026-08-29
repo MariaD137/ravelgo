@@ -74,18 +74,10 @@ test("POST /api/trips/:id/charge (CARD) creates a Stripe PaymentIntent, PENDING 
   assert.equal(second.status, 409);
 });
 
-test("POST /api/trips/:id/charge (CASH) settles immediately, no Stripe call involved", async () => {
+test("POST /api/trips/:id/charge rejects CASH — it is no longer a payment method", async () => {
   const { rider, driver } = await createRiderAndDriver();
   const trip = await prisma.trip.create({
-    data: {
-      riderId: rider.id,
-      driverId: driver.id,
-      pickup: "A",
-      destination: "B",
-      estimatedFare: 10,
-      finalFare: 14.5,
-      status: "COMPLETED",
-    },
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 14.5, status: "COMPLETED" },
   });
 
   const token = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
@@ -94,9 +86,51 @@ test("POST /api/trips/:id/charge (CASH) settles immediately, no Stripe call invo
     .set("Authorization", `Bearer ${token}`)
     .send({ method: "CASH" });
 
+  assert.equal(res.status, 400); // schema rejects the unknown method
+  assert.equal(await prisma.payment.count(), 0);
+});
+
+test("POST /api/trips/:id/charge (WALLET) debits the rider's funded balance and settles", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const wallet = await prisma.walletAccount.create({ data: { userId: rider.id, balanceCents: 2000 } }); // $20.00
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 14.5, status: "COMPLETED" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/charge`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ method: "WALLET" });
+
   assert.equal(res.status, 201);
   assert.equal(res.body.status, "SUCCEEDED");
-  assert.ok(res.body.paidAt);
+  assert.equal(res.body.method, "WALLET");
+  // $20.00 - $14.50 = $5.50 left, and a RIDE_PAYMENT ledger entry recorded.
+  const after = await prisma.walletAccount.findUnique({ where: { id: wallet.id } });
+  assert.equal(after?.balanceCents, 550);
+  const debit = await prisma.walletTransaction.findFirst({ where: { walletId: wallet.id, type: "RIDE_PAYMENT" } });
+  assert.equal(debit?.amountCents, -1450);
+});
+
+test("POST /api/trips/:id/charge (WALLET) rejects when the balance is insufficient, charging nothing", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const wallet = await prisma.walletAccount.create({ data: { userId: rider.id, balanceCents: 500 } }); // $5.00
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 14.5, status: "COMPLETED" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/charge`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ method: "WALLET" });
+
+  assert.equal(res.status, 402);
+  // Balance untouched, no payment created.
+  const after = await prisma.walletAccount.findUnique({ where: { id: wallet.id } });
+  assert.equal(after?.balanceCents, 500);
+  assert.equal(await prisma.payment.count(), 0);
 });
 
 test("POST /api/trips/:id/charge rejects a driver who wasn't on the trip", async () => {

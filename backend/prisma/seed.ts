@@ -81,6 +81,13 @@ async function main() {
     create: { name: "Standard", baseFare: 500, perKm: 120, perMinute: 25, active: true },
   });
 
+  // A funded demo wallet so the rider can pay by RavelGo wallet out of the box.
+  await prisma.walletAccount.upsert({
+    where: { userId: rider.id },
+    update: {},
+    create: { userId: rider.id, balanceCents: 500000 }, // ₦5,000.00 equivalent in the app's cent unit
+  });
+
   await prisma.trip.create({
     data: {
       riderId: rider.id,

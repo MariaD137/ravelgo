@@ -22,8 +22,9 @@ after(async () => {
   await prisma.$disconnect();
 });
 
-// distanceKm 10, durationMinutes 20 -> 2 + 10 + 4 = 16 under the Standard rule.
+// distanceKm 10, durationMinutes 20 -> subtotal 2 + 10 + 4 = 16, + 7.5% VAT = 17.2.
 const tripInput = { pickup: "Home", destination: "Airport", distanceKm: 10, durationMinutes: 20 };
+const EXPECTED_FARE = 17.2;
 
 test("POST /api/trips lets a Rider request a trip, with a server-computed fare", async () => {
   await prisma.user.create({
@@ -35,7 +36,7 @@ test("POST /api/trips lets a Rider request a trip, with a server-computed fare",
 
   assert.equal(res.status, 201);
   assert.equal(res.body.status, "REQUESTED");
-  assert.equal(res.body.estimatedFare, 16);
+  assert.equal(res.body.estimatedFare, EXPECTED_FARE);
 });
 
 test("POST /api/trips ignores a client-supplied estimatedFare and uses the server figure", async () => {
@@ -52,7 +53,7 @@ test("POST /api/trips ignores a client-supplied estimatedFare and uses the serve
 
   assert.equal(res.status, 201);
   // Server ignored the injected value entirely.
-  assert.equal(res.body.estimatedFare, 16);
+  assert.equal(res.body.estimatedFare, EXPECTED_FARE);
 });
 
 test("POST /api/trips 409s when no pricing rule is configured", async () => {

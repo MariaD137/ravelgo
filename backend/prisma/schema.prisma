@@ -123,6 +123,7 @@ model User {
   promotionRedemptions PromotionRedemption[]
   bankAccount       DriverBankAccount?
   payouts           Payout[]
+  wallet            WalletAccount?
 }
 
 model Driver {
@@ -388,4 +389,48 @@ model Payout {
   @@index([driverId])
   @@index([status])
   @@index([createdAt])
+}
+
+enum WalletTransactionType {
+  TOPUP // rider added funds via Stripe
+  RIDE_PAYMENT // rider paid for a trip from their balance
+  REFUND
+}
+
+enum WalletTransactionStatus {
+  PENDING // TOPUP awaiting Stripe webhook confirmation
+  COMPLETED
+  FAILED
+}
+
+// A rider's prepaid RavelGo balance. Held in integer cents so incremental
+// credits/debits never accumulate floating-point drift. Funded only through
+// Stripe top-ups (so the money is real and RavelGo holds it), and spent on
+// rides — a wallet ride payment still leaves RavelGo in control of the funds,
+// which is what lets the platform take its commission and remit the rest to
+// the driver, exactly like a card payment (and unlike cash).
+model WalletAccount {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balanceCents Int      @default(0)
+  currency     String   @default("USD")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  transactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id                String                  @id @default(uuid())
+  walletId          String
+  wallet            WalletAccount           @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  type              WalletTransactionType
+  status            WalletTransactionStatus @default(COMPLETED)
+  amountCents       Int // positive = credit (top-up/refund), negative = debit (ride)
+  providerReference String?                 @unique // Stripe PaymentIntent id for a TOPUP
+  tripId            String? // the trip a RIDE_PAYMENT paid for
+  createdAt         DateTime                @default(now())
+
+  @@index([walletId])
 }
