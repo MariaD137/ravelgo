@@ -143,7 +143,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
           const SizedBox(height: 12),
           _buildOfferSection(),
           const SizedBox(height: 12),
-          _buildCashRow(),
+          _buildPaymentRow(),
           const SizedBox(height: 20),
           _buildFindDriverButton(),
           const SizedBox(height: 0),
@@ -246,12 +246,12 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
     );
   }
 
-  Widget _buildCashRow() {
+  Widget _buildPaymentRow() {
     return Row(
-      children:  [
-        Image.asset("assets/ic_cash_ride.png"),
+      children: const [
+        Icon(Icons.credit_card, size: 20),
         SizedBox(width: 8),
-        Text("Cash"),
+        Text("Card"),
         Spacer(),
         Icon(Icons.arrow_drop_down),
       ],

@@ -17,7 +17,10 @@ class SelectRide extends StatefulWidget {
 
 class _SelectRideState extends State<SelectRide> {
   GoogleMapController? mapController;
-  String _paymentMethod = 'Cash';
+  // Cash is no longer a RavelGo payment method — rides are paid by card or the
+  // RavelGo wallet, both handled by the backend so the platform can take its
+  // commission and pay the driver.
+  String _paymentMethod = 'Card';
   DateTime? _scheduledFor;
 
   /// Recenter the map on the device's real location (geolocator).
@@ -47,7 +50,7 @@ class _SelectRideState extends State<SelectRide> {
               padding: EdgeInsets.all(16),
               child: Text('Pay with', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             ),
-            for (final m in const ['Cash', 'Transfer'])
+            for (final m in const ['Card', 'RavelGo Wallet'])
               ListTile(
                 title: Text(m),
                 trailing: m == _paymentMethod
@@ -164,7 +167,7 @@ class _SelectRideState extends State<SelectRide> {
                             elevation: 0,
                             side: const BorderSide(color: AppColors.border),
                           ),
-                          icon: Image.asset("assets/ic_cash_ride.png"),
+                          icon: const Icon(Icons.credit_card, size: 20),
                           label: Text(_paymentMethod),
                           onPressed: _pickPaymentMethod,
                         ),

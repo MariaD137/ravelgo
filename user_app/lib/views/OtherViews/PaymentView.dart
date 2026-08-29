@@ -14,7 +14,9 @@ class PaymentView extends StatefulWidget {
 }
 
 class _PaymentScreenState extends State<PaymentView> {
-  bool isCashSelected = true;
+  // Which of the two active RavelGo methods is selected. Cash was removed:
+  // rides are paid by card or the RavelGo wallet.
+  bool isCardSelected = true;
   int selectedIndex = 0;
 
   Future<void> _addCard() async {
@@ -109,24 +111,24 @@ class _PaymentScreenState extends State<PaymentView> {
                   children: [
                     const Text('Payment methods', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     ListTile(
-                      leading: Image.asset('assets/ic_cash.png'),
-                      title: const Text('Cash'),
+                      leading: const Icon(Icons.credit_card, color: AppColors.textSecondary),
+                      title: const Text('Card'),
                       trailing: Checkbox(
                         activeColor: AppColors.primary,
-                        value: isCashSelected,
+                        value: isCardSelected,
                         onChanged: (bool? value) {
-                          setState(() => isCashSelected = value!);
+                          setState(() => isCardSelected = value!);
                         },
                       ),
                     ),
                     ListTile(
-                      leading: Image.asset('assets/ic_transfer.png'),
-                      title: const Text('Transfer'),
+                      leading: const Icon(Icons.account_balance_wallet_outlined, color: AppColors.textSecondary),
+                      title: const Text('RavelGo Wallet'),
                       trailing: Checkbox(
                         activeColor: AppColors.primary,
-                        value: !isCashSelected,
+                        value: !isCardSelected,
                         onChanged: (bool? value) {
-                          setState(() => isCashSelected = !value!);
+                          setState(() => isCardSelected = !value!);
                         },
                       ),
                     ),

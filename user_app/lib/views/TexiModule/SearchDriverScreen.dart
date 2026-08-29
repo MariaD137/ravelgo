@@ -198,19 +198,19 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
           const SizedBox(height: 10),
           _buildTripInfo(),
           const SizedBox(height: 10),
-          _buildCashRow(),
+          _buildPaymentRow(),
           const SizedBox(height: 10),
         ],
       ),
     );
   }
 
-  Widget _buildCashRow() {
+  Widget _buildPaymentRow() {
     return Row(
-      children:  [
-        Image.asset("assets/ic_cash_ride.png"),
+      children: const [
+        Icon(Icons.credit_card, size: 20),
         SizedBox(width: 8),
-        Text("Cash"),
+        Text("Card"),
         Spacer(),
         Icon(Icons.arrow_drop_down),
       ],

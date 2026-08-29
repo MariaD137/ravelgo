@@ -14,7 +14,7 @@ class WorkProfileView extends StatefulWidget {
 class _WorkProfileViewState extends State<WorkProfileView> {
   String? _companyName;
   String _workEmail = 'thelmaibeh2@gmail.com';
-  String _paymentMethod = 'Cash';
+  String _paymentMethod = 'Card';
 
   Future<void> _editText({
     required String title,
@@ -60,7 +60,7 @@ class _WorkProfileViewState extends State<WorkProfileView> {
               child: Text('Work payment method',
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             ),
-            for (final m in const ['Cash', 'Card', 'Company billing'])
+            for (final m in const ['Card', 'RavelGo Wallet', 'Company billing'])
               ListTile(
                 title: Text(m),
                 trailing: m == _paymentMethod ? const Icon(Icons.check, color: AppColors.success) : null,
