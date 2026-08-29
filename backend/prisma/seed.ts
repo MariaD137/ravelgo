@@ -72,6 +72,15 @@ async function main() {
     data: { driverId: driver.id, plateNumber: vehicle.plateNumber, status: "IN_REVIEW" },
   });
 
+  // An active pricing rule is required for POST /trips to compute a fare
+  // (the backend never trusts a client-supplied fare — see
+  // src/services/pricing.ts), so ship one so the app works out of the box.
+  await prisma.pricingRule.upsert({
+    where: { name: "Standard" },
+    update: {},
+    create: { name: "Standard", baseFare: 500, perKm: 120, perMinute: 25, active: true },
+  });
+
   await prisma.trip.create({
     data: {
       riderId: rider.id,

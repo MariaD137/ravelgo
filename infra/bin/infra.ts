@@ -37,7 +37,7 @@ const stackName = (base: string) => `${base}${suffix}`;
 const network = new NetworkStack(app, stackName("RavelGo-Network"), { env });
 const auth = new AuthStack(app, stackName("RavelGo-Auth"), { env, envName });
 const storage = new StorageStack(app, stackName("RavelGo-Storage"), { env });
-const data = new DataStack(app, stackName("RavelGo-Data"), { env, vpc: network.vpc });
+const data = new DataStack(app, stackName("RavelGo-Data"), { env, vpc: network.vpc, envName });
 
 const api = new ApiStack(app, stackName("RavelGo-Api"), {
   env,

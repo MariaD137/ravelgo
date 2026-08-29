@@ -4,6 +4,8 @@ import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { stripeClient } from "../billing/stripe";
+import { MAX_MONEY_AMOUNT, toCents } from "../lib/money";
+import { sensitiveLimiter } from "../middleware/rate-limit";
 
 export const paymentsRouter = Router();
 
@@ -18,7 +20,7 @@ const chargeSchema = z.object({
 // (confirming it is a client-side/mobile-SDK step, out of scope for this
 // backend route). CASH/WALLET charges skip Stripe entirely and settle
 // immediately, since there's no card to authorize.
-paymentsRouter.post("/trips/:id/charge", requireAuth, requireRole("Driver", "Admin"), async (req, res) => {
+paymentsRouter.post("/trips/:id/charge", sensitiveLimiter, requireAuth, requireRole("Driver", "Admin"), async (req, res) => {
   const parsed = chargeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -26,6 +28,12 @@ paymentsRouter.post("/trips/:id/charge", requireAuth, requireRole("Driver", "Adm
   if (!trip) return res.status(404).json({ error: "Trip not found" });
   if (trip.status !== "COMPLETED" || trip.finalFare == null) {
     return res.status(409).json({ error: "Trip must be COMPLETED with a finalFare before it can be charged" });
+  }
+  // Defense in depth: finalFare is already bounded when written (trips.routes.ts),
+  // but this is the exact value that becomes a real Stripe charge, so re-check
+  // it here rather than trusting that every write path stayed in range.
+  if (!Number.isFinite(trip.finalFare) || trip.finalFare <= 0 || trip.finalFare > MAX_MONEY_AMOUNT) {
+    return res.status(409).json({ error: "Trip finalFare is outside the chargeable range" });
   }
 
   const isAdmin = req.user!.groups.includes("Admin");
@@ -38,7 +46,7 @@ paymentsRouter.post("/trips/:id/charge", requireAuth, requireRole("Driver", "Adm
 
   if (parsed.data.method === "CARD") {
     const intent = await stripeClient.paymentIntents.create({
-      amount: Math.round(trip.finalFare * 100),
+      amount: toCents(trip.finalFare),
       currency: "usd",
       metadata: { tripId: trip.id },
     });

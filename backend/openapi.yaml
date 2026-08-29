@@ -404,19 +404,23 @@ paths:
           application/json:
             schema:
               type: object
-              required: [pickup, destination, estimatedFare]
+              required: [pickup, destination, distanceKm, durationMinutes]
               properties:
                 pickup: { type: string }
                 destination: { type: string }
-                estimatedFare: { type: number }
+                distanceKm: { type: number, minimum: 0, maximum: 2000, description: Trip distance; the fare is computed server-side from this against the active pricing rule }
+                durationMinutes: { type: number, minimum: 0, maximum: 1440 }
+                zone: { type: string, description: Optional surge zone name }
                 category: { type: string, default: Personal }
                 pickupNote: { type: string }
+              description: The rider never sends the fare — estimatedFare is computed server-side from the active PricingRule and returned on the created Trip.
       responses:
         "201":
           description: Trip
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Trip" }
+        "409": { $ref: "#/components/responses/Conflict" }
     get:
       tags: [Trips]
       summary: Monitor all trips (Admin)

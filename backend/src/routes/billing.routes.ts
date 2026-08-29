@@ -3,6 +3,7 @@ import type Stripe from "stripe";
 import { prisma } from "../db/prisma";
 import { env } from "../config/env";
 import { stripeClient } from "../billing/stripe";
+import { logSecurityEvent } from "../lib/security-log";
 
 export const billingRouter = Router();
 
@@ -41,6 +42,11 @@ billingRouter.post("/", async (req, res) => {
           paidAt: event.type === "payment_intent.succeeded" ? new Date() : undefined,
         },
       });
+    }
+    if (event.type === "payment_intent.payment_failed") {
+      // A spike in these is worth alerting on (see monitoring-stack.ts) — it
+      // can signal card-testing abuse against the platform.
+      logSecurityEvent("PAYMENT_FAILURE", req, { intent: intent.id });
     }
   }
 

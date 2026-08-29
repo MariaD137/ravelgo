@@ -5,6 +5,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { env } from "../config/env";
 import { requireAuth } from "../middleware/auth";
+import { sensitiveLimiter } from "../middleware/rate-limit";
 
 export const uploadsRouter = Router();
 
@@ -38,7 +39,7 @@ const presignSchema = z.object({
 // Any authenticated user: get a short-lived URL to upload a file straight to
 // S3. The client PUTs the file bytes to `uploadUrl`, then sends `fileKey`
 // back to whichever endpoint records the metadata (e.g. POST /documents).
-uploadsRouter.post("/uploads/presign", requireAuth, async (req, res) => {
+uploadsRouter.post("/uploads/presign", sensitiveLimiter, requireAuth, async (req, res) => {
   const parsed = presignSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 

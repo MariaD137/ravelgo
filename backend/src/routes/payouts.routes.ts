@@ -10,11 +10,12 @@ import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { validate } from "../lib/validate";
 import { Errors } from "../lib/errors";
+import { moneyAmountSchema } from "../lib/money";
+import { sensitiveLimiter } from "../middleware/rate-limit";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import {
   calculatePayoutForPeriod,
   createPayout,
-  getPayoutHistory,
   processPayout,
   completePayout,
   failPayout,
@@ -148,12 +149,14 @@ payoutsRouter.post("/payouts/calculate", requireAuth, requireRole("Admin"), asyn
 });
 
 // Admin: create pending payout for a driver
-payoutsRouter.post("/payouts/create", requireAuth, requireRole("Admin"), async (req, res, next) => {
+payoutsRouter.post("/payouts/create", sensitiveLimiter, requireAuth, requireRole("Admin"), async (req, res, next) => {
   try {
     const schema = z.object({
       driverId: z.string(),
       period: z.string().regex(/^\d{4}-\d{2}$/),
-      amount: z.number().positive().optional(), // Override calculated amount if needed
+      // Manual override is Admin-only, but still bounded so a typo or a
+      // compromised admin session can't create a nine-figure payout.
+      amount: moneyAmountSchema.optional(),
     });
     const { driverId, period, amount } = validate<typeof schema._output>(schema, req.body, "Request body");
 
@@ -188,7 +191,7 @@ payoutsRouter.post("/payouts/create", requireAuth, requireRole("Admin"), async (
 });
 
 // Admin: process a pending payout
-payoutsRouter.post("/payouts/:id/process", requireAuth, requireRole("Admin"), async (req, res, next) => {
+payoutsRouter.post("/payouts/:id/process", sensitiveLimiter, requireAuth, requireRole("Admin"), async (req, res, next) => {
   try {
     const payout = await processPayout(req.params.id);
     res.json(payout);

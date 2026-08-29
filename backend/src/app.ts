@@ -1,6 +1,5 @@
 import cors from "cors";
-import express, { type NextFunction, type Request, type Response } from "express";
-import { rateLimit } from "express-rate-limit";
+import express, { type Request, type Response } from "express";
 import helmet from "helmet";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -9,6 +8,7 @@ import swaggerUi from "swagger-ui-express";
 import { load as loadYaml } from "js-yaml";
 import { env } from "./config/env";
 import { errorHandler } from "./middleware/error-handler";
+import { createRateLimiter, webhookLimiter } from "./middleware/rate-limit";
 import { adminRouter } from "./routes/admin.routes";
 import { alertsRouter } from "./routes/alerts.routes";
 import { billingRouter } from "./routes/billing.routes";
@@ -46,24 +46,16 @@ app.use(
 // narrowly (not the whole "/api" prefix) so express.raw() doesn't consume
 // the body stream for every other /api route before express.json() below
 // gets a chance to parse it.
-app.use("/api/billing/webhook", express.raw({ type: "application/json" }), billingRouter);
+app.use("/api/billing/webhook", webhookLimiter, express.raw({ type: "application/json" }), billingRouter);
 
 app.use(express.json());
 app.use(morgan(env.NODE_ENV === "production" ? "combined" : "dev"));
 
-// Skipped in tests so a suite that fires many requests at one endpoint
-// doesn't start seeing 429s from its own load.
-if (env.NODE_ENV !== "test") {
-  app.use(
-    "/api",
-    rateLimit({
-      windowMs: 15 * 60 * 1000,
-      limit: 300,
-      standardHeaders: true,
-      legacyHeaders: false,
-    }),
-  );
-}
+// Baseline limiter across the whole API. Generous — its job is to blunt a
+// broad flood, not to throttle a normal session; genuinely expensive
+// operations get their own stricter limiters at the route level (see
+// middleware/rate-limit.ts). Internally skipped under test.
+app.use("/api", createRateLimiter({ limit: 300, name: "global" }));
 
 // BE-15: the OpenAPI spec is hand-written (openapi.yaml, project root) rather
 // than generated from the zod schemas — served as-is, both raw and via a

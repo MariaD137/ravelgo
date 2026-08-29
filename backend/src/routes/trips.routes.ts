@@ -5,27 +5,55 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { broadcastTripStatus, getLatestDriverLocation } from "../realtime/hub";
 import { matchDriverToTrip } from "../services/matching";
+import { quoteFare } from "../services/pricing";
+import { MAX_FINAL_FARE_MULTIPLIER, MIN_FINAL_FARE_MULTIPLIER, moneyAmountSchema } from "../lib/money";
+import { sensitiveLimiter } from "../middleware/rate-limit";
 
 export const tripsRouter = Router();
 
+// The rider supplies the trip inputs (distance/duration/zone) — NOT the fare.
+// The fare is computed server-side from the active PricingRule (see
+// services/pricing.ts), so a client cannot assert `estimatedFare: 1` (or any
+// other value) and have the backend treat it as the agreed price. Distance
+// and duration are still client-provided in this MVP because there is no
+// routing/geocoding service yet — that is an honest limitation, but the RATE
+// applied to them is authoritative and admin-controlled, and baseFare acts as
+// a floor even if the client claims a zero-distance trip.
 const createTripSchema = z.object({
   pickup: z.string().min(1),
   destination: z.string().min(1),
-  estimatedFare: z.number().positive(),
+  distanceKm: z.number().finite().nonnegative().max(2000),
+  durationMinutes: z.number().finite().nonnegative().max(1440),
+  zone: z.string().min(1).optional(),
   category: z.string().default("Personal"),
   pickupNote: z.string().optional(),
 });
 
 // Rider: request a trip
-tripsRouter.post("/trips", requireAuth, requireRole("Rider"), async (req, res) => {
+tripsRouter.post("/trips", sensitiveLimiter, requireAuth, requireRole("Rider"), async (req, res, next) => {
   const parsed = createTripSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const rider = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
   if (!rider) return res.status(404).json({ error: "Rider not found" });
 
+  // Authoritative fare — never taken from the request body.
+  let fare;
+  try {
+    fare = await quoteFare(parsed.data.distanceKm, parsed.data.durationMinutes, parsed.data.zone);
+  } catch (err) {
+    return next(err); // 409 when no active pricing rule is configured
+  }
+
   const trip = await prisma.trip.create({
-    data: { ...parsed.data, riderId: rider.id },
+    data: {
+      pickup: parsed.data.pickup,
+      destination: parsed.data.destination,
+      category: parsed.data.category,
+      pickupNote: parsed.data.pickupNote,
+      estimatedFare: fare.estimatedFare,
+      riderId: rider.id,
+    },
   });
 
   const matched = await matchDriverToTrip(trip.id);
@@ -51,7 +79,7 @@ tripsRouter.get("/trips/:id", requireAuth, async (req, res) => {
 
 const updateStatusSchema = z.object({
   status: z.enum(["MATCHED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "DISPUTED"]),
-  finalFare: z.number().positive().optional(),
+  finalFare: moneyAmountSchema.optional(),
 });
 
 // Driver assigned to it, or Admin: advance trip status (accept, start, complete)
@@ -67,6 +95,26 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
     const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
     if (!driver || existing.driverId !== driver.id) {
       return res.status(403).json({ error: "Not authorized to update this trip" });
+    }
+  }
+
+  // The final fare is what actually gets charged (payments.routes.ts) and
+  // paid out (services/payouts.ts). It's set by the driver, so it must be
+  // anchored to the server-computed estimate rather than trusted outright:
+  // a driver can adjust up for waiting time / a longer route, but not to an
+  // arbitrary multiple of the price the rider agreed to. An Admin (dispute
+  // resolution, manual correction) is allowed to override outside the band.
+  if (parsed.data.finalFare != null && !isAdmin) {
+    const lower = existing.estimatedFare * MIN_FINAL_FARE_MULTIPLIER;
+    const upper = existing.estimatedFare * MAX_FINAL_FARE_MULTIPLIER;
+    if (parsed.data.finalFare < lower || parsed.data.finalFare > upper) {
+      return res.status(422).json({
+        error: {
+          code: "FARE_OUT_OF_RANGE",
+          message: `finalFare must be within ${MIN_FINAL_FARE_MULTIPLIER}x–${MAX_FINAL_FARE_MULTIPLIER}x the estimated fare of ${existing.estimatedFare}`,
+          timestamp: new Date().toISOString(),
+        },
+      });
     }
   }
 
