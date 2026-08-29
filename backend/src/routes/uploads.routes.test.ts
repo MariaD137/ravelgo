@@ -37,3 +37,37 @@ test("POST /api/uploads/presign rejects an invalid bucket", async () => {
 
   assert.equal(res.status, 400);
 });
+
+test("POST /api/uploads/presign rejects a content type that could execute in a browser", async () => {
+  const token = mockAuthAs({ sub: "user-sub-3", groups: ["Driver"] });
+
+  for (const contentType of ["text/html", "image/svg+xml", "application/javascript"]) {
+    const res = await request(app)
+      .post("/api/uploads/presign")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ bucket: "assets", fileName: "x", contentType });
+    assert.equal(res.status, 400, `expected ${contentType} to be rejected`);
+  }
+});
+
+test("POST /api/uploads/presign rejects a PDF for the publicly-served assets bucket", async () => {
+  const token = mockAuthAs({ sub: "user-sub-4", groups: ["Rider"] });
+
+  const res = await request(app)
+    .post("/api/uploads/presign")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ bucket: "assets", fileName: "x.pdf", contentType: "application/pdf" });
+
+  assert.equal(res.status, 400);
+});
+
+test("POST /api/uploads/presign rejects a fileName containing a path separator", async () => {
+  const token = mockAuthAs({ sub: "user-sub-5", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/uploads/presign")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ bucket: "documents", fileName: "../../etc/passwd", contentType: "application/pdf" });
+
+  assert.equal(res.status, 400);
+});

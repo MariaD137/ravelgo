@@ -34,6 +34,21 @@ test("POST /api/documents registers a document as PENDING for the calling driver
   assert.equal(res.body.status, "PENDING");
 });
 
+test("POST /api/documents rejects a fileKey that doesn't belong to the calling user", async () => {
+  await createDriver("driver-sub-9");
+  const token = mockAuthAs({ sub: "driver-sub-9", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/documents")
+    .set("Authorization", `Bearer ${token}`)
+    // Someone else's (or a fabricated) prefix.
+    .send({ title: "License", fileKey: "driver-sub-someone-else/abc-license.pdf" });
+
+  assert.equal(res.status, 403);
+  const stored = await prisma.driverDocument.findMany();
+  assert.equal(stored.length, 0);
+});
+
 test("GET /api/documents/me only returns the calling driver's own documents", async () => {
   const driverA = await createDriver("driver-sub-2");
   const driverB = await createDriver("driver-sub-3");

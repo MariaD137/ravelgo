@@ -54,10 +54,21 @@ const updateStatusSchema = z.object({
   finalFare: z.number().positive().optional(),
 });
 
-// Driver: advance trip status (accept, start, complete)
+// Driver assigned to it, or Admin: advance trip status (accept, start, complete)
 tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin"), async (req, res) => {
   const parsed = updateStatusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const existing = await prisma.trip.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: "Trip not found" });
+
+  const isAdmin = req.user!.groups.includes("Admin");
+  if (!isAdmin) {
+    const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+    if (!driver || existing.driverId !== driver.id) {
+      return res.status(403).json({ error: "Not authorized to update this trip" });
+    }
+  }
 
   const trip = await prisma.trip.update({
     where: { id: req.params.id },

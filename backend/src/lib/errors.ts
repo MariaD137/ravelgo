@@ -82,7 +82,7 @@ export const Errors = {
  *     throw formatZodError(parsed.error);
  *   }
  */
-export function formatZodError(zodError: any): ApiError {
+export function formatZodError(zodError: import("zod").ZodError): ApiError {
   const details: ValidationError[] = [];
 
   if (zodError.issues) {
