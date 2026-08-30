@@ -60,7 +60,7 @@ export class ApiStack extends cdk.Stack {
     // isolated subnets with no route to the internet.
     const connectorSecurityGroup = new ec2.SecurityGroup(this, "ConnectorSecurityGroup", {
       vpc: props.vpc,
-      description: "App Runner VPC connector -> RDS",
+      description: "App Runner VPC connector to RDS",
       allowAllOutbound: true,
     });
 
