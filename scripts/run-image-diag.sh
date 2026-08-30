@@ -23,7 +23,11 @@ phases:
       - aws ecr get-login-password --region "$AWS_DEFAULT_REGION" | docker login --username AWS --password-stdin "$ECR_ACCT.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com"
       - docker pull "$ECR_URI:latest"
       - echo "=====CONTAINER-STARTUP-BELOW====="
-      - timeout 15 docker run --rm -e NODE_ENV=production -e COGNITO_USER_POOL_ID=us-east-1_diag -e COGNITO_CLIENT_ID=diagclient -e DB_HOST=127.0.0.1 -e DB_PORT=5432 -e DB_NAME=ravelgo -e DB_USERNAME=diag -e DB_PASSWORD=diag -e ALLOWED_ORIGINS=https://example.com -e STRIPE_SECRET_KEY=sk_test_diag -e STRIPE_WEBHOOK_SECRET=whsec_diag "$ECR_URI:latest" || true
+      - docker run -d --name diag -e NODE_ENV=production -e COGNITO_USER_POOL_ID=us-east-1_diag -e COGNITO_CLIENT_ID=diagclient -e DB_HOST=127.0.0.1 -e DB_PORT=5432 -e DB_NAME=ravelgo -e DB_USERNAME=diag -e DB_PASSWORD=diag -e ALLOWED_ORIGINS=https://example.com -e STRIPE_SECRET_KEY=sk_test_diag -e STRIPE_WEBHOOK_SECRET=whsec_diag "$ECR_URI:latest" || true
+      - sleep 12
+      - echo "----- docker logs (stdout+stderr) -----"
+      - docker logs diag 2>&1 || true
+      - docker rm -f diag || true
       - echo "=====CONTAINER-STARTUP-ABOVE====="
 '
 
