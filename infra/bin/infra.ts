@@ -34,7 +34,7 @@ const envName = app.node.tryGetContext("envName") ?? "production";
 const suffix = envName === "production" ? "" : `-${envName}`;
 const stackName = (base: string) => `${base}${suffix}`;
 
-const network = new NetworkStack(app, stackName("RavelGo-Network"), { env });
+const network = new NetworkStack(app, stackName("RavelGo-Network"), { env, envName });
 const auth = new AuthStack(app, stackName("RavelGo-Auth"), { env, envName });
 const storage = new StorageStack(app, stackName("RavelGo-Storage"), { env });
 const data = new DataStack(app, stackName("RavelGo-Data"), { env, vpc: network.vpc, envName });

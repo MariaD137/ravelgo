@@ -64,7 +64,11 @@ export class ApiStack extends cdk.Stack {
     });
 
     const vpcConnector = new apprunner.CfnVpcConnector(this, "VpcConnector", {
-      subnets: props.vpc.selectSubnets({ subnetType: ec2.SubnetType.PRIVATE_ISOLATED }).subnetIds,
+      // Egress subnets (route to NAT) so the service can reach Stripe and the
+      // Cognito JWKS endpoint; it still reaches RDS in the isolated subnets
+      // over the same VPC. Isolated subnets alone would leave it with no
+      // internet path and break payments + auth.
+      subnets: props.vpc.selectSubnets({ subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS }).subnetIds,
       securityGroups: [connectorSecurityGroup.securityGroupId],
     });
 
