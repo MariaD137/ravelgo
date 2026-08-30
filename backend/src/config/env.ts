@@ -64,8 +64,24 @@ function loadEnv(): Env {
     }
     const user = encodeURIComponent(data.DB_USERNAME);
     const pass = encodeURIComponent(data.DB_PASSWORD);
-    databaseUrl = `postgresql://${user}:${pass}@${data.DB_HOST}:${data.DB_PORT}/${data.DB_NAME}`;
+    // sslmode=require: encrypt the connection without verifying the server
+    // certificate. RDS PostgreSQL 15+ default parameter groups set
+    // rds.force_ssl=1, so a plaintext connection is refused outright. This
+    // applies only to the URL assembled from split DB_* vars (the cloud
+    // deployment path); a caller who supplies a full DATABASE_URL controls
+    // their own sslmode.
+    databaseUrl = `postgresql://${user}:${pass}@${data.DB_HOST}:${data.DB_PORT}/${data.DB_NAME}?sslmode=require`;
   }
+
+  // Prisma reads its connection string straight from process.env.DATABASE_URL
+  // (prisma/schema.prisma: `url = env("DATABASE_URL")`) — it does NOT see the
+  // value we resolve here. In deployments that provide the split
+  // DB_HOST/DB_USERNAME/DB_PASSWORD vars instead of a ready-made DATABASE_URL
+  // (e.g. App Runner reading DB creds from Secrets Manager), nothing else sets
+  // it, so `new PrismaClient()` throws at construction — before the server can
+  // bind a port or log a line. Publish the resolved URL back to the
+  // environment so Prisma picks it up. No-op when DATABASE_URL was already set.
+  process.env.DATABASE_URL = databaseUrl;
 
   const allowedOrigins = (data.ALLOWED_ORIGINS ?? "")
     .split(",")
