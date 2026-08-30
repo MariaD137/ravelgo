@@ -26,15 +26,28 @@ export interface ApiStackProps extends cdk.StackProps {
   // IN-06's staging deploy possible at all in the same AWS account as
   // production, not just cosmetic.
   envName?: string;
+  // First-deploy bootstrap: an App Runner service pointed at an ECR image
+  // tag that doesn't exist yet fails to stabilize and rolls the whole stack
+  // back. On a brand-new environment there's no image until *after* the ECR
+  // repo this stack creates exists to push to. Setting this false deploys
+  // the repo (+ secret + roles) without the service, so a first image can be
+  // built and pushed; a second deploy with it true (the default) then brings
+  // the service up against an image that already exists. Existing
+  // environments and `cdk deploy --all` are unaffected — it defaults to true.
+  deployService?: boolean;
 }
 
 export class ApiStack extends cdk.Stack {
   public readonly repository: ecr.Repository;
-  public readonly service: apprunner.CfnService;
+  // Undefined only during a first-deploy bootstrap (deployService: false),
+  // when the ECR repo is created ahead of the first image. Every normal
+  // deploy creates it.
+  public readonly service?: apprunner.CfnService;
 
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
     const envName = props.envName ?? "production";
+    const deployService = props.deployService ?? true;
     const resourceName = envName === "production" ? "ravelgo-backend" : `ravelgo-backend-${envName}`;
 
     this.repository = new ecr.Repository(this, "BackendRepository", {
@@ -108,7 +121,8 @@ export class ApiStack extends cdk.Stack {
     });
     stripeSecret.grantRead(instanceRole);
 
-    this.service = new apprunner.CfnService(this, "BackendService", {
+    if (deployService) {
+    const service = new apprunner.CfnService(this, "BackendService", {
       serviceName: resourceName,
       sourceConfiguration: {
         autoDeploymentsEnabled: true,
@@ -159,8 +173,11 @@ export class ApiStack extends cdk.Stack {
         unhealthyThreshold: 5,
       },
     });
+    this.service = service;
 
-    new cdk.CfnOutput(this, "ServiceUrl", { value: `https://${this.service.attrServiceUrl}` });
+    new cdk.CfnOutput(this, "ServiceUrl", { value: `https://${service.attrServiceUrl}` });
+    }
+
     new cdk.CfnOutput(this, "EcrRepositoryUri", { value: this.repository.repositoryUri });
     new cdk.CfnOutput(this, "StripeSecretArn", { value: stripeSecret.secretArn });
   }
