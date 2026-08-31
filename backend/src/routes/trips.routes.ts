@@ -60,6 +60,35 @@ tripsRouter.post("/trips", sensitiveLimiter, requireAuth, requireRole("Rider"), 
   res.status(201).json(matched ?? trip);
 });
 
+// Rider or Driver: list the trips I'm party to (as the rider, or as the
+// assigned driver). This is what powers a rider's trip history and a driver's
+// completed-trips list. Declared before "/trips/:id" so "mine" isn't captured
+// as an :id.
+tripsRouter.get("/trips/mine", requireAuth, async (req, res) => {
+  const parsed = paginationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { page, pageSize } = parsed.data;
+
+  const where = {
+    OR: [
+      { rider: { cognitoSub: req.user!.sub } },
+      { driver: { user: { cognitoSub: req.user!.sub } } },
+    ],
+  };
+
+  const [trips, total] = await Promise.all([
+    prisma.trip.findMany({
+      where,
+      include: { rider: true, driver: { include: { user: true } } },
+      orderBy: { requestedAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.trip.count({ where }),
+  ]);
+  res.json(paginate(trips, total, page, pageSize));
+});
+
 // Rider or Driver: view a trip they're party to
 tripsRouter.get("/trips/:id", requireAuth, async (req, res) => {
   const trip = await prisma.trip.findUnique({

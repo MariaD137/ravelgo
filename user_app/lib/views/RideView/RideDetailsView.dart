@@ -52,7 +52,11 @@ class RideDetailsScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Ride with ${ride.title}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                        Text(
+                            ride.driverName != null && ride.driverName!.isNotEmpty
+                                ? 'Ride with ${ride.driverName}'
+                                : 'Trip to ${ride.destination.isNotEmpty ? ride.destination : ride.title}',
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                         const SizedBox(height: 4),
                         Text(_formatTime(ride.dateTime), style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
                       ],
@@ -94,7 +98,7 @@ class RideDetailsScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Example stops (replace with real stops if available)
+                    // Real pickup -> destination for this trip.
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -110,39 +114,31 @@ class RideDetailsScreen extends StatelessWidget {
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text('24 kusenla road', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                              SizedBox(height: 12),
-                              Text('Dutse', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                              SizedBox(height: 12),
-                              Text('Madiba', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                            children: [
+                              Text(ride.pickup.isNotEmpty ? ride.pickup : 'Pickup',
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 48),
+                              Text(ride.destination.isNotEmpty ? ride.destination : 'Destination',
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                             ],
                           ),
                         ),
                       ],
                     ),
 
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Additional ride details can be found in your email receipt',
-                      style: TextStyle(color: AppColors.primaryDark),
-                    ),
-
                     const SizedBox(height: 18),
                     const Text('Payments', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 12),
 
-                    _paymentRow('Ride Fare', '#2854'),
-                    const Divider(height: 18, color: AppColors.textMuted),
-                    _paymentRow('Vat Fees', '#52.50'),
+                    _paymentRow('Ride Fare', '\$${ride.fare.toStringAsFixed(2)}'),
                     const Divider(height: 22, color: AppColors.textMuted),
 
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6.0),
                       child: Row(
-                        children: const [
-                          Expanded(child: Text('Total', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
-                          Text('#2854', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                        children: [
+                          const Expanded(child: Text('Total', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
+                          Text('\$${ride.fare.toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                         ],
                       ),
                     ),

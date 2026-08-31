@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/Model/app_state.dart';
+import 'package:ravelgo_user_app/services/api_client.dart';
+import 'package:ravelgo_user_app/services/wallet_api.dart';
 import 'package:ravelgo_user_app/views/OtherViews/AddPaymentMethodScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
@@ -18,6 +20,42 @@ class _PaymentScreenState extends State<PaymentView> {
   // rides are paid by card or the RavelGo wallet.
   bool isCardSelected = true;
   int selectedIndex = 0;
+
+  // Live wallet, loaded from the backend (GET /api/wallet/me + /transactions).
+  WalletBalance? _wallet;
+  List<WalletTransaction> _txns = const [];
+  bool _walletLoading = true;
+  String? _walletError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadWallet();
+  }
+
+  Future<void> _loadWallet() async {
+    setState(() {
+      _walletLoading = true;
+      _walletError = null;
+    });
+    try {
+      final results = await Future.wait([WalletApi.me(), WalletApi.transactions()]);
+      if (!mounted) return;
+      setState(() {
+        _wallet = results[0] as WalletBalance;
+        _txns = results[1] as List<WalletTransaction>;
+        _walletLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _walletError = e is ApiException && e.statusCode == 403
+            ? 'Sign in as a rider to see your wallet.'
+            : e.toString();
+        _walletLoading = false;
+      });
+    }
+  }
 
   Future<void> _addCard() async {
     await Navigator.push(
@@ -66,6 +104,8 @@ class _PaymentScreenState extends State<PaymentView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const SizedBox(height: 12),
+            _walletCard(),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -161,6 +201,78 @@ class _PaymentScreenState extends State<PaymentView> {
       ),
     );
   }
+
+  Widget _walletCard() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 0),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppColors.primary, AppColors.primaryDark],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.account_balance_wallet, color: Colors.white),
+              const SizedBox(width: 8),
+              const Text('RavelGo Wallet',
+                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.refresh, color: Colors.white, size: 20),
+                onPressed: _walletLoading ? null : _loadWallet,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_walletLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: SizedBox(
+                  height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+            )
+          else if (_walletError != null)
+            Text(_walletError!, style: const TextStyle(color: Colors.white))
+          else
+            Text(
+              '${_wallet!.currency} ${_wallet!.balance.toStringAsFixed(2)}',
+              style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold),
+            ),
+          if (!_walletLoading && _walletError == null) ...[
+            const Divider(color: Colors.white24, height: 28),
+            const Text('Recent activity', style: TextStyle(color: Colors.white70, fontSize: 13)),
+            const SizedBox(height: 6),
+            if (_txns.isEmpty)
+              const Text('No transactions yet.', style: TextStyle(color: Colors.white70, fontSize: 13))
+            else
+              ..._txns.take(5).map((t) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text('${_prettyTxn(t.type)} · ${t.status.toLowerCase()}',
+                              style: const TextStyle(color: Colors.white, fontSize: 13)),
+                        ),
+                        Text('\$${t.amount.toStringAsFixed(2)}',
+                            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  )),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _prettyTxn(String s) =>
+      s.isEmpty ? '' : s[0] + s.substring(1).toLowerCase().replaceAll('_', ' ');
 
   Expanded _buildOption(String label, int index, {required bool isSelected}) {
     return Expanded(

@@ -267,3 +267,40 @@ test("GET /api/trips (Admin monitor) rejects a Rider caller", async () => {
   const res = await request(app).get("/api/trips").set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 403);
 });
+
+test("GET /api/trips/mine returns only the caller's own trips (as rider or driver)", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-mine", role: "RIDER", firstName: "M", lastName: "I", email: "mine@example.com" },
+  });
+  const otherRider = await prisma.user.create({
+    data: { cognitoSub: "rider-other", role: "RIDER", firstName: "O", lastName: "T", email: "other@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-mine", role: "DRIVER", firstName: "D", lastName: "R", email: "dr@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id } });
+
+  // One trip the rider owns, one assigned to the driver, one belonging to nobody relevant.
+  const myTrip = await prisma.trip.create({
+    data: { riderId: rider.id, pickup: "A", destination: "B", estimatedFare: 10 },
+  });
+  const driverTrip = await prisma.trip.create({
+    data: { riderId: otherRider.id, driverId: driver.id, pickup: "C", destination: "D", estimatedFare: 12 },
+  });
+  await prisma.trip.create({
+    data: { riderId: otherRider.id, pickup: "E", destination: "F", estimatedFare: 8 },
+  });
+
+  const riderToken = mockAuthAs({ sub: "rider-mine", groups: ["Rider"] });
+  const riderRes = await request(app).get("/api/trips/mine").set("Authorization", `Bearer ${riderToken}`);
+  assert.equal(riderRes.status, 200);
+  assert.equal(riderRes.body.total, 1);
+  assert.equal(riderRes.body.data[0].id, myTrip.id);
+
+  restoreAuth();
+  const driverToken = mockAuthAs({ sub: "driver-mine", groups: ["Driver"] });
+  const driverRes = await request(app).get("/api/trips/mine").set("Authorization", `Bearer ${driverToken}`);
+  assert.equal(driverRes.status, 200);
+  assert.equal(driverRes.body.total, 1);
+  assert.equal(driverRes.body.data[0].id, driverTrip.id);
+});
