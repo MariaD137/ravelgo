@@ -13,6 +13,9 @@
 #
 set -euo pipefail
 
+# Never let the AWS CLI open an interactive pager mid-script.
+export AWS_PAGER=""
+
 ENVNAME=staging
 PROJECT="ravelgo-migrate-${ENVNAME}"
 ROLE="ravelgo-migrate-${ENVNAME}"
