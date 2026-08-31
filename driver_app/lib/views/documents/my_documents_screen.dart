@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
@@ -11,7 +12,16 @@ class MyDocumentsScreen extends StatefulWidget {
 }
 
 class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
+  static const _docTypes = [
+    "Driver's License",
+    "Vehicle Registration (Car Papers)",
+    "Roadworthiness Certificate",
+    "Insurance Certificate",
+    "Proof of Address",
+  ];
+
   bool _loading = true;
+  bool _uploading = false;
   String? _error;
   List<DriverDocument> _docs = const [];
 
@@ -19,6 +29,70 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  String _contentTypeFor(XFile f) {
+    final ct = f.mimeType ?? '';
+    if (ct.isNotEmpty) return ct;
+    final n = f.name.toLowerCase();
+    if (n.endsWith('.png')) return 'image/png';
+    if (n.endsWith('.webp')) return 'image/webp';
+    if (n.endsWith('.heic')) return 'image/heic';
+    if (n.endsWith('.pdf')) return 'application/pdf';
+    return 'image/jpeg';
+  }
+
+  Future<void> _addDocument() async {
+    // 1. Choose which document this is.
+    final title = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Which document?', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+            ),
+            for (final t in _docTypes)
+              ListTile(title: Text(t), onTap: () => Navigator.pop(ctx, t)),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (title == null || !mounted) return;
+
+    // 2. Pick an image of the document.
+    final XFile? picked;
+    try {
+      picked = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open picker: $e')));
+      return;
+    }
+    if (picked == null || !mounted) return;
+
+    // 3. Upload it.
+    setState(() => _uploading = true);
+    try {
+      final bytes = await picked.readAsBytes();
+      await DriverApi.uploadDocument(
+        title: title,
+        fileName: picked.name,
+        contentType: _contentTypeFor(picked),
+        bytes: bytes,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Document submitted for review.')));
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e is ApiException ? e.message : e.toString();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
   }
 
   Future<void> _load() async {
@@ -79,6 +153,13 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text("My Documents")),
       body: _body(),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _uploading ? null : _addDocument,
+        icon: _uploading
+            ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            : const Icon(Icons.upload_file),
+        label: Text(_uploading ? 'Uploading…' : 'Add document'),
+      ),
     );
   }
 

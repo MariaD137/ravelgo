@@ -1,3 +1,4 @@
+import 'package:http/http.dart' as http;
 import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/auth_service.dart';
 
@@ -159,6 +160,34 @@ class DriverApi {
       if (finalFare != null) 'finalFare': finalFare,
     });
     return DriverTrip.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Upload a document: presign an S3 key, PUT the bytes straight to S3, then
+  /// record the metadata. Returns the created (PENDING) document.
+  static Future<DriverDocument> uploadDocument({
+    required String title,
+    required String fileName,
+    required String contentType,
+    required List<int> bytes,
+  }) async {
+    // 1. Ask the backend for a short-lived presigned PUT URL + object key.
+    final presign = await ApiClient.post('/api/uploads/presign', {
+      'bucket': 'documents',
+      'fileName': fileName,
+      'contentType': contentType,
+    }) as Map<String, dynamic>;
+    final uploadUrl = '${presign['uploadUrl']}';
+    final fileKey = '${presign['fileKey']}';
+
+    // 2. PUT the bytes straight to S3 (no auth header — the URL is signed).
+    final put = await http.put(Uri.parse(uploadUrl), headers: {'Content-Type': contentType}, body: bytes);
+    if (put.statusCode < 200 || put.statusCode >= 300) {
+      throw ApiException(put.statusCode, 'File upload failed (${put.statusCode}).');
+    }
+
+    // 3. Record the document against the driver.
+    final doc = await ApiClient.post('/api/documents', {'title': title, 'fileKey': fileKey}) as Map<String, dynamic>;
+    return DriverDocument.fromJson(doc);
   }
 
   /// The driver's uploaded documents and their approval status.

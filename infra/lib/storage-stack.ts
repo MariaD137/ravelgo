@@ -20,6 +20,20 @@ export class StorageStack extends cdk.Stack {
       enforceSSL: true,
       versioned: true,
       lifecycleRules: [{ noncurrentVersionExpiration: cdk.Duration.days(90) }],
+      // The web apps upload documents by PUTting the file bytes straight to a
+      // short-lived presigned URL (see backend POST /uploads/presign). A
+      // browser PUT is a cross-origin request, so S3 must return CORS headers
+      // or the browser blocks it. Access is still gated by the presigned URL
+      // (per-user key, 5-minute expiry) — CORS only controls which page may
+      // send the bytes, not who is authorized.
+      cors: [
+        {
+          allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.GET, s3.HttpMethods.HEAD],
+          allowedOrigins: ["*"],
+          allowedHeaders: ["*"],
+          maxAge: 3000,
+        },
+      ],
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
