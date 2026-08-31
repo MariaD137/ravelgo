@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/services/auth_service.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/auth/create_account_screen.dart';
 import 'package:ravelgo_driver_app/views/auth/forgot_password_screen.dart';
@@ -23,6 +24,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _loading = false;
 
   static final _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
@@ -33,13 +35,26 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _signIn() {
+  Future<void> _signIn() async {
     if (!_formKey.currentState!.validate()) return;
-    // Integration point: authenticate against the auth service here.
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => const DriverShell()),
-      (route) => false,
-    );
+    setState(() => _loading = true);
+    try {
+      await AuthService.signIn(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const DriverShell()),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(AuthService.friendlyError(e))));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -106,7 +121,9 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                AppComponents.primaryButton(text: 'Sign in', onPressed: _signIn),
+                AppComponents.primaryButton(
+                    text: _loading ? 'Signing in…' : 'Sign in',
+                    onPressed: _loading ? null : _signIn),
                 const SizedBox(height: 24),
                 TextButton(
                   onPressed: () {

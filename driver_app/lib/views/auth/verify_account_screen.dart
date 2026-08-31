@@ -1,34 +1,77 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/services/auth_service.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
 
-/// AUTH BOUNDARY: no verification backend is connected, so no code is sent.
-/// "Resend code" is rate-limited UI that states the boundary honestly.
+/// Driver account verification. Confirms the emailed Cognito code, then signs
+/// the driver in and enters the app.
 class VerifyAccountScreen extends StatefulWidget {
-  const VerifyAccountScreen({super.key});
+  final String? email;
+  final String? password;
+  const VerifyAccountScreen({super.key, this.email, this.password});
 
   @override
   State<VerifyAccountScreen> createState() => _VerifyAccountScreenState();
 }
 
 class _VerifyAccountScreenState extends State<VerifyAccountScreen> {
+  final _codeController = TextEditingController();
+  String? _error;
+  bool _loading = false;
   int _resendCooldown = 0;
   Timer? _cooldownTimer;
 
   @override
   void dispose() {
     _cooldownTimer?.cancel();
+    _codeController.dispose();
     super.dispose();
   }
 
-  void _resend() {
+  Future<void> _verify() async {
+    final code = _codeController.text.trim();
+    if (code.length != 6 || int.tryParse(code) == null) {
+      setState(() => _error = 'Enter the 6-digit code');
+      return;
+    }
+    setState(() {
+      _error = null;
+      _loading = true;
+    });
+    try {
+      final email = widget.email ?? '';
+      await AuthService.confirm(email: email, code: code);
+      if ((widget.password ?? '').isNotEmpty) {
+        await AuthService.signIn(email: email, password: widget.password!);
+      }
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const DriverShell()),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = AuthService.friendlyError(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _resend() async {
     if (_resendCooldown > 0) return;
-    // Integration point: request a new OTP from the auth service here.
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Verification service not connected yet - code delivery requires the auth backend.'),
-    ));
+    try {
+      await AuthService.resendCode(email: widget.email ?? '');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('A new code has been sent to your email.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(AuthService.friendlyError(e))));
+    }
     setState(() => _resendCooldown = 30);
     _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (!mounted) return timer.cancel();
@@ -41,6 +84,7 @@ class _VerifyAccountScreenState extends State<VerifyAccountScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final target = widget.email ?? 'your email address';
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -51,30 +95,26 @@ class _VerifyAccountScreenState extends State<VerifyAccountScreen> {
             children: [
               AppComponents.header(context, "Verify your account"),
               const SizedBox(height: 24),
-              const Text("Enter the 6-digit code sent to your phone number", style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
+              Text("Enter the 6-digit code sent to $target",
+                  style: const TextStyle(fontSize: 14, color: AppColors.textSecondary)),
               const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: List.generate(
-                  6,
-                  (i) => SizedBox(
-                    width: 44,
-                    child: TextField(
-                      textAlign: TextAlign.center,
-                      keyboardType: TextInputType.number,
-                      maxLength: 1,
-                      decoration: const InputDecoration(counterText: "", border: OutlineInputBorder()),
-                    ),
-                  ),
+              TextField(
+                controller: _codeController,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                decoration: InputDecoration(
+                  hintText: 'Enter code',
+                  counterText: '',
+                  border: const OutlineInputBorder(),
+                  errorText: _error,
                 ),
               ),
-              const SizedBox(height: 20),
-              Center(
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: _resendCooldown > 0 ? null : _resend,
-                  child: Text(_resendCooldown > 0
-                      ? "Resend code (${_resendCooldown}s)"
-                      : "Resend code"),
+                  child: Text(_resendCooldown > 0 ? "Resend code (${_resendCooldown}s)" : "Resend code"),
                 ),
               ),
               const Spacer(),
@@ -84,13 +124,8 @@ class _VerifyAccountScreenState extends State<VerifyAccountScreen> {
               ),
               const SizedBox(height: 12),
               AppComponents.primaryButton(
-                text: "Verify & finish",
-                onPressed: () {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (context) => const DriverShell()),
-                    (route) => false,
-                  );
-                },
+                text: _loading ? "Verifying…" : "Verify & finish",
+                onPressed: _loading ? null : _verify,
               ),
             ],
           ),
