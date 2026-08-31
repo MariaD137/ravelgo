@@ -40,6 +40,7 @@ dependencies:
   dotted_border: ^3.1.0
   amazon_cognito_identity_dart_2: ^3.6.3
   http: ^1.2.0
+  web_socket_channel: ^3.0.0
 
 dev_dependencies:
   flutter_test:

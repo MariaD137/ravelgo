@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
+import 'package:ravelgo_driver_app/services/realtime_service.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/utils/date_utils.dart';
 
@@ -16,7 +20,60 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
   late DriverTrip _trip = widget.trip;
   bool _busy = false;
 
+  // Live location streaming while the trip is in progress.
+  final RealtimeService _rt = RealtimeService();
+  Timer? _locTimer;
+  bool _streaming = false;
+
   bool get _cancelled => _trip.status == 'CANCELLED' || _trip.status == 'DISPUTED';
+
+  @override
+  void initState() {
+    super.initState();
+    _syncStreaming();
+  }
+
+  @override
+  void dispose() {
+    _stopStreaming();
+    super.dispose();
+  }
+
+  /// Start streaming location once the trip is IN_PROGRESS; stop otherwise.
+  Future<void> _syncStreaming() async {
+    if (_trip.status == 'IN_PROGRESS' && !_streaming) {
+      if (!RealtimeService.isConfigured) return;
+      final ok = await _rt.connect();
+      if (!ok) return;
+      _streaming = true;
+      // Push an immediate fix, then every 5 seconds while on the trip.
+      _pushLocation();
+      _locTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pushLocation());
+    } else if (_trip.status != 'IN_PROGRESS' && _streaming) {
+      _stopStreaming();
+    }
+  }
+
+  void _stopStreaming() {
+    _locTimer?.cancel();
+    _locTimer = null;
+    if (_streaming) _rt.dispose();
+    _streaming = false;
+  }
+
+  Future<void> _pushLocation() async {
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
+      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      _rt.sendLocation(pos.latitude, pos.longitude);
+    } catch (_) {
+      // Best-effort: a failed fix just means no update this tick.
+    }
+  }
 
   Color _statusColor() {
     if (_cancelled) return AppColors.danger;
@@ -32,6 +89,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
       final updated = await DriverApi.updateTripStatus(_trip.id, toStatus, finalFare: finalFare);
       if (!mounted) return;
       setState(() => _trip = updated);
+      _syncStreaming(); // start pushing location when IN_PROGRESS, stop when done
     } catch (e) {
       if (!mounted) return;
       final msg = e is ApiException ? e.message : e.toString();
