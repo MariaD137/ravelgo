@@ -17,8 +17,15 @@ class AuthService {
   static String? accessToken;
   static String? idToken;
   static String? email;
+  static String? givenName;
+  static String? familyName;
 
   static bool get isSignedIn => accessToken != null;
+
+  /// The access token the API client sends as a Bearer credential. For now this
+  /// is the in-memory token from sign-in (valid ~1 hour); persistence and
+  /// automatic refresh are the next step.
+  static Future<String?> validAccessToken() async => accessToken;
 
   /// True only when the app was built with real Cognito settings. Lets the UI
   /// give a clear message instead of a cryptic error if config is missing.
@@ -66,6 +73,12 @@ class AuthService {
     accessToken = s?.getAccessToken().getJwtToken();
     idToken = s?.getIdToken().getJwtToken();
     AuthService.email = email;
+    final claims = s?.getIdToken().decodePayload();
+    if (claims != null) {
+      givenName = claims['given_name']?.toString();
+      familyName = claims['family_name']?.toString();
+      AuthService.email = claims['email']?.toString() ?? email;
+    }
   }
 
   static void signOut() {

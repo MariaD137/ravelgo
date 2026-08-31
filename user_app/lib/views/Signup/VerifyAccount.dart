@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/services/auth_service.dart';
+import 'package:ravelgo_user_app/services/rider_api.dart';
 import 'package:ravelgo_user_app/views/bottommenu/BottomNavigationView.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
@@ -49,6 +50,11 @@ class _VerifyAccountScreenState extends State<VerifyAccountScreen> {
       await AuthService.confirm(email: email, code: code);
       if ((widget.password ?? '').isNotEmpty) {
         await AuthService.signIn(email: email, password: widget.password!);
+        try {
+          await RiderApi.provisionMe();
+        } catch (_) {
+          // Non-fatal: user may not be in the "Rider" group yet.
+        }
       }
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(

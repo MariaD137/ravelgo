@@ -1,4 +1,6 @@
 import 'package:ravelgo_user_app/components/platform_file_image.dart';
+import 'package:ravelgo_user_app/services/auth_service.dart';
+import 'package:ravelgo_user_app/services/rider_api.dart';
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/Model/app_state.dart';
 import 'package:ravelgo_user_app/views/AccountView/AppSettingsPage.dart';
@@ -23,6 +25,40 @@ class Accountview extends StatefulWidget {
 }
 
 class _AccountviewState extends State<Accountview> {
+  String? _name;
+  String? _email;
+  String? _loadError;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final me = await RiderApi.getMe();
+      if (!mounted) return;
+      setState(() {
+        _name = me == null
+            ? null
+            : [me['firstName'], me['lastName']]
+                .where((e) => e != null && '$e'.trim().isNotEmpty)
+                .join(' ');
+        _email = me?['email']?.toString() ?? AuthService.email;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.toString();
+        _email = AuthService.email;
+        _loading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -45,9 +81,11 @@ class _AccountviewState extends State<Accountview> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    'Thelma Ibeh',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  Text(
+                    _loading
+                        ? 'Loading…'
+                        : ((_name?.isNotEmpty ?? false) ? _name! : (_email ?? 'Rider')),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 6),
                   Row(
@@ -61,6 +99,20 @@ class _AccountviewState extends State<Accountview> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  if (_loading)
+                    const Text('Connecting to RavelGo…',
+                        style: TextStyle(fontSize: 12, color: AppColors.textMuted))
+                  else if (_loadError != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Text('Not connected: $_loadError',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 11, color: AppColors.error)),
+                    )
+                  else
+                    Text('✓ Live from backend · ${_email ?? ''}',
+                        style: const TextStyle(fontSize: 12, color: AppColors.success)),
                   const SizedBox(height: 18),
                 ],
               ),

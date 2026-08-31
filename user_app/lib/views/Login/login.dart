@@ -3,6 +3,7 @@ import 'package:ravelgo_user_app/views/Login/ForgotPassword.dart';
 import 'package:ravelgo_user_app/views/Signup/CreateAccount.dart';
 import 'package:ravelgo_user_app/views/bottommenu/BottomNavigationView.dart';
 import 'package:ravelgo_user_app/services/auth_service.dart';
+import 'package:ravelgo_user_app/services/rider_api.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 /// Rider sign-in.
@@ -43,6 +44,11 @@ class _LoginState extends State<Login> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
+      try {
+        await RiderApi.provisionMe();
+      } catch (_) {
+        // Non-fatal: e.g. user not yet in the "Rider" group. Login still proceeds.
+      }
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => BottomNavigationView()),
