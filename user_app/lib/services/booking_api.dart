@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/trips_api.dart';
 
@@ -43,6 +45,22 @@ class BookingApi {
   // computation for these inputs, never a client-asserted price.
   static const double placeholderDistanceKm = 6;
   static const double placeholderDurationMinutes = 18;
+
+  /// Straight-line (great-circle) distance in km between two lat/lng points.
+  /// Used to price a trip from the rider's chosen pickup and destination pins —
+  /// an honest estimate for a city ride until routed distance is added.
+  static double distanceKm(double lat1, double lng1, double lat2, double lng2) {
+    const earthKm = 6371.0;
+    double toRad(double d) => d * (pi / 180.0);
+    final dLat = toRad(lat2 - lat1);
+    final dLng = toRad(lng2 - lng1);
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(toRad(lat1)) * cos(toRad(lat2)) * sin(dLng / 2) * sin(dLng / 2);
+    return earthKm * 2 * atan2(sqrt(a), sqrt(1 - a));
+  }
+
+  /// Rough trip duration for a distance, assuming ~25 km/h average city speed.
+  static double estimatedMinutes(double km) => (km / 25.0) * 60.0;
 
   /// Live fare estimate for a trip of the given distance/duration.
   static Future<FareQuote> quote({

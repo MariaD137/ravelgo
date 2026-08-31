@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/LocationService.dart';
 import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
+import 'package:ravelgo_user_app/services/booking_api.dart';
 import 'package:ravelgo_user_app/views/TexiModule/FindDriverScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
@@ -23,6 +24,56 @@ class _SelectRideState extends State<SelectRide> {
   String _paymentMethod = 'Card';
   DateTime? _scheduledFor;
 
+  // Real trip geometry: pickup = device location, destination = a pin the rider
+  // taps on the map. The straight-line distance between them prices the trip.
+  LatLng? _pickupLatLng;
+  LatLng? _destLatLng;
+  double? _distanceKm;
+
+  @override
+  void initState() {
+    super.initState();
+    _initPickup();
+  }
+
+  Future<void> _initPickup() async {
+    final position = await LocationService.getCurrentLocation();
+    if (position == null || !mounted) return;
+    final me = LatLng(position.latitude, position.longitude);
+    setState(() => _pickupLatLng = me);
+    mapController?.animateCamera(CameraUpdate.newLatLng(me));
+  }
+
+  void _onMapTap(LatLng point) {
+    setState(() {
+      _destLatLng = point;
+      final from = _pickupLatLng;
+      _distanceKm = from == null
+          ? null
+          : BookingApi.distanceKm(from.latitude, from.longitude, point.latitude, point.longitude);
+    });
+  }
+
+  Set<Marker> _markers() {
+    final m = <Marker>{};
+    if (_pickupLatLng != null) {
+      m.add(Marker(
+        markerId: const MarkerId('pickup'),
+        position: _pickupLatLng!,
+        infoWindow: const InfoWindow(title: 'Pickup'),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+      ));
+    }
+    if (_destLatLng != null) {
+      m.add(Marker(
+        markerId: const MarkerId('destination'),
+        position: _destLatLng!,
+        infoWindow: const InfoWindow(title: 'Destination'),
+      ));
+    }
+    return m;
+  }
+
   /// Recenter the map on the device's real location (geolocator).
   Future<void> _recenterOnMe() async {
     final position = await LocationService.getCurrentLocation();
@@ -34,9 +85,9 @@ class _SelectRideState extends State<SelectRide> {
       }
       return;
     }
-    mapController!.animateCamera(CameraUpdate.newLatLng(
-      LatLng(position.latitude, position.longitude),
-    ));
+    final me = LatLng(position.latitude, position.longitude);
+    setState(() => _pickupLatLng = me);
+    mapController!.animateCamera(CameraUpdate.newLatLng(me));
   }
 
   Future<void> _pickPaymentMethod() async {
@@ -99,11 +150,13 @@ class _SelectRideState extends State<SelectRide> {
           SafeGoogleMap(
             onMapCreated: (controller) => mapController = controller,
             initialCameraPosition: CameraPosition(
-              target: _center,
+              target: _pickupLatLng ?? _center,
               zoom: 14.0,
             ),
             myLocationEnabled: true,
             myLocationButtonEnabled: false,
+            onTap: _onMapTap,
+            markers: _markers(),
           ),
 
           // Top bar with back, location search, and add
@@ -145,6 +198,18 @@ class _SelectRideState extends State<SelectRide> {
                       "Choose a ride",
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
+                    if (_destLatLng == null)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text('Tap the map to drop your destination pin',
+                            style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                      )
+                    else if (_distanceKm != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text('≈ ${_distanceKm!.toStringAsFixed(1)} km trip',
+                            style: const TextStyle(fontSize: 12, color: AppColors.primaryDark, fontWeight: FontWeight.w600)),
+                      ),
                     Expanded(
                       child: ListView(
                         controller: controller,
@@ -205,6 +270,9 @@ class _SelectRideState extends State<SelectRide> {
                                   builder: (context) => FindDriverScreen(
                                     destination: widget.destination,
                                     paymentMethod: _paymentMethod,
+                                    distanceKm: _distanceKm,
+                                    durationMinutes:
+                                        _distanceKm == null ? null : BookingApi.estimatedMinutes(_distanceKm!),
                                   ),
                                 ),
                               );

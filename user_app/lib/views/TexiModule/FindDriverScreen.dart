@@ -9,7 +9,16 @@ import 'package:ravelgo_user_app/theme/app_theme.dart';
 class FindDriverScreen extends StatefulWidget {
   final String? destination;
   final String paymentMethod;
-  const FindDriverScreen({super.key, this.destination, this.paymentMethod = 'Card'});
+  // Real trip metrics from the map-pin selection on SelectRide, when available.
+  final double? distanceKm;
+  final double? durationMinutes;
+  const FindDriverScreen({
+    super.key,
+    this.destination,
+    this.paymentMethod = 'Card',
+    this.distanceKm,
+    this.durationMinutes,
+  });
 
   @override
   State<FindDriverScreen> createState() => _FindDriverScreenState();
@@ -20,6 +29,11 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
   Set<Marker> _markers = {};
 
   static const _pickup = 'Current location';
+
+  // Use the rider's map-selected distance/duration when present, else the
+  // placeholder (e.g. if they skipped dropping a pin).
+  double get _distanceKm => widget.distanceKm ?? BookingApi.placeholderDistanceKm;
+  double get _durationMinutes => widget.durationMinutes ?? BookingApi.placeholderDurationMinutes;
 
   FareQuote? _quote;
   String? _quoteError;
@@ -45,8 +59,8 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
     });
     try {
       final q = await BookingApi.quote(
-        distanceKm: BookingApi.placeholderDistanceKm,
-        durationMinutes: BookingApi.placeholderDurationMinutes,
+        distanceKm: _distanceKm,
+        durationMinutes: _durationMinutes,
       );
       if (!mounted) return;
       setState(() {
@@ -70,8 +84,8 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
       final trip = await BookingApi.requestTrip(
         pickup: _pickup,
         destination: _destination,
-        distanceKm: BookingApi.placeholderDistanceKm,
-        durationMinutes: BookingApi.placeholderDurationMinutes,
+        distanceKm: _distanceKm,
+        durationMinutes: _durationMinutes,
       );
       if (!mounted) return;
       Navigator.of(context).push(
