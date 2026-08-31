@@ -1,0 +1,786 @@
+<title>RavelGo Rider</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Roboto:wght@400;500;700&display=swap">
+<style>
+  /* ---------- Page tokens (theme-aware backdrop; the phone interior is a
+       fixed light "product surface" painted explicitly) ---------- */
+  :root{
+    --page-bg:#e7e8ea;
+    --page-bg-2:#dedfe2;
+    --ink:#16181c;
+    --muted:#6b6f77;
+    --hair:rgba(20,22,26,.12);
+    --rail:#ffffff;
+    --rail-edge:rgba(20,22,26,.10);
+    --glow:rgba(20,22,26,.16);
+    --dot:#16181c;
+    --dot-off:rgba(20,22,26,.22);
+    --focus:#0a84ff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --page-bg:#0d0e11;
+      --page-bg-2:#141519;
+      --ink:#f3f4f6;
+      --muted:#9aa0a8;
+      --hair:rgba(255,255,255,.12);
+      --rail:#17181c;
+      --rail-edge:rgba(255,255,255,.09);
+      --glow:rgba(0,0,0,.5);
+      --dot:#f3f4f6;
+      --dot-off:rgba(255,255,255,.24);
+      --focus:#4c9bff;
+    }
+  }
+  :root[data-theme="dark"]{
+    --page-bg:#0d0e11;
+    --page-bg-2:#141519;
+    --ink:#f3f4f6;
+    --muted:#9aa0a8;
+    --hair:rgba(255,255,255,.12);
+    --rail:#17181c;
+    --rail-edge:rgba(255,255,255,.09);
+    --glow:rgba(0,0,0,.5);
+    --dot:#f3f4f6;
+    --dot-off:rgba(255,255,255,.24);
+    --focus:#4c9bff;
+  }
+
+  /* ---------- App palette (RavelGo real design tokens) ---------- */
+  .device{
+    --bg:#ffffff; --surface:#ffffff; --elevated:#f5f5f5;
+    --tPrimary:#000000; --tSecondary:#555555; --tMuted:#888888;
+    --border:#e5e5e5; --primary:#000000; --success:#2e7d32; --error:#d32f2f;
+    --mapbg:#ededed; --mapline:#e0e0e0;
+  }
+
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:"Roboto",system-ui,-apple-system,"Segoe UI",sans-serif;
+    color:var(--ink);
+    background:
+      radial-gradient(120% 90% at 50% -10%, var(--page-bg-2), transparent 60%),
+      var(--page-bg);
+    min-height:100dvh;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{
+    min-height:100dvh;
+    display:grid;
+    grid-template-columns:1fr;
+    align-content:center;
+    justify-items:center;
+    gap:26px;
+    padding:34px 18px 46px;
+  }
+
+  /* ---------- Presentation chrome ---------- */
+  .masthead{max-width:390px;width:100%;text-align:center}
+  .brand{
+    font-family:"Bricolage Grotesque",system-ui,sans-serif;
+    font-weight:700;font-size:26px;letter-spacing:-.02em;color:var(--ink);
+    display:inline-flex;align-items:center;gap:9px;
+  }
+  .brand .mk{
+    width:11px;height:11px;border-radius:3px;background:var(--ink);
+    display:inline-block;transform:translateY(1px);
+  }
+  .kicker{
+    font-family:"Bricolage Grotesque",system-ui,sans-serif;
+    font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+    font-size:11px;color:var(--muted);margin:9px 0 0;
+  }
+
+  .stage{display:flex;flex-direction:column;align-items:center;gap:14px}
+
+  /* ---------- Phone device ---------- */
+  .device{
+    width:min(390px,92vw);
+    height:min(830px,82dvh);
+    background:var(--bg);
+    border-radius:44px;
+    padding:11px;
+    position:relative;
+    box-shadow:
+      0 2px 4px rgba(0,0,0,.28),
+      0 30px 70px -22px var(--glow),
+      0 0 0 2px rgba(0,0,0,.55),
+      0 0 0 12px color-mix(in srgb, var(--page-bg) 70%, #000 6%);
+    isolation:isolate;
+  }
+  .screen-frame{
+    position:absolute;inset:11px;
+    border-radius:34px;overflow:hidden;background:var(--bg);
+  }
+  .notch{
+    position:absolute;top:12px;left:50%;transform:translateX(-50%);
+    width:120px;height:26px;background:#000;border-radius:0 0 16px 16px;z-index:40;
+    pointer-events:none;
+  }
+
+  /* stack of app screens */
+  .screen{
+    position:absolute;inset:0;display:none;flex-direction:column;
+    background:var(--surface);color:var(--tPrimary);
+  }
+  .screen.active{display:flex}
+  .scroll{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+  .scroll::-webkit-scrollbar{width:0}
+
+  .statusbar{
+    height:44px;flex:none;display:flex;align-items:flex-end;justify-content:space-between;
+    padding:0 22px 5px;font-size:12.5px;font-weight:500;color:var(--tPrimary);z-index:20;position:relative;
+  }
+  .statusbar .r{display:flex;gap:6px;align-items:center}
+
+  /* ---------- Map surface (stylized, monochrome) ---------- */
+  .map{
+    position:relative;background:var(--mapbg);flex:1;overflow:hidden;
+  }
+  .map::before{
+    content:"";position:absolute;inset:-20%;
+    background:
+      repeating-linear-gradient(0deg, transparent 0 46px, var(--mapline) 46px 48px),
+      repeating-linear-gradient(90deg, transparent 0 60px, var(--mapline) 60px 62px);
+    transform:rotate(-9deg);
+  }
+  .map::after{
+    content:"";position:absolute;left:-10%;top:32%;width:130%;height:60px;
+    background:#e4e4e4;transform:rotate(-9deg);opacity:.9;
+  }
+  .map .blockA,.map .blockB{position:absolute;background:#e6e6e6;border-radius:3px;transform:rotate(-9deg)}
+  .map .blockA{width:120px;height:90px;left:12%;top:18%}
+  .map .blockB{width:150px;height:70px;right:8%;bottom:22%}
+  .route{position:absolute;inset:0;z-index:3;pointer-events:none}
+  .pin{
+    position:absolute;z-index:4;display:flex;flex-direction:column;align-items:center;
+    transform:translate(-50%,-100%);
+  }
+  .pin .dotp{width:14px;height:14px;border-radius:50%;background:#000;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+  .pin.dest .dotp{border-radius:3px}
+  .me{position:absolute;z-index:5;width:18px;height:18px;border-radius:50%;background:#000;border:3px solid #fff;box-shadow:0 0 0 6px rgba(0,0,0,.12),0 2px 6px rgba(0,0,0,.4);transform:translate(-50%,-50%)}
+
+  /* circular map buttons */
+  .mapbtns{position:absolute;top:52px;left:0;right:0;z-index:12;display:flex;justify-content:space-between;padding:0 14px;pointer-events:none}
+  .cbtn{
+    width:42px;height:42px;border-radius:50%;background:#fff;border:1px solid var(--border);
+    display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.12);cursor:pointer;
+    pointer-events:auto;color:#000;
+  }
+  .cbtn.group{display:flex;gap:10px;background:none;border:none;box-shadow:none;width:auto;height:auto}
+  .cbtn svg{width:20px;height:20px}
+  .recenter{position:absolute;right:16px;z-index:12;bottom:14px}
+
+  /* ---------- Bottom sheets ---------- */
+  .sheet{
+    background:var(--surface);border-radius:20px 20px 0 0;position:relative;z-index:14;
+    box-shadow:0 -8px 26px rgba(0,0,0,.10);flex:none;
+  }
+  .grab{width:38px;height:5px;border-radius:10px;background:#dcdcdc;margin:9px auto 4px}
+  .pad{padding:6px 16px 16px}
+
+  h1,h2,h3,p{margin:0}
+  .sheet-title{font-size:16px;font-weight:700;text-align:center;padding:4px 0 12px}
+
+  /* search pill */
+  .searchpill{
+    display:flex;align-items:center;gap:10px;background:var(--elevated);
+    border-radius:14px;padding:14px 14px;color:var(--tSecondary);font-size:15px;
+    border:1px solid var(--border);cursor:pointer;
+  }
+  .searchpill .sq{width:9px;height:9px;background:#000;border-radius:2px;flex:none}
+  .searchbar{
+    display:flex;align-items:center;gap:8px;background:#fff;border-radius:30px;
+    padding:6px 10px;box-shadow:0 3px 12px rgba(0,0,0,.14);margin:8px 14px 0;position:relative;z-index:15;
+  }
+  .searchbar input{border:0;outline:0;font:inherit;flex:1;color:#000;background:none;padding:8px 0}
+  .iconbtn{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;border:0;background:none;cursor:pointer;color:#000}
+
+  .place{display:flex;align-items:center;gap:14px;padding:13px 2px;border-bottom:1px solid var(--border);cursor:pointer;text-align:left;width:100%;background:none;border-left:0;border-right:0;border-top:0}
+  .place:last-child{border-bottom:0}
+  .place .ic{width:40px;height:40px;border-radius:50%;background:var(--elevated);display:grid;place-items:center;flex:none;color:#000}
+  .place .t{flex:1}
+  .place .t b{display:block;font-size:15px;font-weight:500;color:#000}
+  .place .t span{font-size:13px;color:var(--tMuted)}
+
+  /* ride cards */
+  .ridecard{
+    display:flex;align-items:center;gap:12px;border:1px solid var(--border);
+    border-radius:12px;padding:12px;margin-bottom:10px;cursor:pointer;background:#fff;transition:border-color .15s, box-shadow .15s;
+  }
+  .ridecard.sel{border:1.6px solid var(--success);box-shadow:0 0 0 3px rgba(46,125,50,.08)}
+  .ridecard .car{width:44px;height:44px;border-radius:10px;background:var(--elevated);display:grid;place-items:center;flex:none;color:#000}
+  .ridecard .info{flex:1}
+  .ridecard .info b{font-size:15px;font-weight:600;display:block;color:#000}
+  .ridecard .info .meta{font-size:12.5px;color:var(--tMuted);display:flex;gap:8px;align-items:center;margin-top:3px}
+  .ridecard .fare{text-align:right}
+  .ridecard .fare b{font-size:15px;font-weight:700;color:#000}
+  .ridecard .fare span{font-size:11.5px;color:var(--tMuted);display:block}
+
+  .payrow{display:flex;gap:8px;margin:12px 0}
+  .chipbtn{display:flex;align-items:center;gap:8px;border:1px solid var(--border);background:#fff;border-radius:12px;padding:12px;font-size:14px;font-weight:500;cursor:pointer;color:#000}
+  .chipbtn.flex{flex:1;color:var(--tSecondary);font-weight:400;background:var(--elevated);border-color:var(--elevated)}
+
+  .cta{
+    display:flex;gap:8px;align-items:center;margin-top:4px;
+  }
+  .btn{
+    flex:1;border:0;border-radius:12px;padding:15px;font:inherit;font-weight:600;font-size:15.5px;
+    background:var(--primary);color:#fff;cursor:pointer;
+  }
+  .btn.ghost{background:#fff;color:#000;border:1px solid var(--border)}
+  .btn.sq{flex:none;width:50px;background:#000;color:#fff;border-radius:12px;display:grid;place-items:center;padding:0}
+  .btn:active{transform:translateY(1px)}
+  .btn:disabled{background:var(--disabled,#e5e5e5);color:#999}
+
+  /* searching / offers */
+  .banner{background:#000;color:#fff;border-radius:20px 20px 0 0;padding:8px 14px 16px;text-align:center;position:relative}
+  .banner .grab{background:rgba(255,255,255,.4)}
+  .banner .bt{font-size:14px;font-weight:500;margin-top:2px}
+  .offerbox{border:1px solid var(--border);border-radius:14px;padding:16px;margin-top:14px;text-align:center}
+  .offerbox .lbl{font-size:12.5px;color:var(--tMuted);text-transform:uppercase;letter-spacing:.08em}
+  .offerbox .amt{font-size:30px;font-weight:700;margin:4px 0;color:#000;font-variant-numeric:tabular-nums}
+  .offerbox .sub{font-size:13px;color:var(--tSecondary)}
+  .searching{display:flex;align-items:center;justify-content:center;gap:10px;margin:16px 0 4px;color:var(--tSecondary);font-size:14px}
+  .spinner{width:18px;height:18px;border-radius:50%;border:2.5px solid #e2e2e2;border-top-color:#000;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .drivercard{border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px}
+  .drivercard .top{display:flex;align-items:center;gap:12px}
+  .avatar{width:46px;height:46px;border-radius:50%;background:#111;color:#fff;display:grid;place-items:center;font-weight:700;font-size:16px;flex:none;font-family:"Bricolage Grotesque",sans-serif}
+  .drivercard .nm{flex:1}
+  .drivercard .nm b{font-size:15.5px;font-weight:600;display:block;color:#000}
+  .drivercard .nm span{font-size:13px;color:var(--tMuted)}
+  .star{color:#000;font-weight:700;font-size:13.5px;display:inline-flex;gap:3px;align-items:center}
+  .drivercard .farebig{text-align:right}
+  .drivercard .farebig b{font-size:16px;font-weight:700;color:#000;font-variant-numeric:tabular-nums}
+  .drivercard .farebig span{font-size:12px;color:var(--tMuted);display:block}
+  .drow{display:flex;gap:8px;margin-top:12px}
+
+  /* trip */
+  .statuspill{
+    position:absolute;top:54px;left:14px;right:14px;z-index:12;background:#000;color:#fff;
+    border-radius:14px;padding:12px 16px;font-size:14.5px;font-weight:500;box-shadow:0 6px 18px rgba(0,0,0,.28);
+    display:flex;align-items:center;gap:10px;
+  }
+  .progress{display:flex;gap:6px;margin:0 0 12px}
+  .progress i{height:4px;border-radius:3px;flex:1;background:#e5e5e5}
+  .progress i.on{background:#000}
+  .tripactions{display:flex;gap:8px;margin-top:12px}
+  .roundbtn{flex:1;border:1px solid var(--border);background:#fff;border-radius:12px;padding:12px;display:flex;align-items:center;justify-content:center;gap:8px;font-weight:500;cursor:pointer;color:#000;font-size:14px}
+
+  /* rate */
+  .center-screen{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px 26px;gap:6px}
+  .stars{display:flex;gap:8px;margin:14px 0 6px}
+  .stars button{background:none;border:0;cursor:pointer;font-size:34px;line-height:1;color:#d8d8d8;padding:0}
+  .stars button.lit{color:#000}
+  .tipchips{display:flex;gap:8px;margin:10px 0 18px;flex-wrap:wrap;justify-content:center}
+  .tip{border:1px solid var(--border);border-radius:999px;padding:9px 16px;font-size:13.5px;cursor:pointer;background:#fff;color:#000}
+  .tip.sel{background:#000;color:#fff;border-color:#000}
+
+  /* list rows (rides / account) */
+  .appbar{height:52px;flex:none;display:flex;align-items:center;gap:12px;padding:0 16px;font-weight:700;font-size:18px;border-bottom:1px solid var(--border);color:#000}
+  .triprow{display:flex;gap:13px;padding:15px 16px;border-bottom:1px solid var(--border);align-items:center}
+  .triprow .ic{width:42px;height:42px;border-radius:11px;background:var(--elevated);display:grid;place-items:center;flex:none;color:#000}
+  .triprow .m{flex:1}
+  .triprow .m b{font-size:14.5px;font-weight:600;color:#000;display:block}
+  .triprow .m span{font-size:12.5px;color:var(--tMuted)}
+  .triprow .amt{font-weight:700;font-size:14.5px;color:#000;font-variant-numeric:tabular-nums;text-align:right}
+  .triprow .amt small{display:block;font-size:11px;font-weight:500;color:var(--success)}
+
+  .profile{display:flex;align-items:center;gap:14px;padding:20px 16px}
+  .profile .avatar{width:60px;height:60px;font-size:22px}
+  .profile b{font-size:20px;font-weight:700;color:#000;display:block}
+  .profile span{font-size:13.5px;color:var(--tMuted)}
+  .walletcard{margin:4px 16px 6px;background:#000;color:#fff;border-radius:16px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between}
+  .walletcard .l small{font-size:12px;opacity:.7;text-transform:uppercase;letter-spacing:.08em;display:block}
+  .walletcard .l b{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+  .walletcard .add{background:#fff;color:#000;border:0;border-radius:999px;padding:9px 15px;font:inherit;font-weight:600;font-size:13px;cursor:pointer}
+  .menurow{display:flex;align-items:center;gap:14px;padding:15px 16px;border-bottom:1px solid var(--border);cursor:pointer;color:#000}
+  .menurow .ic{width:22px;display:grid;place-items:center;color:#000}
+  .menurow .t{flex:1;font-size:15px;font-weight:500}
+  .menurow .chev{color:var(--tMuted)}
+
+  /* services grid */
+  .sgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px}
+  .stile{border:1px solid var(--border);border-radius:16px;padding:18px 14px;display:flex;flex-direction:column;gap:12px;min-height:120px;cursor:pointer;background:#fff}
+  .stile .ic{width:46px;height:46px;border-radius:12px;background:var(--elevated);display:grid;place-items:center;color:#000}
+  .stile b{font-size:15px;font-weight:600;color:#000}
+  .stile span{font-size:12.5px;color:var(--tMuted);margin-top:-6px}
+
+  /* bottom nav */
+  .bnav{
+    height:64px;flex:none;display:flex;background:var(--elevated);
+    border-top:1px solid var(--border);border-radius:18px 18px 0 0;box-shadow:0 -3px 10px rgba(0,0,0,.06);
+  }
+  .bnav button{flex:1;background:none;border:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;color:var(--tMuted);font-size:11px;font-weight:500;padding-top:6px}
+  .bnav button.on{color:#000}
+  .bnav svg{width:23px;height:23px}
+
+  /* splash */
+  .splash{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#fff;cursor:pointer}
+  .splash .logo{font-size:38px;font-weight:700;letter-spacing:-.03em;color:#000;font-family:"Roboto",sans-serif}
+  .splash .tag{font-size:14px;color:var(--tMuted);letter-spacing:.02em}
+  .splash .load{display:flex;gap:6px;margin-top:12px}
+  .splash .load i{width:7px;height:7px;border-radius:50%;background:#000;opacity:.25;animation:pulse 1.1s infinite}
+  .splash .load i:nth-child(2){animation-delay:.18s}
+  .splash .load i:nth-child(3){animation-delay:.36s}
+  @keyframes pulse{0%,100%{opacity:.25;transform:scale(.85)}50%{opacity:1;transform:scale(1)}}
+
+  /* toast */
+  .toast{
+    position:absolute;left:16px;right:16px;bottom:78px;z-index:60;background:#000;color:#fff;
+    border-radius:12px;padding:13px 16px;font-size:14px;text-align:center;
+    opacity:0;transform:translateY(8px);transition:.25s;pointer-events:none;
+  }
+  .toast.show{opacity:1;transform:none}
+
+  /* ---------- caption rail below device ---------- */
+  .rail{
+    max-width:390px;width:100%;background:var(--rail);border:1px solid var(--rail-edge);
+    border-radius:16px;padding:14px 16px;display:flex;align-items:center;gap:14px;
+  }
+  .rail .steps{display:flex;gap:6px;flex:1}
+  .rail .steps i{height:6px;flex:1;border-radius:4px;background:var(--dot-off)}
+  .rail .steps i.on{background:var(--dot)}
+  .rail .lbl{font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:12.5px;color:var(--ink);white-space:nowrap}
+  .rail button{
+    font:inherit;font-size:12.5px;font-weight:600;border:1px solid var(--rail-edge);background:none;color:var(--ink);
+    border-radius:999px;padding:7px 13px;cursor:pointer;font-family:"Bricolage Grotesque",sans-serif;white-space:nowrap;
+  }
+  .footnote{max-width:390px;text-align:center;font-size:12px;color:var(--muted);line-height:1.5}
+
+  a.focusable:focus-visible, button:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:8px}
+
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:.001ms !important;transition-duration:.001ms !important}
+  }
+</style>
+
+<div class="wrap">
+  <header class="masthead">
+    <div class="brand"><span class="mk"></span>RavelGo</div>
+    <p class="kicker">Rider app · interactive preview</p>
+  </header>
+
+  <div class="stage">
+    <div class="device" role="group" aria-label="RavelGo rider app preview">
+      <div class="notch"></div>
+      <div class="screen-frame">
+
+        <!-- ============ SPLASH ============ -->
+        <section class="screen active" id="s-splash">
+          <div class="splash" onclick="go('home')">
+            <div class="logo">RavelGo</div>
+            <div class="tag">Move the city.</div>
+            <div class="load"><i></i><i></i><i></i></div>
+          </div>
+        </section>
+
+        <!-- ============ HOME ============ -->
+        <section class="screen" id="s-home">
+          <div class="statusbar"><span>9:41</span><span class="r">5G ▪ ▮▮▮</span></div>
+          <div class="map">
+            <span class="blockA"></span><span class="blockB"></span>
+            <div class="mapbtns">
+              <button class="cbtn" aria-label="Menu">☰</button>
+              <div class="cbtn group">
+                <button class="cbtn" aria-label="Notifications">🔔</button>
+                <button class="cbtn" aria-label="Safety">🛡️</button>
+              </div>
+            </div>
+            <div class="me" style="left:46%;top:56%"></div>
+          </div>
+          <div class="sheet">
+            <div class="grab"></div>
+            <div class="pad">
+              <p style="font-family:'Bricolage Grotesque';font-weight:600;font-size:19px;margin:2px 0 12px;color:#000">Good evening, Bridget</p>
+              <button class="searchpill" onclick="go('choose')">
+                <span class="sq"></span> Where to?
+              </button>
+              <div style="margin-top:6px">
+                <button class="place" onclick="go('choose')">
+                  <span class="ic">🏠</span>
+                  <span class="t"><b>Home</b><span>12 Admiralty Way, Lekki Phase 1</span></span>
+                </button>
+                <button class="place" onclick="go('choose')">
+                  <span class="ic">💼</span>
+                  <span class="t"><b>Work</b><span>Nestoil Tower, Victoria Island</span></span>
+                </button>
+                <button class="place" onclick="go('choose')">
+                  <span class="ic">🕘</span>
+                  <span class="t"><b>Denco Court 1</b><span>Ikeja GRA</span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <nav class="bnav" id="nav-home"></nav>
+        </section>
+
+        <!-- ============ CHOOSE A RIDE ============ -->
+        <section class="screen" id="s-choose">
+          <div class="statusbar"><span>9:41</span><span class="r">5G ▪ ▮▮▮</span></div>
+          <div class="map">
+            <span class="blockA"></span><span class="blockB"></span>
+            <svg class="route" viewBox="0 0 360 400" preserveAspectRatio="none">
+              <path d="M70,120 C130,150 150,210 210,250 S300,300 300,320" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round"/>
+            </svg>
+            <div class="pin" style="left:70px;top:120px"><span class="dotp"></span></div>
+            <div class="pin dest" style="left:300px;top:320px"><span class="dotp"></span></div>
+            <div class="searchbar">
+              <button class="iconbtn" aria-label="Back" onclick="go('home')">←</button>
+              <input value="Denco Court 1" aria-label="Destination">
+              <button class="iconbtn" aria-label="Add stop">＋</button>
+            </div>
+          </div>
+          <div class="sheet">
+            <div class="grab"></div>
+            <div class="pad">
+              <div class="sheet-title">Choose a ride</div>
+              <button class="ridecard sel" data-ride="Just ride" onclick="pickRide(this)">
+                <span class="car">🚗</span>
+                <span class="info"><b>Just ride</b><span class="meta">2 min away · 👤 4</span></span>
+                <span class="fare"><b>₦8,000</b><span>incl. taxes</span></span>
+              </button>
+              <button class="ridecard" data-ride="EV" onclick="pickRide(this)">
+                <span class="car">⚡</span>
+                <span class="info"><b>EV</b><span class="meta">2 min away · 👤 4</span></span>
+                <span class="fare"><b>₦6,000</b><span>incl. taxes</span></span>
+              </button>
+              <button class="ridecard" data-ride="Lite" onclick="pickRide(this)">
+                <span class="car">🚙</span>
+                <span class="info"><b>Lite</b><span class="meta">4 min away · 👤 3</span></span>
+                <span class="fare"><b>₦5,000</b><span>incl. taxes</span></span>
+              </button>
+              <div class="payrow">
+                <button class="chipbtn" onclick="toast('Pay with: Card · RavelGo Wallet')">💳 Card</button>
+                <button class="chipbtn flex" onclick="toast('Add a delivery to your trip')">Pick up a delivery</button>
+              </div>
+              <div class="cta">
+                <button class="btn" id="rideCta" onclick="go('searching')">Select Just ride</button>
+                <button class="btn sq" aria-label="Schedule for later" onclick="toast('Schedule this ride for later')">📅</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ SEARCHING ============ -->
+        <section class="screen" id="s-searching">
+          <div class="statusbar"><span>9:41</span><span class="r">5G ▪ ▮▮▮</span></div>
+          <div class="map">
+            <span class="blockA"></span><span class="blockB"></span>
+            <div class="me" style="left:46%;top:52%"></div>
+          </div>
+          <div class="banner">
+            <div class="grab"></div>
+            <div class="bt">5 drivers are viewing your request</div>
+          </div>
+          <div class="sheet" style="border-radius:0">
+            <div class="pad">
+              <div class="offerbox">
+                <div class="lbl">Your fare offer</div>
+                <div class="amt">₦7,000</div>
+                <div class="sub">Drivers nearby can accept or counter</div>
+              </div>
+              <div class="searching"><span class="spinner"></span> Finding you a driver…</div>
+              <div class="cta" style="margin-top:14px">
+                <button class="btn ghost" onclick="go('home')">Cancel</button>
+                <button class="btn" onclick="go('offers')">See offers</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ DRIVER OFFERS ============ -->
+        <section class="screen" id="s-offers">
+          <div class="appbar"><button class="iconbtn" onclick="go('searching')">←</button> Driver offers</div>
+          <div class="scroll" style="padding:14px 16px">
+            <div class="drivercard">
+              <div class="top">
+                <span class="avatar">TI</span>
+                <span class="nm"><b>Thelma Ibeh</b><span>Toyota Corolla · white</span></span>
+                <span class="farebig"><b>₦7,000</b><span class="star">★ 4.55</span></span>
+              </div>
+              <div class="drow">
+                <button class="roundbtn" onclick="toast('Offer declined')">Decline</button>
+                <button class="btn" onclick="startTrip('Thelma Ibeh','Toyota Corolla','TI','NGN 7,000','LND-482-KJA')">Accept · 10 min</button>
+              </div>
+            </div>
+            <div class="drivercard">
+              <div class="top">
+                <span class="avatar">CE</span>
+                <span class="nm"><b>Chidi Eze</b><span>Honda Accord · black</span></span>
+                <span class="farebig"><b>₦6,500</b><span class="star">★ 4.80</span></span>
+              </div>
+              <div class="drow">
+                <button class="roundbtn" onclick="toast('Offer declined')">Decline</button>
+                <button class="btn" onclick="startTrip('Chidi Eze','Honda Accord','CE','NGN 6,500','KSF-119-LAG')">Accept · 7 min</button>
+              </div>
+            </div>
+            <div class="drivercard">
+              <div class="top">
+                <span class="avatar">AO</span>
+                <span class="nm"><b>Amaka Obi</b><span>Kia Cerato · silver</span></span>
+                <span class="farebig"><b>₦7,200</b><span class="star">★ 4.70</span></span>
+              </div>
+              <div class="drow">
+                <button class="roundbtn" onclick="toast('Offer declined')">Decline</button>
+                <button class="btn" onclick="startTrip('Amaka Obi','Kia Cerato','AO','NGN 7,200','EPE-903-VIC')">Accept · 12 min</button>
+              </div>
+            </div>
+            <p style="font-size:12.5px;color:var(--tMuted);text-align:center;margin-top:6px">Accept an offer to meet your driver</p>
+          </div>
+        </section>
+
+        <!-- ============ LIVE TRIP ============ -->
+        <section class="screen" id="s-trip">
+          <div class="statusbar"><span>9:41</span><span class="r">5G ▪ ▮▮▮</span></div>
+          <div class="map">
+            <span class="blockA"></span><span class="blockB"></span>
+            <svg class="route" viewBox="0 0 360 400" preserveAspectRatio="none">
+              <path d="M60,90 C120,120 150,190 210,230 S300,290 310,330" fill="none" stroke="#000" stroke-width="4" stroke-linecap="round"/>
+            </svg>
+            <div class="pin" style="left:60px;top:90px"><span class="dotp"></span></div>
+            <div class="pin dest" style="left:310px;top:330px"><span class="dotp"></span></div>
+            <div class="me" id="carDot" style="left:60px;top:90px;transition:all 5s linear"></div>
+            <div class="statuspill" id="tripStatus">Your driver is on the way</div>
+          </div>
+          <div class="sheet">
+            <div class="grab"></div>
+            <div class="pad">
+              <div class="progress" id="tripProg"><i class="on"></i><i></i><i></i><i></i></div>
+              <div class="drivercard" style="margin:0">
+                <div class="top">
+                  <span class="avatar" id="dvAvatar">CE</span>
+                  <span class="nm"><b id="dvName">Chidi Eze</b><span id="dvCar">Honda Accord · KSF-119-LAG</span></span>
+                  <span class="farebig"><b id="dvFare">₦6,500</b><span class="star">★ 4.80</span></span>
+                </div>
+                <div class="tripactions">
+                  <button class="roundbtn" onclick="toast('In-app voice call — your number stays private')">📞 Call</button>
+                  <button class="roundbtn" onclick="toast('Message: “I’m at the pickup point”')">💬 Message</button>
+                </div>
+              </div>
+              <button class="roundbtn" style="width:100%;margin-top:10px;color:var(--error);border-color:#f0d2d2" onclick="cancelTrip()">Cancel ride</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ RATE ============ -->
+        <section class="screen" id="s-rate">
+          <div class="center-screen">
+            <span class="avatar" id="rtAvatar" style="width:64px;height:64px;font-size:24px;margin-bottom:8px">CE</span>
+            <h2 style="font-family:'Bricolage Grotesque';font-weight:700;font-size:22px;color:#000">How was your trip?</h2>
+            <p style="font-size:14px;color:var(--tSecondary)" id="rtSub">You rode with Chidi Eze · NGN 6,500</p>
+            <div class="stars" id="stars">
+              <button onclick="rate(1)">★</button><button onclick="rate(2)">★</button>
+              <button onclick="rate(3)">★</button><button onclick="rate(4)">★</button><button onclick="rate(5)">★</button>
+            </div>
+            <p style="font-size:12.5px;color:var(--tMuted);max-width:220px">Your rating is anonymous and helps keep RavelGo safe</p>
+            <div class="tipchips">
+              <button class="tip" onclick="selTip(this)">₦500</button>
+              <button class="tip" onclick="selTip(this)">₦1,000</button>
+              <button class="tip" onclick="selTip(this)">₦2,000</button>
+              <button class="tip" onclick="selTip(this)">No tip</button>
+            </div>
+            <button class="btn" style="max-width:220px" onclick="finishRate()">Submit</button>
+          </div>
+        </section>
+
+        <!-- ============ RIDES TAB ============ -->
+        <section class="screen" id="s-rides">
+          <div class="appbar">Your rides</div>
+          <div class="scroll">
+            <div class="triprow"><span class="ic">🚗</span><span class="m"><b>Nestoil Tower, VI</b><span>Today · 9:12 · Just ride</span></span><span class="amt">₦6,500<small>Completed</small></span></div>
+            <div class="triprow"><span class="ic">⚡</span><span class="m"><b>Ikeja City Mall</b><span>Yesterday · 18:40 · EV</span></span><span class="amt">₦6,000<small>Completed</small></span></div>
+            <div class="triprow"><span class="ic">🚙</span><span class="m"><b>Murtala Muhammed Airport</b><span>Sat · 06:15 · Lite</span></span><span class="amt">₦12,300<small>Completed</small></span></div>
+            <div class="triprow"><span class="ic">🚗</span><span class="m"><b>Lekki Phase 1</b><span>Thu · 21:03 · Just ride</span></span><span class="amt">₦4,800<small>Completed</small></span></div>
+            <div class="triprow"><span class="ic">🛵</span><span class="m"><b>Courier · iDeliva</b><span>Wed · 14:20 · Package</span></span><span class="amt">₦2,500<small>Completed</small></span></div>
+          </div>
+          <nav class="bnav" id="nav-rides"></nav>
+        </section>
+
+        <!-- ============ ACCOUNT TAB ============ -->
+        <section class="screen" id="s-account">
+          <div class="scroll">
+            <div class="profile">
+              <span class="avatar">BO</span>
+              <span><b>Bridget O.</b><span>★ 5.00 · Rider since 2024</span></span>
+            </div>
+            <div class="walletcard">
+              <span class="l"><small>RavelGo Wallet</small><b>₦12,500</b></span>
+              <button class="add" onclick="toast('Top up your wallet with your card')">Top up</button>
+            </div>
+            <button class="menurow" style="width:100%;text-align:left" onclick="toast('Manage cards & wallet')"><span class="ic">💳</span><span class="t">Payment methods</span><span class="chev">›</span></button>
+            <button class="menurow" style="width:100%;text-align:left" onclick="toast('Safety toolkit & trusted contacts')"><span class="ic">🛡️</span><span class="t">Safety</span><span class="chev">›</span></button>
+            <button class="menurow" style="width:100%;text-align:left" onclick="toast('Ride history & e-receipts')"><span class="ic">🧾</span><span class="t">Trip history</span><span class="chev">›</span></button>
+            <button class="menurow" style="width:100%;text-align:left" onclick="toast('Invite friends, earn ride credit')"><span class="ic">🎁</span><span class="t">Invite a friend</span><span class="chev">›</span></button>
+            <button class="menurow" style="width:100%;text-align:left" onclick="toast('App settings')"><span class="ic">⚙️</span><span class="t">Settings</span><span class="chev">›</span></button>
+            <button class="menurow" style="width:100%;text-align:left" onclick="toast('Help & support')"><span class="ic">❓</span><span class="t">Help</span><span class="chev">›</span></button>
+          </div>
+          <nav class="bnav" id="nav-account"></nav>
+        </section>
+
+        <!-- ============ SERVICE TAB ============ -->
+        <section class="screen" id="s-service">
+          <div class="appbar">Services</div>
+          <div class="scroll">
+            <div class="sgrid">
+              <button class="stile" onclick="showTab('home')"><span class="ic">🚗</span><b>Ride</b><span>Book a car now</span></button>
+              <button class="stile" onclick="toast('iDeliva — send a package across town')"><span class="ic">🛵</span><b>Courier</b><span>Send a package</span></button>
+              <button class="stile" onclick="toast('Rent a car by the day')"><span class="ic">🔑</span><b>Car rental</b><span>Daily & weekly</span></button>
+              <button class="stile" onclick="toast('List your car & earn')"><span class="ic">🚘</span><b>Post a car</b><span>Earn as a host</span></button>
+            </div>
+            <p style="font-size:12.5px;color:var(--tMuted);text-align:center;padding:0 24px">One RavelGo account for rides, deliveries and rentals.</p>
+          </div>
+          <nav class="bnav" id="nav-service"></nav>
+        </section>
+
+        <div class="toast" id="toast"></div>
+      </div>
+    </div>
+
+    <!-- caption rail -->
+    <div class="rail">
+      <span class="lbl" id="stepLabel">Splash</span>
+      <div class="steps" id="steps"></div>
+      <button onclick="resetFlow()">Restart</button>
+    </div>
+    <p class="footnote">A design preview of the RavelGo rider app — tap through the real screens and flow.
+      It mirrors the app’s UI but isn’t connected to live data.</p>
+  </div>
+</div>
+
+<script>
+  var NAV = [
+    {k:'home', ic:'⌂', label:'Home'},
+    {k:'service', ic:'▤', label:'Service'},
+    {k:'rides', ic:'▦', label:'Rides'},
+    {k:'account', ic:'◍', label:'Account'}
+  ];
+  // build bottom navs
+  ['home','rides','account','service'].forEach(function(tab){
+    var el=document.getElementById('nav-'+tab);
+    if(!el) return;
+    NAV.forEach(function(n){
+      var b=document.createElement('button');
+      b.className = (n.k===tab)?'on':'';
+      b.innerHTML = '<span style="font-size:20px;line-height:1">'+n.ic+'</span>'+n.label;
+      b.onclick=function(){ showTab(n.k); };
+      el.appendChild(b);
+    });
+  });
+
+  var FLOW = ['splash','home','choose','searching','offers','trip','rate'];
+  var LABELS = {splash:'Splash', home:'Home', choose:'Choose a ride', searching:'Finding a driver',
+                offers:'Driver offers', trip:'Live trip', rate:'Rate your trip',
+                rides:'Your rides', account:'Account', service:'Services'};
+  var current='splash';
+  var tripTimer=null;
+
+  function show(id){
+    document.querySelectorAll('.screen').forEach(function(s){s.classList.remove('active')});
+    document.getElementById('s-'+id).classList.add('active');
+    current=id;
+    updateRail();
+    // reset scrolls to top
+    var sc=document.querySelector('#s-'+id+' .scroll'); if(sc) sc.scrollTop=0;
+  }
+  function go(id){ if(tripTimer && id!=='trip'){clearInterval(tripTimer);tripTimer=null;} show(id); }
+  function showTab(id){ go(id); }
+
+  function updateRail(){
+    document.getElementById('stepLabel').textContent = LABELS[current]||'';
+    var steps=document.getElementById('steps'); steps.innerHTML='';
+    var idx=FLOW.indexOf(current);
+    FLOW.forEach(function(f,i){
+      var i2=document.createElement('i');
+      if(idx>=0 && i<=idx) i2.className='on';
+      steps.appendChild(i2);
+    });
+  }
+
+  function pickRide(el){
+    document.querySelectorAll('#s-choose .ridecard').forEach(function(c){c.classList.remove('sel')});
+    el.classList.add('sel');
+    document.getElementById('rideCta').textContent='Select '+el.getAttribute('data-ride');
+  }
+
+  // trip
+  var STAGES=[
+    {msg:'Your driver is on the way', on:1, pos:{left:'60px',top:'90px'}},
+    {msg:'Driver is 2 minutes away', on:2, pos:{left:'150px',top:'180px'}},
+    {msg:'Your driver has arrived', on:3, pos:{left:'240px',top:'250px'}},
+    {msg:'On the trip — enjoy your ride', on:4, pos:{left:'310px',top:'330px'}},
+  ];
+  function startTrip(name,car,initials,fare,plate){
+    document.getElementById('dvName').textContent=name;
+    document.getElementById('dvCar').textContent=car+' · '+plate;
+    document.getElementById('dvFare').textContent='₦'+fare.replace(/[^0-9,]/g,'');
+    document.getElementById('dvAvatar').textContent=initials;
+    document.getElementById('rtAvatar').textContent=initials;
+    document.getElementById('rtSub').textContent='You rode with '+name+' · '+fare;
+    var stage=0;
+    applyStage(0);
+    go('trip');
+    if(tripTimer) clearInterval(tripTimer);
+    tripTimer=setInterval(function(){
+      stage++;
+      if(stage>=STAGES.length){
+        clearInterval(tripTimer); tripTimer=null;
+        setTimeout(function(){ go('rate'); }, 1400);
+        document.getElementById('tripStatus').textContent='You have arrived at your destination';
+        return;
+      }
+      applyStage(stage);
+    }, 4200);
+  }
+  function applyStage(i){
+    var s=STAGES[i];
+    document.getElementById('tripStatus').textContent=s.msg;
+    var prog=document.querySelectorAll('#tripProg i');
+    prog.forEach(function(p,idx){ p.classList.toggle('on', idx<s.on); });
+    var car=document.getElementById('carDot');
+    car.style.left=s.pos.left; car.style.top=s.pos.top;
+  }
+  function cancelTrip(){
+    if(tripTimer){clearInterval(tripTimer);tripTimer=null;}
+    toast('Ride cancelled');
+    setTimeout(function(){ go('home'); }, 700);
+  }
+
+  // rate
+  var rating=0;
+  function rate(n){
+    rating=n;
+    document.querySelectorAll('#stars button').forEach(function(b,i){ b.classList.toggle('lit', i<n); });
+  }
+  function selTip(el){
+    document.querySelectorAll('.tip').forEach(function(t){t.classList.remove('sel')});
+    el.classList.add('sel');
+  }
+  function finishRate(){
+    toast('Thanks for riding with RavelGo');
+    rating=0;
+    document.querySelectorAll('#stars button').forEach(function(b){b.classList.remove('lit')});
+    document.querySelectorAll('.tip').forEach(function(t){t.classList.remove('sel')});
+    setTimeout(function(){ go('home'); }, 900);
+  }
+
+  function resetFlow(){ if(tripTimer){clearInterval(tripTimer);tripTimer=null;} show('splash'); autoSplash(); }
+
+  var toastTimer=null;
+  function toast(msg){
+    var t=document.getElementById('toast');
+    t.textContent=msg; t.classList.add('show');
+    if(toastTimer) clearTimeout(toastTimer);
+    toastTimer=setTimeout(function(){ t.classList.remove('show'); }, 1900);
+  }
+
+  function autoSplash(){
+    setTimeout(function(){ if(current==='splash') go('home'); }, 2200);
+  }
+  updateRail();
+  autoSplash();
+</script>
