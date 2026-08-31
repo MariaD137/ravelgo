@@ -24,6 +24,18 @@ SRC_BUCKET="ravelgo-codebuild-src-${ACCOUNT}-${REGION}"
 APPS=( "user_app:rider-web:Rider app" "driver_app:driver-web:Driver app" "admin_app:admin-web:Admin app" )
 FILTER="${1:-all}"
 
+# Your Google Maps browser key, passed in from your shell (never stored here):
+#   export GOOGLE_MAPS_API_KEY=AIza...   then run this script.
+# It's injected into the web build's .env and index.html. It's fine for this key
+# to ship in the web app — it's public by design and restricted to your
+# CloudFront domain in the Google console. If unset, the apps build fine but
+# maps render blank.
+GMK="${GOOGLE_MAPS_API_KEY:-}"
+if [ -z "${GMK}" ]; then
+  echo "NOTE: GOOGLE_MAPS_API_KEY is not set — maps will render blank."
+  echo "      To enable maps: export GOOGLE_MAPS_API_KEY=AIza... then re-run."
+fi
+
 echo "==> Looking up your assets bucket and CloudFront distribution"
 ASSETS_BUCKET="$(aws cloudformation describe-stacks --stack-name "RavelGo-Storage-${ENVNAME}" \
   --query "Stacks[0].Outputs[?OutputKey=='AssetsBucketName'].OutputValue" --output text)"
@@ -71,9 +83,12 @@ phases:
   build:
     commands:
       - export PATH="$PATH:/opt/flutter/bin"
-      - printf "GOOGLE_MAPS_API_KEY=\nAPI_BASE_URL=%s\nCOGNITO_USER_POOL_ID=%s\nCOGNITO_CLIENT_ID=%s\nAWS_REGION=%s\n" "$API_BASE_URL" "$COGNITO_USER_POOL_ID" "$COGNITO_CLIENT_ID" "$AWS_DEFAULT_REGION" > .env
+      - printf "GOOGLE_MAPS_API_KEY=%s\nAPI_BASE_URL=%s\nCOGNITO_USER_POOL_ID=%s\nCOGNITO_CLIENT_ID=%s\nAWS_REGION=%s\n" "$GOOGLE_MAPS_API_KEY" "$API_BASE_URL" "$COGNITO_USER_POOL_ID" "$COGNITO_CLIENT_ID" "$AWS_DEFAULT_REGION" > .env
       - flutter config --enable-web
       - flutter create --platforms=web .
+      # Inject the Google Maps JS SDK into the page so google_maps_flutter can
+      # render tiles on the web. Skipped when no key is provided.
+      - if [ -n "$GOOGLE_MAPS_API_KEY" ]; then sed -i "s#</head>#  <script src=\"https://maps.googleapis.com/maps/api/js?key=$GOOGLE_MAPS_API_KEY\"></script>\n  </head>#" web/index.html; fi
       - flutter pub get
       - echo "Building web app for /$WEB_PATH/"
       - flutter build web --release --base-href "/$WEB_PATH/"
@@ -120,7 +135,8 @@ for entry in "${APPS[@]}"; do
       { "name": "WEB_PATH", "value": "${WEBPATH}" },
       { "name": "API_BASE_URL", "value": "${API_URL}" },
       { "name": "COGNITO_USER_POOL_ID", "value": "${POOL_ID}" },
-      { "name": "COGNITO_CLIENT_ID", "value": "${CLIENT_ID}" }
+      { "name": "COGNITO_CLIENT_ID", "value": "${CLIENT_ID}" },
+      { "name": "GOOGLE_MAPS_API_KEY", "value": "${GMK}" }
     ]
   },
   "serviceRole": "${ROLE_ARN}"
