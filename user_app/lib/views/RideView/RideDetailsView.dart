@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:ravelgo_user_app/components/platform_file_image.dart';
 import 'package:flutter/material.dart';
 import 'RidesView.dart'; // adjust path if needed; this imports the Ride class
 import 'package:ravelgo_user_app/theme/app_theme.dart';
@@ -177,9 +177,7 @@ class RideDetailsScreen extends StatelessWidget {
   }
 
   Widget _localImage(String path, {BoxFit fit = BoxFit.cover}) {
-    final file = File(path);
-    return file.existsSync()
-        ? Image.file(file, fit: fit)
-        : Container(color: AppColors.surfaceElevated, child: const Center(child: Icon(Icons.map, size: 48)));
+    return localFileImage(path, fit: fit,
+        fallback: Container(color: AppColors.surfaceElevated, child: const Center(child: Icon(Icons.map, size: 48))));
   }
 }

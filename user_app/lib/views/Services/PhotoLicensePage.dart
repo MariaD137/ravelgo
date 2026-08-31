@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:ravelgo_user_app/components/platform_file_image.dart';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -51,7 +51,7 @@ class _PhotoLicensePageState extends State<PhotoLicensePage> {
                           color: AppColors.border,
                         ),
                         child: _photo != null
-                            ? Image.file(File(_photo!.path), fit: BoxFit.cover)
+                            ? localFileImage(_photo!.path, fit: BoxFit.cover)
                             : const Icon(Icons.badge_outlined, size: 56, color: AppColors.textMuted),
                       ),
                       const SizedBox(height: 20),

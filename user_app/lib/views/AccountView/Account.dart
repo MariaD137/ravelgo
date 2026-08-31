@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:ravelgo_user_app/components/platform_file_image.dart';
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/Model/app_state.dart';
 import 'package:ravelgo_user_app/views/AccountView/AppSettingsPage.dart';
@@ -300,9 +300,7 @@ class _AccountviewState extends State<Accountview> {
 
   /// Helper to load local preview image
   Widget _localImage(String path, {BoxFit fit = BoxFit.cover}) {
-    final file = File(path);
-    return file.existsSync()
-        ? Image.file(file, fit: fit)
-        : Container(color: AppColors.border, child: const Icon(Icons.person, size: 40));
+    return localFileImage(path, fit: fit,
+        fallback: Container(color: AppColors.border, child: const Icon(Icons.person, size: 40)));
   }
 }

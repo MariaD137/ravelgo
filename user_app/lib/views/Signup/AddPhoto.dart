@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'package:ravelgo_user_app/components/platform_file_image.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:ravelgo_user_app/views/bottommenu/BottomNavigationView.dart';
@@ -53,7 +53,7 @@ class _AddPhotoScreenState extends State<AddPhotoScreen> {
                       height: 180,
                       width: 180,
                       child: _photo != null
-                          ? Image.file(File(_photo!.path), fit: BoxFit.cover)
+                          ? localFileImage(_photo!.path, fit: BoxFit.cover)
                           : Container(
                               color: AppColors.surfaceElevated,
                               child: const Center(child: Icon(Icons.person, size: 60, color: AppColors.textMuted)),
