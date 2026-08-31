@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:ravelgo_driver_app/services/api_client.dart';
+import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 
 /// Safety & Emergency hub.
@@ -18,6 +20,27 @@ class EmergencyScreen extends StatefulWidget {
 class _EmergencyScreenState extends State<EmergencyScreen> {
   // LOCAL STATE ONLY: session-level trusted contacts.
   static final List<String> _trustedContacts = [];
+  bool _sendingSos = false;
+
+  Future<void> _sendSosAlert() async {
+    setState(() => _sendingSos = true);
+    try {
+      await DriverApi.raiseSos(
+        message: _trustedContacts.isEmpty ? null : 'Trusted contacts: ${_trustedContacts.join(', ')}',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('SOS sent. The RavelGo safety team has been alerted.'),
+        backgroundColor: AppColors.danger,
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e is ApiException ? e.message : e.toString();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } finally {
+      if (mounted) setState(() => _sendingSos = false);
+    }
+  }
 
   void _showEmergencyNumbers() {
     showDialog(
@@ -160,11 +183,16 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
       ),
     );
     if (submitted == true && mounted) {
-      // Integration point: send the report to the safety/fraud service.
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text(
-            'Report recorded on this device. It will be submitted once the safety service is connected.'),
-      ));
+      try {
+        await DriverApi.reportFraud(message: controller.text.trim());
+        if (!mounted) return;
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Report submitted to the safety team.')));
+      } catch (e) {
+        if (!mounted) return;
+        final msg = e is ApiException ? e.message : e.toString();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      }
     }
   }
 
@@ -197,6 +225,21 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
                     label: const Text("SOS – Emergency assistance"),
                     style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.danger, foregroundColor: Colors.white),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: _sendingSos ? null : _sendSosAlert,
+                    icon: _sendingSos
+                        ? const SizedBox(
+                            height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.campaign_outlined, color: AppColors.danger),
+                    label: Text(_sendingSos ? 'Sending…' : 'Alert RavelGo safety team',
+                        style: const TextStyle(color: AppColors.danger)),
+                    style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.danger)),
                   ),
                 ),
               ],

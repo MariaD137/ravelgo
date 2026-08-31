@@ -155,8 +155,8 @@ class _EarningsScreenState extends State<EarningsScreen> {
               child: Column(
                 children: [
                   AppComponents.tile(
-                      title: "Cash out to bank",
-                      subtitle: "Request a transfer to your linked account",
+                      title: "Payout account",
+                      subtitle: "Where your earnings are paid out",
                       leading: Icons.account_balance_outlined,
                       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CashOutScreen()))),
                   AppComponents.divider(),

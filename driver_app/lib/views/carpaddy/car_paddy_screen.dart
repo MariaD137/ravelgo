@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/services/api_client.dart';
+import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 
 class CarPaddyScreen extends StatefulWidget {
@@ -9,7 +11,38 @@ class CarPaddyScreen extends StatefulWidget {
 }
 
 class _CarPaddyScreenState extends State<CarPaddyScreen> {
+  final _plateController = TextEditingController();
   bool _submitted = false;
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _plateController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final plate = _plateController.text.trim();
+    if (plate.isEmpty) {
+      setState(() => _error = 'Enter your vehicle plate number');
+      return;
+    }
+    setState(() {
+      _error = null;
+      _submitting = true;
+    });
+    try {
+      await DriverApi.submitCarPaddy(plate);
+      if (!mounted) return;
+      setState(() => _submitted = true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e is ApiException ? e.message : e.toString());
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -62,7 +95,15 @@ class _CarPaddyScreenState extends State<CarPaddyScreen> {
             const SizedBox(height: 10),
             AppComponents.uploadBox("Upload proof of roadworthiness"),
             const SizedBox(height: 10),
-            const TextField(decoration: InputDecoration(labelText: "Vehicle plate number", border: OutlineInputBorder())),
+            TextField(
+              controller: _plateController,
+              textCapitalization: TextCapitalization.characters,
+              decoration: InputDecoration(
+                labelText: "Vehicle plate number",
+                border: const OutlineInputBorder(),
+                errorText: _error,
+              ),
+            ),
             const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -86,7 +127,9 @@ class _CarPaddyScreenState extends State<CarPaddyScreen> {
                 ),
               )
             else
-              AppComponents.primaryButton(text: "Submit renewal request", onPressed: () => setState(() => _submitted = true)),
+              AppComponents.primaryButton(
+                  text: _submitting ? "Submitting…" : "Submit renewal request",
+                  onPressed: _submitting ? null : _submit),
           ],
         ),
       ),

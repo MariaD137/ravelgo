@@ -122,6 +122,20 @@ class DriverDocument {
       );
 }
 
+class Vehicle {
+  final String id;
+  final String label;
+  final String plateNumber;
+  final bool isPrimary;
+  Vehicle({required this.id, required this.label, required this.plateNumber, required this.isPrimary});
+  factory Vehicle.fromJson(Map<String, dynamic> j) => Vehicle(
+        id: '${j['id']}',
+        label: '${j['brand'] ?? ''} ${j['model'] ?? ''}'.trim(),
+        plateNumber: '${j['plateNumber'] ?? ''}',
+        isPrimary: j['isPrimary'] == true,
+      );
+}
+
 class DriverApi {
   /// Ensure a driver profile row exists (safe to call after sign-in).
   static Future<void> provisionMe() async {
@@ -195,6 +209,73 @@ class DriverApi {
     final data = await ApiClient.get('/api/documents/me');
     final list = data as List? ?? const [];
     return list.whereType<Map<String, dynamic>>().map(DriverDocument.fromJson).toList();
+  }
+
+  /// Raise an emergency SOS alert (reaches the admin safety queue).
+  static Future<void> raiseSos({String? message}) async {
+    await ApiClient.post('/api/emergency-alerts', {
+      'type': 'SOS',
+      if (message != null && message.isNotEmpty) 'message': message,
+    });
+  }
+
+  /// Report suspected fraud / suspicious activity (reaches the admin queue).
+  static Future<void> reportFraud({String? message}) async {
+    await ApiClient.post('/api/emergency-alerts', {
+      'type': 'FRAUD_SUSPECTED',
+      if (message != null && message.isNotEmpty) 'message': message,
+    });
+  }
+
+  /// Submit a Car Paddy (vehicle papers renewal) request for a plate.
+  static Future<void> submitCarPaddy(String plateNumber) async {
+    await ApiClient.post('/api/car-paddy', {'plateNumber': plateNumber});
+  }
+
+  /// The driver's vehicles.
+  static Future<List<Vehicle>> myVehicles() async {
+    final data = await ApiClient.get('/api/vehicles/me');
+    final list = data as List? ?? const [];
+    return list.whereType<Map<String, dynamic>>().map(Vehicle.fromJson).toList();
+  }
+
+  /// List one of the driver's vehicles for luxury rental.
+  static Future<void> listForRental({
+    required String vehicleId,
+    required double dailyRate,
+    required String location,
+  }) async {
+    await ApiClient.post('/api/rentals', {
+      'vehicleId': vehicleId,
+      'dailyRate': dailyRate,
+      'location': location,
+    });
+  }
+
+  /// The driver's saved payout bank account, or null if none set.
+  static Future<Map<String, dynamic>?> bankAccount() async {
+    try {
+      final data = await ApiClient.get('/api/payouts/bank-account');
+      return data is Map<String, dynamic> ? data : null;
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
+  /// Save / update the driver's payout bank account.
+  static Future<void> saveBankAccount({
+    required String accountHolderName,
+    required String bankName,
+    required String accountNumber,
+    required String routingNumber,
+  }) async {
+    await ApiClient.post('/api/payouts/bank-account', {
+      'accountHolderName': accountHolderName,
+      'bankName': bankName,
+      'accountNumber': accountNumber,
+      'routingNumber': routingNumber,
+    });
   }
 
   /// The driver's payout history (earnings paid out).
