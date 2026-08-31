@@ -68,9 +68,13 @@ async function main() {
     skipDuplicates: true,
   });
 
-  await prisma.carPaddyRequest.create({
-    data: { driverId: driver.id, plateNumber: vehicle.plateNumber, status: "IN_REVIEW" },
-  });
+  // Guarded so re-running the seed (e.g. against staging) doesn't pile up
+  // duplicate demo rows. The pricing rule and wallet below use upsert already.
+  if ((await prisma.carPaddyRequest.count({ where: { driverId: driver.id } })) === 0) {
+    await prisma.carPaddyRequest.create({
+      data: { driverId: driver.id, plateNumber: vehicle.plateNumber, status: "IN_REVIEW" },
+    });
+  }
 
   // An active pricing rule is required for POST /trips to compute a fare
   // (the backend never trusts a client-supplied fare — see
@@ -88,28 +92,32 @@ async function main() {
     create: { userId: rider.id, balanceCents: 500000 }, // ₦5,000.00 equivalent in the app's cent unit
   });
 
-  await prisma.trip.create({
-    data: {
-      riderId: rider.id,
-      driverId: driver.id,
-      pickup: "Lekki Phase 1",
-      destination: "Victoria Island",
-      estimatedFare: 3200,
-      finalFare: 3200,
-      status: "COMPLETED",
-      category: "Business",
-      completedAt: new Date(),
-    },
-  });
+  if ((await prisma.trip.count({ where: { riderId: rider.id } })) === 0) {
+    await prisma.trip.create({
+      data: {
+        riderId: rider.id,
+        driverId: driver.id,
+        pickup: "Lekki Phase 1",
+        destination: "Victoria Island",
+        estimatedFare: 3200,
+        finalFare: 3200,
+        status: "COMPLETED",
+        category: "Business",
+        completedAt: new Date(),
+      },
+    });
+  }
 
-  await prisma.supportTicket.create({
-    data: {
-      userId: rider.id,
-      subject: "Lost phone in a recent trip",
-      category: "Lost item",
-      status: "OPEN",
-    },
-  });
+  if ((await prisma.supportTicket.count({ where: { userId: rider.id } })) === 0) {
+    await prisma.supportTicket.create({
+      data: {
+        userId: rider.id,
+        subject: "Lost phone in a recent trip",
+        category: "Lost item",
+        status: "OPEN",
+      },
+    });
+  }
 
   console.log("Seed complete:", { rider: rider.email, driver: driverUser.email, vehicle: vehicle.plateNumber });
 }

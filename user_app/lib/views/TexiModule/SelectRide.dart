@@ -201,7 +201,12 @@ class _SelectRideState extends State<SelectRide> {
                             ),
                             onPressed: () {
                               Navigator.of(context).push(
-                                MaterialPageRoute(builder: (context) => FindDriverScreen()),
+                                MaterialPageRoute(
+                                  builder: (context) => FindDriverScreen(
+                                    destination: widget.destination,
+                                    paymentMethod: _paymentMethod,
+                                  ),
+                                ),
                               );
                             },
                             child: const Text("Select Just ride", style: TextStyle(color: AppColors.textPrimary)),

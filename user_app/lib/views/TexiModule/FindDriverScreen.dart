@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
+import 'package:ravelgo_user_app/services/api_client.dart';
+import 'package:ravelgo_user_app/services/booking_api.dart';
 import 'package:ravelgo_user_app/views/TexiModule/SearchDriverScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class FindDriverScreen extends StatefulWidget {
-  const FindDriverScreen({super.key});
+  final String? destination;
+  final String paymentMethod;
+  const FindDriverScreen({super.key, this.destination, this.paymentMethod = 'Card'});
 
   @override
   State<FindDriverScreen> createState() => _FindDriverScreenState();
@@ -13,22 +17,80 @@ class FindDriverScreen extends StatefulWidget {
 
 class _FindDriverScreenState extends State<FindDriverScreen> {
   GoogleMapController? _mapController;
-  double offerAmount = 7000;
-  double estimatedFare = 8000;
-  bool autoAccept = false;
   Set<Marker> _markers = {};
+
+  static const _pickup = 'Current location';
+
+  FareQuote? _quote;
+  String? _quoteError;
+  bool _quoteLoading = true;
+  bool _requesting = false;
+
+  String get _destination =>
+      (widget.destination != null && widget.destination!.trim().isNotEmpty)
+          ? widget.destination!.trim()
+          : 'Destination';
 
   @override
   void initState() {
     super.initState();
     _loadMarkers();
+    _loadQuote();
+  }
+
+  Future<void> _loadQuote() async {
+    setState(() {
+      _quoteLoading = true;
+      _quoteError = null;
+    });
+    try {
+      final q = await BookingApi.quote(
+        distanceKm: BookingApi.placeholderDistanceKm,
+        durationMinutes: BookingApi.placeholderDurationMinutes,
+      );
+      if (!mounted) return;
+      setState(() {
+        _quote = q;
+        _quoteLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _quoteError = e is ApiException && e.statusCode == 409
+            ? 'Pricing isn\'t set up yet — please try later.'
+            : e.toString();
+        _quoteLoading = false;
+      });
+    }
+  }
+
+  Future<void> _findDriver() async {
+    setState(() => _requesting = true);
+    try {
+      final trip = await BookingApi.requestTrip(
+        pickup: _pickup,
+        destination: _destination,
+        distanceKm: BookingApi.placeholderDistanceKm,
+        durationMinutes: BookingApi.placeholderDurationMinutes,
+      );
+      if (!mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (context) => SearchDriverScreen(trip: trip)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e is ApiException && e.statusCode == 403
+          ? 'Your account isn\'t set up as a rider yet.'
+          : e.toString();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } finally {
+      if (mounted) setState(() => _requesting = false);
+    }
   }
 
   Future<void> _loadMarkers() async {
     final markers = await _generateCarMarkers();
-    setState(() {
-      _markers = markers;
-    });
+    if (mounted) setState(() => _markers = markers);
   }
 
   Future<Set<Marker>> _generateCarMarkers() async {
@@ -38,30 +100,12 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
     );
     return List.generate(
       10,
-          (i) => Marker(
-        markerId: MarkerId('car_\$i'),
+      (i) => Marker(
+        markerId: MarkerId('car_$i'),
         position: LatLng(6.524 + i * 0.001, 3.379 + i * 0.001),
         icon: icon,
       ),
     ).toSet();
-  }
-
-  /// Schedule this ride for later (LOCAL STATE ONLY until the trips backend
-  /// accepts scheduled requests).
-  Future<void> _scheduleRide() async {
-    final now = DateTime.now();
-    final date = await showDatePicker(
-      context: context,
-      initialDate: now,
-      firstDate: now,
-      lastDate: now.add(const Duration(days: 30)),
-    );
-    if (date == null || !mounted) return;
-    final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
-    if (time == null || !mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Ride scheduled for ${date.day}/${date.month} at ${time.format(context)}'),
-    ));
   }
 
   @override
@@ -70,11 +114,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
       body: Stack(
         children: [
           SafeGoogleMap(
-            onMapCreated: (controller) {
-              setState(() {
-                _mapController = controller;
-              });
-            },
+            onMapCreated: (controller) => setState(() => _mapController = controller),
             initialCameraPosition: const CameraPosition(
               target: LatLng(6.5244, 3.3792),
               zoom: 14,
@@ -83,14 +123,12 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
             zoomControlsEnabled: false,
             markers: _markers,
           ),
-
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: _buildSearchBar(),
             ),
           ),
-
           Align(
             alignment: Alignment.bottomCenter,
             child: _buildTripInfoSheet(context),
@@ -100,7 +138,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
     );
   }
 
-  Widget _buildSearchBar(){
+  Widget _buildSearchBar() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
@@ -108,21 +146,13 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
         borderRadius: BorderRadius.circular(30),
       ),
       child: Row(
-        children:  [
+        children: [
           IconButton(
-            icon: const Icon(Icons.arrow_back,color: AppColors.textPrimary,),
+            icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
             onPressed: () => Navigator.pop(context),
           ),
-          SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: "Denco court 1",
-                border: InputBorder.none,
-              ),
-            ),
-          ),
-          Icon(Icons.add),
+          const SizedBox(width: 8),
+          Expanded(child: Text(_destination, style: const TextStyle(fontSize: 16))),
         ],
       ),
     );
@@ -140,13 +170,10 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildTripDetail(),
-          const SizedBox(height: 12),
-          _buildOfferSection(),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           _buildPaymentRow(),
           const SizedBox(height: 20),
           _buildFindDriverButton(),
-          const SizedBox(height: 0),
         ],
       ),
     );
@@ -156,138 +183,83 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Your Trip", style: TextStyle(fontWeight: FontWeight.bold,fontSize: 18)),
+        const Text("Your Trip", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         const SizedBox(height: 8),
         Row(
-          children:  [
-            Image.asset(
-              'assets/ic_pickup.png',
-              width: 24,
-              height: 24,
-            ),
-            SizedBox(width: 8),
-            Text("Denco court 1", style: TextStyle(fontWeight: FontWeight.normal,fontSize: 16)),
+          children: [
+            Image.asset('assets/ic_pickup.png', width: 24, height: 24),
+            const SizedBox(width: 8),
+            const Text(_pickup, style: TextStyle(fontSize: 16)),
           ],
         ),
         const SizedBox(height: 8),
         Row(
-          children:  [
-            Image.asset(
-              'assets/ic_destination.png',
-              width: 24,
-              height: 24,
-            ),
-            SizedBox(width: 8),
-            Text("Destiation ", style: TextStyle(fontWeight: FontWeight.normal,fontSize: 16)),
+          children: [
+            Image.asset('assets/ic_destination.png', width: 24, height: 24),
+            const SizedBox(width: 8),
+            Expanded(child: Text(_destination, style: const TextStyle(fontSize: 16))),
           ],
         ),
         const SizedBox(height: 15),
-        Text("Estimated fare: NGN 8,000", style: TextStyle(color: Colors.brown,fontWeight: FontWeight.bold,fontSize: 14)),
+        _buildFareLine(),
       ],
     );
   }
 
-  Widget _buildOfferSection() {
+  Widget _buildFareLine() {
+    if (_quoteLoading) {
+      return Row(
+        children: const [
+          SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+          SizedBox(width: 8),
+          Text('Getting fare estimate…', style: TextStyle(fontSize: 14)),
+        ],
+      );
+    }
+    if (_quoteError != null) {
+      return Text(_quoteError!, style: const TextStyle(color: AppColors.error, fontSize: 13));
+    }
+    final q = _quote!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text("Your offer", style: TextStyle(fontSize: 16)),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text("NGN ${offerAmount.toStringAsFixed(0)}",
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-            Spacer(),
-            ElevatedButton(
-              onPressed: offerAmount > 7000
-                  ? () => setState(() => offerAmount -= 100)
-                  : null,
-              style: ElevatedButton.styleFrom(
-                disabledBackgroundColor: AppColors.primaryTint,
-              ),
-              child: const Text("- 100"),
-            ),
-            const SizedBox(width: 12),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  offerAmount += 100;
-                });
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: AppColors.textPrimary,
-              ),
-              child: const Text("+ 100"),
-            ),
-          ],
-        ),
-        const SizedBox(height: 0),
-        Row(
-          children: [
-            Expanded(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  const Text("Auto-accept offer"),
-                  const SizedBox(height: 8),
-                  Switch(
-                    value: autoAccept,
-                    onChanged: (val) {
-                      setState(() => autoAccept = val);
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+        Text('Estimated fare: \$${q.estimatedFare.toStringAsFixed(2)}',
+            style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.bold, fontSize: 16)),
+        if (q.surgeMultiplier > 1)
+          Text('Surge ${q.surgeMultiplier.toStringAsFixed(1)}x in effect',
+              style: const TextStyle(color: AppColors.error, fontSize: 12)),
       ],
     );
   }
 
   Widget _buildPaymentRow() {
     return Row(
-      children: const [
-        Icon(Icons.credit_card, size: 20),
-        SizedBox(width: 8),
-        Text("Card"),
-        Spacer(),
-        Icon(Icons.arrow_drop_down),
+      children: [
+        const Icon(Icons.credit_card, size: 20),
+        const SizedBox(width: 8),
+        Text(widget.paymentMethod),
+        const Spacer(),
       ],
     );
   }
 
   Widget _buildFindDriverButton() {
-    return Row(
-      children: [
-        Expanded(
-          child: ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => SearchDriverScreen()),
-              );
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: AppColors.textPrimary,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-            child:  Text("Find a driver",style: TextStyle(fontSize: 16)),
-          ),
+    final canRequest = !_requesting && !_quoteLoading && _quoteError == null;
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton(
+        onPressed: canRequest ? _findDriver : null,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: AppColors.textPrimary,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(vertical: 14),
         ),
-        const SizedBox(width: 12),
-        ElevatedButton(
-          onPressed: _scheduleRide,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            padding: const EdgeInsets.all(14),
-          ),
-          child: const Icon(Icons.calendar_today, color: AppColors.textPrimary),
-        ),
-      ],
+        child: _requesting
+            ? const SizedBox(
+                height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textPrimary))
+            : const Text("Find a driver", style: TextStyle(fontSize: 16)),
+      ),
     );
   }
 }
