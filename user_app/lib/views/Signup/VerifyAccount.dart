@@ -1,7 +1,8 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:ravelgo_user_app/views/Signup/AddPhoto.dart';
+import 'package:ravelgo_user_app/services/auth_service.dart';
+import 'package:ravelgo_user_app/views/bottommenu/BottomNavigationView.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 /// Rider account verification (OTP entry).
@@ -12,7 +13,8 @@ import 'package:ravelgo_user_app/theme/app_theme.dart';
 /// future auth/OTP service. This screen never claims a code was delivered.
 class VerifyAccountScreen extends StatefulWidget {
   final String? email;
-  const VerifyAccountScreen({super.key, this.email});
+  final String? password;
+  const VerifyAccountScreen({super.key, this.email, this.password});
 
   @override
   State<VerifyAccountScreen> createState() => _VerifyAccountScreenState();
@@ -21,6 +23,7 @@ class VerifyAccountScreen extends StatefulWidget {
 class _VerifyAccountScreenState extends State<VerifyAccountScreen> {
   final _otpController = TextEditingController();
   String? _error;
+  bool _loading = false;
   int _resendCooldown = 0;
   Timer? _cooldownTimer;
 
@@ -31,25 +34,48 @@ class _VerifyAccountScreenState extends State<VerifyAccountScreen> {
     super.dispose();
   }
 
-  void _verify() {
+  Future<void> _verify() async {
     final code = _otpController.text.trim();
     if (code.length != 6 || int.tryParse(code) == null) {
       setState(() => _error = 'Enter the 6-digit code');
       return;
     }
-    setState(() => _error = null);
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const AddPhotoScreen()),
-    );
+    setState(() {
+      _error = null;
+      _loading = true;
+    });
+    try {
+      final email = widget.email ?? '';
+      await AuthService.confirm(email: email, code: code);
+      if ((widget.password ?? '').isNotEmpty) {
+        await AuthService.signIn(email: email, password: widget.password!);
+      }
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => BottomNavigationView()),
+        (route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = AuthService.friendlyError(e));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
-  void _resend() {
+  Future<void> _resend() async {
     if (_resendCooldown > 0) return;
-    // Integration point: request a new OTP from the auth service here.
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Verification service not connected yet - code delivery requires the auth backend.'),
-    ));
+    try {
+      await AuthService.resendCode(email: widget.email ?? '');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('A new code has been sent to your email.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(AuthService.friendlyError(e))));
+    }
     setState(() => _resendCooldown = 30);
     _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return t.cancel();
@@ -95,8 +121,16 @@ class _VerifyAccountScreenState extends State<VerifyAccountScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _verify,
-                child: const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Text('Verify')),
+                onPressed: _loading ? null : _verify,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: _loading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Verify'),
+                ),
               ),
             ),
           ],

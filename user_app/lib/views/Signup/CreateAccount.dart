@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/services/auth_service.dart';
 import 'package:ravelgo_user_app/views/Signup/VerifyAccount.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
@@ -20,8 +21,11 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _agreedToTerms = false;
   bool _showTermsError = false;
+  bool _obscurePassword = true;
+  bool _loading = false;
 
   static final _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
@@ -30,19 +34,44 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     setState(() => _showTermsError = !_agreedToTerms);
     final valid = _formKey.currentState!.validate();
     if (!valid || !_agreedToTerms) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => VerifyAccountScreen(email: _emailController.text.trim()),
-      ),
-    );
+
+    final parts = _nameController.text.trim().split(RegExp(r'\s+'));
+    final givenName = parts.first;
+    final familyName = parts.length > 1 ? parts.sublist(1).join(' ') : parts.first;
+
+    setState(() => _loading = true);
+    try {
+      await AuthService.signUp(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+        givenName: givenName,
+        familyName: familyName,
+      );
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => VerifyAccountScreen(
+            email: _emailController.text.trim(),
+            password: _passwordController.text,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(AuthService.friendlyError(e))));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -94,6 +123,28 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                   },
                 ),
                 const SizedBox(height: 12),
+                const Text('Password'),
+                const SizedBox(height: 6),
+                TextFormField(
+                  controller: _passwordController,
+                  obscureText: _obscurePassword,
+                  decoration: InputDecoration(
+                    hintText: 'Create a password',
+                    suffixIcon: IconButton(
+                      icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
+                      onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                    ),
+                  ),
+                  validator: (v) {
+                    final s = v ?? '';
+                    if (s.length < 8) return 'At least 8 characters';
+                    if (!RegExp(r'[A-Z]').hasMatch(s)) return 'Add an uppercase letter';
+                    if (!RegExp(r'[a-z]').hasMatch(s)) return 'Add a lowercase letter';
+                    if (!RegExp(r'[0-9]').hasMatch(s)) return 'Add a number';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
                 Row(children: [
                   Checkbox(
                     value: _agreedToTerms,
@@ -114,10 +165,15 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _submit,
-                    child: const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Text('Create account', style: TextStyle(fontSize: 16)),
+                    onPressed: _loading ? null : _submit,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: _loading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Text('Create account', style: TextStyle(fontSize: 16)),
                     ),
                   ),
                 ),

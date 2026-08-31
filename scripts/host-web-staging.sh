@@ -36,6 +36,15 @@ DIST_ID="$(aws cloudfront list-distributions \
 echo "    Assets bucket: ${ASSETS_BUCKET}"
 echo "    CloudFront:    ${DOMAIN} (${DIST_ID})"
 
+echo "==> Reading backend + Cognito config from your deployed stacks"
+API_URL="$(aws cloudformation describe-stacks --stack-name "RavelGo-Api-${ENVNAME}" \
+  --query "Stacks[0].Outputs[?OutputKey=='ServiceUrl'].OutputValue" --output text 2>/dev/null || echo "")"
+POOL_ID="$(aws cloudformation describe-stacks --stack-name "RavelGo-Auth-${ENVNAME}" \
+  --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text 2>/dev/null || echo "")"
+CLIENT_ID="$(aws cloudformation describe-stacks --stack-name "RavelGo-Auth-${ENVNAME}" \
+  --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" --output text 2>/dev/null || echo "")"
+echo "    Cognito pool:  ${POOL_ID:-<none>}"
+
 echo "==> Ensuring source bucket + CodeBuild role"
 aws s3api head-bucket --bucket "${SRC_BUCKET}" >/dev/null 2>&1 || aws s3 mb "s3://${SRC_BUCKET}" >/dev/null
 if ! aws iam get-role --role-name "${ROLE}" >/dev/null 2>&1; then
@@ -62,7 +71,7 @@ phases:
   build:
     commands:
       - export PATH="$PATH:/opt/flutter/bin"
-      - cp .env.example .env
+      - printf "GOOGLE_MAPS_API_KEY=\nAPI_BASE_URL=%s\nCOGNITO_USER_POOL_ID=%s\nCOGNITO_CLIENT_ID=%s\nAWS_REGION=%s\n" "$API_BASE_URL" "$COGNITO_USER_POOL_ID" "$COGNITO_CLIENT_ID" "$AWS_DEFAULT_REGION" > .env
       - flutter config --enable-web
       - flutter create --platforms=web .
       - flutter pub get
@@ -108,7 +117,10 @@ for entry in "${APPS[@]}"; do
     "environmentVariables": [
       { "name": "ASSETS_BUCKET", "value": "${ASSETS_BUCKET}" },
       { "name": "DIST_ID", "value": "${DIST_ID}" },
-      { "name": "WEB_PATH", "value": "${WEBPATH}" }
+      { "name": "WEB_PATH", "value": "${WEBPATH}" },
+      { "name": "API_BASE_URL", "value": "${API_URL}" },
+      { "name": "COGNITO_USER_POOL_ID", "value": "${POOL_ID}" },
+      { "name": "COGNITO_CLIENT_ID", "value": "${CLIENT_ID}" }
     ]
   },
   "serviceRole": "${ROLE_ARN}"

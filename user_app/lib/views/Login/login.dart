@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/Login/ForgotPassword.dart';
 import 'package:ravelgo_user_app/views/Signup/CreateAccount.dart';
 import 'package:ravelgo_user_app/views/bottommenu/BottomNavigationView.dart';
+import 'package:ravelgo_user_app/services/auth_service.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 /// Rider sign-in.
@@ -23,6 +24,7 @@ class _LoginState extends State<Login> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _loading = false;
 
   static final _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
@@ -33,13 +35,26 @@ class _LoginState extends State<Login> {
     super.dispose();
   }
 
-  void _signIn() {
+  Future<void> _signIn() async {
     if (!_formKey.currentState!.validate()) return;
-    // Integration point: authenticate against the auth service here.
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (context) => BottomNavigationView()),
-      (Route<dynamic> route) => false,
-    );
+    setState(() => _loading = true);
+    try {
+      await AuthService.signIn(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => BottomNavigationView()),
+        (Route<dynamic> route) => false,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(AuthService.friendlyError(e))));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -107,12 +122,17 @@ class _LoginState extends State<Login> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _signIn,
+                    onPressed: _loading ? null : _signIn,
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                       textStyle: const TextStyle(fontSize: 18),
                     ),
-                    child: const Text('Sign in'),
+                    child: _loading
+                        ? const SizedBox(
+                            height: 22,
+                            width: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Text('Sign in'),
                   ),
                 ),
                 const SizedBox(height: 32),
