@@ -53,13 +53,21 @@ aws s3api head-bucket --bucket "${BUCKET}" 2>/dev/null || aws s3 mb "s3://${BUCK
 aws s3 cp /tmp/ravelgo-src.zip "s3://${BUCKET}/ravelgo-src.zip" >/dev/null
 
 echo "==> Ensuring CodeBuild role"
+NEW_ROLE=0
 if ! aws iam get-role --role-name "${ROLE}" >/dev/null 2>&1; then
   aws iam create-role --role-name "${ROLE}" \
     --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"codebuild.amazonaws.com"},"Action":"sts:AssumeRole"}]}' >/dev/null
   aws iam attach-role-policy --role-name "${ROLE}" --policy-arn arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
   aws iam attach-role-policy --role-name "${ROLE}" --policy-arn arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
-  aws iam put-role-policy --role-name "${ROLE}" --policy-name migrate-secrets-and-vpc \
-    --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["secretsmanager:GetSecretValue"],"Resource":"*"},{"Effect":"Allow","Action":["ec2:CreateNetworkInterface","ec2:DescribeNetworkInterfaces","ec2:DeleteNetworkInterface","ec2:DescribeSubnets","ec2:DescribeSecurityGroups","ec2:DescribeDhcpOptions","ec2:DescribeVpcs"],"Resource":"*"},{"Effect":"Allow","Action":"ec2:CreateNetworkInterfacePermission","Resource":"*","Condition":{"StringEquals":{"ec2:AuthorizedService":"codebuild.amazonaws.com"}}}]}'
+  NEW_ROLE=1
+fi
+# Always (re)apply the inline policy so it stays least-privilege: secret access
+# is scoped to THIS database's secret ARN, not "*". EC2 network-interface calls
+# can't be resource-scoped (the ENIs don't exist yet), so they stay broad but
+# are limited to CodeBuild's own service via the condition.
+aws iam put-role-policy --role-name "${ROLE}" --policy-name migrate-secrets-and-vpc \
+  --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"secretsmanager:GetSecretValue\"],\"Resource\":\"${DB_SECRET_ARN}\"},{\"Effect\":\"Allow\",\"Action\":[\"ec2:CreateNetworkInterface\",\"ec2:DescribeNetworkInterfaces\",\"ec2:DeleteNetworkInterface\",\"ec2:DescribeSubnets\",\"ec2:DescribeSecurityGroups\",\"ec2:DescribeDhcpOptions\",\"ec2:DescribeVpcs\"],\"Resource\":\"*\"},{\"Effect\":\"Allow\",\"Action\":\"ec2:CreateNetworkInterfacePermission\",\"Resource\":\"*\",\"Condition\":{\"StringEquals\":{\"ec2:AuthorizedService\":\"codebuild.amazonaws.com\"}}}]}"
+if [ "${NEW_ROLE}" = "1" ]; then
   echo "==> Waiting for the new role to become usable"
   sleep 15
 fi

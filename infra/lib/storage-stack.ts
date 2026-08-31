@@ -12,33 +12,10 @@ export class StorageStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Driver documents / Car Paddy uploads / support-ticket attachments:
-    // private, accessed only via short-lived presigned URLs from the backend.
-    this.documentsBucket = new s3.Bucket(this, "DocumentsBucket", {
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      enforceSSL: true,
-      versioned: true,
-      lifecycleRules: [{ noncurrentVersionExpiration: cdk.Duration.days(90) }],
-      // The web apps upload documents by PUTting the file bytes straight to a
-      // short-lived presigned URL (see backend POST /uploads/presign). A
-      // browser PUT is a cross-origin request, so S3 must return CORS headers
-      // or the browser blocks it. Access is still gated by the presigned URL
-      // (per-user key, 5-minute expiry) — CORS only controls which page may
-      // send the bytes, not who is authorized.
-      cors: [
-        {
-          allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.GET, s3.HttpMethods.HEAD],
-          allowedOrigins: ["*"],
-          allowedHeaders: ["*"],
-          maxAge: 3000,
-        },
-      ],
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
-
-    // Vehicle photos, rental listing photos, avatars: served publicly through
-    // CloudFront (never expose the bucket itself).
+    // Vehicle photos, rental listing photos, avatars — and the built web apps
+    // themselves — are served publicly through CloudFront (never expose the
+    // bucket itself). Created first so the documents bucket below can scope its
+    // upload CORS to this distribution's domain (the web apps' own origin).
     this.assetsBucket = new s3.Bucket(this, "AssetsBucket", {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
@@ -52,6 +29,33 @@ export class StorageStack extends cdk.Stack {
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
       },
+    });
+
+    // Driver documents / Car Paddy uploads / support-ticket attachments:
+    // private, accessed only via short-lived presigned URLs from the backend.
+    this.documentsBucket = new s3.Bucket(this, "DocumentsBucket", {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      versioned: true,
+      lifecycleRules: [{ noncurrentVersionExpiration: cdk.Duration.days(90) }],
+      // The web apps upload documents by PUTting the file bytes straight to a
+      // short-lived presigned URL (see backend POST /uploads/presign). A
+      // browser PUT is a cross-origin request, so S3 must return CORS headers
+      // or the browser blocks it — access is still gated by the presigned URL
+      // (per-user key, 5-minute expiry). CORS is scoped to the CloudFront
+      // domain the web apps are actually served from, rather than "*", so only
+      // that origin's pages can send the bytes. (Add your custom domain here
+      // too once one is attached to the distribution.)
+      cors: [
+        {
+          allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.GET, s3.HttpMethods.HEAD],
+          allowedOrigins: [`https://${this.assetsDistribution.distributionDomainName}`],
+          allowedHeaders: ["*"],
+          maxAge: 3000,
+        },
+      ],
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     new cdk.CfnOutput(this, "DocumentsBucketName", { value: this.documentsBucket.bucketName });

@@ -132,7 +132,7 @@ class AuthService {
     if (msg.contains('ExpiredCode')) return 'That code has expired. Tap “Resend code”.';
     if (msg.contains('NotAuthorized')) return 'Incorrect email or password.';
     if (msg.contains('UserNotConfirmed')) return 'Please verify your email first.';
-    if (msg.contains('UserNotFound')) return 'No account found for this email.';
+    if (msg.contains('UserNotFound')) return 'Incorrect email or password.'; // uniform message avoids account enumeration
     if (msg.contains('InvalidPassword') || msg.contains('Password did not conform')) {
       return 'Password must be 8+ characters with an uppercase, a lowercase, and a number.';
     }

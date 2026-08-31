@@ -34,6 +34,18 @@ async function requireOwnUserId(cognitoSub: string): Promise<string> {
   return user.id;
 }
 
+/**
+ * Never return full bank/routing numbers to the client — only the last 4
+ * digits, so a leaked response (or shoulder-surf) can't reveal the account.
+ * Full numbers stay server-side only. (Longer term these should be tokenized
+ * via the payments provider rather than stored raw — see the DriverBankAccount
+ * model.)
+ */
+function maskBankAccount<T extends { accountNumber?: string | null; routingNumber?: string | null }>(acct: T) {
+  const last4 = (v?: string | null) => (v && v.length >= 4 ? `••••${v.slice(-4)}` : v ? "••••" : v);
+  return { ...acct, accountNumber: last4(acct.accountNumber), routingNumber: last4(acct.routingNumber) };
+}
+
 // Bank account schemas
 const bankAccountSchema = z.object({
   accountHolderName: z.string().min(1),
@@ -65,7 +77,7 @@ payoutsRouter.post("/payouts/bank-account", requireAuth, requireRole("Driver"), 
       });
     }
 
-    res.status(201).json(bankAccount);
+    res.status(201).json(maskBankAccount(bankAccount));
   } catch (err) {
     next(err);
   }
@@ -79,7 +91,7 @@ payoutsRouter.get("/payouts/bank-account", requireAuth, requireRole("Driver"), a
       where: { driverId },
     });
     if (!bankAccount) throw Errors.notFound("Bank account");
-    res.json(bankAccount);
+    res.json(maskBankAccount(bankAccount));
   } catch (err) {
     next(err);
   }

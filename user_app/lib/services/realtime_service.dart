@@ -24,12 +24,11 @@ class RealtimeService {
     return b.isNotEmpty && !b.contains('example.com');
   }
 
-  static String? _wsUrl(String token) {
+  static String? _wsBase() {
     var base = (dotenv.env['API_BASE_URL'] ?? '').trim();
     if (base.isEmpty) return null;
     if (base.endsWith('/')) base = base.substring(0, base.length - 1);
-    base = base.replaceFirst('https://', 'wss://').replaceFirst('http://', 'ws://');
-    return '$base/ws?token=$token';
+    return base.replaceFirst('https://', 'wss://').replaceFirst('http://', 'ws://');
   }
 
   /// Connect and start delivering decoded messages to [onMessage]. Returns true
@@ -41,11 +40,14 @@ class RealtimeService {
   }) async {
     final token = await AuthService.validAccessToken();
     if (token == null || token.isEmpty) return false;
-    final url = _wsUrl(token);
-    if (url == null) return false;
+    final base = _wsBase();
+    if (base == null) return false;
 
     try {
-      _channel = WebSocketChannel.connect(Uri.parse(url));
+      // The token travels in the WebSocket subprotocol header, not the URL, so
+      // it isn't captured in proxy/access logs. The backend reads the value
+      // after the "bearer" marker.
+      _channel = WebSocketChannel.connect(Uri.parse('$base/ws'), protocols: ['bearer', token]);
     } catch (_) {
       return false;
     }

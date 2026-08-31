@@ -49,6 +49,10 @@ export class AuthStack extends cdk.Stack {
       generateSecret: false,
       accessTokenValidity: cdk.Duration.hours(1),
       refreshTokenValidity: cdk.Duration.days(30),
+      // Return a uniform "incorrect username or password" for sign-in and a
+      // uniform response for password reset regardless of whether the account
+      // exists, so an attacker can't enumerate registered emails.
+      preventUserExistenceErrors: true,
     });
 
     for (const groupName of ["Rider", "Driver", "Admin"]) {

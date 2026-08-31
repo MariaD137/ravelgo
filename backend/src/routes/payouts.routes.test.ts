@@ -45,6 +45,10 @@ test("POST /payouts/bank-account creates a row the same driver can then read bac
   const read = await request(app).get("/api/payouts/bank-account").set("Authorization", `Bearer ${token}`);
   assert.equal(read.status, 200);
   assert.equal(read.body.accountHolderName, "Driver One");
+  // Full account/routing numbers are never returned — only the last 4 digits.
+  assert.equal(read.body.accountNumber, "••••6789");
+  assert.equal(read.body.routingNumber, "••••0021");
+  assert.ok(!JSON.stringify(read.body).includes("0123456789"));
 });
 
 test("GET /payouts/history only returns the calling driver's own payouts, including ones an Admin created", async () => {
