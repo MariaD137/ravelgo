@@ -20,6 +20,9 @@ class AuthService {
 
   static bool get isSignedIn => accessToken != null;
 
+  /// The access token the API client sends as a Bearer credential (valid ~1h).
+  static Future<String?> validAccessToken() async => accessToken;
+
   /// True only when the app was built with real Cognito settings. Lets the UI
   /// give a clear message instead of a cryptic error if config is missing.
   static bool get isConfigured =>

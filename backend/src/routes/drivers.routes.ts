@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { recordAudit } from "../lib/audit";
 
 export const driversRouter = Router();
 
@@ -113,6 +114,13 @@ driversRouter.patch("/drivers/:id/status", requireAuth, requireRole("Admin"), as
   const driver = await prisma.driver.update({
     where: { id: req.params.id },
     data: { status: parsed.data.status },
+  });
+  void recordAudit({
+    actorSub: req.user!.sub,
+    action: "DRIVER_STATUS_CHANGED",
+    entityType: "Driver",
+    entityId: driver.id,
+    metadata: { status: parsed.data.status },
   });
   res.json(driver);
 });

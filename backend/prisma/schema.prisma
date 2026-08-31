@@ -435,3 +435,19 @@ model WalletTransaction {
 
   @@index([walletId])
 }
+
+// Append-only record of privileged admin actions (driver approvals, document
+// reviews, rider suspensions) for accountability. Written best-effort by the
+// admin routes; readable only by Admins via GET /admin/audit.
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorSub   String // Cognito sub of the admin who performed the action
+  action     String // e.g. DRIVER_STATUS_CHANGED, DOCUMENT_REVIEWED, RIDER_SUSPENDED
+  entityType String // e.g. Driver, DriverDocument, User
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+}

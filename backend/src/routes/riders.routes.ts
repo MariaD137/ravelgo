@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { validate } from "../lib/validate";
 import { Errors } from "../lib/errors";
+import { recordAudit } from "../lib/audit";
 
 export const ridersRouter = Router();
 
@@ -93,6 +94,12 @@ ridersRouter.patch("/riders/:id/status", requireAuth, requireRole("Admin"), asyn
     const rider = await prisma.user.update({
       where: { id: req.params.id },
       data: { suspended: data.suspended },
+    });
+    void recordAudit({
+      actorSub: req.user!.sub,
+      action: data.suspended ? "RIDER_SUSPENDED" : "RIDER_REINSTATED",
+      entityType: "User",
+      entityId: rider.id,
     });
     res.json(rider);
   } catch (err) {

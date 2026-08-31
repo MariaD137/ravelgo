@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/views/audit/audit_log_screen.dart';
 import 'package:ravelgo_admin/views/auth/admin_login_screen.dart';
 import 'package:ravelgo_admin/views/carpaddy/car_paddy_requests_screen.dart';
 import 'package:ravelgo_admin/views/couriers/courier_requests_screen.dart';
@@ -57,6 +58,7 @@ class SideMenuAdmin extends StatelessWidget {
             _item(context, Icons.emoji_events_outlined, "Loyalty & Promotions", () => const LoyaltyProgramScreen()),
             AppComponents.divider(),
             _item(context, Icons.bar_chart_outlined, "Reports & Analytics", () => const AnalyticsScreen()),
+            _item(context, Icons.receipt_long_outlined, "Audit Log", () => const AuditLogScreen()),
             _item(context, Icons.manage_accounts_outlined, "Admin Roles", () => const AdminRolesScreen()),
             _item(context, Icons.person_outline, "My Profile", () => const AdminProfileScreen()),
             _item(context, Icons.logout, "Log out", () => const AdminLoginScreen(), replace: true),

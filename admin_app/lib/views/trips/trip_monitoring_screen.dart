@@ -1,50 +1,103 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_admin/models/trip_record.dart';
+import 'package:ravelgo_admin/services/admin_api.dart';
+import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/utils/date_utils.dart';
-import 'package:ravelgo_admin/views/trips/trip_admin_detail_screen.dart';
 
-class TripMonitoringScreen extends StatelessWidget {
+class TripMonitoringScreen extends StatefulWidget {
   final bool embedded;
   const TripMonitoringScreen({super.key, this.embedded = false});
 
-  Color _statusColor(TripRecordStatus s) {
-    switch (s) {
-      case TripRecordStatus.inProgress:
-        return AppColors.info;
-      case TripRecordStatus.completed:
-        return AppColors.success;
-      case TripRecordStatus.cancelled:
-        return AppColors.textMuted;
-      case TripRecordStatus.disputed:
-        return AppColors.danger;
+  @override
+  State<TripMonitoringScreen> createState() => _TripMonitoringScreenState();
+}
+
+class _TripMonitoringScreenState extends State<TripMonitoringScreen> {
+  bool _loading = true;
+  String? _error;
+  List<AdminTrip> _trips = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final trips = await AdminApi.trips();
+      if (!mounted) return;
+      setState(() {
+        _trips = trips;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e is ApiException && e.statusCode == 403
+            ? 'Sign in as an admin to monitor trips.'
+            : e.toString();
+        _loading = false;
+      });
     }
   }
 
-  String _statusLabel(TripRecordStatus s) {
+  Color _statusColor(String s) {
     switch (s) {
-      case TripRecordStatus.inProgress:
-        return "In progress";
-      case TripRecordStatus.completed:
-        return "Completed";
-      case TripRecordStatus.cancelled:
-        return "Cancelled";
-      case TripRecordStatus.disputed:
-        return "Disputed";
+      case 'IN_PROGRESS':
+      case 'MATCHED':
+        return AppColors.info;
+      case 'COMPLETED':
+        return AppColors.success;
+      case 'DISPUTED':
+        return AppColors.danger;
+      default:
+        return AppColors.textMuted;
     }
   }
+
+  String _label(String s) => s.isEmpty ? '' : s[0] + s.substring(1).toLowerCase().replaceAll('_', ' ');
 
   @override
   Widget build(BuildContext context) {
-    final body = ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: mockTripRecords.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
-      itemBuilder: (context, i) {
-        final t = mockTripRecords[i];
-        return InkWell(
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TripAdminDetailScreen(trip: t))),
-          child: Container(
+    final Widget body = _loading
+        ? const Center(child: CircularProgressIndicator())
+        : (_error != null ? _errorView() : _list());
+    if (widget.embedded) return body;
+    return Scaffold(appBar: AppBar(title: const Text("Trips")), body: body);
+  }
+
+  Widget _errorView() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
+              TextButton(onPressed: _load, child: const Text('Try again')),
+            ],
+          ),
+        ),
+      );
+
+  Widget _list() {
+    if (_trips.isEmpty) {
+      return const Center(child: Text("No trips yet.", style: TextStyle(color: AppColors.textSecondary)));
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.separated(
+        padding: const EdgeInsets.all(16),
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: _trips.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        itemBuilder: (context, i) {
+          final t = _trips[i];
+          return Container(
             padding: const EdgeInsets.all(14),
             decoration: AppComponents.cardDecoration(),
             child: Row(
@@ -53,30 +106,32 @@ class TripMonitoringScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("${t.riderName}  →  ${t.driverName}", style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+                      Text("${t.riderName.isEmpty ? 'Rider' : t.riderName}  →  ${t.driverName ?? 'Unassigned'}",
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
                       const SizedBox(height: 4),
-                      Text("${t.pickup} to ${t.destination}", style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                      Text("${t.pickup} to ${t.destination}",
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                       const SizedBox(height: 2),
-                      Text(formatFriendlyDate(t.date), style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                      Text(formatFriendlyDate(t.requestedAt),
+                          style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                     ],
                   ),
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    AppComponents.badge(_statusLabel(t.status), color: _statusColor(t.status)),
+                    AppComponents.badge(_label(t.status), color: _statusColor(t.status)),
                     const SizedBox(height: 6),
                     Text("₦${t.fare.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.w700)),
                   ],
                 ),
               ],
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
-
-    if (embedded) return body;
-    return Scaffold(appBar: AppBar(title: const Text("Trips")), body: body);
   }
 }

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { recordAudit } from "../lib/audit";
 
 export const documentsRouter = Router();
 
@@ -55,6 +56,13 @@ documentsRouter.patch("/documents/:id/review", requireAuth, requireRole("Admin")
   const doc = await prisma.driverDocument.update({
     where: { id: req.params.id },
     data: { status: parsed.data.status },
+  });
+  void recordAudit({
+    actorSub: req.user!.sub,
+    action: "DOCUMENT_REVIEWED",
+    entityType: "DriverDocument",
+    entityId: doc.id,
+    metadata: { status: parsed.data.status },
   });
   res.json(doc);
 });
