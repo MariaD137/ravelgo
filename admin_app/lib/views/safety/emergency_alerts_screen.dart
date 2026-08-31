@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_admin/models/admin_actions_state.dart';
-import 'package:ravelgo_admin/models/fraud_alert.dart';
+import 'package:ravelgo_admin/services/admin_api.dart';
+import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/utils/date_utils.dart';
 
-/// Live emergency (SOS) alerts.
-/// LOCAL STATE ONLY: "Dispatch help" records the dispatch decision locally
-/// and updates the card; it does NOT contact any responder - the dispatch
-/// service is the integration point, and the confirmation says so.
+/// Live SOS emergency alerts (GET /api/emergency-alerts, filtered to type SOS).
 class EmergencyAlertsScreen extends StatefulWidget {
   const EmergencyAlertsScreen({super.key});
 
@@ -16,69 +13,133 @@ class EmergencyAlertsScreen extends StatefulWidget {
 }
 
 class _EmergencyAlertsScreenState extends State<EmergencyAlertsScreen> {
-  Future<void> _dispatch(EmergencyAlert e) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Dispatch help?'),
-        content: Text(
-            'Record a dispatch decision for ${e.personName} at ${e.location}? '
-            'NOTE: the dispatch service is not connected in this build - no responder '
-            'is contacted by this action.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Record dispatch', style: TextStyle(color: AppColors.danger))),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => AdminActionsState.instance.resolveEmergency(e.id));
+  bool _loading = true;
+  bool _busy = false;
+  String? _error;
+  List<EmergencyAlert> _alerts = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
   }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final all = await AdminApi.alerts();
+      if (!mounted) return;
+      setState(() {
+        _alerts = all.where((a) => a.type == 'SOS').toList();
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e is ApiException && e.statusCode == 403 ? 'Sign in as an admin to view alerts.' : e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _setStatus(EmergencyAlert a, String status) async {
+    setState(() => _busy = true);
+    try {
+      await AdminApi.setAlertStatus(a.id, status);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Color _color(String s) {
+    switch (s) {
+      case 'RESOLVED':
+        return AppColors.success;
+      case 'ACKNOWLEDGED':
+        return AppColors.info;
+      default:
+        return AppColors.danger;
+    }
+  }
+
+  String _label(String s) => s.isEmpty ? '' : s[0] + s.substring(1).toLowerCase().replaceAll('_', ' ');
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Emergency Alerts")),
-      body: ListView(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : (_error != null ? _err() : _list()),
+    );
+  }
+
+  Widget _err() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
+            TextButton(onPressed: _load, child: const Text('Try again')),
+          ]),
+        ),
+      );
+
+  Widget _list() {
+    if (_alerts.isEmpty) {
+      return const Center(child: Text("No SOS alerts.", style: TextStyle(color: AppColors.textSecondary)));
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.separated(
         padding: const EdgeInsets.all(16),
-        children: mockEmergencyAlerts.map((e) {
-          final handled = e.resolved || AdminActionsState.instance.resolvedEmergencies.contains(e.id);
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: _alerts.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        itemBuilder: (context, i) {
+          final a = _alerts[i];
           return Container(
-            margin: const EdgeInsets.only(bottom: 10),
             padding: const EdgeInsets.all(14),
             decoration: AppComponents.cardDecoration(),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.sos, color: handled ? AppColors.textMuted : AppColors.danger, size: 28),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("${e.personName} (${e.role})", style: const TextStyle(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 4),
-                      Text(e.location, style: const TextStyle(fontSize: 12.5)),
-                      const SizedBox(height: 2),
-                      Text(formatFriendlyDate(e.triggeredAt), style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                    ],
-                  ),
+                Row(
+                  children: [
+                    const Icon(Icons.sos, color: AppColors.danger, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                        child: Text(a.userName.isEmpty ? 'User' : a.userName,
+                            style: const TextStyle(fontWeight: FontWeight.w600))),
+                    AppComponents.badge(_label(a.status), color: _color(a.status)),
+                  ],
                 ),
-                if (e.resolved)
-                  AppComponents.badge("Resolved", color: AppColors.success)
-                else if (handled)
-                  AppComponents.badge("Dispatch recorded", color: AppColors.warning)
-                else
-                  ElevatedButton(
-                    onPressed: () => _dispatch(e),
-                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger, foregroundColor: Colors.white),
-                    child: const Text("Dispatch help"),
-                  ),
+                if (a.message != null && a.message!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(a.message!, style: const TextStyle(fontSize: 13)),
+                ],
+                const SizedBox(height: 4),
+                Text(formatFriendlyDate(a.createdAt), style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                Row(
+                  children: [
+                    if (a.status == 'OPEN')
+                      TextButton(onPressed: _busy ? null : () => _setStatus(a, 'ACKNOWLEDGED'), child: const Text('Acknowledge')),
+                    if (a.status != 'RESOLVED')
+                      TextButton(onPressed: _busy ? null : () => _setStatus(a, 'RESOLVED'), child: const Text('Resolve')),
+                  ],
+                ),
               ],
             ),
           );
-        }).toList(),
+        },
       ),
     );
   }

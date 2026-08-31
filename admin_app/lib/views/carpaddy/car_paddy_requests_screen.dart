@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_admin/models/admin_actions_state.dart';
-import 'package:ravelgo_admin/models/car_paddy_request.dart';
+import 'package:ravelgo_admin/services/admin_api.dart';
+import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/utils/date_utils.dart';
 
-/// Car Paddy (license renewal) request moderation with working
-/// approve/reject. LOCAL STATE ONLY: decisions live in AdminActionsState;
-/// persisting them is the API integration point.
+/// Car Paddy verification requests (GET /api/car-paddy, admin).
 class CarPaddyRequestsScreen extends StatefulWidget {
   const CarPaddyRequestsScreen({super.key});
 
@@ -15,98 +13,126 @@ class CarPaddyRequestsScreen extends StatefulWidget {
 }
 
 class _CarPaddyRequestsScreenState extends State<CarPaddyRequestsScreen> {
-  Future<void> _decide(CarPaddyRequest r, CarPaddyStatus status) async {
-    final approving = status == CarPaddyStatus.approved;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(approving ? 'Approve request?' : 'Reject request?'),
-        content: Text(
-            '${approving ? 'Approve' : 'Reject'} the license renewal for ${r.driverName} (${r.plateNumber})?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(approving ? 'Approve' : 'Reject',
-                style: TextStyle(color: approving ? AppColors.success : AppColors.danger)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => AdminActionsState.instance.decideCarPaddy(r.id, status));
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('Request for ${r.driverName} ${approving ? 'approved' : 'rejected'} (recorded locally)'),
-    ));
+  bool _loading = true;
+  bool _busy = false;
+  String? _error;
+  List<CarPaddyRequest> _items = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
   }
 
-  Color _statusColor(CarPaddyStatus s) {
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final items = await AdminApi.carPaddyRequests();
+      if (!mounted) return;
+      setState(() {
+        _items = items;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e is ApiException && e.statusCode == 403 ? 'Sign in as an admin to view requests.' : e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _review(CarPaddyRequest r, String status) async {
+    setState(() => _busy = true);
+    try {
+      await AdminApi.reviewCarPaddy(r.id, status);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Color _color(String s) {
     switch (s) {
-      case CarPaddyStatus.submitted:
-        return AppColors.textMuted;
-      case CarPaddyStatus.inReview:
-        return AppColors.warning;
-      case CarPaddyStatus.approved:
+      case 'APPROVED':
         return AppColors.success;
-      case CarPaddyStatus.rejected:
+      case 'REJECTED':
         return AppColors.danger;
+      case 'IN_REVIEW':
+        return AppColors.info;
+      default:
+        return AppColors.warning;
     }
   }
 
-  String _statusLabel(CarPaddyStatus s) {
-    switch (s) {
-      case CarPaddyStatus.submitted:
-        return "Submitted";
-      case CarPaddyStatus.inReview:
-        return "In review";
-      case CarPaddyStatus.approved:
-        return "Approved";
-      case CarPaddyStatus.rejected:
-        return "Rejected";
-    }
-  }
+  String _label(String s) => s.isEmpty ? '' : s[0] + s.substring(1).toLowerCase().replaceAll('_', ' ');
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Car Paddy Requests")),
-      body: ListView.separated(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : (_error != null ? _err() : _list()),
+    );
+  }
+
+  Widget _err() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
+            TextButton(onPressed: _load, child: const Text('Try again')),
+          ]),
+        ),
+      );
+
+  Widget _list() {
+    if (_items.isEmpty) {
+      return const Center(child: Text("No Car Paddy requests.", style: TextStyle(color: AppColors.textSecondary)));
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.separated(
         padding: const EdgeInsets.all(16),
-        itemCount: mockCarPaddyRequests.length,
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: _items.length,
         separatorBuilder: (_, __) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
-          final r = mockCarPaddyRequests[i];
-          final status = AdminActionsState.instance.effectiveCarPaddyStatus(r);
+          final r = _items[i];
+          final decided = r.status == 'APPROVED' || r.status == 'REJECTED';
           return Container(
             padding: const EdgeInsets.all(14),
             decoration: AppComponents.cardDecoration(),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("${r.driverName} · ${r.plateNumber}", style: const TextStyle(fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 4),
-                      Text("Submitted ${formatShortDate(r.submittedOn)}", style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                    ],
-                  ),
+                Row(
+                  children: [
+                    Expanded(child: Text(r.plateNumber, style: const TextStyle(fontWeight: FontWeight.w600))),
+                    AppComponents.badge(_label(r.status), color: _color(r.status)),
+                  ],
                 ),
-                if (status == CarPaddyStatus.inReview || status == CarPaddyStatus.submitted)
+                const SizedBox(height: 4),
+                Text("${r.driverName.isEmpty ? 'Driver' : r.driverName} · ${formatFriendlyDate(r.submittedAt)}",
+                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                if (!decided)
                   Row(
                     children: [
-                      IconButton(
-                          tooltip: 'Reject',
-                          icon: const Icon(Icons.close, color: AppColors.danger),
-                          onPressed: () => _decide(r, CarPaddyStatus.rejected)),
-                      IconButton(
-                          tooltip: 'Approve',
-                          icon: const Icon(Icons.check, color: AppColors.success),
-                          onPressed: () => _decide(r, CarPaddyStatus.approved)),
+                      TextButton(onPressed: _busy ? null : () => _review(r, 'APPROVED'), child: const Text('Approve')),
+                      TextButton(
+                          onPressed: _busy ? null : () => _review(r, 'REJECTED'),
+                          child: const Text('Reject', style: TextStyle(color: AppColors.danger))),
                     ],
-                  )
-                else
-                  AppComponents.badge(_statusLabel(status), color: _statusColor(status)),
+                  ),
               ],
             ),
           );

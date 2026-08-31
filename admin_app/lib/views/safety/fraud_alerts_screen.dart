@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_admin/models/admin_actions_state.dart';
-import 'package:ravelgo_admin/models/fraud_alert.dart';
+import 'package:ravelgo_admin/services/admin_api.dart';
+import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/utils/date_utils.dart';
 
-/// Fraud alerts with working dismiss/investigate.
-/// LOCAL STATE ONLY: decisions are recorded in AdminActionsState and the
-/// card updates; persisting them is the safety-API integration point.
+/// Suspected-fraud alerts (GET /api/emergency-alerts, filtered to FRAUD_SUSPECTED).
 class FraudAlertsScreen extends StatefulWidget {
   const FraudAlertsScreen({super.key});
 
@@ -15,100 +13,133 @@ class FraudAlertsScreen extends StatefulWidget {
 }
 
 class _FraudAlertsScreenState extends State<FraudAlertsScreen> {
-  Future<void> _dismiss(FraudAlert a) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Dismiss alert?'),
-        content: Text('Dismiss "${a.title}" (${a.id}) as a false positive?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Dismiss')),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    setState(() => AdminActionsState.instance.decideFraud(a.id, 'dismissed'));
+  bool _loading = true;
+  bool _busy = false;
+  String? _error;
+  List<EmergencyAlert> _alerts = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
   }
 
-  void _investigate(FraudAlert a) {
-    setState(() => AdminActionsState.instance.decideFraud(a.id, 'investigating'));
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text('${a.id} marked under investigation (recorded locally)'),
-    ));
-  }
-
-  Color _severityColor(AlertSeverity s) {
-    switch (s) {
-      case AlertSeverity.low:
-        return AppColors.success;
-      case AlertSeverity.medium:
-        return AppColors.warning;
-      case AlertSeverity.high:
-        return AppColors.danger;
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final all = await AdminApi.alerts();
+      if (!mounted) return;
+      setState(() {
+        _alerts = all.where((a) => a.type == 'FRAUD_SUSPECTED').toList();
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e is ApiException && e.statusCode == 403 ? 'Sign in as an admin to view alerts.' : e.toString();
+        _loading = false;
+      });
     }
   }
+
+  Future<void> _setStatus(EmergencyAlert a, String status) async {
+    setState(() => _busy = true);
+    try {
+      await AdminApi.setAlertStatus(a.id, status);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Color _color(String s) {
+    switch (s) {
+      case 'RESOLVED':
+        return AppColors.success;
+      case 'ACKNOWLEDGED':
+        return AppColors.info;
+      default:
+        return AppColors.warning;
+    }
+  }
+
+  String _label(String s) => s.isEmpty ? '' : s[0] + s.substring(1).toLowerCase().replaceAll('_', ' ');
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Fraud Alerts")),
-      body: ListView(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : (_error != null ? _err() : _list()),
+    );
+  }
+
+  Widget _err() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
+            TextButton(onPressed: _load, child: const Text('Try again')),
+          ]),
+        ),
+      );
+
+  Widget _list() {
+    if (_alerts.isEmpty) {
+      return const Center(child: Text("No fraud alerts.", style: TextStyle(color: AppColors.textSecondary)));
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.separated(
         padding: const EdgeInsets.all(16),
-        children: [
-          Container(
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: _alerts.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        itemBuilder: (context, i) {
+          final a = _alerts[i];
+          return Container(
             padding: const EdgeInsets.all(14),
-            margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(color: AppColors.primary.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(12)),
-            child: const Text(
-              "AI-based fraud prevention flags unusual booking patterns or ride behavior for your review.",
-              style: TextStyle(fontSize: 12.5),
-            ),
-          ),
-          ...mockFraudAlerts.map((a) {
-            final decision = AdminActionsState.instance.fraudDecisions[a.id];
-            return Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: AppComponents.cardDecoration(),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            decoration: AppComponents.cardDecoration(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Expanded(child: Text(a.title, style: const TextStyle(fontWeight: FontWeight.w700))),
-                        AppComponents.badge(a.severity.name, color: _severityColor(a.severity)),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(a.description, style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
-                    const SizedBox(height: 6),
-                    Text(formatFriendlyDate(a.detectedAt), style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                    const SizedBox(height: 10),
-                    if (decision == 'dismissed')
-                      AppComponents.badge('Dismissed', color: AppColors.textMuted)
-                    else if (decision == 'investigating')
-                      AppComponents.badge('Under investigation', color: AppColors.warning)
-                    else
-                      Row(
-                        children: [
-                          Expanded(
-                              child: AppComponents.outlineButton(
-                                  text: "Dismiss", onPressed: () => _dismiss(a))),
-                          const SizedBox(width: 10),
-                          Expanded(
-                              child: AppComponents.outlineButton(
-                                  text: "Investigate",
-                                  color: AppColors.danger,
-                                  onPressed: () => _investigate(a))),
-                        ],
-                      ),
+                    const Icon(Icons.warning_amber, color: AppColors.warning, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                        child: Text(a.userName.isEmpty ? 'User' : a.userName,
+                            style: const TextStyle(fontWeight: FontWeight.w600))),
+                    AppComponents.badge(_label(a.status), color: _color(a.status)),
                   ],
                 ),
-              );
-          }),
-        ],
+                if (a.message != null && a.message!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(a.message!, style: const TextStyle(fontSize: 13)),
+                ],
+                const SizedBox(height: 4),
+                Text(formatFriendlyDate(a.createdAt), style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                Row(
+                  children: [
+                    if (a.status == 'OPEN')
+                      TextButton(onPressed: _busy ? null : () => _setStatus(a, 'ACKNOWLEDGED'), child: const Text('Acknowledge')),
+                    if (a.status != 'RESOLVED')
+                      TextButton(onPressed: _busy ? null : () => _setStatus(a, 'RESOLVED'), child: const Text('Resolve')),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
