@@ -1,0 +1,51 @@
+name: Android Build (rider)
+
+# Builds an installable debug APK of the rider app so it can be tested on a
+# real Android phone without a local Flutter setup. Runs on every push to the
+# working branch that touches the rider app, and can be started by hand from
+# the Actions tab (Run workflow). Download the APK from the run's Artifacts.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/screenshots-ui-1plari
+    paths:
+      - "user_app/**"
+      - ".github/workflows/android-build.yml"
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: user_app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java (needed for the Android build)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Create .env (config the app reads at startup)
+        run: cp .env.example .env
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ravelgo-rider-apk
+          path: user_app/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
