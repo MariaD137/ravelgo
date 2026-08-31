@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_admin/services/auth_service.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 
-/// Admin password change.
-/// AUTH BOUNDARY: no authentication backend is connected, so the password
-/// cannot actually be changed. Input is fully validated and the submit
-/// action states the boundary honestly - it never claims the password was
-/// changed. `_save` is the integration point for the auth service.
+/// Admin password change, wired to Cognito (requires the admin to be signed in).
 class ChangePasswordScreen extends StatefulWidget {
   const ChangePasswordScreen({super.key});
 
@@ -17,9 +14,12 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   final _currentController = TextEditingController();
   final _newController = TextEditingController();
   final _confirmController = TextEditingController();
+  bool _saving = false;
   String? _currentError;
   String? _newError;
   String? _confirmError;
+
+  static final _strongPassword = RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$');
 
   @override
   void dispose() {
@@ -29,26 +29,31 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     super.dispose();
   }
 
-  void _save() {
+  Future<void> _save() async {
     setState(() {
       _currentError = _currentController.text.isEmpty ? 'Enter your current password' : null;
-      _newError = _newController.text.length < 8
-          ? 'New password must be at least 8 characters'
+      _newError = !_strongPassword.hasMatch(_newController.text)
+          ? 'Password must be 8+ chars with an uppercase, a lowercase, and a number.'
           : null;
-      _confirmError =
-          _confirmController.text != _newController.text ? 'Passwords do not match' : null;
+      _confirmError = _confirmController.text != _newController.text ? 'Passwords do not match' : null;
     });
     if (_currentError != null || _newError != null || _confirmError != null) return;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Not available yet'),
-        content: const Text(
-            'Password changes require the authentication service, which is not connected '
-            'in this build. Your password has not been changed.'),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
-      ),
-    );
+
+    setState(() => _saving = true);
+    try {
+      await AuthService.changePassword(
+        oldPassword: _currentController.text,
+        newPassword: _newController.text,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password changed.')));
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _currentError = AuthService.friendlyError(e));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Widget _field(String label, TextEditingController controller, String? error) {
@@ -85,7 +90,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             const SizedBox(height: 16),
             _field('Confirm new password', _confirmController, _confirmError),
             const SizedBox(height: 24),
-            AppComponents.primaryButton(text: 'Save changes', onPressed: _save),
+            AppComponents.primaryButton(text: _saving ? 'Saving…' : 'Save changes', onPressed: _saving ? null : _save),
           ],
         ),
       ),

@@ -14,6 +14,7 @@ class AuthService {
   );
 
   static CognitoUserSession? session;
+  static CognitoUser? currentUser;
   static String? accessToken;
   static String? idToken;
   static String? email;
@@ -61,12 +62,41 @@ class AuthService {
     await user.resendConfirmationCode();
   }
 
+  /// Ask Cognito to email a password-reset code.
+  static Future<void> forgotPassword({required String email}) async {
+    final user = CognitoUser(email, _pool);
+    await user.forgotPassword();
+  }
+
+  /// Complete a password reset with the emailed code and a new password.
+  static Future<void> confirmForgotPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
+    final user = CognitoUser(email, _pool);
+    await user.confirmPassword(code, newPassword);
+  }
+
+  /// Change the password for the currently signed-in user.
+  static Future<void> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    final user = currentUser;
+    if (user == null) {
+      throw CognitoClientException('Please sign in again to change your password.');
+    }
+    await user.changePassword(oldPassword, newPassword);
+  }
+
   /// Sign in and keep the resulting tokens for API calls.
   static Future<void> signIn({required String email, required String password}) async {
     final user = CognitoUser(email, _pool);
     final s = await user.authenticateUser(
       AuthenticationDetails(username: email, password: password),
     );
+    currentUser = user;
     session = s;
     accessToken = s?.getAccessToken().getJwtToken();
     idToken = s?.getIdToken().getJwtToken();
@@ -80,6 +110,7 @@ class AuthService {
   }
 
   static void signOut() {
+    currentUser = null;
     session = null;
     accessToken = null;
     idToken = null;

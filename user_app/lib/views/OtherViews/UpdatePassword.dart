@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/services/auth_service.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class UpdatePassword extends StatefulWidget {
@@ -16,9 +17,12 @@ class _UpdatePasswordState extends State<UpdatePassword> {
   bool _obscureCurrent = true;
   bool _obscureNew = true;
   bool _obscureConfirm = true;
+  bool _saving = false;
   String? _currentError;
   String? _newError;
   String? _confirmError;
+
+  static final _strongPassword = RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$');
 
   @override
   Widget build(BuildContext context) {
@@ -74,28 +78,33 @@ class _UpdatePasswordState extends State<UpdatePassword> {
   /// AUTH BOUNDARY: no authentication backend is connected, so the password
   /// cannot actually be changed; the user is told so instead of a fake
   /// success message. This method is the integration point.
-  void _save() {
+  Future<void> _save() async {
     setState(() {
-      _currentError =
-          _currentPasswordController.text.isEmpty ? 'Enter your current password' : null;
-      _newError = _newPasswordController.text.length < 6
-          ? 'New password must be at least 6 characters'
+      _currentError = _currentPasswordController.text.isEmpty ? 'Enter your current password' : null;
+      _newError = !_strongPassword.hasMatch(_newPasswordController.text)
+          ? 'Password must be 8+ chars with an uppercase, a lowercase, and a number.'
           : null;
       _confirmError = _confirmPasswordController.text != _newPasswordController.text
           ? 'Passwords do not match'
           : null;
     });
     if (_currentError != null || _newError != null || _confirmError != null) return;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Not available yet'),
-        content: const Text(
-            'Password changes require the authentication service, which is not connected '
-            'in this build. Your password has not been changed.'),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
-      ),
-    );
+
+    setState(() => _saving = true);
+    try {
+      await AuthService.changePassword(
+        oldPassword: _currentPasswordController.text,
+        newPassword: _newPasswordController.text,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password changed.')));
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _currentError = AuthService.friendlyError(e));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Widget _buildLabel(String text) {
@@ -136,8 +145,10 @@ class _UpdatePasswordState extends State<UpdatePassword> {
           foregroundColor: AppColors.textPrimary,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
-        onPressed: _save,
-        child: const Text("Save Changes"),
+        onPressed: _saving ? null : _save,
+        child: _saving
+            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            : const Text("Save Changes"),
       ),
     );
   }
