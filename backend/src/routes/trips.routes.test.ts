@@ -322,3 +322,57 @@ test("GET /api/trips/mine returns only the caller's own trips (as rider or drive
   assert.equal(driverRes.body.total, 1);
   assert.equal(driverRes.body.data[0].id, driverTrip.id);
 });
+
+test("POST /api/trips/:id/rating records the rating and updates the driver's average", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-rate", role: "RIDER", firstName: "R", lastName: "A", email: "rate@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-rate", role: "DRIVER", firstName: "D", lastName: "R", email: "drate@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, rating: 5 } });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "COMPLETED" },
+  });
+
+  const token = mockAuthAs({ sub: "rider-rate", groups: ["Rider"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/rating`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ rating: 4 });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.riderRating, 4);
+
+  const updatedDriver = await prisma.driver.findUnique({ where: { id: driver.id } });
+  assert.equal(updatedDriver?.rating, 4);
+});
+
+test("POST /api/trips/:id/rating rejects a non-owner and an uncompleted trip", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-rate-2", role: "RIDER", firstName: "R", lastName: "A", email: "rate2@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-rate-2", role: "DRIVER", firstName: "D", lastName: "R", email: "drate2@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id } });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "MATCHED" },
+  });
+
+  // Owner but trip not completed -> 409.
+  const ownerToken = mockAuthAs({ sub: "rider-rate-2", groups: ["Rider"] });
+  const early = await request(app)
+    .post(`/api/trips/${trip.id}/rating`)
+    .set("Authorization", `Bearer ${ownerToken}`)
+    .send({ rating: 5 });
+  assert.equal(early.status, 409);
+
+  // A different rider -> 403.
+  restoreAuth();
+  const strangerToken = mockAuthAs({ sub: "rider-stranger", groups: ["Rider"] });
+  const stranger = await request(app)
+    .post(`/api/trips/${trip.id}/rating`)
+    .set("Authorization", `Bearer ${strangerToken}`)
+    .send({ rating: 5 });
+  assert.equal(stranger.status, 403);
+});

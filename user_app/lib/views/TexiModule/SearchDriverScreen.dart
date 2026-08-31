@@ -28,6 +28,56 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
   bool _live = false;
   DateTime? _lastLocationAt;
 
+  // Post-trip rating.
+  int _rating = 0;
+  bool _ratingBusy = false;
+  bool _rated = false;
+
+  Future<void> _submitRating(int stars) async {
+    setState(() {
+      _rating = stars;
+      _ratingBusy = true;
+    });
+    try {
+      await TripsApi.rate(trip.id, stars);
+      if (!mounted) return;
+      setState(() => _rated = true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _ratingBusy = false);
+    }
+  }
+
+  Widget _ratingSection() {
+    if (_rated) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Text('Thanks for rating your driver!',
+            textAlign: TextAlign.center, style: TextStyle(color: AppColors.success, fontWeight: FontWeight.w600)),
+      );
+    }
+    return Column(
+      children: [
+        const Text('Rate your driver', style: TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(5, (i) {
+            final star = i + 1;
+            return IconButton(
+              iconSize: 34,
+              onPressed: _ratingBusy ? null : () => _submitRating(star),
+              icon: Icon(star <= _rating ? Icons.star : Icons.star_border, color: AppColors.warning),
+            );
+          }),
+        ),
+        if (_ratingBusy) const Padding(padding: EdgeInsets.all(4), child: CircularProgressIndicator()),
+      ],
+    );
+  }
+
   bool get _matched => _status == 'MATCHED' && (trip.driverName?.isNotEmpty ?? false);
   bool get _inProgress => _status == 'IN_PROGRESS';
   bool get _completed => _status == 'COMPLETED';
@@ -109,7 +159,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
                       children: [
                         _buildTripInfo(),
                         const SizedBox(height: 16),
-                        _buildCancelButton(),
+                        if (_completed) _ratingSection() else _buildCancelButton(),
                       ],
                     ),
                   ),

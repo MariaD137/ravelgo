@@ -89,6 +89,52 @@ tripsRouter.get("/trips/mine", requireAuth, async (req, res) => {
   res.json(paginate(trips, total, page, pageSize));
 });
 
+const rateSchema = z.object({
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().max(1000).optional(),
+});
+
+// Rider: rate the driver for a completed trip they own. Recomputes the
+// driver's average rating across all their rated trips.
+tripsRouter.post("/trips/:id/rating", requireAuth, requireRole("Rider"), async (req, res) => {
+  const parsed = rateSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const trip = await prisma.trip.findUnique({
+    where: { id: req.params.id },
+    include: { rider: true },
+  });
+  if (!trip) return res.status(404).json({ error: "Trip not found" });
+  if (trip.rider.cognitoSub !== req.user!.sub) {
+    return res.status(403).json({ error: "Not authorized to rate this trip" });
+  }
+  if (trip.status !== "COMPLETED") {
+    return res.status(409).json({ error: "You can only rate a completed trip" });
+  }
+  if (!trip.driverId) {
+    return res.status(409).json({ error: "This trip had no driver to rate" });
+  }
+
+  const updated = await prisma.trip.update({
+    where: { id: trip.id },
+    data: { riderRating: parsed.data.rating },
+  });
+
+  // Recompute the driver's average rating from all their rated trips.
+  const agg = await prisma.trip.aggregate({
+    where: { driverId: trip.driverId, riderRating: { not: null } },
+    _avg: { riderRating: true },
+  });
+  if (agg._avg.riderRating != null) {
+    await prisma.driver.update({
+      where: { id: trip.driverId },
+      data: { rating: agg._avg.riderRating },
+    });
+  }
+
+  res.json(updated);
+});
+
 // Rider or Driver: view a trip they're party to
 tripsRouter.get("/trips/:id", requireAuth, async (req, res) => {
   const trip = await prisma.trip.findUnique({

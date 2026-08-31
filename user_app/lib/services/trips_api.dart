@@ -62,6 +62,14 @@ class Trip {
 }
 
 class TripsApi {
+  /// Rate the driver (1–5) for a completed trip.
+  static Future<void> rate(String tripId, int rating, {String? comment}) async {
+    await ApiClient.post('/api/trips/$tripId/rating', {
+      'rating': rating,
+      if (comment != null && comment.isNotEmpty) 'comment': comment,
+    });
+  }
+
   /// The signed-in user's trips (as rider or assigned driver), newest first.
   static Future<List<Trip>> mine({int page = 1, int pageSize = 50}) async {
     final data = await ApiClient.get('/api/trips/mine?page=$page&pageSize=$pageSize');

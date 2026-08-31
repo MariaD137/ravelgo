@@ -178,6 +178,7 @@ model Trip {
   status        TripStatus @default(REQUESTED)
   category      String     @default("Personal")
   pickupNote    String?
+  riderRating   Float?     // 1–5 rating the rider gave the driver for this trip
   requestedAt   DateTime   @default(now())
   completedAt   DateTime?
 
