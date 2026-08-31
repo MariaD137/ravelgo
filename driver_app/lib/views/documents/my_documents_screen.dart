@@ -1,38 +1,76 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver_app/models/document_item.dart';
+import 'package:ravelgo_driver_app/services/api_client.dart';
+import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
-import 'package:ravelgo_driver_app/utils/date_utils.dart';
 
-class MyDocumentsScreen extends StatelessWidget {
+class MyDocumentsScreen extends StatefulWidget {
   const MyDocumentsScreen({super.key});
 
-  Color _statusColor(DocumentStatus s) {
+  @override
+  State<MyDocumentsScreen> createState() => _MyDocumentsScreenState();
+}
+
+class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
+  bool _loading = true;
+  String? _error;
+  List<DriverDocument> _docs = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final docs = await DriverApi.myDocuments();
+      if (!mounted) return;
+      setState(() {
+        _docs = docs;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e is ApiException && e.statusCode == 403
+            ? 'Your account isn\'t set up as a driver yet.'
+            : e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  Color _statusColor(String s) {
     switch (s) {
-      case DocumentStatus.approved:
+      case 'APPROVED':
         return AppColors.success;
-      case DocumentStatus.pending:
+      case 'PENDING':
         return AppColors.primaryDark;
-      case DocumentStatus.expiringSoon:
+      case 'EXPIRING_SOON':
         return AppColors.warning;
-      case DocumentStatus.rejected:
+      case 'REJECTED':
         return AppColors.danger;
-      case DocumentStatus.notUploaded:
+      default:
         return AppColors.textMuted;
     }
   }
 
-  String _statusLabel(DocumentStatus s) {
+  String _label(String s) {
     switch (s) {
-      case DocumentStatus.approved:
-        return "Approved";
-      case DocumentStatus.pending:
-        return "Under review";
-      case DocumentStatus.expiringSoon:
-        return "Expiring soon";
-      case DocumentStatus.rejected:
-        return "Rejected";
-      case DocumentStatus.notUploaded:
-        return "Not uploaded";
+      case 'APPROVED':
+        return 'Approved';
+      case 'PENDING':
+        return 'Under review';
+      case 'EXPIRING_SOON':
+        return 'Expiring soon';
+      case 'REJECTED':
+        return 'Rejected';
+      default:
+        return 'Not uploaded';
     }
   }
 
@@ -40,12 +78,47 @@ class MyDocumentsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("My Documents")),
-      body: ListView.separated(
+      body: _body(),
+    );
+  }
+
+  Widget _body() {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
+              TextButton(onPressed: _load, child: const Text('Try again')),
+            ],
+          ),
+        ),
+      );
+    }
+    if (_docs.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text(
+            'No documents on file yet.\nYour uploaded documents and their approval status will appear here.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.separated(
         padding: const EdgeInsets.all(16),
-        itemCount: mockDocuments.length,
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: _docs.length,
         separatorBuilder: (_, __) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
-          final d = mockDocuments[i];
+          final d = _docs[i];
           return Container(
             padding: const EdgeInsets.all(14),
             decoration: AppComponents.cardDecoration(),
@@ -56,13 +129,15 @@ class MyDocumentsScreen extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(d.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 4),
-                      if (d.expiryDate != null)
-                        Text("Expires ${formatShortDate(d.expiryDate!)}", style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                      if (d.expiryDate != null) ...[
+                        const SizedBox(height: 4),
+                        Text("Expires ${d.expiryDate!.toLocal().toString().split(' ').first}",
+                            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                      ],
                     ],
                   ),
                 ),
-                AppComponents.badge(_statusLabel(d.status), color: _statusColor(d.status)),
+                AppComponents.badge(_label(d.status), color: _statusColor(d.status)),
               ],
             ),
           );

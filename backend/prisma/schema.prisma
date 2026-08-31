@@ -131,6 +131,7 @@ model Driver {
   userId            String       @unique
   user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   status            DriverStatus @default(PENDING_REVIEW)
+  isOnline          Boolean      @default(false)
   rating            Float        @default(5.0)
   totalTrips        Int          @default(0)
   preferredLanguage String       @default("English")

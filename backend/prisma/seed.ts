@@ -38,6 +38,7 @@ async function main() {
     create: {
       userId: driverUser.id,
       status: "ACTIVE",
+      isOnline: true,
       rating: 4.8,
       totalTrips: 214,
       preferredLanguage: "English",

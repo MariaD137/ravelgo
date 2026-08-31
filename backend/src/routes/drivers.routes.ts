@@ -65,6 +65,29 @@ driversRouter.get("/drivers/me", requireAuth, requireRole("Driver"), async (req,
   res.json(driver);
 });
 
+const availabilitySchema = z.object({ isOnline: z.boolean() });
+
+// Driver: go online / offline. Only an ACTIVE (admin-approved) driver can go
+// online; matching (services/matching.ts) only assigns trips to drivers who
+// are both ACTIVE and online.
+driversRouter.patch("/drivers/me/availability", requireAuth, requireRole("Driver"), async (req, res) => {
+  const parsed = availabilitySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  if (parsed.data.isOnline && driver.status !== "ACTIVE") {
+    return res.status(409).json({ error: "Your account is not approved to go online yet." });
+  }
+
+  const updated = await prisma.driver.update({
+    where: { id: driver.id },
+    data: { isOnline: parsed.data.isOnline },
+  });
+  res.json(updated);
+});
+
 // Admin: get a single driver with documents.
 // Registered after the literal "/drivers/me" routes above — Express matches
 // path segments in registration order, so ":id" would otherwise swallow

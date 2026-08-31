@@ -92,7 +92,7 @@ test("POST /api/trips auto-matches an available ACTIVE driver", async () => {
   const driverUser = await prisma.user.create({
     data: { cognitoSub: "driver-sub-6", role: "DRIVER", firstName: "I", lastName: "J", email: "i@example.com" },
   });
-  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE" } });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE", isOnline: true } });
 
   const token = mockAuthAs({ sub: "rider-sub-6", groups: ["Rider"] });
   const res = await request(app).post("/api/trips").set("Authorization", `Bearer ${token}`).send(tripInput);
@@ -100,6 +100,24 @@ test("POST /api/trips auto-matches an available ACTIVE driver", async () => {
   assert.equal(res.status, 201);
   assert.equal(res.body.status, "MATCHED");
   assert.equal(res.body.driverId, driver.id);
+});
+
+test("POST /api/trips leaves a trip REQUESTED when the only ACTIVE driver is offline", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-offline", role: "RIDER", firstName: "G", lastName: "H", email: "goff@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-offline", role: "DRIVER", firstName: "I", lastName: "J", email: "ioff@example.com" },
+  });
+  // ACTIVE (approved) but not online -> must not be matched.
+  await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE", isOnline: false } });
+
+  const token = mockAuthAs({ sub: "rider-offline", groups: ["Rider"] });
+  const res = await request(app).post("/api/trips").set("Authorization", `Bearer ${token}`).send(tripInput);
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.status, "REQUESTED");
+  assert.equal(res.body.driverId, null);
 });
 
 test("POST /api/trips leaves a trip REQUESTED when no ACTIVE driver is free", async () => {
