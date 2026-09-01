@@ -2,6 +2,7 @@ import { mock } from "node:test";
 import { verifier } from "../middleware/auth";
 import { prisma } from "../db/prisma";
 import { stripeClient } from "../billing/stripe";
+import { cognitoGroups } from "../services/cognito";
 
 export interface MockCognitoUser {
   sub: string;
@@ -44,6 +45,18 @@ export function mockPaymentIntentCreate(id = `pi_test_${Date.now()}`) {
     client_secret: `${id}_secret_test`,
   }));
   return id;
+}
+
+/**
+ * Stubs cognitoGroups.addUserToGroup so route tests exercising the
+ * server-authoritative role grant never call a real Cognito user pool. Returns
+ * the mock so a test can assert it was called with the expected sub/group.
+ * Pass `shouldThrow` to simulate Cognito rejecting the group add.
+ */
+export function mockCognitoAddToGroup({ shouldThrow = false } = {}) {
+  return mock.method(cognitoGroups, "addUserToGroup", async () => {
+    if (shouldThrow) throw new Error("simulated Cognito failure");
+  });
 }
 
 // Delete in FK-safe order (children before parents).

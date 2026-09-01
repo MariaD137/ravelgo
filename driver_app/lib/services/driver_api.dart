@@ -137,11 +137,18 @@ class Vehicle {
 }
 
 class DriverApi {
-  /// Ensure a driver profile row exists (safe to call after sign-in).
+  /// Apply to become a driver (safe to call after sign-in; idempotent).
+  ///
+  /// Uses the server-authoritative onboarding endpoint (POST /api/drivers/apply)
+  /// — the backend both creates the PENDING_REVIEW profile and grants the
+  /// "Driver" Cognito group with its own IAM role (P0 #2). A fresh sign-up is
+  /// only in the "Rider" group, so this is the path that actually elevates the
+  /// role; calling /drivers/me instead would 403 for a user who hasn't been
+  /// granted the group yet. The client never assigns its own role.
   static Future<void> provisionMe() async {
     final email = AuthService.email;
     if (email == null || email.isEmpty) return;
-    await ApiClient.post('/api/drivers/me', {
+    await ApiClient.post('/api/drivers/apply', {
       'firstName': (AuthService.givenName?.isNotEmpty ?? false) ? AuthService.givenName : 'Driver',
       'lastName': (AuthService.familyName?.isNotEmpty ?? false) ? AuthService.familyName : 'User',
       'email': email,
