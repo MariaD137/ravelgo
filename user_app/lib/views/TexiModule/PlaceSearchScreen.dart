@@ -3,24 +3,21 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/places_api.dart';
-import 'package:ravelgo_user_app/views/TexiModule/SelectRide.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
-/// Destination search that feeds the ride flow.
-///
-/// Address search + geocoding go through the RavelGo backend Places proxy (see
-/// services/places_api.dart), NOT a direct browser call to Google — Google's
-/// Places web-service endpoints send no CORS headers, so the old direct call
-/// silently failed on Flutter Web. Selecting a place resolves it to real
-/// coordinates and carries them into SelectRide so the trip can be priced.
-class FindRouteScreen extends StatefulWidget {
-  const FindRouteScreen({super.key});
+/// Address search backed by the RavelGo Places proxy (Google Places under the
+/// hood, server-side). Pops with the chosen [PlaceLocation] — address +
+/// coordinates — so the ride flow gets a real destination it can price and
+/// send to the backend, not just a name string.
+class PlaceSearchScreen extends StatefulWidget {
+  final String title;
+  const PlaceSearchScreen({super.key, this.title = 'Where to?'});
 
   @override
-  State<FindRouteScreen> createState() => _FindRouteScreenState();
+  State<PlaceSearchScreen> createState() => _PlaceSearchScreenState();
 }
 
-class _FindRouteScreenState extends State<FindRouteScreen> {
+class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
   final TextEditingController _controller = TextEditingController();
   Timer? _debounce;
   List<PlaceSuggestion> _suggestions = [];
@@ -37,6 +34,7 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
 
   void _onChanged(String value) {
     _debounce?.cancel();
+    // Debounce so we don't fire a paid Places request on every keystroke.
     _debounce = Timer(const Duration(milliseconds: 350), () => _search(value));
   }
 
@@ -67,7 +65,7 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
         _loading = false;
         _error = e is ApiException && e.statusCode == 503
             ? 'Address search isn\'t available right now.'
-            : 'Could not load places - check your connection.';
+            : 'Could not search addresses - check your connection.';
       });
     }
   }
@@ -77,11 +75,7 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
     try {
       final place = await PlacesApi.details(suggestion.placeId);
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => SelectRide(destination: place.address, initialDestination: place),
-        ),
-      );
+      Navigator.of(context).pop(place);
     } catch (_) {
       if (!mounted) return;
       setState(() => _resolving = false);
@@ -96,29 +90,25 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
     return Scaffold(
       backgroundColor: AppColors.surface,
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.close, color: AppColors.textPrimary),
-          onPressed: () => Navigator.pop(context),
-        ),
         backgroundColor: AppColors.surface,
         elevation: 0,
-        title: const Text('Your route', style: TextStyle(color: AppColors.textPrimary)),
+        leading: const BackButton(color: AppColors.textPrimary),
+        title: Text(widget.title, style: const TextStyle(color: AppColors.textPrimary)),
         centerTitle: true,
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Column(
-          children: [
-            const SizedBox(height: 12),
-            Container(
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                border: Border.all(color: AppColors.textMuted),
-                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.border),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.search, color: AppColors.textPrimary, size: 20),
+                  const Icon(Icons.search, color: AppColors.textSecondary),
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
@@ -126,7 +116,7 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
                       autofocus: true,
                       onChanged: _onChanged,
                       decoration: const InputDecoration(
-                        hintText: 'Where to?',
+                        hintText: 'Search for a destination',
                         border: InputBorder.none,
                       ),
                     ),
@@ -136,29 +126,28 @@ class _FindRouteScreenState extends State<FindRouteScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            if (_error != null)
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(_error!, style: const TextStyle(color: AppColors.error)),
-              ),
-            Expanded(
-              child: ListView.separated(
-                itemCount: _suggestions.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (_, i) {
-                  final s = _suggestions[i];
-                  return ListTile(
-                    leading: const Icon(Icons.place_outlined, color: AppColors.textPrimary),
-                    title: Text(s.description),
-                    onTap: _resolving ? null : () => _select(s),
-                  );
-                },
-              ),
+          ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(_error!, style: const TextStyle(color: AppColors.error)),
             ),
-            if (_resolving) const LinearProgressIndicator(minHeight: 2),
-          ],
-        ),
+          Expanded(
+            child: ListView.separated(
+              itemCount: _suggestions.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (_, i) {
+                final s = _suggestions[i];
+                return ListTile(
+                  leading: const Icon(Icons.location_on_outlined, color: AppColors.textPrimary),
+                  title: Text(s.description),
+                  onTap: _resolving ? null : () => _select(s),
+                );
+              },
+            ),
+          ),
+          if (_resolving) const LinearProgressIndicator(minHeight: 2),
+        ],
       ),
     );
   }

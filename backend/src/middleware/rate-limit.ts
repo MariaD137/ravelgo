@@ -52,6 +52,11 @@ export function createRateLimiter(options: {
 // far above any legitimate single-session burst.
 export const sensitiveLimiter = createRateLimiter({ limit: 40, name: "sensitive" });
 
+// Address search fires on nearly every keystroke and each call costs a real
+// Google Places request, so this sits above a normal typing burst but well
+// under what scripted abuse of the paid API would need.
+export const placesLimiter = createRateLimiter({ limit: 200, name: "places" });
+
 // The Stripe webhook is authenticated by signature, and Stripe legitimately
 // retries, so this ceiling is high — it's a flood backstop, not a throttle on
 // normal delivery, and a dropped webhook here would be re-sent by Stripe.

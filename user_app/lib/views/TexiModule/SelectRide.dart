@@ -3,15 +3,22 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/LocationService.dart';
 import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/services/booking_api.dart';
+import 'package:ravelgo_user_app/services/places_api.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/views/TexiModule/FindDriverScreen.dart';
+import 'package:ravelgo_user_app/views/TexiModule/PlaceSearchScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class SelectRide extends StatefulWidget {
   /// Destination chosen on the previous screen (route search); shown in the
   /// search bar so the selection visibly carries through the flow.
   final String? destination;
-  const SelectRide({super.key, this.destination});
+
+  /// A fully-resolved destination (address + coordinates) chosen on the
+  /// previous screen. When present the trip is immediately priceable without
+  /// the rider having to search or drop a pin again.
+  final PlaceLocation? initialDestination;
+  const SelectRide({super.key, this.destination, this.initialDestination});
 
   @override
   State<SelectRide> createState() => _SelectRideState();
@@ -28,15 +35,27 @@ class _SelectRideState extends State<SelectRide> {
   // CTA label so all tiers are actually pickable, not just a fixed default.
   String _selectedRide = 'Just ride';
 
-  // Real trip geometry: pickup = device location, destination = a pin the rider
-  // taps on the map. The straight-line distance between them prices the trip.
+  // Real trip geometry: pickup = device location, destination = either an
+  // address the rider searches (Places proxy) or a pin they tap on the map.
+  // The straight-line distance between them prices the trip.
   LatLng? _pickupLatLng;
   LatLng? _destLatLng;
   double? _distanceKm;
+  // Human-readable labels shown in the From/To rows and sent to the backend as
+  // the trip's pickup/destination. Reverse-geocoded from coordinates.
+  String? _pickupLabel;
+  String? _destLabel;
 
   @override
   void initState() {
     super.initState();
+    final initial = widget.initialDestination;
+    if (initial != null) {
+      _destLatLng = LatLng(initial.lat, initial.lng);
+      _destLabel = initial.address;
+    } else {
+      _destLabel = widget.destination;
+    }
     _initPickup();
   }
 
@@ -44,18 +63,69 @@ class _SelectRideState extends State<SelectRide> {
     final position = await LocationService.getCurrentLocation();
     if (position == null || !mounted) return;
     final me = LatLng(position.latitude, position.longitude);
-    setState(() => _pickupLatLng = me);
+    setState(() {
+      _pickupLatLng = me;
+      _recompute();
+    });
     mapController?.animateCamera(CameraUpdate.newLatLng(me));
+    _resolvePickupLabel(me);
+  }
+
+  /// Turn the pickup coordinates into an address for the "From" line. Falls
+  /// back to the raw coordinates if the geocoding proxy isn't reachable.
+  Future<void> _resolvePickupLabel(LatLng me) async {
+    String label = 'Current location (${me.latitude.toStringAsFixed(4)}, ${me.longitude.toStringAsFixed(4)})';
+    try {
+      final address = await PlacesApi.reverseGeocode(me.latitude, me.longitude);
+      if (address != null && address.isNotEmpty) label = address;
+    } catch (_) {
+      // keep the coordinate fallback
+    }
+    if (mounted) setState(() => _pickupLabel = label);
+  }
+
+  void _recompute() {
+    final from = _pickupLatLng;
+    final to = _destLatLng;
+    _distanceKm = (from == null || to == null)
+        ? null
+        : BookingApi.distanceKm(from.latitude, from.longitude, to.latitude, to.longitude);
+  }
+
+  /// Open the address search; on selection, drop the destination and price it.
+  Future<void> _openDestinationSearch() async {
+    final place = await Navigator.of(context).push<PlaceLocation>(
+      MaterialPageRoute(builder: (_) => const PlaceSearchScreen()),
+    );
+    if (place == null || !mounted) return;
+    final dest = LatLng(place.lat, place.lng);
+    setState(() {
+      _destLatLng = dest;
+      _destLabel = place.address;
+      _recompute();
+    });
+    mapController?.animateCamera(CameraUpdate.newLatLng(dest));
   }
 
   void _onMapTap(LatLng point) {
     setState(() {
       _destLatLng = point;
-      final from = _pickupLatLng;
-      _distanceKm = from == null
-          ? null
-          : BookingApi.distanceKm(from.latitude, from.longitude, point.latitude, point.longitude);
+      _destLabel = 'Dropped pin (${point.latitude.toStringAsFixed(4)}, ${point.longitude.toStringAsFixed(4)})';
+      _recompute();
     });
+    // Try to upgrade the pin label to a real address in the background.
+    _resolveDestLabel(point);
+  }
+
+  Future<void> _resolveDestLabel(LatLng point) async {
+    try {
+      final address = await PlacesApi.reverseGeocode(point.latitude, point.longitude);
+      if (address != null && address.isNotEmpty && mounted && _destLatLng == point) {
+        setState(() => _destLabel = address);
+      }
+    } catch (_) {
+      // keep the coordinate label
+    }
   }
 
   Set<Marker> _markers() {
@@ -90,8 +160,12 @@ class _SelectRideState extends State<SelectRide> {
       return;
     }
     final me = LatLng(position.latitude, position.longitude);
-    setState(() => _pickupLatLng = me);
+    setState(() {
+      _pickupLatLng = me;
+      _recompute();
+    });
     mapController!.animateCamera(CameraUpdate.newLatLng(me));
+    _resolvePickupLabel(me);
   }
 
   Future<void> _pickPaymentMethod() async {
@@ -202,10 +276,13 @@ class _SelectRideState extends State<SelectRide> {
                       "Choose a ride",
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
+                    // From / To summary so the rider can see the pickup that was
+                    // auto-detected and the destination they chose.
+                    _buildRouteSummary(),
                     if (_destLatLng == null)
                       const Padding(
                         padding: EdgeInsets.only(top: 4),
-                        child: Text('Tap the map to drop your destination pin',
+                        child: Text('Search "Where to?" above, or tap the map to drop a pin',
                             style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                       )
                     else if (_distanceKm != null)
@@ -275,7 +352,8 @@ class _SelectRideState extends State<SelectRide> {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
                                   builder: (context) => FindDriverScreen(
-                                    destination: widget.destination,
+                                    pickup: _pickupLabel,
+                                    destination: _destLabel ?? widget.destination,
                                     paymentMethod: _paymentMethod,
                                     distanceKm: _distanceKm,
                                     durationMinutes:
@@ -324,18 +402,77 @@ class _SelectRideState extends State<SelectRide> {
             icon: const Icon(Icons.arrow_back,color: AppColors.textPrimary,),
             onPressed: () => Navigator.pop(context),
           ),
-          SizedBox(width: 8),
+          const SizedBox(width: 8),
           Expanded(
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: widget.destination ?? "Where to?",
-                border: InputBorder.none,
+            // Tapping opens the Places-backed search; the destination it returns
+            // carries real coordinates so the trip can be priced and booked.
+            child: InkWell(
+              onTap: _openDestinationSearch,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: Text(
+                  _destLabel ?? "Where to?",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: _destLabel == null ? AppColors.textSecondary : AppColors.textPrimary,
+                  ),
+                ),
               ),
             ),
           ),
-          Icon(Icons.add),
+          const Icon(Icons.search),
         ],
       ),
+    );
+  }
+
+  Widget _buildRouteSummary() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        children: [
+          _routeRow(
+            icon: Icons.my_location,
+            color: AppColors.success,
+            label: _pickupLabel ?? 'Locating you…',
+          ),
+          const Padding(
+            padding: EdgeInsets.only(left: 9),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(height: 14, child: VerticalDivider(width: 2, thickness: 1, color: AppColors.border)),
+            ),
+          ),
+          _routeRow(
+            icon: Icons.location_on,
+            color: AppColors.primary,
+            label: _destLabel ?? 'Choose your destination',
+            muted: _destLabel == null,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _routeRow({required IconData icon, required Color color, required String label, bool muted = false}) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              color: muted ? AppColors.textSecondary : AppColors.textPrimary,
+            ),
+          ),
+        ),
+      ],
     );
   }
 

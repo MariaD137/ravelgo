@@ -8,13 +8,15 @@ import 'package:ravelgo_user_app/views/TexiModule/SearchDriverScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class FindDriverScreen extends StatefulWidget {
+  final String? pickup;
   final String? destination;
   final String paymentMethod;
-  // Real trip metrics from the map-pin selection on SelectRide, when available.
+  // Real trip metrics from the destination selection on SelectRide, when available.
   final double? distanceKm;
   final double? durationMinutes;
   const FindDriverScreen({
     super.key,
+    this.pickup,
     this.destination,
     this.paymentMethod = 'Card',
     this.distanceKm,
@@ -28,7 +30,10 @@ class FindDriverScreen extends StatefulWidget {
 class _FindDriverScreenState extends State<FindDriverScreen> {
   Set<Marker> _markers = {};
 
-  static const _pickup = 'Current location';
+  String get _pickup =>
+      (widget.pickup != null && widget.pickup!.trim().isNotEmpty)
+          ? widget.pickup!.trim()
+          : 'Current location';
 
   // Use the rider's map-selected distance/duration when present, else the
   // placeholder (e.g. if they skipped dropping a pin).
@@ -202,7 +207,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
           children: [
             Image.asset('assets/ic_pickup.png', width: 24, height: 24),
             const SizedBox(width: 8),
-            const Text(_pickup, style: TextStyle(fontSize: 16)),
+            Expanded(child: Text(_pickup, style: const TextStyle(fontSize: 16))),
           ],
         ),
         const SizedBox(height: 8),

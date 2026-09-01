@@ -31,6 +31,13 @@ const rawEnvSchema = z.object({
   // real cause.
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  // Server-side Google Maps Platform key used by the Places/Geocoding proxy
+  // (src/routes/places.routes.ts). Deliberately separate from the browser
+  // Maps-JS key the web apps embed: this one is never sent to a client, so it
+  // can be locked to the backend's egress IP / specific APIs instead of an HTTP
+  // referrer. Optional so dev/test boots without it (the proxy returns a clear
+  // 503 when it's unset rather than calling Google with an empty key).
+  GOOGLE_MAPS_SERVER_KEY: z.string().optional(),
 });
 
 export interface Env {
@@ -45,6 +52,7 @@ export interface Env {
   ALLOWED_ORIGINS: string[];
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  GOOGLE_MAPS_SERVER_KEY?: string;
 }
 
 function loadEnv(): Env {
@@ -107,6 +115,7 @@ function loadEnv(): Env {
     ALLOWED_ORIGINS: allowedOrigins,
     STRIPE_SECRET_KEY: data.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: data.STRIPE_WEBHOOK_SECRET,
+    GOOGLE_MAPS_SERVER_KEY: data.GOOGLE_MAPS_SERVER_KEY,
   };
 }
 
