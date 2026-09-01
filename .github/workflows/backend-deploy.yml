@@ -13,6 +13,14 @@ permissions:
 
 jobs:
   build-and-deploy:
+    # Deploy only once the one-time AWS setup has been done (an OIDC deploy
+    # role in AWS plus the AWS_DEPLOY_ROLE_ARN / AWS_REGION /
+    # ECR_REPOSITORY_URI / APP_RUNNER_SERVICE_ARN repository variables in
+    # GitHub → Settings → Secrets and variables → Actions → Variables).
+    # Before that setup exists this job used to fail on every push to main
+    # ("Input required and not supplied: aws-region"); skipping cleanly keeps
+    # main's checks meaningful until production deploys are actually enabled.
+    if: vars.AWS_DEPLOY_ROLE_ARN != ''
     runs-on: ubuntu-latest
     environment: production
     steps:
