@@ -30,6 +30,22 @@ export function mockAuthAs(user: MockCognitoUser): string {
   return token;
 }
 
+/**
+ * Like mockAuthAs but recognizes SEVERAL identities at once, so a test can fire
+ * concurrent requests as different users (each `mock.method` call replaces the
+ * previous stub, so calling mockAuthAs twice would leave only the last user
+ * authenticatable). Returns a map of sub -> bearer token.
+ */
+export function mockAuthAsMany(users: MockCognitoUser[]): Record<string, string> {
+  const bySub = new Map(users.map((u) => [`mock.${u.sub}`, u]));
+  mock.method(verifier, "verify", async (candidate: string) => {
+    const user = bySub.get(candidate);
+    if (!user) throw new Error("invalid token");
+    return { sub: user.sub, email: user.email, "cognito:groups": user.groups ?? [] } as never;
+  });
+  return Object.fromEntries(users.map((u) => [u.sub, `mock.${u.sub}`]));
+}
+
 export function restoreAuth() {
   mock.restoreAll();
 }

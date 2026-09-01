@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, mockPaymentIntentCreate, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, mockAuthAsMany, mockPaymentIntentCreate, restoreAuth, resetDb } from "../test/helpers";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -200,6 +200,106 @@ test("POST /api/trips/:id/charge rejects a driver who wasn't on the trip", async
     .send({});
 
   assert.equal(res.status, 403);
+});
+
+// --- P0 #1: rider-initiated payment for their own trip --------------------
+
+test("POST /api/trips/:id/pay (WALLET) lets the rider pay their own trip from their balance", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const wallet = await prisma.walletAccount.create({ data: { userId: rider.id, balanceCents: 2000 } });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 14.5, status: "COMPLETED" },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-1", groups: ["Rider"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/pay`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ method: "WALLET" });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.status, "SUCCEEDED");
+  const w = await prisma.walletAccount.findUnique({ where: { id: wallet.id } });
+  assert.equal(w?.balanceCents, 550); // 2000 - 1450
+});
+
+test("POST /api/trips/:id/pay (CARD) returns a clientSecret for the rider to confirm", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 14.5, status: "COMPLETED" },
+  });
+
+  mockPaymentIntentCreate();
+  const token = mockAuthAs({ sub: "rider-sub-1", groups: ["Rider"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/pay`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ method: "CARD" });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.status, "PENDING");
+  assert.ok(res.body.clientSecret);
+});
+
+test("POST /api/trips/:id/pay refuses a rider paying someone else's trip", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 14.5, status: "COMPLETED" },
+  });
+
+  // A different, authenticated rider must not be able to pay (or probe) this trip.
+  await prisma.user.create({
+    data: { cognitoSub: "other-rider", role: "RIDER", firstName: "E", lastName: "F", email: "e@example.com" },
+  });
+  const token = mockAuthAs({ sub: "other-rider", groups: ["Rider"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/pay`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ method: "WALLET" });
+
+  assert.equal(res.status, 403);
+  assert.equal(await prisma.payment.count({ where: { tripId: trip.id } }), 0);
+});
+
+test("a rider-pay and a driver-charge on the same trip settle exactly once (no double charge)", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const wallet = await prisma.walletAccount.create({ data: { userId: rider.id, balanceCents: 10000 } });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 14.5, status: "COMPLETED" },
+  });
+
+  const tokens = mockAuthAsMany([
+    { sub: "rider-sub-1", groups: ["Rider"] },
+    { sub: "driver-sub-1", groups: ["Driver"] },
+  ]);
+  const riderToken = tokens["rider-sub-1"];
+  const driverToken = tokens["driver-sub-1"];
+  const [a, b] = await Promise.all([
+    request(app).post(`/api/trips/${trip.id}/pay`).set("Authorization", `Bearer ${riderToken}`).send({ method: "WALLET" }),
+    request(app).post(`/api/trips/${trip.id}/charge`).set("Authorization", `Bearer ${driverToken}`).send({ method: "WALLET" }),
+  ]);
+  const statuses = [a.status, b.status].sort();
+  assert.deepEqual(statuses, [201, 409]);
+
+  // Money moved once, single Payment.
+  const w = await prisma.walletAccount.findUnique({ where: { id: wallet.id } });
+  assert.equal(w?.balanceCents, 8550);
+  assert.equal(await prisma.payment.count({ where: { tripId: trip.id } }), 1);
+});
+
+test("POST /api/trips/:id/pay refuses a trip that isn't COMPLETED", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, status: "MATCHED" },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-1", groups: ["Rider"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/pay`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ method: "WALLET" });
+
+  assert.equal(res.status, 409);
 });
 
 test("GET /api/payments/mine only returns the caller's own payments", async () => {
