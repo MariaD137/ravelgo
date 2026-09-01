@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
+import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/booking_api.dart';
+import 'package:ravelgo_user_app/services/payments_api.dart';
 import 'package:ravelgo_user_app/services/realtime_service.dart';
+import 'package:ravelgo_user_app/services/stripe_service.dart';
 import 'package:ravelgo_user_app/services/trips_api.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
@@ -35,6 +39,92 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
 
   // Cancellation.
   bool _cancelBusy = false;
+
+  // Payment for the completed trip (P0 #1).
+  bool _paid = false;
+  bool _payBusy = false;
+
+  /// Pay for the completed trip. CARD confirms a backend PaymentIntent in the
+  /// Stripe PaymentSheet; WALLET settles from the rider's balance. If the driver
+  /// already charged the trip the backend returns 409, which we treat as paid.
+  Future<void> _payTrip(String method) async {
+    if (_payBusy) return;
+    if (method == 'CARD' && !StripeService.isConfigured) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Card payments are not configured yet.')),
+      );
+      return;
+    }
+    setState(() => _payBusy = true);
+    try {
+      if (method == 'CARD') {
+        final clientSecret = await PaymentsApi.payTripWithCard(trip.id);
+        await StripeService.presentPaymentSheet(clientSecret: clientSecret);
+      } else {
+        await PaymentsApi.payTripWithWallet(trip.id);
+      }
+      if (!mounted) return;
+      setState(() => _paid = true);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payment complete.')));
+    } on StripeException catch (_) {
+      // Rider cancelled or the card sheet failed — nothing was charged.
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.statusCode == 409) {
+        // Already charged (e.g. the driver settled it) — nothing more to pay.
+        setState(() => _paid = true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _payBusy = false);
+    }
+  }
+
+  Widget _paymentSection() {
+    return Column(
+      children: [
+        Row(
+          children: [
+            const Text('Amount due', style: TextStyle(fontWeight: FontWeight.w500)),
+            const Spacer(),
+            Text(Currency.format(trip.fare), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (_payBusy)
+          const Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator())
+        else
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _payTrip('WALLET'),
+                  icon: const Icon(Icons.account_balance_wallet_outlined),
+                  label: const Text('Pay with wallet'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => _payTrip('CARD'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: AppColors.textPrimary,
+                  ),
+                  icon: const Icon(Icons.credit_card),
+                  label: const Text('Pay by card'),
+                ),
+              ),
+            ],
+          ),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
 
   /// Cancel the trip on the backend (P0 #7). Only allowed while the trip is
   /// still REQUESTED or MATCHED — the backend enforces this too. On success the
@@ -196,9 +286,10 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
                       children: [
                         _buildTripInfo(),
                         const SizedBox(height: 16),
-                        if (_completed)
-                          _ratingSection()
-                        else if (_cancellable)
+                        if (_completed) ...[
+                          if (!_paid) _paymentSection(),
+                          _ratingSection(),
+                        ] else if (_cancellable)
                           _buildCancelButton(),
                       ],
                     ),

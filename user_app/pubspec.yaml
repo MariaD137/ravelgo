@@ -42,6 +42,11 @@ dependencies:
   http: ^1.2.0
   web_socket_channel: ^3.0.0
   shared_preferences: ^2.2.2
+  # Stripe PaymentSheet for card charges and wallet top-ups. Configured with the
+  # PUBLISHABLE key only (STRIPE_PUBLISHABLE_KEY in .env) — the secret key never
+  # ships in the app. Native setup (Android minSdk 21, iOS deployment target) is
+  # required for a build; see the Stripe SDK docs.
+  flutter_stripe: ^11.1.0
 
 dev_dependencies:
   flutter_test:

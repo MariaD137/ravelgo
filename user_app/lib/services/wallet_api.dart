@@ -50,4 +50,19 @@ class WalletApi {
     final list = data as List? ?? const [];
     return list.whereType<Map<String, dynamic>>().map(WalletTransaction.fromJson).toList();
   }
+
+  /// Start a wallet top-up: the backend creates a real Stripe PaymentIntent and
+  /// a PENDING credit, returning the `clientSecret` the app confirms via the
+  /// PaymentSheet. The balance is only credited once Stripe confirms the charge
+  /// on the signed webhook — the client never asserts that money arrived.
+  /// Returns the clientSecret.
+  static Future<String> startTopUp(double amount) async {
+    final data = await ApiClient.post('/api/wallet/topup', {'amount': amount});
+    final m = data as Map<String, dynamic>;
+    final secret = m['clientSecret'];
+    if (secret == null || '$secret'.isEmpty) {
+      throw Exception('Top-up could not be started.');
+    }
+    return '$secret';
+  }
 }
