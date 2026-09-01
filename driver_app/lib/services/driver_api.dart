@@ -33,7 +33,9 @@ class DriverRecord {
       );
 }
 
-/// A trip from the driver's perspective (GET /api/trips/mine).
+/// A trip from the driver's perspective (GET /api/trips/mine). All fields come
+/// from the backend's safe trip serialization — the driver never sees the
+/// rider's email/phone/Cognito sub.
 class DriverTrip {
   final String id;
   final String pickup;
@@ -43,6 +45,9 @@ class DriverTrip {
   final String status;
   final DateTime requestedAt;
   final String? riderName;
+  final double? distanceKm;
+  final double? riderRating;
+  final String? pickupNote;
 
   DriverTrip({
     required this.id,
@@ -53,6 +58,9 @@ class DriverTrip {
     required this.status,
     required this.requestedAt,
     required this.riderName,
+    this.distanceKm,
+    this.riderRating,
+    this.pickupNote,
   });
 
   double get fare => finalFare ?? estimatedFare;
@@ -78,6 +86,9 @@ class DriverTrip {
       status: '${j['status'] ?? ''}',
       requestedAt: DateTime.tryParse('${j['requestedAt']}')?.toLocal() ?? DateTime.now(),
       riderName: riderName,
+      distanceKm: j['distanceKm'] == null ? null : _d(j['distanceKm']),
+      riderRating: j['riderRating'] == null ? null : _d(j['riderRating']),
+      pickupNote: (j['pickupNote'] == null || '${j['pickupNote']}'.isEmpty) ? null : '${j['pickupNote']}',
     );
   }
 }

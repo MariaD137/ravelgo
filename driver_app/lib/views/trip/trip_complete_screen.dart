@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/config/currency.dart';
-import 'package:ravelgo_driver_app/models/ride_request.dart';
+import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
 
 class TripCompleteScreen extends StatefulWidget {
-  final RideRequest request;
-  const TripCompleteScreen({super.key, required this.request});
+  final DriverTrip trip;
+  const TripCompleteScreen({super.key, required this.trip});
 
   @override
   State<TripCompleteScreen> createState() => _TripCompleteScreenState();
@@ -17,9 +17,13 @@ class _TripCompleteScreenState extends State<TripCompleteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final r = widget.request;
-    final platformFee = r.estimatedFare * 0.15;
-    final earnings = r.estimatedFare - platformFee;
+    // The backend has finalized the trip; use its real fare. The service-fee
+    // line mirrors the backend's 25% platform commission (PLATFORM_COMMISSION_RATE)
+    // and is labelled as an estimate — the authoritative amount is the payout the
+    // backend generates from completed trips.
+    final fare = widget.trip.fare;
+    final platformFee = fare * 0.25;
+    final earnings = fare - platformFee;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -39,10 +43,10 @@ class _TripCompleteScreenState extends State<TripCompleteScreen> {
                 decoration: AppComponents.cardDecoration(),
                 child: Column(
                   children: [
-                    _fareRow("Trip fare", Currency.format(r.estimatedFare, decimals: 0)),
+                    _fareRow("Trip fare", Currency.format(fare, decimals: 0)),
                     _fareRow("RavelGo service fee", "- ${Currency.format(platformFee, decimals: 0)}"),
                     AppComponents.divider(),
-                    _fareRow("You earned", Currency.format(earnings, decimals: 0), bold: true),
+                    _fareRow("Estimated earnings", Currency.format(earnings, decimals: 0), bold: true),
                   ],
                 ),
               ),
