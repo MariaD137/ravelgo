@@ -101,6 +101,50 @@ test("a failed top-up webhook leaves the balance at zero and marks the transacti
   assert.equal(txn?.status, "FAILED");
 });
 
+test("an authorized third party can fund another user's wallet; only the beneficiary is credited", async () => {
+  const payer = await createRider("payer-1");
+  const beneficiary = await createRider("beneficiary-1");
+  const intentId = mockPaymentIntentCreate("pi_gift_1");
+  const payerToken = mockAuthAs({ sub: "payer-1", groups: ["Rider"] });
+
+  // Payer tops up the beneficiary's wallet by email.
+  const topup = await request(app)
+    .post("/api/wallet/topup")
+    .set("Authorization", `Bearer ${payerToken}`)
+    .send({ amount: 50, beneficiaryEmail: "beneficiary-1@example.com" });
+  assert.equal(topup.status, 201);
+  assert.equal(topup.body.beneficiary, "beneficiary-1@example.com");
+
+  // Stripe confirms the charge.
+  const { payload, signature } = signedTopupEvent(intentId, "payment_intent.succeeded");
+  await request(app)
+    .post("/api/billing/webhook")
+    .set("Content-Type", "application/json")
+    .set("stripe-signature", signature)
+    .send(payload);
+
+  // The beneficiary's balance rose; the payer's did not.
+  const beneficiaryWallet = await prisma.walletAccount.findUnique({ where: { userId: beneficiary.id } });
+  assert.equal(beneficiaryWallet?.balanceCents, 5000);
+  const payerWallet = await prisma.walletAccount.findUnique({ where: { userId: payer.id } });
+  assert.equal(payerWallet?.balanceCents ?? 0, 0);
+
+  // The ledger permanently records who funded it.
+  const txn = await prisma.walletTransaction.findUnique({ where: { providerReference: intentId } });
+  assert.equal(txn?.walletId, beneficiaryWallet?.id);
+  assert.equal(txn?.fundedBySub, "payer-1");
+});
+
+test("funding a non-existent beneficiary is rejected with 404", async () => {
+  await createRider("payer-2");
+  const token = mockAuthAs({ sub: "payer-2", groups: ["Rider"] });
+  const res = await request(app)
+    .post("/api/wallet/topup")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ amount: 20, beneficiaryEmail: "nobody@example.com" });
+  assert.equal(res.status, 404);
+});
+
 test("wallet top-up rejects a malformed amount", async () => {
   await createRider("rider-w4");
   const token = mockAuthAs({ sub: "rider-w4", groups: ["Rider"] });

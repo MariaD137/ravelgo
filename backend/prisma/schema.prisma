@@ -433,6 +433,10 @@ model WalletTransaction {
   amountCents       Int // positive = credit (top-up/refund), negative = debit (ride)
   providerReference String?                 @unique // Stripe PaymentIntent id for a TOPUP
   tripId            String? // the trip a RIDE_PAYMENT paid for
+  // Cognito sub of the payer, when a TOPUP was funded by someone OTHER than the
+  // wallet owner (authorized third-party funding). Null for a self top-up. The
+  // ledger is append-only, so this permanently records who put money in.
+  fundedBySub       String?
   createdAt         DateTime                @default(now())
 
   @@index([walletId])
