@@ -3,6 +3,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/booking_api.dart';
+import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/views/TexiModule/SearchDriverScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
@@ -235,7 +236,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Estimated fare: \$${q.estimatedFare.toStringAsFixed(2)}',
+        Text('Estimated fare: ${Currency.format(q.estimatedFare)}',
             style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.bold, fontSize: 16)),
         if (q.surgeMultiplier > 1)
           Text('Surge ${q.surgeMultiplier.toStringAsFixed(1)}x in effect',

@@ -3,6 +3,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/LocationService.dart';
 import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/services/booking_api.dart';
+import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/views/TexiModule/FindDriverScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
@@ -214,9 +215,9 @@ class _SelectRideState extends State<SelectRide> {
                       child: ListView(
                         controller: controller,
                         children: [
-                          rideCard("Just ride", "#8000", "2min", "4", isSelected: true),
-                          rideCard("EV", "#6000", "2min", "4"),
-                          rideCard("Lite", "#5000", "4min", "3"),
+                          rideCard("Just ride", "${Currency.symbol}8,000", "2min", "4", isSelected: true),
+                          rideCard("EV", "${Currency.symbol}6,000", "2min", "4"),
+                          rideCard("Lite", "${Currency.symbol}5,000", "4min", "3"),
                         ],
                       ),
                     ),
@@ -366,7 +367,7 @@ class _SelectRideState extends State<SelectRide> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(fare, style: const TextStyle(fontWeight: FontWeight.w600)),
-              const Text("#2444", style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
+              Text("${Currency.symbol}2,444", style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
             ],
           )
         ],

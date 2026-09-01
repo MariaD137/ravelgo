@@ -4,6 +4,7 @@ import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/services/realtime_service.dart';
 import 'package:ravelgo_user_app/services/trips_api.dart';
 import 'package:ravelgo_user_app/views/TexiModule/CancelRideScreen.dart';
+import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 /// Shown after a trip is actually created on the backend. Reflects the real
@@ -301,7 +302,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
           children: [
             const Text('Fare', style: TextStyle(fontWeight: FontWeight.w500)),
             const Spacer(),
-            Text('\$${trip.fare.toStringAsFixed(2)}',
+            Text(Currency.format(trip.fare),
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ],
         ),
