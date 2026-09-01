@@ -142,3 +142,44 @@ test("places proxy maps an upstream Google error to 502 without leaking detail",
   assert.equal(res.status, 502);
   assert.ok(!JSON.stringify(res.body).includes("API key"));
 });
+
+// Forward geocoding — the fallback that keeps booking possible when the device
+// gives the app no coordinates (location denied, or the map never loaded).
+
+test("GET /geocode/forward turns a typed address into coordinates", async () => {
+  restoreFetch = __setFetch(
+    stubFetch({
+      status: "OK",
+      results: [
+        {
+          formatted_address: "Lekki Phase 1, Lagos, Nigeria",
+          geometry: { location: { lat: 6.4474, lng: 3.4736 } },
+        },
+      ],
+    }),
+  );
+  const token = mockAuthAs({ sub: "rider-fwd-1", groups: ["Rider"] });
+  const res = await request(app)
+    .get("/api/geocode/forward?q=Lekki%20Phase%201")
+    .set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.address, "Lekki Phase 1, Lagos, Nigeria");
+  assert.equal(res.body.lat, 6.4474);
+  assert.equal(res.body.lng, 3.4736);
+  assert.ok(lastUrl.includes("geocode/json"));
+});
+
+test("GET /geocode/forward 404s when the address matches nothing", async () => {
+  restoreFetch = __setFetch(stubFetch({ status: "ZERO_RESULTS", results: [] }));
+  const token = mockAuthAs({ sub: "rider-fwd-2", groups: ["Rider"] });
+  const res = await request(app)
+    .get("/api/geocode/forward?q=nowhere%20at%20all")
+    .set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 404);
+});
+
+test("GET /geocode/forward requires authentication", async () => {
+  const res = await request(app).get("/api/geocode/forward?q=Lekki");
+  assert.equal(res.status, 401);
+});

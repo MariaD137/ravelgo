@@ -3,6 +3,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/booking_api.dart';
+import 'package:ravelgo_user_app/services/places_api.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/views/TexiModule/SearchDriverScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
@@ -93,25 +94,45 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
     }
   }
 
+  /// Resolve the coordinates the backend needs to price the trip.
+  ///
+  /// Map pins are the happy path, but a rider who denied location access — or
+  /// whose map never loaded — has none. Rather than dead-ending them, fall back
+  /// to geocoding the address text through the backend proxy. Returns null only
+  /// when even that can't place the address.
+  Future<({double lat, double lng})?> _resolve(double? lat, double? lng, String address) async {
+    if (lat != null && lng != null) return (lat: lat, lng: lng);
+    // "Current location" is our own placeholder, not a real address — geocoding
+    // it would just burn a call and fail.
+    if (address.isEmpty || address == 'Current location' || address == 'Destination') return null;
+    final place = await PlacesApi.forwardGeocode(address);
+    if (place == null) return null;
+    return (lat: place.lat, lng: place.lng);
+  }
+
   Future<void> _findDriver() async {
-    // The backend computes fare from coordinates, so they're required. If the
-    // rider reached here without both a pickup and a dropoff pin, send them
-    // back to choose a destination rather than firing a request that 400s.
-    if (widget.pickupLat == null || widget.pickupLng == null || widget.dropoffLat == null || widget.dropoffLng == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Set your pickup and destination on the map first.')),
-      );
-      return;
-    }
     setState(() => _requesting = true);
     try {
+      // The backend prices from coordinates, so resolve them first — from the
+      // map pins when we have them, otherwise by geocoding what the rider typed.
+      final from = await _resolve(widget.pickupLat, widget.pickupLng, _pickup);
+      final to = await _resolve(widget.dropoffLat, widget.dropoffLng, _destination);
+      if (!mounted) return;
+      if (from == null || to == null) {
+        final which = from == null ? 'pickup' : 'destination';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("We couldn't locate your $which. Pick it from the search suggestions or tap it on the map.")),
+        );
+        setState(() => _requesting = false);
+        return;
+      }
       final trip = await BookingApi.requestTrip(
         pickup: _pickup,
         destination: _destination,
-        pickupLat: widget.pickupLat!,
-        pickupLng: widget.pickupLng!,
-        dropoffLat: widget.dropoffLat!,
-        dropoffLng: widget.dropoffLng!,
+        pickupLat: from.lat,
+        pickupLng: from.lng,
+        dropoffLat: to.lat,
+        dropoffLng: to.lng,
       );
       if (!mounted) return;
       Navigator.of(context).push(

@@ -127,3 +127,18 @@ function parseLocation(result: Record<string, unknown> | undefined): PlaceLocati
   if (address === null || lat === null || lng === null) return null;
   return { address, lat, lng };
 }
+
+/**
+ * Forward-geocode a free-text address into coordinates.
+ *
+ * The trip API is coordinate-based (the server computes the authoritative
+ * distance and fare from them), so the app needs a way to obtain coordinates
+ * when the device can't supply them — e.g. the rider denied location access, or
+ * the map didn't load and there was no pin to drop. Without this the rider
+ * simply cannot book, which is a dead end rather than a degraded experience.
+ */
+export async function forwardGeocode(query: string): Promise<PlaceLocation | null> {
+  const body = await callGoogle("geocode/json", { address: query });
+  const results = Array.isArray(body.results) ? body.results : [];
+  return parseLocation(results[0] as Record<string, unknown> | undefined);
+}
