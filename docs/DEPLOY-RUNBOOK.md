@@ -15,6 +15,53 @@ Stacks created (production names; a non-prod env appends `-<envName>`):
 
 ---
 
+## Quick start — pull from GitHub and deploy in AWS CloudShell
+
+CloudShell already has your credentials, the AWS CLI, Node, git **and Docker**
+(Docker is available in 13 Regions — incl. `us-east-1`, `us-east-2`, `us-west-2`,
+`eu-west-1`, `eu-central-1`, `ap-southeast-1/2`, `ap-northeast-1`), so the whole
+deploy — image build included — can run there.
+
+Open **AWS CloudShell** in your target Region and paste:
+
+```bash
+# Work under /tmp: CloudShell's home directory is capped at 1 GB and
+# node_modules for CDK + backend will blow past it.
+cd /tmp && rm -rf ravelgo
+git clone --branch main https://github.com/MariaD137/ravelgo.git
+cd ravelgo
+
+# --- configure this deploy ---------------------------------------------------
+export AWS_REGION=us-east-1
+export ENVNAME=production
+export ALLOWED_ORIGINS="https://app.yourdomain.com,https://admin.yourdomain.com"
+export SES_FROM_EMAIL="no-reply@yourdomain.com"   # must be SES-verified
+export ALERT_EMAIL="ops@yourdomain.com"
+
+# --- run the phases, checking output between each ----------------------------
+bash scripts/cloudshell-deploy.sh preflight
+bash scripts/cloudshell-deploy.sh infra-base   # ~15 min (RDS is the slow part)
+bash scripts/cloudshell-deploy.sh secrets      # prompts for Stripe + Maps keys
+bash scripts/cloudshell-deploy.sh image        # docker build + push to ECR
+bash scripts/cloudshell-deploy.sh service      # App Runner comes up
+bash scripts/cloudshell-deploy.sh outputs      # everything you need afterwards
+```
+
+Then apply migrations from a CloudShell **VPC environment** (step 6 — the DB is
+private and unreachable from a normal shell):
+
+```bash
+cd /tmp && git clone https://github.com/MariaD137/ravelgo.git && cd ravelgo
+bash scripts/cloudshell-migrate.sh
+```
+
+If a CloudShell session times out mid-deploy, just re-clone and re-run the
+phase — CloudFormation holds the state, so the phases are idempotent.
+
+The sections below explain what each phase does and how to do it by hand.
+
+---
+
 ## 0. Prerequisites
 
 - AWS account with billing enabled; admin credentials configured
@@ -148,44 +195,39 @@ expecting real requests to work.
 > laptop**. `npx prisma migrate deploy` with the secret's host will simply time
 > out from outside the VPC. You must reach it from inside the VPC.
 
-**Recommended: a throwaway SSM bastion + port-forward.**
+**Recommended: a CloudShell VPC environment** (no bastion needed).
 
-1. Launch a tiny Amazon Linux 2023 instance in one of the VPC's **egress**
-   subnets (it needs the SSM agent, which that AMI ships, and outbound 443 for
-   SSM — the egress subnet provides it), with an instance profile that has
-   `AmazonSSMManagedInstanceCore`.
-2. Allow the bastion's security group inbound to the RDS security group on 5432
-   (add a temporary ingress rule; remove it when done).
-3. Read the DB connection parts from the secret:
+1. CloudShell console → **Actions → Create VPC environment**:
+   - **VPC:** the RavelGo VPC
+   - **Subnet:** one of the **egress** subnets (`PRIVATE_WITH_EGRESS`). It has
+     NAT, so npm/git/AWS APIs still work, *and* it routes to the isolated DB
+     subnets. Do **not** pick a public subnet — VPC environments in public
+     subnets get no internet.
+   - **Security group:** any SG in the VPC; note its id.
+2. Allow that SG into the database (temporarily):
 
    ```bash
-   aws secretsmanager get-secret-value --secret-id "$DB_SECRET_ARN" \
-     --query SecretString --output text
-   # -> { "host": "...rds.amazonaws.com", "port":5432, "username":"...",
-   #      "password":"...", "dbname":"ravelgo" }
+   aws ec2 authorize-security-group-ingress \
+     --group-id <RDS_SECURITY_GROUP_ID> --protocol tcp --port 5432 \
+     --source-group <CLOUDSHELL_SG_ID>
    ```
 
-4. Port-forward RDS to your machine through the bastion via SSM:
+3. In the VPC environment, clone and run the helper — it reads the DB secret,
+   checks reachability, and applies the chain with `sslmode=require`:
 
    ```bash
-   aws ssm start-session --target <bastion-instance-id> \
-     --document-name AWS-StartPortForwardingSessionToRemoteHost \
-     --parameters '{"host":["<rds-host>"],"portNumber":["5432"],"localPortNumber":["5432"]}'
-   ```
-
-5. In another shell, run the migration chain against the tunnel. Use
-   `sslmode=require` (RDS forces SSL):
-
-   ```bash
-   cd backend
-   export DATABASE_URL="postgresql://<user>:<pass>@127.0.0.1:5432/ravelgo?sslmode=require"
-   npx prisma migrate deploy
+   git clone https://github.com/MariaD137/ravelgo.git && cd ravelgo
+   bash scripts/cloudshell-migrate.sh
    ```
 
    Success: *"All migrations have been successfully applied."* (13 migrations —
    the chain was fresh-DB validated during development.)
 
-6. **Tear down** the temporary ingress rule and the bastion instance.
+4. **Remove** the temporary ingress rule when finished
+   (`aws ec2 revoke-security-group-ingress …`).
+
+> Note: only **two** VPC environments are allowed per IAM principal, and RDS
+> forces SSL (`rds.force_ssl=1`), which is why the URL carries `sslmode=require`.
 
 Do **not** run `prisma:seed` in production — the seed guard refuses production
 anyway (P0 #14).
