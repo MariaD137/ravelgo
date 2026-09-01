@@ -52,6 +52,10 @@ export async function resetDb() {
   // in one test don't leak entries into another (the audit test asserts an
   // exact row count).
   await prisma.auditLog.deleteMany();
+  // Payout and WalletAccount are ON DELETE RESTRICT against User (P0 #12), so
+  // they must be cleared explicitly before users (they no longer cascade).
+  await prisma.payout.deleteMany();
+  await prisma.driverBankAccount.deleteMany();
   await prisma.foodOrderItem.deleteMany();
   await prisma.foodOrder.deleteMany();
   await prisma.menuItem.deleteMany();

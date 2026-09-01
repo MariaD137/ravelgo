@@ -111,6 +111,10 @@ model User {
   phoneNumber       String?
   isLoyaltyMember   Boolean  @default(false)
   suspended         Boolean  @default(false)
+  // Soft-delete marker (P0 #12). Financial relations below are RESTRICT, so a
+  // user with payout/wallet/trip history cannot be hard-deleted — deactivate by
+  // stamping deletedAt instead, which preserves the ledger and every FK.
+  deletedAt         DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -171,7 +175,9 @@ model Trip {
   riderId       String
   rider         User       @relation("RiderTrips", fields: [riderId], references: [id])
   driverId      String?
-  driver        Driver?    @relation("DriverTrips", fields: [driverId], references: [id])
+  // Restrict (P0 #12): a completed trip must keep its link to the driver who
+  // was paid out for it — deleting the driver is blocked, not silently nulled.
+  driver        Driver?    @relation("DriverTrips", fields: [driverId], references: [id], onDelete: Restrict)
   pickup        String
   destination   String
   // Coordinates the fare is computed from. The server derives distance from
@@ -393,7 +399,9 @@ model DriverBankAccount {
 model Payout {
   id              String      @id @default(uuid())
   driverId        String
-  driver          User        @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  // Restrict (P0 #12): payout history is a financial record — never destroyed
+  // by deleting the user it belongs to.
+  driver          User        @relation(fields: [driverId], references: [id], onDelete: Restrict)
   amount          Float
   currency        String      @default("USD")
   status          PayoutStatus @default(PENDING)
@@ -434,7 +442,9 @@ enum WalletTransactionStatus {
 model WalletAccount {
   id           String   @id @default(uuid())
   userId       String   @unique
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Restrict (P0 #12): the wallet ledger is an append-only financial record —
+  // deleting the owning user is blocked so the balance + transactions survive.
+  user         User     @relation(fields: [userId], references: [id], onDelete: Restrict)
   balanceCents Int      @default(0)
   currency     String   @default("USD")
   createdAt    DateTime @default(now())

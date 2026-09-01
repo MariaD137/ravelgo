@@ -12,7 +12,14 @@ import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
 // socket / aborted request rather than a JSON 409, and — in a real deploy —
 // the process would exit. A clean 409 body is the proof.
 
-beforeEach(resetDb);
+// resetDb() doesn't clear the promotion tables, so isolate them here — these
+// tests assert exact promotion/redemption row counts and must not see rows
+// left by another suite.
+beforeEach(async () => {
+  await resetDb();
+  await prisma.promotionRedemption.deleteMany();
+  await prisma.promotion.deleteMany();
+});
 afterEach(() => restoreAuth());
 after(async () => {
   await resetDb();
