@@ -5,6 +5,10 @@ import type { Construct } from "constructs";
 
 export interface DataStackProps extends cdk.StackProps {
   vpc: ec2.IVpc;
+  // "production" gets a database that can't be torn down by accident;
+  // staging/dev stay deletable so a throwaway environment can be cleaned up
+  // fast. Defaults to production behaviour when unset (safest).
+  envName?: string;
 }
 
 export class DataStack extends cdk.Stack {
@@ -13,6 +17,8 @@ export class DataStack extends cdk.Stack {
 
   constructor(scope: Construct, id: string, props: DataStackProps) {
     super(scope, id, props);
+
+    const isProduction = (props.envName ?? "production") === "production";
 
     this.dbSecurityGroup = new ec2.SecurityGroup(this, "DbSecurityGroup", {
       vpc: props.vpc,
@@ -38,8 +44,10 @@ export class DataStack extends cdk.Stack {
       storageEncrypted: true,
       multiAz: false,
       backupRetention: cdk.Duration.days(7),
-      deletionProtection: false, // flip to true once this is a real production database
-      removalPolicy: cdk.RemovalPolicy.SNAPSHOT,
+      // Production: protected from deletion and RETAINed if the stack is ever
+      // destroyed. Staging: still takes a final snapshot, but can be removed.
+      deletionProtection: isProduction,
+      removalPolicy: isProduction ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.SNAPSHOT,
     });
 
     new cdk.CfnOutput(this, "DatabaseSecretArn", {

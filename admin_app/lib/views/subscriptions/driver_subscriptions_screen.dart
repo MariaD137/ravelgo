@@ -1,56 +1,103 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_admin/models/driver_record.dart';
+import 'package:ravelgo_admin/services/admin_api.dart';
+import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 
-class DriverSubscriptionsScreen extends StatelessWidget {
+/// Driver subscription plans (GET /api/subscription-plans).
+class DriverSubscriptionsScreen extends StatefulWidget {
   const DriverSubscriptionsScreen({super.key});
 
   @override
+  State<DriverSubscriptionsScreen> createState() => _DriverSubscriptionsScreenState();
+}
+
+class _DriverSubscriptionsScreenState extends State<DriverSubscriptionsScreen> {
+  bool _loading = true;
+  String? _error;
+  List<SubscriptionPlan> _plans = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final plans = await AdminApi.subscriptionPlans();
+      if (!mounted) return;
+      setState(() {
+        _plans = plans;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e is ApiException && e.statusCode == 403 ? 'Sign in as an admin to view plans.' : e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final subscribed = mockDrivers.where((d) => d.subscriptionActive).length;
     return Scaffold(
       appBar: AppBar(title: const Text("Driver Subscriptions")),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Row(
-            children: [
-              Expanded(child: AppComponents.statCard("Subscribed drivers", "$subscribed", Icons.workspace_premium_outlined, color: AppColors.success)),
-              const SizedBox(width: 12),
-              Expanded(child: AppComponents.statCard("Monthly plan revenue", "₦1,284,000", Icons.payments_outlined, color: AppColors.info)),
-            ],
-          ),
-          const SizedBox(height: 20),
-          AppComponents.sectionTitle("Plans"),
-          Container(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : (_error != null ? _err() : _list()),
+    );
+  }
+
+  Widget _err() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
+            TextButton(onPressed: _load, child: const Text('Try again')),
+          ]),
+        ),
+      );
+
+  Widget _list() {
+    if (_plans.isEmpty) {
+      return const Center(child: Text("No subscription plans configured.", style: TextStyle(color: AppColors.textSecondary)));
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.separated(
+        padding: const EdgeInsets.all(16),
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: _plans.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        itemBuilder: (context, i) {
+          final p = _plans[i];
+          return Container(
+            padding: const EdgeInsets.all(14),
             decoration: AppComponents.cardDecoration(),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                AppComponents.tile(title: "Weekly", subtitle: "₦3,500 / week", leading: Icons.calendar_view_week, onTap: () {}),
-                AppComponents.divider(),
-                AppComponents.tile(title: "Monthly", subtitle: "₦12,000 / month", leading: Icons.calendar_month_outlined, onTap: () {}),
-                AppComponents.divider(),
-                AppComponents.tile(title: "Quarterly", subtitle: "₦32,000 / quarter", leading: Icons.event_repeat_outlined, onTap: () {}),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          AppComponents.sectionTitle("Drivers"),
-          ...mockDrivers.map((d) => Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: AppComponents.cardDecoration(),
-                child: Row(
+                Row(
                   children: [
-                    Expanded(child: Text(d.name, style: const TextStyle(fontWeight: FontWeight.w600))),
-                    AppComponents.badge(
-                      d.subscriptionActive ? "Subscribed" : "Not subscribed",
-                      color: d.subscriptionActive ? AppColors.success : Colors.grey,
-                    ),
+                    Expanded(child: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15))),
+                    AppComponents.badge(p.active ? "Active" : "Inactive",
+                        color: p.active ? AppColors.success : AppColors.textMuted),
                   ],
                 ),
-              )),
-        ],
+                const SizedBox(height: 4),
+                Text(p.description, style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+                const SizedBox(height: 6),
+                Text("₦${p.priceMonthly.toStringAsFixed(0)} / month",
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

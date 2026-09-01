@@ -1,12 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
-class SoundVoicesPage extends StatelessWidget {
+class SoundVoicesPage extends StatefulWidget {
   const SoundVoicesPage({super.key});
+
+  @override
+  State<SoundVoicesPage> createState() => _SoundVoicesPageState();
+}
+
+class _SoundVoicesPageState extends State<SoundVoicesPage> {
+  // LOCAL STATE ONLY: the currently selected notification sound.
+  String _selected = 'Bells';
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -47,7 +56,7 @@ class SoundVoicesPage extends StatelessWidget {
                         "Incoming Request Sound",
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.black87,
+                          color: AppColors.textPrimary,
                         ),
                       ),
                     ),
@@ -56,7 +65,7 @@ class SoundVoicesPage extends StatelessWidget {
                     Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Column(
@@ -82,7 +91,7 @@ class SoundVoicesPage extends StatelessWidget {
   /// SOUND TILE
   Widget _soundTile(String title) {
     return InkWell(
-      onTap: () {},
+      onTap: () => setState(() => _selected = title),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
         child: Row(
@@ -97,8 +106,10 @@ class SoundVoicesPage extends StatelessWidget {
               ),
             ),
 
-            /// DOWNLOAD ICON
-            Icon(Icons.download, color: Colors.grey.shade600),
+            if (_selected == title)
+              const Icon(Icons.check_circle, color: AppColors.success)
+            else
+              const Icon(Icons.download, color: AppColors.textSecondary),
           ],
         ),
       ),
@@ -112,7 +123,7 @@ class SoundVoicesPage extends StatelessWidget {
       child: Divider(
         height: 1,
         thickness: 1,
-        color: Colors.grey.shade300,
+        color: AppColors.border,
       ),
     );
   }

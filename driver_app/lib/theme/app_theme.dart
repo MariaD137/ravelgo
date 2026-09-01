@@ -1,33 +1,194 @@
 import 'package:flutter/material.dart';
 
+/// RavelGo design tokens - premium black-and-white surfaces, Turo-inspired.
+/// White is the dominant background, black is the primary action color.
+/// Semantic roles only: a color is used for what it means
+/// (success/warning/error/disabled), never picked for decoration.
 class AppColors {
-  static const primary = Color(0xFFFFD500);
-  static const primaryDark = Color(0xFF665600);
-  static const background = Color(0xFFF6F6F6);
-  static const border = Color(0xFFE0E0E0);
-  static const textSecondary = Colors.black54;
+  // Surfaces (white is dominant; elevated/variant are light neutral grays)
+  static const background = Color(0xFFFFFFFF);
+  static const surface = Color(0xFFFFFFFF);
+  static const surfaceElevated = Color(0xFFF5F5F5);
+  static const surfaceVariant = Color(0xFFF5F5F5);
+
+  // Text
+  static const textPrimary = Color(0xFF000000);
+  static const textSecondary = Color(0xFF555555);
+  static const textMuted = Color(0xFF888888);
+
+  // Structure
+  static const border = Color(0xFFE5E5E5);
+  static const divider = Color(0xFFE5E5E5);
+
+  // Primary action color (black, per the Turo-inspired direction)
+  static const primary = Color(0xFF000000);
+  static const primaryDark = Color(0xFF1A1A1A);
+  static const primaryContainer = Color(0xFFF5F5F5);
+
+  // Semantic
   static const success = Color(0xFF2E7D32);
-  static const danger = Color(0xFFD32F2F);
-  static const online = Color(0xFF2E7D32);
-  static const offline = Color(0xFF9E9E9E);
+  static const warning = Color(0xFFED6C02);
+  static const error = Color(0xFFD32F2F);
+  static const info = Color(0xFF1565C0);
+  static const disabled = Color(0xFFE5E5E5);
+
+  // Legacy aliases kept for screens not yet migrated off these names.
+  static const danger = error;
+  static const online = success;
+  static const offline = disabled;
+}
+
+/// 4/8-based spacing scale. Not applied mechanically everywhere - use
+/// whichever step reads right for the given gap.
+class AppSpacing {
+  static const xs = 4.0;
+  static const sm = 8.0;
+  static const md = 12.0;
+  static const base = 16.0;
+  static const lg = 20.0;
+  static const xl = 24.0;
+  static const xxl = 32.0;
+  static const xxxl = 40.0;
+  static const huge = 48.0;
+}
+
+/// Shape scale shared by cards, buttons, inputs, sheets, chips.
+class AppRadius {
+  static const small = 8.0;
+  static const medium = 12.0;
+  static const large = 20.0;
+  static const pill = 999.0;
+}
+
+/// Type scale. Colors are intentionally omitted here (callers set color
+/// per-context via AppColors) except where a role always means one thing.
+class AppTypography {
+  static const display = TextStyle(fontSize: 32, fontWeight: FontWeight.w700, height: 1.2, letterSpacing: -0.5);
+  static const headline = TextStyle(fontSize: 24, fontWeight: FontWeight.w700, height: 1.25);
+  static const title = TextStyle(fontSize: 18, fontWeight: FontWeight.w700, height: 1.3);
+  static const cardTitle = TextStyle(fontSize: 16, fontWeight: FontWeight.w600, height: 1.3);
+  static const body = TextStyle(fontSize: 15, fontWeight: FontWeight.w400, height: 1.45);
+  static const bodySmall = TextStyle(fontSize: 13, fontWeight: FontWeight.w400, height: 1.4);
+  static const label = TextStyle(fontSize: 13, fontWeight: FontWeight.w600, height: 1.3);
+  static const caption = TextStyle(fontSize: 12, fontWeight: FontWeight.w400, height: 1.3);
+  static const button = TextStyle(fontSize: 16, fontWeight: FontWeight.w600, height: 1.2);
+  static const navigation = TextStyle(fontSize: 11, fontWeight: FontWeight.w500, height: 1.2);
+}
+
+ThemeData buildAppTheme() {
+  return ThemeData(
+    useMaterial3: true,
+    brightness: Brightness.light,
+    scaffoldBackgroundColor: AppColors.background,
+    fontFamily: "Roboto",
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: AppColors.primary,
+      brightness: Brightness.light,
+      primary: AppColors.primary,
+      surface: AppColors.surface,
+      error: AppColors.error,
+    ),
+    textTheme: const TextTheme(
+      displayLarge: AppTypography.display,
+      headlineLarge: AppTypography.headline,
+      titleLarge: AppTypography.title,
+      titleMedium: AppTypography.cardTitle,
+      bodyLarge: AppTypography.body,
+      bodyMedium: AppTypography.bodySmall,
+      labelLarge: AppTypography.button,
+      labelSmall: AppTypography.caption,
+    ).apply(
+      bodyColor: AppColors.textPrimary,
+      displayColor: AppColors.textPrimary,
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: AppColors.background,
+      foregroundColor: AppColors.textPrimary,
+      elevation: 0,
+      titleTextStyle: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, height: 1.3, color: AppColors.textPrimary),
+    ),
+    cardTheme: CardThemeData(
+      color: AppColors.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.medium),
+        side: const BorderSide(color: AppColors.border, width: 1),
+      ),
+    ),
+    dividerTheme: const DividerThemeData(color: AppColors.divider, thickness: 1, space: 1),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        disabledBackgroundColor: AppColors.disabled,
+        disabledForegroundColor: AppColors.textMuted,
+        elevation: 0,
+        textStyle: AppTypography.button,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.medium)),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.textPrimary,
+        side: const BorderSide(color: AppColors.primary),
+        textStyle: AppTypography.button,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.medium)),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: AppColors.surface,
+      hintStyle: const TextStyle(color: AppColors.textMuted),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.medium),
+        borderSide: const BorderSide(color: AppColors.border),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.medium),
+        borderSide: const BorderSide(color: AppColors.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.medium),
+        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+      ),
+    ),
+    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      backgroundColor: AppColors.surface,
+      selectedItemColor: AppColors.primary,
+      unselectedItemColor: AppColors.textMuted,
+      type: BottomNavigationBarType.fixed,
+    ),
+    iconTheme: const IconThemeData(color: AppColors.textSecondary),
+    dialogTheme: DialogThemeData(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.large)),
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.selected) ? AppColors.primary : AppColors.surface),
+      trackColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.selected) ? AppColors.textSecondary : AppColors.disabled),
+      trackOutlineColor: WidgetStateProperty.all(AppColors.border),
+    ),
+  );
 }
 
 class AppComponents {
   static Widget header(BuildContext context, String title, {Widget? trailing}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.base, vertical: AppSpacing.md),
       child: Row(
         children: [
           GestureDetector(
             onTap: () => Navigator.pop(context),
-            child: const Icon(Icons.arrow_back),
+            child: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpacing.md),
           Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
+            child: Text(title, style: AppTypography.title.copyWith(color: AppColors.textPrimary)),
           ),
           if (trailing != null) trailing,
         ],
@@ -37,25 +198,25 @@ class AppComponents {
 
   static BoxDecoration cardDecoration() {
     return BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(16),
-      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(AppRadius.medium),
+      border: Border.all(color: AppColors.border),
     );
   }
 
   static Widget divider() {
     return const Padding(
-      padding: EdgeInsets.symmetric(horizontal: 14),
-      child: Divider(height: 1, thickness: 1, color: AppColors.border),
+      padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+      child: Divider(height: 1, thickness: 1, color: AppColors.divider),
     );
   }
 
   static Widget sectionTitle(String text) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.md, AppSpacing.sm, AppSpacing.md, AppSpacing.xs),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: Text(text, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+        child: Text(text, style: AppTypography.title.copyWith(color: AppColors.textPrimary)),
       ),
     );
   }
@@ -70,28 +231,28 @@ class AppComponents {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.base),
         child: Row(
           children: [
             if (leading != null) ...[
-              Icon(leading, size: 20, color: Colors.black87),
-              const SizedBox(width: 12),
+              Icon(leading, size: 20, color: AppColors.textSecondary),
+              const SizedBox(width: AppSpacing.md),
             ],
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                  Text(title, style: AppTypography.cardTitle.copyWith(color: AppColors.textPrimary)),
                   if (subtitle != null) ...[
-                    const SizedBox(height: 4),
-                    Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    const SizedBox(height: AppSpacing.xs),
+                    Text(subtitle, style: AppTypography.caption.copyWith(color: AppColors.textSecondary)),
                   ]
                 ],
               ),
             ),
-            if (done) const Icon(Icons.check_circle, color: Colors.green, size: 18),
-            const SizedBox(width: 6),
-            const Icon(Icons.chevron_right, size: 18),
+            if (done) const Icon(Icons.check_circle, color: AppColors.success, size: 18),
+            const SizedBox(width: AppSpacing.sm),
+            const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
           ],
         ),
       ),
@@ -104,13 +265,7 @@ class AppComponents {
       height: 50,
       child: ElevatedButton(
         onPressed: onPressed,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.black,
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-        child: Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        child: Text(text),
       ),
     );
   }
@@ -121,28 +276,24 @@ class AppComponents {
       height: 50,
       child: OutlinedButton(
         onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: Colors.black,
-          side: const BorderSide(color: AppColors.border),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-        child: Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        child: Text(text),
       ),
     );
   }
 
   static Widget statChip(String label, String value, {Color? color}) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.sm),
       decoration: BoxDecoration(
-        color: (color ?? AppColors.primary).withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(12),
+        color: AppColors.surfaceElevated,
+        borderRadius: BorderRadius.circular(AppRadius.medium),
+        border: Border.all(color: AppColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+          Text(value, style: AppTypography.title.copyWith(color: AppColors.textPrimary)),
+          Text(label, style: AppTypography.caption.copyWith(color: AppColors.textSecondary)),
         ],
       ),
     );
@@ -150,23 +301,23 @@ class AppComponents {
 
   static Widget uploadBox(String label) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(AppRadius.small),
         border: Border.all(color: AppColors.border),
-        color: Colors.white,
+        color: AppColors.surface,
       ),
       child: Row(
         children: [
           Container(
             width: 56,
             height: 56,
-            decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(8)),
-            child: const Icon(Icons.upload_file_outlined),
+            decoration: BoxDecoration(color: AppColors.surfaceElevated, borderRadius: BorderRadius.circular(AppRadius.small)),
+            child: const Icon(Icons.upload_file_outlined, color: AppColors.textSecondary),
           ),
-          const SizedBox(width: 12),
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
-          const Icon(Icons.chevron_right, size: 18),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(child: Text(label, style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary))),
+          const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
         ],
       ),
     );
@@ -175,9 +326,9 @@ class AppComponents {
   static Widget badge(String text, {Color? color}) {
     final c = color ?? AppColors.primary;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: c.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(20)),
-      child: Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: c == AppColors.primary ? AppColors.primaryDark : c)),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
+      decoration: BoxDecoration(color: c.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(AppRadius.pill)),
+      child: Text(text, style: AppTypography.label.copyWith(color: c)),
     );
   }
 }

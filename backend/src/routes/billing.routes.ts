@@ -3,6 +3,8 @@ import type Stripe from "stripe";
 import { prisma } from "../db/prisma";
 import { env } from "../config/env";
 import { stripeClient } from "../billing/stripe";
+import { logSecurityEvent } from "../lib/security-log";
+import { creditWalletFromTopup, failWalletTopup } from "../services/wallet";
 
 export const billingRouter = Router();
 
@@ -32,15 +34,35 @@ billingRouter.post("/", async (req, res) => {
 
   if (event.type === "payment_intent.succeeded" || event.type === "payment_intent.payment_failed") {
     const intent = event.data.object as Stripe.PaymentIntent;
-    const payment = await prisma.payment.findFirst({ where: { providerReference: intent.id } });
-    if (payment) {
-      await prisma.payment.update({
-        where: { id: payment.id },
-        data: {
-          status: event.type === "payment_intent.succeeded" ? "SUCCEEDED" : "FAILED",
-          paidAt: event.type === "payment_intent.succeeded" ? new Date() : undefined,
-        },
-      });
+    const succeeded = event.type === "payment_intent.succeeded";
+
+    // Two kinds of PaymentIntent flow through here, told apart by metadata set
+    // when each was created: a wallet top-up (wallet.routes.ts) credits the
+    // rider's balance on success; a trip card charge (payments.routes.ts)
+    // settles that trip's Payment row.
+    if (intent.metadata?.type === "wallet_topup") {
+      if (succeeded) {
+        await creditWalletFromTopup(intent.id);
+      } else {
+        await failWalletTopup(intent.id);
+      }
+    } else {
+      const payment = await prisma.payment.findFirst({ where: { providerReference: intent.id } });
+      if (payment) {
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: {
+            status: succeeded ? "SUCCEEDED" : "FAILED",
+            paidAt: succeeded ? new Date() : undefined,
+          },
+        });
+      }
+    }
+
+    if (!succeeded) {
+      // A spike in these is worth alerting on (see monitoring-stack.ts) — it
+      // can signal card-testing abuse against the platform.
+      logSecurityEvent("PAYMENT_FAILURE", req, { intent: intent.id });
     }
   }
 

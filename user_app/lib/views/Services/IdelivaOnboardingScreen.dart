@@ -1,7 +1,8 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Services/IDelivaPage.dart';
+import 'package:ravelgo_user_app/views/Services/IDelivaPage.dart';
 import 'IdelivaProfileScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class IdelivaOnboardingScreen extends StatefulWidget {
   @override
@@ -42,9 +43,9 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
                 width: double.infinity,
                 padding: EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Color(0xFFF2F2F2),
+                  color: AppColors.background,
                   borderRadius: BorderRadius.circular(15),
-                  boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)],
+                  boxShadow: [BoxShadow(color: AppColors.border, blurRadius: 4)],
                 ),
                 child: Row(
                   children: [
@@ -111,7 +112,7 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.yellow[700],
+                    backgroundColor: AppColors.primary,
                     padding: EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -124,7 +125,7 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
                   },
                   child: Text(
                     'Done',
-                    style: TextStyle(color: Colors.black),
+                    style: TextStyle(color: AppColors.textPrimary),
                   ),
                 ),
               ),
@@ -136,12 +137,12 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
               child: Text.rich(
                   TextSpan(
                     text: "Don’t have an I deliva account? ",
-                    style: const TextStyle(color: Colors.black54),
+                    style: const TextStyle(color: AppColors.textSecondary),
                     children: [
                       TextSpan(
                         text: "Register",
                         style: TextStyle(
-                        color: Colors.amber[800],
+                        color: AppColors.primaryDark,
                         fontWeight: FontWeight.w600,
                       ),
                     recognizer: TapGestureRecognizer()

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/Model/VehicleSelection.dart';
-import 'package:ravelgo_driver/components/basic_components.dart';
-import 'package:ravelgo_driver/views/Services/ColourPage.dart';
+import 'package:ravelgo_user_app/Model/VehicleSelection.dart';
+import 'package:ravelgo_user_app/components/basic_components.dart';
+import 'package:ravelgo_user_app/views/Services/ColourPage.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class BrandModelPage extends StatelessWidget {
   final String brand;
@@ -28,7 +29,7 @@ class BrandModelPage extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Material(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(16),
                   elevation: 2,
                   child: Column(
@@ -61,7 +62,7 @@ class BrandModelPage extends StatelessWidget {
                         child: Divider(
                           height: 1,
                           thickness: 1,
-                          color: Colors.grey.shade300,
+                          color: AppColors.border,
                         ),
                       ),
 

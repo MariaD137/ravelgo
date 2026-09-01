@@ -38,6 +38,7 @@ async function main() {
     create: {
       userId: driverUser.id,
       status: "ACTIVE",
+      isOnline: true,
       rating: 4.8,
       totalTrips: 214,
       preferredLanguage: "English",
@@ -68,32 +69,94 @@ async function main() {
     skipDuplicates: true,
   });
 
-  await prisma.carPaddyRequest.create({
-    data: { driverId: driver.id, plateNumber: vehicle.plateNumber, status: "IN_REVIEW" },
+  // Guarded so re-running the seed (e.g. against staging) doesn't pile up
+  // duplicate demo rows. The pricing rule and wallet below use upsert already.
+  if ((await prisma.carPaddyRequest.count({ where: { driverId: driver.id } })) === 0) {
+    await prisma.carPaddyRequest.create({
+      data: { driverId: driver.id, plateNumber: vehicle.plateNumber, status: "IN_REVIEW" },
+    });
+  }
+
+  // An active pricing rule is required for POST /trips to compute a fare
+  // (the backend never trusts a client-supplied fare — see
+  // src/services/pricing.ts), so ship one so the app works out of the box.
+  await prisma.pricingRule.upsert({
+    where: { name: "Standard" },
+    update: {},
+    create: { name: "Standard", baseFare: 500, perKm: 120, perMinute: 25, active: true },
   });
 
-  await prisma.trip.create({
-    data: {
-      riderId: rider.id,
-      driverId: driver.id,
-      pickup: "Lekki Phase 1",
-      destination: "Victoria Island",
-      estimatedFare: 3200,
-      finalFare: 3200,
-      status: "COMPLETED",
-      category: "Business",
-      completedAt: new Date(),
-    },
+  // A funded demo wallet so the rider can pay by RavelGo wallet out of the box.
+  await prisma.walletAccount.upsert({
+    where: { userId: rider.id },
+    update: {},
+    create: { userId: rider.id, balanceCents: 500000 }, // ₦5,000.00 equivalent in the app's cent unit
   });
 
-  await prisma.supportTicket.create({
-    data: {
-      userId: rider.id,
-      subject: "Lost phone in a recent trip",
-      category: "Lost item",
-      status: "OPEN",
-    },
-  });
+  if ((await prisma.trip.count({ where: { riderId: rider.id } })) === 0) {
+    await prisma.trip.create({
+      data: {
+        riderId: rider.id,
+        driverId: driver.id,
+        pickup: "Lekki Phase 1",
+        destination: "Victoria Island",
+        estimatedFare: 3200,
+        finalFare: 3200,
+        status: "COMPLETED",
+        category: "Business",
+        completedAt: new Date(),
+      },
+    });
+  }
+
+  if ((await prisma.supportTicket.count({ where: { userId: rider.id } })) === 0) {
+    await prisma.supportTicket.create({
+      data: {
+        userId: rider.id,
+        subject: "Lost phone in a recent trip",
+        category: "Lost item",
+        status: "OPEN",
+      },
+    });
+  }
+
+  // Eats marketplace demo data.
+  if ((await prisma.restaurant.count()) === 0) {
+    const mamaPut = await prisma.restaurant.create({
+      data: {
+        name: "Mama Put Kitchen",
+        cuisine: "Nigerian",
+        address: "12 Adewale Crescent, Oshodi, Lagos",
+        isOpen: true,
+        rating: 4.6,
+        menuItems: {
+          create: [
+            { name: "Jollof Rice & Chicken", description: "Smoky party jollof with grilled chicken", price: 3500 },
+            { name: "Pounded Yam & Egusi", description: "With assorted meat", price: 4200 },
+            { name: "Suya Platter", description: "Spicy grilled beef skewers", price: 2800 },
+            { name: "Chapman", description: "Chilled Nigerian cocktail (non-alcoholic)", price: 1200 },
+          ],
+        },
+      },
+    });
+    await prisma.restaurant.create({
+      data: {
+        name: "Lagos Grill House",
+        cuisine: "Continental",
+        address: "5 Marina Road, Victoria Island, Lagos",
+        isOpen: true,
+        rating: 4.4,
+        menuItems: {
+          create: [
+            { name: "Beef Shawarma", description: "Double beef, garlic sauce", price: 3000 },
+            { name: "Grilled Tilapia", description: "Whole fish with plantain", price: 5500 },
+            { name: "Chicken & Chips", description: "Crispy fried chicken with fries", price: 4000 },
+          ],
+        },
+      },
+    });
+    console.log("Seeded restaurants:", mamaPut.name, "and Lagos Grill House");
+  }
 
   console.log("Seed complete:", { rider: rider.email, driver: driverUser.email, vehicle: vehicle.plateNumber });
 }

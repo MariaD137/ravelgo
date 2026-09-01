@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class DeleteAccountScreen extends StatefulWidget {
   const DeleteAccountScreen({super.key});
@@ -12,22 +13,57 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
   final List<String> _reasons = [
     "I am no longer using my account",
-    "I want to change my hone number",
+    "I want to change my phone number",
     "I don't understand how to use the service",
     "The service is not available in my city",
     "Other",
   ];
 
+  /// Destructive action: always confirm first.
+  /// BACKEND BOUNDARY: account deletion requires the accounts service, which
+  /// is not connected in this build - after confirming, the user is told the
+  /// request could not be processed rather than being shown a fake
+  /// "account deleted" message.
+  Future<void> _confirmDelete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete your account?'),
+        content: const Text(
+            'This permanently removes your account and data. This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep account')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    // Integration point: call the account-deletion endpoint here.
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Not available yet'),
+        content: const Text(
+            'Account deletion requires the accounts service, which is not connected in '
+            'this build. Your account has NOT been deleted. Please contact support.'),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
-        leading: const BackButton(color: Colors.black),
-        backgroundColor: Colors.white,
+        leading: const BackButton(color: AppColors.textPrimary),
+        backgroundColor: AppColors.surface,
         elevation: 0,
         centerTitle: true,
-        title: const Text("Delete Account", style: TextStyle(color: Colors.black)),
+        title: const Text("Delete Account", style: TextStyle(color: AppColors.textPrimary)),
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -50,7 +86,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                       setState(() => _selectedReasonIndex = index);
                     },
                     title: Text(_reasons[index]),
-                    activeColor: Colors.yellow[700],
+                    activeColor: AppColors.primary,
                     controlAffinity: ListTileControlAffinity.leading,
                     checkboxShape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(4),
@@ -64,19 +100,15 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                onPressed: _selectedReasonIndex == null
-                    ? null
-                    : () {
-                  // Handle account deletion logic
-                },
+                onPressed: _selectedReasonIndex == null ? null : _confirmDelete,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.yellow[700],
-                  foregroundColor: Colors.black,
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: AppColors.textPrimary,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  disabledBackgroundColor: Colors.grey[300],
-                  disabledForegroundColor: Colors.black38,
+                  disabledBackgroundColor: AppColors.border,
+                  disabledForegroundColor: AppColors.textMuted,
                 ),
                 child: const Text("Delete Account"),
               ),

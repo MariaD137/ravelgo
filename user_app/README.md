@@ -1,16 +1,29 @@
-# ravelgo_driver
+# RavelGo Rider
 
-Texi Driver Application
+The rider-facing Flutter application for RavelGo, built from the Ravel Go Product
+Requirement Document. It sits alongside `driver_app` (driver app) and `admin_app`
+(operations dashboard) in this repository.
 
-## Getting Started
+## Features
 
-This project is a starting point for a Flutter application.
+- Account creation, login and profile
+- Ride booking and tracking (request, driver search, ride selection, cancellation)
+- Services hub: rides, luxury car rental, i-deliva courier/delivery
+- Ride history and account settings
 
-A few resources to get you started if this is your first Flutter project:
+## Status
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+This is a frontend MVP: all data is mocked locally (no backend yet). Note that
+this app's naming and some of its screens (e.g. `views/Driver_Portal`) still
+carry over from an earlier driver-app-based starting point and have not all
+been fully re-themed for the rider experience — see the repo's
+`CRITICAL-REVIEW.md` for known gaps.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Getting started
+
+1. Install the Flutter SDK (this project targets Dart `^3.8.0`).
+2. Copy `.env.example` to `.env` and fill in a real `GOOGLE_MAPS_API_KEY`.
+3. Copy `android/local.properties.example` to `android/local.properties` and
+   set your Android SDK path and `maps.apiKey`.
+4. `flutter pub get`
+5. `flutter run`

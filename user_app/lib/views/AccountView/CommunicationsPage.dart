@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'CommunicationTogglePage.dart';
 import 'SurgeNotificationPage.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class CommunicationsPage extends StatelessWidget {
   const CommunicationsPage({super.key});
@@ -9,7 +10,7 @@ class CommunicationsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -46,7 +47,7 @@ class CommunicationsPage extends StatelessWidget {
                     Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Column(
@@ -126,7 +127,7 @@ class CommunicationsPage extends StatelessWidget {
       child: Divider(
         height: 1,
         thickness: 1,
-        color: Colors.grey.shade300,
+        color: AppColors.border,
       ),
     );
   }

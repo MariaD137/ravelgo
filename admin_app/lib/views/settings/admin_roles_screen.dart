@@ -26,7 +26,7 @@ class AdminRolesScreen extends StatelessWidget {
               children: [
                 Text(r.$1, style: const TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
-                Text(r.$2, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                Text(r.$2, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 6,

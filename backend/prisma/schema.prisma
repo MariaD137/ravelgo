@@ -123,6 +123,8 @@ model User {
   promotionRedemptions PromotionRedemption[]
   bankAccount       DriverBankAccount?
   payouts           Payout[]
+  wallet            WalletAccount?
+  foodOrders        FoodOrder[]      @relation("RiderFoodOrders")
 }
 
 model Driver {
@@ -130,6 +132,7 @@ model Driver {
   userId            String       @unique
   user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   status            DriverStatus @default(PENDING_REVIEW)
+  isOnline          Boolean      @default(false)
   rating            Float        @default(5.0)
   totalTrips        Int          @default(0)
   preferredLanguage String       @default("English")
@@ -176,6 +179,7 @@ model Trip {
   status        TripStatus @default(REQUESTED)
   category      String     @default("Personal")
   pickupNote    String?
+  riderRating   Float?     // 1–5 rating the rider gave the driver for this trip
   requestedAt   DateTime   @default(now())
   completedAt   DateTime?
 
@@ -388,4 +392,145 @@ model Payout {
   @@index([driverId])
   @@index([status])
   @@index([createdAt])
+}
+
+enum WalletTransactionType {
+  TOPUP // rider added funds via Stripe
+  RIDE_PAYMENT // rider paid for a trip from their balance
+  REFUND
+}
+
+enum WalletTransactionStatus {
+  PENDING // TOPUP awaiting Stripe webhook confirmation
+  COMPLETED
+  FAILED
+}
+
+// A rider's prepaid RavelGo balance. Held in integer cents so incremental
+// credits/debits never accumulate floating-point drift. Funded only through
+// Stripe top-ups (so the money is real and RavelGo holds it), and spent on
+// rides — a wallet ride payment still leaves RavelGo in control of the funds,
+// which is what lets the platform take its commission and remit the rest to
+// the driver, exactly like a card payment (and unlike cash).
+model WalletAccount {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balanceCents Int      @default(0)
+  currency     String   @default("USD")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  transactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id                String                  @id @default(uuid())
+  walletId          String
+  wallet            WalletAccount           @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  type              WalletTransactionType
+  status            WalletTransactionStatus @default(COMPLETED)
+  amountCents       Int // positive = credit (top-up/refund), negative = debit (ride)
+  providerReference String?                 @unique // Stripe PaymentIntent id for a TOPUP
+  tripId            String? // the trip a RIDE_PAYMENT paid for
+  // Cognito sub of the payer, when a TOPUP was funded by someone OTHER than the
+  // wallet owner (authorized third-party funding). Null for a self top-up. The
+  // ledger is append-only, so this permanently records who put money in.
+  fundedBySub       String?
+  createdAt         DateTime                @default(now())
+
+  @@index([walletId])
+}
+
+// Append-only record of privileged admin actions (driver approvals, document
+// reviews, rider suspensions) for accountability. Written best-effort by the
+// admin routes; readable only by Admins via GET /admin/audit.
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorSub   String // Cognito sub of the admin who performed the action
+  action     String // e.g. DRIVER_STATUS_CHANGED, DOCUMENT_REVIEWED, RIDER_SUSPENDED
+  entityType String // e.g. Driver, DriverDocument, User
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+}
+
+// ---------------------------------------------------------------------------
+// Eats (food delivery) marketplace — first vertical of the multi-service app.
+// ---------------------------------------------------------------------------
+
+enum FoodOrderStatus {
+  PLACED
+  ACCEPTED
+  PREPARING
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+model Restaurant {
+  id        String     @id @default(uuid())
+  name      String
+  cuisine   String
+  imageUrl  String?
+  address   String
+  isOpen    Boolean    @default(true)
+  rating    Float?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  menuItems MenuItem[]
+  orders    FoodOrder[]
+}
+
+model MenuItem {
+  id           String     @id @default(uuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  price        Float
+  imageUrl     String?
+  available    Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+
+  orderItems   FoodOrderItem[]
+
+  @@index([restaurantId])
+}
+
+model FoodOrder {
+  id              String          @id @default(uuid())
+  riderId         String
+  rider           User            @relation("RiderFoodOrders", fields: [riderId], references: [id], onDelete: Cascade)
+  restaurantId    String
+  restaurant      Restaurant      @relation(fields: [restaurantId], references: [id])
+  status          FoodOrderStatus @default(PLACED)
+  subtotal        Float
+  deliveryFee     Float
+  total           Float
+  deliveryAddress String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  items           FoodOrderItem[]
+
+  @@index([riderId])
+  @@index([restaurantId])
+}
+
+model FoodOrderItem {
+  id           String    @id @default(uuid())
+  orderId      String
+  order        FoodOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId   String
+  menuItem     MenuItem  @relation(fields: [menuItemId], references: [id])
+  nameSnapshot String
+  unitPrice    Float
+  quantity     Int
+
+  @@index([orderId])
 }

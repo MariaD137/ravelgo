@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
 import 'package:ravelgo_driver_app/models/ride_request.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
+import 'package:ravelgo_driver_app/views/notifications/notifications_screen.dart';
 import 'package:ravelgo_driver_app/views/riderequest/incoming_request_sheet.dart';
 import 'package:ravelgo_driver_app/views/trip/active_trip_screen.dart';
 
@@ -54,10 +55,16 @@ class DriverHomeScreen extends StatelessWidget {
                     Builder(
                       builder: (context) => GestureDetector(
                         onTap: () => Scaffold.of(context).openDrawer(),
-                        child: const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.menu, color: Colors.black)),
+                        child: const CircleAvatar(backgroundColor: AppColors.surface, child: Icon(Icons.menu, color: AppColors.textPrimary)),
                       ),
                     ),
-                    const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.notifications_none, color: Colors.black)),
+                    GestureDetector(
+                      onTap: () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+                      child: const CircleAvatar(
+                          backgroundColor: AppColors.surface,
+                          child: Icon(Icons.notifications_none, color: AppColors.textPrimary)),
+                    ),
                   ],
                 ),
               ),
@@ -82,7 +89,7 @@ class DriverHomeScreen extends StatelessWidget {
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                         ),
-                        Switch(value: profile.isOnline, activeColor: AppColors.primaryDark, onChanged: onOnlineToggle),
+                        Switch(value: profile.isOnline, onChanged: onOnlineToggle),
                       ],
                     ),
                   ),
@@ -105,10 +112,10 @@ class DriverHomeScreen extends StatelessWidget {
                   else
                     Container(
                       padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.04), borderRadius: BorderRadius.circular(12)),
+                      decoration: BoxDecoration(color: AppColors.textPrimary.withValues(alpha: 0.04), borderRadius: BorderRadius.circular(12)),
                       child: const Text(
                         "Go online to start receiving ride, courier and delivery requests matched to your preferences.",
-                        style: TextStyle(fontSize: 13, color: Colors.black54),
+                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                       ),
                     ),
                 ],

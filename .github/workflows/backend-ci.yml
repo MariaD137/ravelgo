@@ -39,6 +39,15 @@ jobs:
       COGNITO_CLIENT_ID: ciclientid0000000000000
       STRIPE_SECRET_KEY: sk_test_ci_dummy
       STRIPE_WEBHOOK_SECRET: whsec_ci_dummy
+      # uploads.routes.test.ts presigns a real (fake-credentialed) S3 URL —
+      # SigV4 presigning is done entirely offline (no network call), but the
+      # SDK still needs a region and a set of credentials in the provider
+      # chain to compute the signature, so dummy values are supplied here.
+      DOCUMENTS_BUCKET: ravelgo-ci-documents
+      ASSETS_BUCKET: ravelgo-ci-assets
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: ci-dummy-access-key-id
+      AWS_SECRET_ACCESS_KEY: ci-dummy-secret-access-key
     steps:
       - uses: actions/checkout@v4
 

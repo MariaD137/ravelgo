@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class CommunicationTogglePage extends StatefulWidget {
   final String title;
@@ -25,7 +26,7 @@ class _CommunicationTogglePageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -63,7 +64,7 @@ class _CommunicationTogglePageState
                     Container(
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Column(
@@ -75,7 +76,7 @@ class _CommunicationTogglePageState
                     Container(
                       height: 1,
                       margin: const EdgeInsets.symmetric(horizontal: 2),
-                      color: Colors.grey.shade300,
+                      color: AppColors.border,
                     ),
 
                     const Spacer(),
@@ -89,10 +90,10 @@ class _CommunicationTogglePageState
               padding:
               const EdgeInsets.fromLTRB(16, 10, 16, 16),
               decoration: const BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black12,
+                    color: AppColors.border,
                     blurRadius: 10,
                     offset: Offset(0, -3),
                   ),
@@ -108,8 +109,8 @@ class _CommunicationTogglePageState
                       // Save logic
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFFD500),
-                      foregroundColor: Colors.black,
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: AppColors.textPrimary,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
@@ -164,7 +165,7 @@ class _CommunicationTogglePageState
                       settings[key] = value;
                     });
                   },
-                  activeColor: const Color(0xFFFFD500),
+                  activeColor: AppColors.primary,
                 ),
               ],
             ),
@@ -177,7 +178,7 @@ class _CommunicationTogglePageState
               child: Divider(
                 height: 1,
                 thickness: 1,
-                color: Colors.grey.shade300,
+                color: AppColors.border,
               ),
             ),
         ],

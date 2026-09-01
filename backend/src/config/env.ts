@@ -31,6 +31,13 @@ const rawEnvSchema = z.object({
   // real cause.
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  // Server-side Google Maps Platform key used by the Places/Geocoding proxy
+  // (src/routes/places.routes.ts). Deliberately separate from the browser
+  // Maps-JS key the web apps embed: this one is never sent to a client, so it
+  // can be locked to the backend's egress IP / specific APIs instead of an HTTP
+  // referrer. Optional so dev/test boots without it (the proxy returns a clear
+  // 503 when it's unset rather than calling Google with an empty key).
+  GOOGLE_MAPS_SERVER_KEY: z.string().optional(),
 });
 
 export interface Env {
@@ -45,6 +52,7 @@ export interface Env {
   ALLOWED_ORIGINS: string[];
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
+  GOOGLE_MAPS_SERVER_KEY?: string;
 }
 
 function loadEnv(): Env {
@@ -64,8 +72,24 @@ function loadEnv(): Env {
     }
     const user = encodeURIComponent(data.DB_USERNAME);
     const pass = encodeURIComponent(data.DB_PASSWORD);
-    databaseUrl = `postgresql://${user}:${pass}@${data.DB_HOST}:${data.DB_PORT}/${data.DB_NAME}`;
+    // sslmode=require: encrypt the connection without verifying the server
+    // certificate. RDS PostgreSQL 15+ default parameter groups set
+    // rds.force_ssl=1, so a plaintext connection is refused outright. This
+    // applies only to the URL assembled from split DB_* vars (the cloud
+    // deployment path); a caller who supplies a full DATABASE_URL controls
+    // their own sslmode.
+    databaseUrl = `postgresql://${user}:${pass}@${data.DB_HOST}:${data.DB_PORT}/${data.DB_NAME}?sslmode=require`;
   }
+
+  // Prisma reads its connection string straight from process.env.DATABASE_URL
+  // (prisma/schema.prisma: `url = env("DATABASE_URL")`) — it does NOT see the
+  // value we resolve here. In deployments that provide the split
+  // DB_HOST/DB_USERNAME/DB_PASSWORD vars instead of a ready-made DATABASE_URL
+  // (e.g. App Runner reading DB creds from Secrets Manager), nothing else sets
+  // it, so `new PrismaClient()` throws at construction — before the server can
+  // bind a port or log a line. Publish the resolved URL back to the
+  // environment so Prisma picks it up. No-op when DATABASE_URL was already set.
+  process.env.DATABASE_URL = databaseUrl;
 
   const allowedOrigins = (data.ALLOWED_ORIGINS ?? "")
     .split(",")
@@ -91,6 +115,7 @@ function loadEnv(): Env {
     ALLOWED_ORIGINS: allowedOrigins,
     STRIPE_SECRET_KEY: data.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: data.STRIPE_WEBHOOK_SECRET,
+    GOOGLE_MAPS_SERVER_KEY: data.GOOGLE_MAPS_SERVER_KEY,
   };
 }
 

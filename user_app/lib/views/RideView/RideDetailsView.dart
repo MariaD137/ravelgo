@@ -1,6 +1,8 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/config/currency.dart';
 import 'RidesView.dart'; // adjust path if needed; this imports the Ride class
+import 'package:ravelgo_user_app/theme/app_theme.dart';
+import 'package:ravelgo_user_app/views/AccountView/EReceiptPage.dart';
 
 class RideDetailsScreen extends StatelessWidget {
   final Ride ride;
@@ -31,11 +33,8 @@ class RideDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // You can replace this image with a live map widget (GoogleMap) when ready
-    const mapPreviewPath = '/mnt/data/RideDetailsView.png';
-
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: SafeArea(
         child: Column(
           children: [
@@ -50,9 +49,13 @@ class RideDetailsScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Ride with ${ride.title}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                        Text(
+                            ride.driverName != null && ride.driverName!.isNotEmpty
+                                ? 'Ride with ${ride.driverName}'
+                                : 'Trip to ${ride.destination.isNotEmpty ? ride.destination : ride.title}',
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                         const SizedBox(height: 4),
-                        Text(_formatTime(ride.dateTime), style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+                        Text(_formatTime(ride.dateTime), style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
                       ],
                     ),
                   ),
@@ -74,7 +77,7 @@ class RideDetailsScreen extends StatelessWidget {
                   //   child: Material(
                   //     elevation: 2,
                   //     shape: const CircleBorder(),
-                  //     color: Colors.white,
+                  //     color: AppColors.surface,
                   //     child: IconButton(
                   //       icon: const Icon(Icons.my_location),
                   //       onPressed: () {},
@@ -92,7 +95,7 @@ class RideDetailsScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Example stops (replace with real stops if available)
+                    // Real pickup -> destination for this trip.
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -100,49 +103,49 @@ class RideDetailsScreen extends StatelessWidget {
                         Column(
                           children: [
                             Container(width: 18, height: 18, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.green)),
-                            Container(width: 2, height: 48, color: Colors.grey.shade300),
-                            Container(width: 18, height: 18, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.grey)),
+                            Container(width: 2, height: 48, color: AppColors.border),
+                            Container(width: 18, height: 18, decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.textMuted)),
                           ],
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text('24 kusenla road', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                              SizedBox(height: 12),
-                              Text('Dutse', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                              SizedBox(height: 12),
-                              Text('Madiba', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                            children: [
+                              Text(ride.pickup.isNotEmpty ? ride.pickup : 'Pickup',
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                              const SizedBox(height: 48),
+                              Text(ride.destination.isNotEmpty ? ride.destination : 'Destination',
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                             ],
                           ),
                         ),
                       ],
                     ),
 
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Additional ride details can be found in your email receipt',
-                      style: TextStyle(color: Color(0xFF7A5F00)),
-                    ),
-
                     const SizedBox(height: 18),
                     const Text('Payments', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 12),
 
-                    _paymentRow('Ride Fare', '#2854'),
-                    const Divider(height: 18, color: Colors.grey),
-                    _paymentRow('Vat Fees', '#52.50'),
-                    const Divider(height: 22, color: Colors.grey),
+                    _paymentRow('Ride Fare', Currency.format(ride.fare)),
+                    const Divider(height: 22, color: AppColors.textMuted),
 
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6.0),
                       child: Row(
-                        children: const [
-                          Expanded(child: Text('Total', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
-                          Text('#2854', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                        children: [
+                          const Expanded(child: Text('Total', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
+                          Text(Currency.format(ride.fare), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                         ],
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const EReceiptPage()),
+                      ),
+                      icon: const Icon(Icons.receipt_long_outlined),
+                      label: const Text('View E-Receipt'),
                     ),
                   ],
                 ),
@@ -159,17 +162,10 @@ class RideDetailsScreen extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 6.0),
       child: Row(
         children: [
-          Expanded(child: Text(label, style: TextStyle(color: Colors.grey[700]))),
+          Expanded(child: Text(label, style: TextStyle(color: AppColors.textSecondary))),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
         ],
       ),
     );
-  }
-
-  Widget _localImage(String path, {BoxFit fit = BoxFit.cover}) {
-    final file = File(path);
-    return file.existsSync()
-        ? Image.file(file, fit: fit)
-        : Container(color: Colors.grey.shade200, child: const Center(child: Icon(Icons.map, size: 48)));
   }
 }

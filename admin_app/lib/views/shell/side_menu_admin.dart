@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_admin/services/auth_service.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/views/audit/audit_log_screen.dart';
 import 'package:ravelgo_admin/views/auth/admin_login_screen.dart';
 import 'package:ravelgo_admin/views/carpaddy/car_paddy_requests_screen.dart';
 import 'package:ravelgo_admin/views/couriers/courier_requests_screen.dart';
@@ -20,7 +22,7 @@ class SideMenuAdmin extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       child: SafeArea(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -30,7 +32,7 @@ class SideMenuAdmin extends StatelessWidget {
               color: AppColors.background,
               child: Row(
                 children: [
-                  const CircleAvatar(radius: 26, backgroundColor: Colors.white, child: Icon(Icons.admin_panel_settings_outlined, color: Colors.black87)),
+                  const CircleAvatar(radius: 26, backgroundColor: AppColors.surface, child: Icon(Icons.admin_panel_settings_outlined, color: AppColors.textPrimary)),
                   const SizedBox(width: 14),
                   const Expanded(
                     child: Column(
@@ -38,7 +40,7 @@ class SideMenuAdmin extends StatelessWidget {
                       children: [
                         Text("Ops Admin", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
                         SizedBox(height: 2),
-                        Text("admin@ravelgo.com", style: TextStyle(fontSize: 12, color: Colors.black54)),
+                        Text("admin@ravelgo.com", style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                       ],
                     ),
                   ),
@@ -57,18 +59,21 @@ class SideMenuAdmin extends StatelessWidget {
             _item(context, Icons.emoji_events_outlined, "Loyalty & Promotions", () => const LoyaltyProgramScreen()),
             AppComponents.divider(),
             _item(context, Icons.bar_chart_outlined, "Reports & Analytics", () => const AnalyticsScreen()),
+            _item(context, Icons.receipt_long_outlined, "Audit Log", () => const AuditLogScreen()),
             _item(context, Icons.manage_accounts_outlined, "Admin Roles", () => const AdminRolesScreen()),
             _item(context, Icons.person_outline, "My Profile", () => const AdminProfileScreen()),
-            _item(context, Icons.logout, "Log out", () => const AdminLoginScreen(), replace: true),
+            _item(context, Icons.logout, "Log out", () => const AdminLoginScreen(), replace: true, preAction: AuthService.signOut),
           ],
         ),
       ),
     );
   }
 
-  Widget _item(BuildContext context, IconData icon, String label, Widget Function() builder, {bool replace = false}) {
+  Widget _item(BuildContext context, IconData icon, String label, Widget Function() builder, {bool replace = false, Future<void> Function()? preAction}) {
     return InkWell(
-      onTap: () {
+      onTap: () async {
+        if (preAction != null) await preAction();
+        if (!context.mounted) return;
         Navigator.pop(context);
         if (replace) {
           Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => builder()), (route) => false);
@@ -80,7 +85,7 @@ class SideMenuAdmin extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Row(
           children: [
-            Icon(icon, size: 21, color: Colors.black87),
+            Icon(icon, size: 21, color: AppColors.textPrimary),
             const SizedBox(width: 16),
             Expanded(child: Text(label, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500))),
           ],

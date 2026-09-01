@@ -26,15 +26,28 @@ export interface ApiStackProps extends cdk.StackProps {
   // IN-06's staging deploy possible at all in the same AWS account as
   // production, not just cosmetic.
   envName?: string;
+  // First-deploy bootstrap: an App Runner service pointed at an ECR image
+  // tag that doesn't exist yet fails to stabilize and rolls the whole stack
+  // back. On a brand-new environment there's no image until *after* the ECR
+  // repo this stack creates exists to push to. Setting this false deploys
+  // the repo (+ secret + roles) without the service, so a first image can be
+  // built and pushed; a second deploy with it true (the default) then brings
+  // the service up against an image that already exists. Existing
+  // environments and `cdk deploy --all` are unaffected — it defaults to true.
+  deployService?: boolean;
 }
 
 export class ApiStack extends cdk.Stack {
   public readonly repository: ecr.Repository;
-  public readonly service: apprunner.CfnService;
+  // Undefined only during a first-deploy bootstrap (deployService: false),
+  // when the ECR repo is created ahead of the first image. Every normal
+  // deploy creates it.
+  public readonly service?: apprunner.CfnService;
 
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
     const envName = props.envName ?? "production";
+    const deployService = props.deployService ?? true;
     const resourceName = envName === "production" ? "ravelgo-backend" : `ravelgo-backend-${envName}`;
 
     this.repository = new ecr.Repository(this, "BackendRepository", {
@@ -47,7 +60,7 @@ export class ApiStack extends cdk.Stack {
     // isolated subnets with no route to the internet.
     const connectorSecurityGroup = new ec2.SecurityGroup(this, "ConnectorSecurityGroup", {
       vpc: props.vpc,
-      description: "App Runner VPC connector -> RDS",
+      description: "App Runner VPC connector to RDS",
       allowAllOutbound: true,
     });
 
@@ -64,7 +77,11 @@ export class ApiStack extends cdk.Stack {
     });
 
     const vpcConnector = new apprunner.CfnVpcConnector(this, "VpcConnector", {
-      subnets: props.vpc.selectSubnets({ subnetType: ec2.SubnetType.PRIVATE_ISOLATED }).subnetIds,
+      // Egress subnets (route to NAT) so the service can reach Stripe and the
+      // Cognito JWKS endpoint; it still reaches RDS in the isolated subnets
+      // over the same VPC. Isolated subnets alone would leave it with no
+      // internet path and break payments + auth.
+      subnets: props.vpc.selectSubnets({ subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS }).subnetIds,
       securityGroups: [connectorSecurityGroup.securityGroupId],
     });
 
@@ -104,7 +121,26 @@ export class ApiStack extends cdk.Stack {
     });
     stripeSecret.grantRead(instanceRole);
 
-    this.service = new apprunner.CfnService(this, "BackendService", {
+    // Same placeholder-then-overwrite pattern as the Stripe secret above: the
+    // backend's Places/Geocoding proxy (src/routes/places.routes.ts) needs a
+    // server-side Google Maps Platform key, which CDK can't know and shouldn't
+    // carry in plaintext context. Deploy lays down a placeholder that makes the
+    // proxy return a clear 5xx (never a silent failure) until you overwrite it:
+    //   aws secretsmanager put-secret-value --secret-id <MapsSecretArn output> \
+    //     --secret-string '{"serverKey":"AIza..."}'
+    // Restrict the real key to this backend's egress IP + the Places and
+    // Geocoding APIs only — unlike the browser Maps-JS key, it is never shipped
+    // to a client.
+    const mapsSecret = new secretsmanager.Secret(this, "MapsSecret", {
+      description: "RavelGo Google Maps server key — replace this placeholder post-deploy, see api-stack.ts",
+      secretObjectValue: {
+        serverKey: cdk.SecretValue.unsafePlainText("AIza_REPLACE_ME"),
+      },
+    });
+    mapsSecret.grantRead(instanceRole);
+
+    if (deployService) {
+    const service = new apprunner.CfnService(this, "BackendService", {
       serviceName: resourceName,
       sourceConfiguration: {
         autoDeploymentsEnabled: true,
@@ -131,6 +167,7 @@ export class ApiStack extends cdk.Stack {
               { name: "DB_PASSWORD", value: `${dbSecretArn}:password::` },
               { name: "STRIPE_SECRET_KEY", value: `${stripeSecret.secretArn}:secretKey::` },
               { name: "STRIPE_WEBHOOK_SECRET", value: `${stripeSecret.secretArn}:webhookSecret::` },
+              { name: "GOOGLE_MAPS_SERVER_KEY", value: `${mapsSecret.secretArn}:serverKey::` },
             ],
           },
         },
@@ -155,9 +192,13 @@ export class ApiStack extends cdk.Stack {
         unhealthyThreshold: 5,
       },
     });
+    this.service = service;
 
-    new cdk.CfnOutput(this, "ServiceUrl", { value: `https://${this.service.attrServiceUrl}` });
+    new cdk.CfnOutput(this, "ServiceUrl", { value: `https://${service.attrServiceUrl}` });
+    }
+
     new cdk.CfnOutput(this, "EcrRepositoryUri", { value: this.repository.repositoryUri });
     new cdk.CfnOutput(this, "StripeSecretArn", { value: stripeSecret.secretArn });
+    new cdk.CfnOutput(this, "MapsSecretArn", { value: mapsSecret.secretArn });
   }
 }

@@ -56,3 +56,32 @@ test("PATCH /api/drivers/:id/status lets an Admin suspend a driver", async () =>
   assert.equal(res.status, 200);
   assert.equal(res.body.status, "SUSPENDED");
 });
+
+test("PATCH /api/drivers/me/availability lets an ACTIVE driver go online, blocks a pending one", async () => {
+  // A pending driver cannot go online.
+  const pendingUser = await prisma.user.create({
+    data: { cognitoSub: "drv-pending", role: "DRIVER", firstName: "P", lastName: "D", email: "pd@example.com" },
+  });
+  await prisma.driver.create({ data: { userId: pendingUser.id, status: "PENDING_REVIEW" } });
+  const pendingToken = mockAuthAs({ sub: "drv-pending", groups: ["Driver"] });
+  const blocked = await request(app)
+    .patch("/api/drivers/me/availability")
+    .set("Authorization", `Bearer ${pendingToken}`)
+    .send({ isOnline: true });
+  assert.equal(blocked.status, 409);
+
+  restoreAuth();
+
+  // An approved (ACTIVE) driver can toggle online.
+  const activeUser = await prisma.user.create({
+    data: { cognitoSub: "drv-active", role: "DRIVER", firstName: "A", lastName: "D", email: "ad@example.com" },
+  });
+  await prisma.driver.create({ data: { userId: activeUser.id, status: "ACTIVE" } });
+  const activeToken = mockAuthAs({ sub: "drv-active", groups: ["Driver"] });
+  const ok = await request(app)
+    .patch("/api/drivers/me/availability")
+    .set("Authorization", `Bearer ${activeToken}`)
+    .send({ isOnline: true });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.body.isOnline, true);
+});

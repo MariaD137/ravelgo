@@ -1,23 +1,70 @@
-import 'dart:io';
+import 'package:ravelgo_user_app/services/auth_service.dart';
+import 'package:ravelgo_user_app/services/rider_api.dart';
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/AccountView/AppSettingsPage.dart';
-import 'package:ravelgo_driver/views/AccountView/CommunicationsPage.dart';
-import 'package:ravelgo_driver/views/AccountView/Subscription.dart';
-import 'package:ravelgo_driver/views/Driver_Portal/ravel_driver_portal_screen.dart';
-import 'package:ravelgo_driver/views/OtherViews/AboutView.dart';
-import 'package:ravelgo_driver/views/OtherViews/PrivacyScreen.dart';
+import 'package:ravelgo_user_app/Model/app_state.dart';
+import 'package:ravelgo_user_app/views/AccountView/AppSettingsPage.dart';
+import 'package:ravelgo_user_app/views/AccountView/CommunicationsPage.dart';
+import 'package:ravelgo_user_app/views/Login/login.dart';
+import 'package:ravelgo_user_app/views/OtherViews/AboutView.dart';
+import 'package:ravelgo_user_app/views/OtherViews/AddressSearch.dart';
+import 'package:ravelgo_user_app/views/OtherViews/DeleteAccountScreen.dart';
+import 'package:ravelgo_user_app/views/OtherViews/LoginSecurityScreen.dart';
+import 'package:ravelgo_user_app/views/OtherViews/PaymentView.dart';
+import 'package:ravelgo_user_app/views/OtherViews/PersonalInfo.dart';
+import 'package:ravelgo_user_app/views/OtherViews/PrivacyScreen.dart';
+import 'package:ravelgo_user_app/views/OtherViews/SupportView.dart';
+import 'package:ravelgo_user_app/views/OtherViews/WorkProfileView.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
-class Accountview extends StatelessWidget {
+class Accountview extends StatefulWidget {
   const Accountview({Key? key}) : super(key: key);
 
-  
+  @override
+  State<Accountview> createState() => _AccountviewState();
+}
+
+class _AccountviewState extends State<Accountview> {
+  String? _name;
+  String? _email;
+  String? _loadError;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final me = await RiderApi.getMe();
+      if (!mounted) return;
+      setState(() {
+        _name = me == null
+            ? null
+            : [me['firstName'], me['lastName']]
+                .where((e) => e != null && '$e'.trim().isNotEmpty)
+                .join(' ');
+        _email = me?['email']?.toString() ?? AuthService.email;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.toString();
+        _email = AuthService.email;
+        _loading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: SafeArea(
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           children: [
             const SizedBox(height: 18),
 
@@ -33,15 +80,17 @@ class Accountview extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    'Thelma Ibeh',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  Text(
+                    _loading
+                        ? 'Loading…'
+                        : ((_name?.isNotEmpty ?? false) ? _name! : (_email ?? 'Rider')),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 6),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: const [
-                      Icon(Icons.star, color: Color(0xFF00B14B), size: 18),
+                      Icon(Icons.star, color: AppColors.success, size: 18),
                       SizedBox(width: 6),
                       Text(
                         '5.00 Rating',
@@ -49,6 +98,20 @@ class Accountview extends StatelessWidget {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 8),
+                  if (_loading)
+                    const Text('Connecting to RavelGo…',
+                        style: TextStyle(fontSize: 12, color: AppColors.textMuted))
+                  else if (_loadError != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Text('Not connected: $_loadError',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 11, color: AppColors.error)),
+                    )
+                  else
+                    Text('✓ Live from backend · ${_email ?? ''}',
+                        style: const TextStyle(fontSize: 12, color: AppColors.success)),
                   const SizedBox(height: 18),
                 ],
               ),
@@ -58,28 +121,60 @@ class Accountview extends StatelessWidget {
             _section(
               children: [
                 _menuRow(
-                  icon: Icons.home_outlined,
-                  label: 'Ravel driver portal',
+                  icon: Icons.person_outline,
+                  label: 'Personal Info',
                   onTap: (){
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => RavelDriverPortalScreen()),
+                      MaterialPageRoute(builder: (context) => const PersonalInfo()),
                     );
                   }
                 ),
                 _divider(),
                 _menuRow(
-                  icon: Icons.directions_car_outlined,
-                  label: 'Vehicle document',
-                ),
-                _divider(),
-                _menuRow(
-                  icon: Icons.subscriptions_outlined,
-                  label: 'Subscription',
+                  icon: Icons.payment_outlined,
+                  label: 'Payment methods',
                   onTap: (){
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => SubscriptionPage()),
+                      MaterialPageRoute(builder: (context) => PaymentView()),
+                    );
+                  }
+                ),
+                _divider(),
+                _menuRow(
+                  icon: Icons.home_outlined,
+                  label: 'Home address',
+                  subtitle: RiderAppState.instance.savedAddresses['Home'],
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const AddressSearch(addressType: "Home")),
+                    );
+                    if (mounted) setState(() {});
+                  }
+                ),
+                _divider(),
+                _menuRow(
+                  icon: Icons.work_outline,
+                  label: 'Work address',
+                  subtitle: RiderAppState.instance.savedAddresses['Work'],
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const AddressSearch(addressType: "Work")),
+                    );
+                    if (mounted) setState(() {});
+                  }
+                ),
+                _divider(),
+                _menuRow(
+                  icon: Icons.business_center_outlined,
+                  label: 'Work profile',
+                  onTap: (){
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const WorkProfileView()),
                     );
                   }
                 ),
@@ -125,14 +220,37 @@ class Accountview extends StatelessWidget {
                     );
                   }
                 ),
+                _divider(),
+                _menuRow(
+                  icon: Icons.lock_outline,
+                  label: 'Login & Security',
+                  onTap: (){
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const LoginSecurityScreen()),
+                    );
+                  }
+                ),
+                _divider(),
+                _menuRow(
+                  icon: Icons.support_agent_outlined,
+                  label: 'Contact support',
+                  onTap: (){
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const SupportView()),
+                    );
+                  }
+                ),
               ],
             ),
 
             const SizedBox(height: 12),
 
             /// Section 3
-            Expanded(
-              child: _section(
+            _section(
                 children: [
                   _menuRow(
                     icon: Icons.campaign_outlined,
@@ -149,17 +267,34 @@ class Accountview extends StatelessWidget {
                   _menuRow(
                     icon: Icons.logout,
                     label: 'Log out',
+                    onTap: () async {
+                      // Clear the persisted Cognito session so a refresh does
+                      // not silently sign the user back in.
+                      await AuthService.signOut();
+                      if (!context.mounted) return;
+                      Navigator.of(context).pushAndRemoveUntil(
+                        MaterialPageRoute(builder: (context) => const Login()),
+                        (route) => false,
+                      );
+                    }
                   ),
                   _divider(),
                   _menuRow(
                     icon: Icons.delete_outline,
                     label: 'Delete account',
-                    labelColor: Colors.red,
+                    labelColor: AppColors.error,
+                    onTap: (){
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (context) => const DeleteAccountScreen()),
+                      );
+                    }
                   ),
                 ],
-              ),
             ),
+            const SizedBox(height: 18),
           ],
+          ),
         ),
       ),
     );
@@ -168,20 +303,21 @@ class Accountview extends StatelessWidget {
   /// Reusable Section Container
   Widget _section({required List<Widget> children}) {
     return Container(
-      color: Colors.white,
+      color: AppColors.surface,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Column(children: children),
     );
   }
 
   /// Divider matching the UI
-  Widget _divider() => Divider(height: 1, color: Colors.grey.shade300);
+  Widget _divider() => Divider(height: 1, color: AppColors.border);
 
   /// Standard Row UI
   Widget _menuRow({
     required IconData icon,
     required String label,
-    Color labelColor = Colors.black87,
+    String? subtitle,
+    Color labelColor = AppColors.textPrimary,
     VoidCallback? onTap,
   }) {
     return InkWell(
@@ -190,26 +326,30 @@ class Accountview extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 16),
         child: Row(
           children: [
-            Icon(icon, size: 22, color: Colors.black87),
+            Icon(icon, size: 22, color: AppColors.textPrimary),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                label,
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: labelColor),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: labelColor),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+                  ],
+                ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: Colors.black45),
+            const Icon(Icons.chevron_right, color: AppColors.textSecondary),
           ],
         ),
       ),
     );
-  }
-
-  /// Helper to load local preview image
-  Widget _localImage(String path, {BoxFit fit = BoxFit.cover}) {
-    final file = File(path);
-    return file.existsSync()
-        ? Image.file(file, fit: fit)
-        : Container(color: Colors.grey.shade300, child: const Icon(Icons.person, size: 40));
   }
 }

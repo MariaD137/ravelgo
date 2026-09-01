@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/AccountView/VoiceOverPage.dart';
+import 'package:ravelgo_user_app/views/AccountView/VoiceOverPage.dart';
+import 'package:ravelgo_user_app/views/AccountView/SoundVoicesPage.dart';
+import 'package:ravelgo_user_app/views/OtherViews/LanguageSelectionScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class AppSettingsPage extends StatelessWidget {
   const AppSettingsPage({super.key});
@@ -7,7 +10,7 @@ class AppSettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -57,7 +60,13 @@ class AppSettingsPage extends StatelessWidget {
                         _divider(),
                         _settingsTile(
                           title: "Sound and voice",
-                          onTap: () {},
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) => const SoundVoicesPage()),
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -70,7 +79,13 @@ class AppSettingsPage extends StatelessWidget {
                         _settingsTile(
                           title: "Language",
                           value: "English",
-                          onTap: () {},
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) => const LanguageSelectionScreen()),
+                            );
+                          },
                         ),
                         // _divider(),
                         // _settingsTile(
@@ -96,7 +111,7 @@ class AppSettingsPage extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(children: children),
@@ -130,7 +145,7 @@ class AppSettingsPage extends StatelessWidget {
                 value,
                 style: const TextStyle(
                   fontSize: 14,
-                  color: Colors.black54,
+                  color: AppColors.textSecondary,
                 ),
               ),
 
@@ -150,7 +165,7 @@ class AppSettingsPage extends StatelessWidget {
       child: Divider(
         height: 1,
         thickness: 1,
-        color: Colors.grey.shade300,
+        color: AppColors.border,
       ),
     );
   }

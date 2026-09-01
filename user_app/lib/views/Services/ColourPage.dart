@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/components/basic_components.dart';
+import 'package:ravelgo_user_app/components/basic_components.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class ColourPage extends StatelessWidget {
   const ColourPage({super.key});
@@ -21,7 +22,7 @@ class ColourPage extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Material(
-                  color: Colors.white,
+                  color: AppColors.surface,
                   borderRadius: BorderRadius.circular(16),
                   elevation: 2,
                   child: ListView.separated(
@@ -93,7 +94,7 @@ class ColourPage extends StatelessWidget {
       child: Divider(
         height: 1,
         thickness: 1,
-        color: Colors.grey.shade300,
+        color: AppColors.border,
       ),
     );
   }
@@ -103,13 +104,13 @@ class ColourPage extends StatelessWidget {
 final List<Map<String, dynamic>> _colors = [
   {"name": "Beige", "color": Color(0xFFE5D3B3)},
   {"name": "Black", "color": Colors.black},
-  {"name": "Blue", "color": Color(0xFF1E3AFC)},
+  {"name": "Blue", "color": Color(0xFF1565C0)},
   {"name": "Brown", "color": Color(0xFF8B5A2B)},
-  {"name": "Dark gray", "color": Color(0xFF555555)},
-  {"name": "Gold", "color": Color(0xFFC9A500)},
-  {"name": "Gray", "color": Color(0xFFBDBDBD)},
-  {"name": "Green", "color": Color(0xFF0A9F2C)},
+  {"name": "Dark gray", "color": Colors.black54},
+  {"name": "Gold", "color": Color(0xFF665600)},
+  {"name": "Gray", "color": Color(0xFFE0E0E0)},
+  {"name": "Green", "color": Color(0xFF2E7D32)},
   {"name": "Light blue", "color": Color(0xFF9FA8DA)},
-  {"name": "Orange", "color": Color(0xFFFFA726)},
+  {"name": "Orange", "color": Color(0xFFED6C02)},
   {"name": "Pink", "color": Color(0xFFE843C4)},
 ];

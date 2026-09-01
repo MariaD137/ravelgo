@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { recordAudit } from "../lib/audit";
 
 export const documentsRouter = Router();
 
@@ -25,6 +26,15 @@ documentsRouter.post("/documents", requireAuth, requireRole("Driver"), async (re
   const parsed = uploadSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+  // POST /uploads/presign always issues keys as `${cognitoSub}/...` — reject
+  // anything else so a driver can't register another driver's real object
+  // key (however hard that is to guess) or a key that was never actually
+  // presigned for this caller at all.
+  const expectedPrefix = `${req.user!.sub}/`;
+  if (!parsed.data.fileKey.startsWith(expectedPrefix)) {
+    return res.status(403).json({ error: "fileKey does not belong to the calling user" });
+  }
+
   const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
@@ -46,6 +56,13 @@ documentsRouter.patch("/documents/:id/review", requireAuth, requireRole("Admin")
   const doc = await prisma.driverDocument.update({
     where: { id: req.params.id },
     data: { status: parsed.data.status },
+  });
+  void recordAudit({
+    actorSub: req.user!.sub,
+    action: "DOCUMENT_REVIEWED",
+    entityType: "DriverDocument",
+    entityId: doc.id,
+    metadata: { status: parsed.data.status },
   });
   res.json(doc);
 });

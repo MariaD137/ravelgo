@@ -1,5 +1,8 @@
+import * as path from "node:path";
 import * as cdk from "aws-cdk-lib";
 import * as cognito from "aws-cdk-lib/aws-cognito";
+import * as iam from "aws-cdk-lib/aws-iam";
+import * as lambda from "aws-cdk-lib/aws-lambda";
 import type { Construct } from "constructs";
 
 export interface AuthStackProps extends cdk.StackProps {
@@ -46,6 +49,10 @@ export class AuthStack extends cdk.Stack {
       generateSecret: false,
       accessTokenValidity: cdk.Duration.hours(1),
       refreshTokenValidity: cdk.Duration.days(30),
+      // Return a uniform "incorrect username or password" for sign-in and a
+      // uniform response for password reset regardless of whether the account
+      // exists, so an attacker can't enumerate registered emails.
+      preventUserExistenceErrors: true,
     });
 
     for (const groupName of ["Rider", "Driver", "Admin"]) {
@@ -55,6 +62,30 @@ export class AuthStack extends cdk.Stack {
         description: `${groupName} role`,
       });
     }
+
+    // Auto-assign every new self-signup to the "Rider" group so riders can use
+    // the app immediately. Driver/Admin stay manual (scripts/set-role.sh) — an
+    // elevated role must never be grantable just by signing up.
+    const postConfirmation = new lambda.Function(this, "PostConfirmation", {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: "index.handler",
+      code: lambda.Code.fromAsset(path.join(__dirname, "..", "lambda", "post-confirmation")),
+      timeout: cdk.Duration.seconds(10),
+      description: "Adds newly confirmed Cognito users to the Rider group",
+    });
+
+    // Scope to userpools in this account+region. Referencing the pool's ARN
+    // directly here would create a pool <-> lambda circular dependency (the
+    // pool references the trigger function, the function would reference the
+    // pool), so a constructed wildcard ARN is used instead.
+    postConfirmation.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ["cognito-idp:AdminAddUserToGroup"],
+        resources: [`arn:aws:cognito-idp:${this.region}:${this.account}:userpool/*`],
+      }),
+    );
+
+    this.userPool.addTrigger(cognito.UserPoolOperation.POST_CONFIRMATION, postConfirmation);
 
     new cdk.CfnOutput(this, "UserPoolId", { value: this.userPool.userPoolId });
     new cdk.CfnOutput(this, "UserPoolClientId", { value: this.userPoolClient.userPoolClientId });

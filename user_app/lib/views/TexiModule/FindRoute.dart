@@ -1,198 +1,165 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/TexiModule/SelectRide.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:ravelgo_user_app/services/api_client.dart';
+import 'package:ravelgo_user_app/services/places_api.dart';
+import 'package:ravelgo_user_app/views/TexiModule/SelectRide.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
-
+/// Destination search that feeds the ride flow.
+///
+/// Address search + geocoding go through the RavelGo backend Places proxy (see
+/// services/places_api.dart), NOT a direct browser call to Google — Google's
+/// Places web-service endpoints send no CORS headers, so the old direct call
+/// silently failed on Flutter Web. Selecting a place resolves it to real
+/// coordinates and carries them into SelectRide so the trip can be priced.
 class FindRouteScreen extends StatefulWidget {
+  const FindRouteScreen({super.key});
+
   @override
-  _FindRouteScreenState createState() => _FindRouteScreenState();
+  State<FindRouteScreen> createState() => _FindRouteScreenState();
 }
 
 class _FindRouteScreenState extends State<FindRouteScreen> {
+  final TextEditingController _controller = TextEditingController();
+  Timer? _debounce;
+  List<PlaceSuggestion> _suggestions = [];
+  bool _loading = false;
+  bool _resolving = false;
+  String? _error;
 
-  List<dynamic> pickupPlaces = [];
-  List<dynamic> dropPlaces = [];
-
-  void _onTextChangedPickup(String query) async {
-    if (query.isEmpty) {
-      setState(() => pickupPlaces = []);
-      return;
-    }
-
-    final apiKey = dotenv.env['GOOGLE_API_KEY'];
-    final url =
-        'https://maps.googleapis.com/maps/api/place/textsearch/json?query=${Uri.encodeComponent(query)}&key=$apiKey';
-
-    final response = await http.get(Uri.parse(url));
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      setState(() => pickupPlaces = data['results']);
-    } else {
-      print('Failed to fetch places');
-    }
-  }
-  void _onTextChangedDrop(String query) async {
-    if (query.isEmpty) {
-      setState(() => dropPlaces = []);
-      return;
-    }
-
-    final apiKey = dotenv.env['GOOGLE_API_KEY'];
-    final url =
-        'https://maps.googleapis.com/maps/api/place/textsearch/json?query=${Uri.encodeComponent(query)}&key=$apiKey';
-
-    final response = await http.get(Uri.parse(url));
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      setState(() => dropPlaces = data['results']);
-    } else {
-      print('Failed to fetch places');
-    }
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
   }
 
+  void _onChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () => _search(value));
+  }
 
+  Future<void> _search(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) {
+      setState(() {
+        _suggestions = [];
+        _error = null;
+        _loading = false;
+      });
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final results = await PlacesApi.autocomplete(q);
+      if (!mounted) return;
+      setState(() {
+        _suggestions = results;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e is ApiException && e.statusCode == 503
+            ? 'Address search isn\'t available right now.'
+            : 'Could not load places - check your connection.';
+      });
+    }
+  }
+
+  Future<void> _select(PlaceSuggestion suggestion) async {
+    setState(() => _resolving = true);
+    try {
+      final place = await PlacesApi.details(suggestion.placeId);
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => SelectRide(destination: place.address, initialDestination: place),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _resolving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not load that place - try another.')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
         leading: IconButton(
-          icon: const Icon(Icons.close,color: Colors.black,),
+          icon: const Icon(Icons.close, color: AppColors.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
         elevation: 0,
-        title: const Text('Your route', style: TextStyle(color: Colors.black)),
+        title: const Text('Your route', style: TextStyle(color: AppColors.textPrimary)),
         centerTitle: true,
       ),
-      body:
-      Padding(
+      body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Column(
           children: [
-            _buildRouteInputs(),
-            const SizedBox(height: 16),
-            _buildSearchField(),
-            const SizedBox(height: 16),
-            // _buildMyLocation(),
-            // const SizedBox(height: 16),
-            Expanded(child: _buildRecentPlacesList()),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppColors.textMuted),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.search, color: AppColors.textPrimary, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      autofocus: true,
+                      onChanged: _onChanged,
+                      decoration: const InputDecoration(
+                        hintText: 'Where to?',
+                        border: InputBorder.none,
+                      ),
+                    ),
+                  ),
+                  if (_loading)
+                    const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_error != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(_error!, style: const TextStyle(color: AppColors.error)),
+              ),
+            Expanded(
+              child: ListView.separated(
+                itemCount: _suggestions.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (_, i) {
+                  final s = _suggestions[i];
+                  return ListTile(
+                    leading: const Icon(Icons.place_outlined, color: AppColors.textPrimary),
+                    title: Text(s.description),
+                    onTap: _resolving ? null : () => _select(s),
+                  );
+                },
+              ),
+            ),
+            if (_resolving) const LinearProgressIndicator(minHeight: 2),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildRouteInputs() {
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            height: 48,
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.black26),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: ListTile(
-              dense: true, // Makes ListTile more compact vertically
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-              leading: const Icon(Icons.radio_button_checked, color: Colors.green, size: 20),
-              title: TextField(
-                style: const TextStyle(fontSize: 14),
-                onChanged: _onTextChangedPickup,
-                decoration: const InputDecoration(
-                  hintText: 'Your Location',
-                  border: InputBorder.none,
-                  isDense: true, // Reduce internal padding
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8), // spacing between tile and icon
-        const Icon(Icons.add, color: Colors.black),
-      ],
-    );
-  }
-  //
-  Widget _buildSearchField() {
-    return Row(
-      children: [
-        Expanded(
-          child: Container(
-            height: 48,
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.black26),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: ListTile(
-              dense: true, // Makes ListTile more compact vertically
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-              leading: const Icon(Icons.search, color: Colors.black, size: 20),
-              title: TextField(
-                style: const TextStyle(fontSize: 14),
-                onChanged: _onTextChangedDrop,
-                decoration: const InputDecoration(
-                  hintText: 'Lekki',
-                  border: InputBorder.none,
-                  isDense: true, // Reduce internal padding
-                  contentPadding: EdgeInsets.zero,
-
-                ),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8), // spacing between tile and icon
-        const Icon(Icons.swap_vert, size: 26),
-      ],
-    );
-  }
-
-  Widget _buildMyLocation() {
-    return Row(
-      children: const [
-        Icon(Icons.home, color: Colors.black54),
-        SizedBox(width: 8),
-        Text('My location', style: TextStyle(fontSize: 16)),
-      ],
-    );
-  }
-
-  Widget _buildRecentPlacesList() {
-    return ListView.builder(
-        itemCount: pickupPlaces.length + 1, // +1 for "My Location"
-        itemBuilder: (context, index) {
-
-          if (index == 0) {
-            return ListTile(
-              leading: const Icon(Icons.home, color: Colors.black54),
-              title: Text("My Location"),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => SelectRide()),
-                );
-              },
-            );
-          } else {
-            final place = pickupPlaces[index - 1]; // Offset by -1
-            return ListTile(
-              leading: Icon(Icons.place),
-              title: Text(place['name']),
-              subtitle: Text(place['formatted_address']),
-              onTap: () {
-                // Handle place selection
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => SelectRide()),
-                );
-              },
-            );
-          }
-      },
     );
   }
 }

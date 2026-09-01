@@ -39,14 +39,14 @@ class IncentivesScreen extends StatelessWidget {
                   decoration: AppComponents.cardDecoration(),
                   child: Row(
                     children: [
-                      Icon(b.$3 ? Icons.military_tech : Icons.military_tech_outlined, color: b.$3 ? AppColors.primaryDark : Colors.black26, size: 28),
+                      Icon(b.$3 ? Icons.military_tech : Icons.military_tech_outlined, color: b.$3 ? AppColors.primaryDark : AppColors.textMuted, size: 28),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(b.$1, style: const TextStyle(fontWeight: FontWeight.w600)),
-                            Text(b.$2, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                            Text(b.$2, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                           ],
                         ),
                       ),

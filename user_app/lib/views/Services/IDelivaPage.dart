@@ -1,8 +1,9 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Services/BasicDetailsPage.dart';
-import 'package:ravelgo_driver/views/Services/ReferralCodePage.dart';
-import 'package:ravelgo_driver/views/Services/VehicleInfoPage.dart';
+import 'package:ravelgo_user_app/views/Services/BasicDetailsPage.dart';
+import 'package:ravelgo_user_app/views/Services/ReferralCodePage.dart';
+import 'package:ravelgo_user_app/views/Services/VehicleInfoPage.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class IDelivaPage extends StatefulWidget {
   const IDelivaPage({super.key});
@@ -19,10 +20,23 @@ class _IDelivaPageState extends State<IDelivaPage> {
 
   bool get isAllDone => basicDone && vehicleDone && referralDone;
 
+  void _showDocumentUnavailable(String title) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(title),
+        content: Text("The $title document is not available in this build yet."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("OK")),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -58,11 +72,11 @@ class _IDelivaPageState extends State<IDelivaPage> {
                     /// CARD
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: AppColors.surface,
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: const [
                           BoxShadow(
-                            color: Colors.black12,
+                            color: AppColors.border,
                             blurRadius: 8,
                           )
                         ],
@@ -130,9 +144,9 @@ class _IDelivaPageState extends State<IDelivaPage> {
                         } : null,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isAllDone
-                              ? const Color(0xFFFFD500)
+                              ? AppColors.primary
                               : const Color(0xFFE6D89C),
-                          foregroundColor: Colors.black,
+                          foregroundColor: AppColors.textPrimary,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -158,27 +172,27 @@ class _IDelivaPageState extends State<IDelivaPage> {
                           text: "By clicking “Submit,” you agree with our ",
                           style: const TextStyle(
                             fontSize: 12,
-                            color: Colors.black54,
+                            color: AppColors.textSecondary,
                           ),
                           children: [
                             TextSpan(
                               text: "Terms and Condition",
                               style: const TextStyle(
-                                color: Colors.green,
+                                color: AppColors.success,
                                 decoration: TextDecoration.underline,
                               ),
                               recognizer: TapGestureRecognizer()
-                                ..onTap = () {},
+                                ..onTap = () => _showDocumentUnavailable("Terms and Conditions"),
                             ),
                             const TextSpan(text: " and "),
                             TextSpan(
                               text: "Privacy Policy",
                               style: const TextStyle(
-                                color: Colors.green,
+                                color: AppColors.success,
                                 decoration: TextDecoration.underline,
                               ),
                               recognizer: TapGestureRecognizer()
-                                ..onTap = () {},
+                                ..onTap = () => _showDocumentUnavailable("Privacy Policy"),
                             ),
                           ],
                         ),
@@ -225,7 +239,7 @@ class _IDelivaPageState extends State<IDelivaPage> {
                       subtitle,
                       style: const TextStyle(
                         fontSize: 12,
-                        color: Colors.black54,
+                        color: AppColors.textSecondary,
                       ),
                     ),
                   ],
@@ -235,7 +249,7 @@ class _IDelivaPageState extends State<IDelivaPage> {
 
             /// STATUS ICON
             if (isDone)
-              const Icon(Icons.check_circle, color: Colors.green, size: 20),
+              const Icon(Icons.check_circle, color: AppColors.success, size: 20),
 
             const SizedBox(width: 8),
 
@@ -253,23 +267,9 @@ class _IDelivaPageState extends State<IDelivaPage> {
       child: Divider(
         height: 1,
         thickness: 1,
-        color: Colors.grey.shade300,
+        color: AppColors.border,
       ),
     );
   }
 
-  /// BOTTOM NAV (OPTIONAL)
-  Widget _bottomNav() {
-    return BottomNavigationBar(
-      currentIndex: 1,
-      selectedItemColor: const Color(0xFFFFD500),
-      unselectedItemColor: Colors.grey,
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: "Home"),
-        BottomNavigationBarItem(icon: Icon(Icons.grid_view), label: "Services"),
-        BottomNavigationBarItem(icon: Icon(Icons.directions_car), label: "Rides"),
-        BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Account"),
-      ],
-    );
-  }
 }

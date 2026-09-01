@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'PlanReviewSummaryScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class ChoosePlanScreen extends StatelessWidget {
   const ChoosePlanScreen({super.key});
@@ -52,12 +53,12 @@ class ChoosePlanScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Choose your plan'),
         centerTitle: true,
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
         elevation: 0,
-        leading: BackButton(color: Colors.black),
-        titleTextStyle: const TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+        leading: BackButton(color: AppColors.textPrimary),
+        titleTextStyle: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600),
       ),
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: ListView.separated(
         padding: const EdgeInsets.all(16),
         itemCount: plans.length,
@@ -67,9 +68,9 @@ class ChoosePlanScreen extends StatelessWidget {
           return Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF6CC),
+              color: AppColors.primaryTint,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.yellow.shade700),
+              border: Border.all(color: AppColors.primary),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -77,7 +78,7 @@ class ChoosePlanScreen extends StatelessWidget {
                 RichText(
                   text: TextSpan(
                     text: '${plan['price']} ',
-                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                     children: [
                       TextSpan(
                         text: '/${plan['duration']}',
@@ -92,12 +93,12 @@ class ChoosePlanScreen extends StatelessWidget {
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
                       children: [
-                        const Icon(Icons.check_circle, size: 20, color: Colors.black),
+                        const Icon(Icons.check_circle, size: 20, color: AppColors.textPrimary),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
                             feature,
-                            style: const TextStyle(color: Colors.black87, fontSize: 14),
+                            style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
                           ),
                         ),
                       ],
@@ -110,7 +111,7 @@ class ChoosePlanScreen extends StatelessWidget {
                   height: 44,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.yellow,
+                      backgroundColor: AppColors.primary,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -120,7 +121,7 @@ class ChoosePlanScreen extends StatelessWidget {
                         MaterialPageRoute(builder: (context) => PlanReviewSummaryScreen()),
                       );
                     },
-                    child: const Text('Select Plan', style: TextStyle(color: Colors.black)),
+                    child: const Text('Select Plan', style: TextStyle(color: AppColors.textPrimary)),
                   ),
                 ),
               ],

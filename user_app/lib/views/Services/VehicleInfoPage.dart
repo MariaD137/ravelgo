@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/Model/VehicleSelection.dart';
-import 'package:ravelgo_driver/components/basic_components.dart';
-import 'package:ravelgo_driver/views/Services/PhotoLicensePage.dart';
+import 'package:ravelgo_user_app/Model/VehicleSelection.dart';
+import 'package:ravelgo_user_app/components/basic_components.dart';
+import 'package:ravelgo_user_app/views/Services/PhotoLicensePage.dart';
 
 import 'BrandPage.dart';
 import 'DriverLicensePage.dart';
@@ -26,7 +26,7 @@ class _VehicleInfoPageState extends State<VehicleInfoPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
 
       body: SafeArea(
         child: Column(
@@ -105,7 +105,7 @@ class _VehicleInfoPageState extends State<VehicleInfoPage> {
               child: vehicle != null
                   ? AppComponents.primaryButton(
                 text: "Done",
-                onPressed: () {},
+                onPressed: () => Navigator.pop(context, vehicle),
               )
                   : AppComponents.disabledButton("Done"),
             ),

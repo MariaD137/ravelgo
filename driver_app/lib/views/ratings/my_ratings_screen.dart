@@ -28,7 +28,7 @@ class MyRatingsScreen extends StatelessWidget {
                   children: List.generate(5, (i) => const Icon(Icons.star, color: AppColors.primaryDark, size: 18)),
                 ),
                 const SizedBox(height: 4),
-                const Text("Based on 214 trips", style: TextStyle(fontSize: 12, color: Colors.black54)),
+                const Text("Based on 214 trips", style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
               ],
             ),
           ),
@@ -45,9 +45,9 @@ class MyRatingsScreen extends StatelessWidget {
                       Row(
                         children: [
                           ...List.generate(r.$1, (i) => const Icon(Icons.star, size: 14, color: AppColors.primaryDark)),
-                          ...List.generate(5 - r.$1, (i) => const Icon(Icons.star_border, size: 14, color: Colors.black26)),
+                          ...List.generate(5 - r.$1, (i) => const Icon(Icons.star_border, size: 14, color: AppColors.textMuted)),
                           const Spacer(),
-                          Text(r.$3, style: const TextStyle(fontSize: 11, color: Colors.black45)),
+                          Text(r.$3, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
                         ],
                       ),
                       const SizedBox(height: 6),

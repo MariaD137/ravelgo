@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:flutter/services.dart';
 import 'package:dotted_border/dotted_border.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class InviteFriendsView extends StatelessWidget {
   const InviteFriendsView({Key? key}) : super(key: key);
@@ -10,7 +12,7 @@ class InviteFriendsView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F4F4),
+      backgroundColor: AppColors.background,
       body: Stack(
         children: [
 
@@ -24,7 +26,7 @@ class InviteFriendsView extends StatelessWidget {
           child:Container(
             height: 200,
             width: double.infinity,
-            color: Colors.black,
+            color: AppColors.textPrimary,
             child: SafeArea(
               bottom: false,
               child: Padding(
@@ -40,15 +42,15 @@ class InviteFriendsView extends StatelessWidget {
                             onTap: () => Navigator.pop(context),
                             child: const CircleAvatar(
                               radius: 20,
-                              backgroundColor: Colors.white,
-                              child: Icon(Icons.arrow_back, color: Colors.black),
+                              backgroundColor: AppColors.surface,
+                              child: Icon(Icons.arrow_back, color: AppColors.textPrimary),
                             ),
                           ),
                         ),
                         const Text(
                           "Invite Friends",
                           style: TextStyle(
-                            color: Colors.white,
+                            color: AppColors.surface,
                             fontSize: 20,
                             fontWeight: FontWeight.w500,
                           ),
@@ -73,11 +75,11 @@ class InviteFriendsView extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: AppColors.surface,
                 borderRadius: BorderRadius.circular(22),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.3),
+                    color: AppColors.textPrimary.withOpacity(0.3),
                     blurRadius: 12,
                     offset: const Offset(1, 6),
                   ),
@@ -95,12 +97,12 @@ class InviteFriendsView extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   const Text(
-                    "Invite a new driver and get 5%\n"
-                        "discount on your next subscription!",
+                    "Invite your friends to RavelGo\n"
+                        "and earn ride rewards together!",
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 15,
-                      color: Colors.black54,
+                      color: AppColors.textSecondary,
                     ),
                   ),
                   const SizedBox(height: 40),
@@ -109,7 +111,7 @@ class InviteFriendsView extends StatelessWidget {
                   // const Icon(
                   //   Icons.groups_rounded,
                   //   size: 110,
-                  //   color: Color(0xFF7A6A00),
+                  //   color: AppColors.primaryDark,
                   // ),
 
                   const SizedBox(height: 40),
@@ -119,7 +121,7 @@ class InviteFriendsView extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w500,
-                      color: Colors.black54,
+                      color: AppColors.textSecondary,
                     ),
                   ),
 
@@ -137,7 +139,7 @@ class InviteFriendsView extends StatelessWidget {
                           horizontal: 16, vertical: 2),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(16),
-                        color: Colors.white,
+                        color: AppColors.surface,
                       ),
                       child: Row(
                         mainAxisAlignment:
@@ -154,7 +156,7 @@ class InviteFriendsView extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 16, vertical: 8),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFFFD700),
+                              color: AppColors.primary,
                               borderRadius:
                               BorderRadius.circular(8),
                             ),
@@ -162,7 +164,7 @@ class InviteFriendsView extends StatelessWidget {
                               "Copy",
                               style: TextStyle(
                                 fontWeight: FontWeight.w600,
-                                color: Colors.black,
+                                color: AppColors.textPrimary,
                               ),
                             ),
                           )
@@ -181,7 +183,7 @@ class InviteFriendsView extends StatelessWidget {
                   //         horizontal: 16, vertical: 2),
                   //     decoration: BoxDecoration(
                   //       borderRadius: BorderRadius.circular(16),
-                  //       color: Colors.white,
+                  //       color: AppColors.surface,
                   //     ),
                   //     child: Row(
                   //       mainAxisAlignment:
@@ -198,7 +200,7 @@ class InviteFriendsView extends StatelessWidget {
                   //           padding: const EdgeInsets.symmetric(
                   //               horizontal: 16, vertical: 8),
                   //           decoration: BoxDecoration(
-                  //             color: const Color(0xFFFFD700),
+                  //             color: AppColors.primary,
                   //             borderRadius:
                   //             BorderRadius.circular(8),
                   //           ),
@@ -206,7 +208,7 @@ class InviteFriendsView extends StatelessWidget {
                   //             "Copy",
                   //             style: TextStyle(
                   //               fontWeight: FontWeight.w600,
-                  //               color: Colors.black,
+                  //               color: AppColors.textPrimary,
                   //             ),
                   //           ),
                   //         )
@@ -232,21 +234,27 @@ class InviteFriendsView extends StatelessWidget {
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
               backgroundColor:
-              const Color(0xFFFFD700),
+              AppColors.primary,
               shape: RoundedRectangleBorder(
                 borderRadius:
                 BorderRadius.circular(14),
               ),
             ),
-            onPressed: () {},
+            onPressed: () {
+              // Real platform share sheet via share_plus.
+              SharePlus.instance.share(ShareParams(
+                text: 'Join me on RavelGo and get your first ride discounted! '
+                    'Use my invite code RAVEL20 when you sign up.',
+              ));
+            },
             icon: const Icon(Icons.share,
-                color: Colors.black),
+                color: AppColors.textPrimary),
             label: const Text(
               "Share",
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: Colors.black,
+                color: AppColors.textPrimary,
               ),
             ),
           ),

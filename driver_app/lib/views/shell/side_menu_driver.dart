@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
+import 'package:ravelgo_driver_app/services/auth_service.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/assistance/driver_assistance_screen.dart';
 import 'package:ravelgo_driver_app/views/auth/login_screen.dart';
@@ -22,7 +23,7 @@ class SideMenuDriver extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Drawer(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       child: SafeArea(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -32,7 +33,7 @@ class SideMenuDriver extends StatelessWidget {
               color: AppColors.background,
               child: Row(
                 children: [
-                  const CircleAvatar(radius: 28, backgroundColor: Colors.white, child: Icon(Icons.person, color: Colors.black45)),
+                  const CircleAvatar(radius: 28, backgroundColor: AppColors.surfaceElevated, child: Icon(Icons.person, color: AppColors.textSecondary)),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
@@ -44,7 +45,7 @@ class SideMenuDriver extends StatelessWidget {
                           children: [
                             const Icon(Icons.star, color: AppColors.primary, size: 14),
                             const SizedBox(width: 4),
-                            Text("${profile.rating}  ·  ${profile.totalTrips} trips", style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                            Text("${profile.rating}  ·  ${profile.totalTrips} trips", style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                           ],
                         ),
                       ],
@@ -66,16 +67,18 @@ class SideMenuDriver extends StatelessWidget {
             AppComponents.divider(),
             _item(context, Icons.help_outline, "FAQ", () => const FAQScreen()),
             _item(context, Icons.phone_outlined, "Contact Support", () => const ContactUsScreen()),
-            _item(context, Icons.logout, "Log out", () => const LoginScreen(), replace: true),
+            _item(context, Icons.logout, "Log out", () => const LoginScreen(), replace: true, preAction: AuthService.signOut),
           ],
         ),
       ),
     );
   }
 
-  Widget _item(BuildContext context, IconData icon, String label, Widget Function() builder, {bool replace = false}) {
+  Widget _item(BuildContext context, IconData icon, String label, Widget Function() builder, {bool replace = false, Future<void> Function()? preAction}) {
     return InkWell(
-      onTap: () {
+      onTap: () async {
+        if (preAction != null) await preAction();
+        if (!context.mounted) return;
         Navigator.pop(context);
         if (replace) {
           Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => builder()), (route) => false);
@@ -87,7 +90,7 @@ class SideMenuDriver extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Row(
           children: [
-            Icon(icon, size: 21, color: Colors.black87),
+            Icon(icon, size: 21, color: AppColors.textSecondary),
             const SizedBox(width: 16),
             Expanded(child: Text(label, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w500))),
           ],

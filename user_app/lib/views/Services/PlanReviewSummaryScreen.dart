@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'ConfirmBookingSuccessScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class PlanReviewSummaryScreen extends StatelessWidget {
   const PlanReviewSummaryScreen({super.key});
@@ -10,12 +11,12 @@ class PlanReviewSummaryScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Review summary'),
         centerTitle: true,
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
         elevation: 0,
-        leading: const BackButton(color: Colors.black),
-        titleTextStyle: const TextStyle(color: Colors.black, fontWeight: FontWeight.w600, fontSize: 18),
+        leading: const BackButton(color: AppColors.textPrimary),
+        titleTextStyle: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600, fontSize: 18),
       ),
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -23,8 +24,8 @@ class PlanReviewSummaryScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF6CC),
-              border: Border.all(color: Colors.yellow.shade700),
+              color: AppColors.primaryTint,
+              border: Border.all(color: AppColors.primary),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
@@ -33,7 +34,7 @@ class PlanReviewSummaryScreen extends StatelessWidget {
                 RichText(
                   text: const TextSpan(
                     text: 'NGN5,000 ',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black),
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                     children: [
                       TextSpan(
                         text: '/Daily',
@@ -52,13 +53,13 @@ class PlanReviewSummaryScreen extends StatelessWidget {
                   height: 44,
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.yellow,
+                      backgroundColor: AppColors.primary,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: () {
                       Navigator.pop(context);
                     },
-                    child: const Text('Select Plan', style: TextStyle(color: Colors.black)),
+                    child: const Text('Select Plan', style: TextStyle(color: AppColors.textPrimary)),
                   ),
                 ),
               ],
@@ -83,7 +84,7 @@ class PlanReviewSummaryScreen extends StatelessWidget {
                   Text('VISA', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold)),
                   SizedBox(height: 4),
                   Text('**** **** **** 5327', style: TextStyle(fontWeight: FontWeight.w500)),
-                  Text('Expires 09/24', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text('Expires 09/24', style: TextStyle(fontSize: 12, color: AppColors.textMuted)),
                 ],
               ),
               TextButton(
@@ -98,10 +99,10 @@ class PlanReviewSummaryScreen extends StatelessWidget {
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: Colors.white, // Background color
+          color: AppColors.surface, // Background color
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1), // Soft shadow
+              color: AppColors.textPrimary.withOpacity(0.1), // Soft shadow
               blurRadius: 10,
               offset: const Offset(0, -2), // Upward shadow
             ),
@@ -113,7 +114,7 @@ class PlanReviewSummaryScreen extends StatelessWidget {
           height: 52,
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.yellow,
+              backgroundColor: AppColors.primary,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             onPressed: () {
@@ -123,7 +124,7 @@ class PlanReviewSummaryScreen extends StatelessWidget {
             },
             child: const Text(
               'Confirm payment',
-              style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
             ),
           ),
         ),
@@ -142,7 +143,7 @@ class _FeatureItem extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          const Icon(Icons.check_circle, color: Colors.black, size: 20),
+          const Icon(Icons.check_circle, color: AppColors.textPrimary, size: 20),
           const SizedBox(width: 8),
           Expanded(
             child: Text(text, style: const TextStyle(fontSize: 14)),
@@ -164,13 +165,13 @@ class _SummaryRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF9F9F9),
+        color: AppColors.background,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(color: Colors.black54)),
+          Text(label, style: const TextStyle(color: AppColors.textSecondary)),
           Text(value, style: const TextStyle(fontWeight: FontWeight.bold)),
         ],
       ),

@@ -33,7 +33,7 @@ class _DriverSubscriptionScreenState extends State<DriverSubscriptionScreen> {
         children: [
           const Text(
             "RavelGo runs on a subscription model for drivers. Choose a plan to keep driving with lower fees.",
-            style: TextStyle(fontSize: 14, color: Colors.black54),
+            style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 20),
           ...List.generate(_plans.length, (i) {
@@ -47,7 +47,7 @@ class _DriverSubscriptionScreenState extends State<DriverSubscriptionScreen> {
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.surface,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: selected ? 2 : 1),
                   ),
@@ -58,7 +58,7 @@ class _DriverSubscriptionScreenState extends State<DriverSubscriptionScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                          Icon(selected ? Icons.check_circle : Icons.circle_outlined, color: selected ? AppColors.primaryDark : Colors.black26),
+                          Icon(selected ? Icons.check_circle : Icons.circle_outlined, color: selected ? AppColors.primaryDark : AppColors.textMuted),
                         ],
                       ),
                       const SizedBox(height: 4),

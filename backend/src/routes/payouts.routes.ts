@@ -3,23 +3,48 @@
  * Endpoints for managing driver payouts and bank account information.
  */
 
+import type { PayoutStatus } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { validate } from "../lib/validate";
 import { Errors } from "../lib/errors";
+import { moneyAmountSchema } from "../lib/money";
+import { sensitiveLimiter } from "../middleware/rate-limit";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import {
   calculatePayoutForPeriod,
   createPayout,
-  getPayoutHistory,
   processPayout,
   completePayout,
   failPayout,
 } from "../services/payouts";
 
 export const payoutsRouter = Router();
+
+// Payout.driverId and DriverBankAccount.driverId are both FKs to User.id
+// (see prisma/schema.prisma), not the Cognito sub and not Driver.id — every
+// self-service route below must resolve the caller's real User.id first.
+// Using req.user!.sub directly here previously broke bank-account writes
+// with a foreign-key violation and hid a driver's own payouts from them.
+async function requireOwnUserId(cognitoSub: string): Promise<string> {
+  const user = await prisma.user.findUnique({ where: { cognitoSub } });
+  if (!user) throw Errors.notFound("Driver profile");
+  return user.id;
+}
+
+/**
+ * Never return full bank/routing numbers to the client — only the last 4
+ * digits, so a leaked response (or shoulder-surf) can't reveal the account.
+ * Full numbers stay server-side only. (Longer term these should be tokenized
+ * via the payments provider rather than stored raw — see the DriverBankAccount
+ * model.)
+ */
+function maskBankAccount<T extends { accountNumber?: string | null; routingNumber?: string | null }>(acct: T) {
+  const last4 = (v?: string | null) => (v && v.length >= 4 ? `••••${v.slice(-4)}` : v ? "••••" : v);
+  return { ...acct, accountNumber: last4(acct.accountNumber), routingNumber: last4(acct.routingNumber) };
+}
 
 // Bank account schemas
 const bankAccountSchema = z.object({
@@ -34,24 +59,25 @@ const bankAccountSchema = z.object({
 payoutsRouter.post("/payouts/bank-account", requireAuth, requireRole("Driver"), async (req, res, next) => {
   try {
     const data = validate<typeof bankAccountSchema._output>(bankAccountSchema, req.body, "Request body");
+    const driverId = await requireOwnUserId(req.user!.sub);
 
     const existing = await prisma.driverBankAccount.findUnique({
-      where: { driverId: req.user!.sub },
+      where: { driverId },
     });
 
     let bankAccount;
     if (existing) {
       bankAccount = await prisma.driverBankAccount.update({
-        where: { driverId: req.user!.sub },
+        where: { driverId },
         data: { ...data, isVerified: false }, // Re-verify when updated
       });
     } else {
       bankAccount = await prisma.driverBankAccount.create({
-        data: { driverId: req.user!.sub, ...data },
+        data: { driverId, ...data },
       });
     }
 
-    res.status(201).json(bankAccount);
+    res.status(201).json(maskBankAccount(bankAccount));
   } catch (err) {
     next(err);
   }
@@ -60,11 +86,12 @@ payoutsRouter.post("/payouts/bank-account", requireAuth, requireRole("Driver"), 
 // Driver: get my bank account
 payoutsRouter.get("/payouts/bank-account", requireAuth, requireRole("Driver"), async (req, res, next) => {
   try {
+    const driverId = await requireOwnUserId(req.user!.sub);
     const bankAccount = await prisma.driverBankAccount.findUnique({
-      where: { driverId: req.user!.sub },
+      where: { driverId },
     });
     if (!bankAccount) throw Errors.notFound("Bank account");
-    res.json(bankAccount);
+    res.json(maskBankAccount(bankAccount));
   } catch (err) {
     next(err);
   }
@@ -78,15 +105,16 @@ payoutsRouter.get("/payouts/history", requireAuth, requireRole("Driver"), async 
       req.query,
       "Query parameters",
     );
+    const driverId = await requireOwnUserId(req.user!.sub);
 
     const [payouts, total] = await Promise.all([
       prisma.payout.findMany({
-        where: { driverId: req.user!.sub },
+        where: { driverId },
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      prisma.payout.count({ where: { driverId: req.user!.sub } }),
+      prisma.payout.count({ where: { driverId } }),
     ]);
 
     res.json(paginate(payouts, total, page, pageSize));
@@ -98,8 +126,9 @@ payoutsRouter.get("/payouts/history", requireAuth, requireRole("Driver"), async 
 // Driver: get a specific payout detail
 payoutsRouter.get("/payouts/:id", requireAuth, requireRole("Driver"), async (req, res, next) => {
   try {
+    const driverId = await requireOwnUserId(req.user!.sub);
     const payout = await prisma.payout.findFirst({
-      where: { id: req.params.id, driverId: req.user!.sub },
+      where: { id: req.params.id, driverId },
     });
     if (!payout) throw Errors.notFound("Payout");
     res.json(payout);
@@ -132,12 +161,14 @@ payoutsRouter.post("/payouts/calculate", requireAuth, requireRole("Admin"), asyn
 });
 
 // Admin: create pending payout for a driver
-payoutsRouter.post("/payouts/create", requireAuth, requireRole("Admin"), async (req, res, next) => {
+payoutsRouter.post("/payouts/create", sensitiveLimiter, requireAuth, requireRole("Admin"), async (req, res, next) => {
   try {
     const schema = z.object({
       driverId: z.string(),
       period: z.string().regex(/^\d{4}-\d{2}$/),
-      amount: z.number().positive().optional(), // Override calculated amount if needed
+      // Manual override is Admin-only, but still bounded so a typo or a
+      // compromised admin session can't create a nine-figure payout.
+      amount: moneyAmountSchema.optional(),
     });
     const { driverId, period, amount } = validate<typeof schema._output>(schema, req.body, "Request body");
 
@@ -172,7 +203,7 @@ payoutsRouter.post("/payouts/create", requireAuth, requireRole("Admin"), async (
 });
 
 // Admin: process a pending payout
-payoutsRouter.post("/payouts/:id/process", requireAuth, requireRole("Admin"), async (req, res, next) => {
+payoutsRouter.post("/payouts/:id/process", sensitiveLimiter, requireAuth, requireRole("Admin"), async (req, res, next) => {
   try {
     const payout = await processPayout(req.params.id);
     res.json(payout);
@@ -214,13 +245,18 @@ payoutsRouter.get("/payouts", requireAuth, requireRole("Admin"), async (req, res
       "Query parameters",
     );
 
-    const status = req.query.status ? String(req.query.status) : undefined;
+    const statusSchema = z.enum(["PENDING", "PROCESSING", "COMPLETED", "FAILED", "CANCELLED"]).optional();
+    const status: PayoutStatus | undefined = validate<PayoutStatus | undefined>(
+      statusSchema,
+      req.query.status,
+      "status query parameter",
+    );
     const driverId = req.query.driverId ? String(req.query.driverId) : undefined;
 
     const [payouts, total] = await Promise.all([
       prisma.payout.findMany({
         where: {
-          ...(status && { status: status as any }),
+          ...(status && { status }),
           ...(driverId && { driverId }),
         },
         orderBy: { createdAt: "desc" },
@@ -232,7 +268,7 @@ payoutsRouter.get("/payouts", requireAuth, requireRole("Admin"), async (req, res
       }),
       prisma.payout.count({
         where: {
-          ...(status && { status: status as any }),
+          ...(status && { status }),
           ...(driverId && { driverId }),
         },
       }),

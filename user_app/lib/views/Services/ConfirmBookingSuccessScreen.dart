@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../bottommenu/BottomNavigationView.dart';
 import 'EReceiptScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class ConfirmBookingSuccessScreen extends StatelessWidget {
   const ConfirmBookingSuccessScreen({super.key});
@@ -8,7 +9,7 @@ class ConfirmBookingSuccessScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -24,8 +25,8 @@ class ConfirmBookingSuccessScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(24),
                   child: const CircleAvatar(
                     radius: 20,
-                    backgroundColor: Color(0xFFF1F1F1),
-                    child: Icon(Icons.arrow_back_ios, color: Colors.black),
+                    backgroundColor: AppColors.background,
+                    child: Icon(Icons.arrow_back_ios, color: AppColors.textPrimary),
                   ),
                 ),
               ),
@@ -40,7 +41,7 @@ class ConfirmBookingSuccessScreen extends StatelessWidget {
               const Text(
                 'You have successfully subscribed yearly plan.\nYou can download your E-receipt Now',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.black54, fontSize: 14),
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
               ),
               const Spacer(),
 
@@ -52,7 +53,7 @@ class ConfirmBookingSuccessScreen extends StatelessWidget {
                     height: 50,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.yellow,
+                        backgroundColor: AppColors.primary,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
@@ -62,7 +63,7 @@ class ConfirmBookingSuccessScreen extends StatelessWidget {
                       },
                       child: const Text(
                         'View E-receipt',
-                        style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+                        style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),
@@ -75,7 +76,7 @@ class ConfirmBookingSuccessScreen extends StatelessWidget {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        side: const BorderSide(color: Colors.black12),
+                        side: const BorderSide(color: AppColors.border),
                       ),
                       onPressed: () {
                         Navigator.pushAndRemoveUntil(
@@ -86,7 +87,7 @@ class ConfirmBookingSuccessScreen extends StatelessWidget {
                       },
                       child: const Text(
                         'Go to Rent a car',
-                        style: TextStyle(color: Colors.black),
+                        style: TextStyle(color: AppColors.textPrimary),
                       ),
                     ),
                   ),

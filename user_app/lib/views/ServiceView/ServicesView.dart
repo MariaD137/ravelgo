@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/components/RideOptionCard.dart';
-import 'package:ravelgo_driver/views//Services/CarRentalScreen.dart';
-import 'package:ravelgo_driver/views/Services/IdelivaOnboardingScreen.dart';
-import 'package:ravelgo_driver/components/RideOptionCard.dart';
-import 'package:ravelgo_driver/views/TexiModule/FindRoute.dart';
+import 'package:ravelgo_user_app/components/RideOptionCard.dart';
+import 'package:ravelgo_user_app/views//Services/CarRentalScreen.dart';
+import 'package:ravelgo_user_app/views/Services/IdelivaOnboardingScreen.dart';
+import 'package:ravelgo_user_app/views/TexiModule/FindRoute.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class ServicesView extends StatefulWidget {
   const ServicesView({super.key});
@@ -42,7 +42,7 @@ class _ServicesViewSelectorState extends State<ServicesView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: SafeArea( // ✅ helps on iOS with notch/safe area
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -66,7 +66,7 @@ class _ServicesViewSelectorState extends State<ServicesView> {
                 width: double.infinity,
                 height: 160,
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.black, width: 2.0),
+                  border: Border.all(color: AppColors.textPrimary, width: 2.0),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 padding: const EdgeInsets.all(20),
@@ -86,7 +86,7 @@ class _ServicesViewSelectorState extends State<ServicesView> {
                 height: 160,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  border: Border.all(color: Colors.black, width: 2.0),
+                  border: Border.all(color: AppColors.textPrimary, width: 2.0),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(

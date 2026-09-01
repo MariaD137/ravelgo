@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class AboutView extends StatelessWidget {
   @override
@@ -8,7 +9,7 @@ class AboutView extends StatelessWidget {
         preferredSize: const Size.fromHeight(70),
         child: Container(
           decoration: const BoxDecoration(
-            color: Colors.white,
+            color: AppColors.surface,
             borderRadius: BorderRadius.only(
               bottomLeft: Radius.circular(24),
               bottomRight: Radius.circular(24),
@@ -19,11 +20,11 @@ class AboutView extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: const [
-                  BackButton(color: Colors.black),
+                  BackButton(color: AppColors.textPrimary),
                   Spacer(),
                   Text(
                     'About Ravel Go',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.normal, color: Colors.black),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.normal, color: AppColors.textPrimary),
                   ),
                   Spacer(),
                   SizedBox(width: 64)
@@ -33,11 +34,11 @@ class AboutView extends StatelessWidget {
           ),
         ),
       ),
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: ListView(
         children: [
           ListTile(
-            title: Text('Where does Ravel Go operate',style: TextStyle(fontSize: 16, fontWeight: FontWeight.normal, color: Colors.black),),
+            title: Text('Where does Ravel Go operate',style: TextStyle(fontSize: 16, fontWeight: FontWeight.normal, color: AppColors.textPrimary),),
             trailing: Icon(Icons.arrow_forward_ios),
             onTap: () {
               // Action for tapping the first item
@@ -45,7 +46,7 @@ class AboutView extends StatelessWidget {
             },
           ),
           ListTile(
-            title: Text('Where is Ravel Go office located',style: TextStyle(fontSize: 16, fontWeight: FontWeight.normal, color: Colors.black),),
+            title: Text('Where is Ravel Go office located',style: TextStyle(fontSize: 16, fontWeight: FontWeight.normal, color: AppColors.textPrimary),),
             trailing: Icon(Icons.arrow_forward_ios),
             onTap: () {
               // Action for tapping the second item

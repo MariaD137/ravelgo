@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/HomeView/Home.dart';
+import 'package:ravelgo_user_app/views/HomeView/Home.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class CancelRideScreen extends StatefulWidget {
   const CancelRideScreen({super.key});
@@ -21,7 +22,7 @@ class _CancelRideScreenState extends State<CancelRideScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
@@ -56,7 +57,7 @@ class _CancelRideScreenState extends State<CancelRideScreen> {
               ),
               Container(
                 padding: const EdgeInsets.all(4),
-                color: Colors.grey.shade300,
+                color: AppColors.border,
                 child: const Text(
                   "Note: A fee will be charged if you cancel more than 5 rides",
                   style: TextStyle(fontSize: 13),
@@ -73,10 +74,10 @@ class _CancelRideScreenState extends State<CancelRideScreen> {
                     );
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: selectedReasonIndex == null ? Colors.yellow[100] : Colors.yellow[700],
-                    foregroundColor: Colors.black,
-                    disabledForegroundColor: Colors.grey,
-                    disabledBackgroundColor: Colors.yellow[100],
+                    backgroundColor: selectedReasonIndex == null ? AppColors.primaryTint : AppColors.primary,
+                    foregroundColor: AppColors.textPrimary,
+                    disabledForegroundColor: AppColors.textMuted,
+                    disabledBackgroundColor: AppColors.primaryTint,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
@@ -106,7 +107,7 @@ class _CancelRideScreenState extends State<CancelRideScreen> {
             value: index,
             groupValue: selectedReasonIndex,
             onChanged: (value) => setState(() => selectedReasonIndex = value),
-            activeColor: Colors.black,
+            activeColor: AppColors.textPrimary,
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap, // reduces touch area padding
           ),
           onTap: () => setState(() => selectedReasonIndex = index),

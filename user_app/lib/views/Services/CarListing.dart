@@ -1,11 +1,23 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'ChoosePlanScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class CarListing extends StatefulWidget {
   const CarListing({Key? key}) : super(key: key);
 
   @override
   State<CarListing> createState() => _CarListingState();
+}
+
+/// No dialer/WhatsApp launcher plugin is configured in this build, so
+/// contact actions copy the number with a clear message instead of
+/// silently failing.
+void _copyContact(BuildContext context, String label) {
+  Clipboard.setData(const ClipboardData(text: '+2347001234567'));
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text('$label number copied (+234 700 123 4567) - paste it in your phone app')),
+  );
 }
 
 class _CarListingState extends State<CarListing> {
@@ -33,18 +45,18 @@ class _CarListingState extends State<CarListing> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF9F9F9),
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
         elevation: 0,
         automaticallyImplyLeading: true, // 👈 Hides the back button
         title: const TextField(
           decoration: InputDecoration(
             hintText: 'Search for a car',
             prefixIcon: Icon(Icons.search),
-            border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12)),  borderSide: BorderSide(color: Color(0xFFECECEC)),),
+            border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12)),  borderSide: BorderSide(color: AppColors.background),),
             filled: true,
-            fillColor: Color(0xFFECECEC),
+            fillColor: AppColors.background,
           ),
         ),
       ),
@@ -57,7 +69,7 @@ class _CarListingState extends State<CarListing> {
               height: 200,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.black,
+                color: AppColors.textPrimary,
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Row(
@@ -74,15 +86,18 @@ class _CarListingState extends State<CarListing> {
                         Spacer(),
                         const Text(
                           'You can also post your car for rent on our platform',
-                          style: TextStyle(color: Colors.white,fontSize: 16,fontWeight: FontWeight.bold),
+                          style: TextStyle(color: AppColors.surface,fontSize: 16,fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 10),
                         ElevatedButton(
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.yellow,
+                            backgroundColor: AppColors.primary,
                           ),
-                          onPressed: () {},
-                          child: const Text('Subscribe to be a Member',style:TextStyle(color: Colors.black,fontSize: 12),),
+                          onPressed: () {
+                            Navigator.push(context,
+                                MaterialPageRoute(builder: (_) => const ChoosePlanScreen()));
+                          },
+                          child: const Text('Subscribe to be a Member',style:TextStyle(color: AppColors.textPrimary,fontSize: 12),),
                         ),
                         Spacer(),
                       ],
@@ -164,7 +179,7 @@ class CarCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: AppColors.surface,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -172,7 +187,7 @@ class CarCard extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.green, width: 1),
+            border: Border.all(color: AppColors.success, width: 1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
@@ -184,7 +199,7 @@ class CarCard extends StatelessWidget {
               const SizedBox(height: 8),
               const Text(
                 'Automatic | 5 seats | Disel',
-                style: TextStyle(color: Colors.grey, fontSize: 12),
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12),
               ),
               const Spacer(),
               Row(
@@ -195,16 +210,16 @@ class CarCard extends StatelessWidget {
                     height: 32,
                     child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.yellow,
+                        backgroundColor: AppColors.primary,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                         ),
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         minimumSize: const Size.fromHeight(32),
                       ),
-                      icon: const Icon(Icons.call, size: 16, color: Colors.black),
-                      label: const Text('Call', style: TextStyle(color: Colors.black, fontSize: 12)),
-                      onPressed: () {},
+                      icon: const Icon(Icons.call, size: 16, color: AppColors.textPrimary),
+                      label: const Text('Call', style: TextStyle(color: AppColors.textPrimary, fontSize: 12)),
+                      onPressed: () => _copyContact(context, 'Rental line'),
                     ),
                   ),
                   IconButton(
@@ -213,7 +228,7 @@ class CarCard extends StatelessWidget {
                       minHeight: 32,
                     ),
                     icon: Image.asset('assets/ic_whatsapp.png', width: 28),
-                    onPressed: () {},
+                    onPressed: () => _copyContact(context, 'WhatsApp'),
                   ),
                 ],
               )
@@ -240,7 +255,7 @@ class CarCardBig extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: AppColors.surface,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -248,7 +263,7 @@ class CarCardBig extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.green, width: 1),
+            border: Border.all(color: AppColors.success, width: 1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
@@ -268,7 +283,7 @@ class CarCardBig extends StatelessWidget {
               const SizedBox(height: 8),
               const Text(
                 'Automatic | 5 seats | Disel',
-                style: TextStyle(color: Colors.grey, fontSize: 24),
+                style: TextStyle(color: AppColors.textMuted, fontSize: 24),
               ),
               const Spacer(),
               Row(
@@ -276,20 +291,20 @@ class CarCardBig extends StatelessWidget {
                 children: [
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.yellow,
+                      backgroundColor: AppColors.primary,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       ),
                     ),
-                    icon: const Icon(Icons.call, size: 18, color: Colors.black),
-                    label: const Text('Call', style: TextStyle(color: Colors.black)),
-                    onPressed: () {},
+                    icon: const Icon(Icons.call, size: 18, color: AppColors.textPrimary),
+                    label: const Text('Call', style: TextStyle(color: AppColors.textPrimary)),
+                    onPressed: () => _copyContact(context, 'Rental line'),
                   ),
                   const SizedBox(width: 12),
                   IconButton(
                     constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                     icon: Image.asset('assets/ic_whatsapp.png', width: 40),
-                    onPressed: () {},
+                    onPressed: () => _copyContact(context, 'WhatsApp'),
                   ),
                 ],
               ),

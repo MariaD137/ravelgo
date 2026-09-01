@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/OtherViews/EditProfileInfo.dart';
+import 'package:ravelgo_user_app/views/OtherViews/EditProfileInfo.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class PersonalInfo extends StatelessWidget {
   const PersonalInfo({super.key});
@@ -8,17 +9,17 @@ class PersonalInfo extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: const BackButton(color: Colors.black),
-        backgroundColor: Colors.white,
+        leading: const BackButton(color: AppColors.textPrimary),
+        backgroundColor: AppColors.surface,
         elevation: 0,
         centerTitle: true,
         title: const Text(
           "Personal Info",
-          style: TextStyle(color: Colors.black),
+          style: TextStyle(color: AppColors.textPrimary),
         ),
       ),
       body: Container(
-    color: Colors.white, // 👈 Set background color here
+    color: AppColors.surface, // 👈 Set background color here
     child: Column(
         children: [
 
@@ -53,7 +54,7 @@ class _ProfileSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Color(0xFFF8F8F8),
+      color: AppColors.background,
       height: 180,
       width: double.infinity,// 👈 Set background color here
       child: Column(
@@ -64,15 +65,15 @@ class _ProfileSection extends StatelessWidget {
           children: [
             const CircleAvatar(
               radius: 40,
-              backgroundColor: Colors.grey,
-              child: Icon(Icons.person, size: 40, color: Colors.white),
+              backgroundColor: AppColors.textMuted,
+              child: Icon(Icons.person, size: 40, color: AppColors.surface),
             ),
             Positioned(
               right: 0,
               child: CircleAvatar(
                 radius: 12,
-                backgroundColor: Colors.white,
-                child: Icon(Icons.edit, size: 14, color: Colors.black),
+                backgroundColor: AppColors.surface,
+                child: Icon(Icons.edit, size: 14, color: AppColors.textPrimary),
               ),
             ),
           ],
@@ -80,11 +81,11 @@ class _ProfileSection extends StatelessWidget {
         const SizedBox(height: 12),
         const Text(
           "Upload a profile photo",
-          style: TextStyle(fontSize: 14, color: Colors.black54),
+          style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
         ),
         const Text(
           "to help drivers identify you easily",
-          style: TextStyle(fontSize: 14, color: Colors.black54),
+          style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 20),
       ],
@@ -108,13 +109,13 @@ class InfoTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(color: Colors.black26),
+          border: Border.all(color: AppColors.textMuted),
           borderRadius: BorderRadius.circular(8),
         ),
         child: ListTile(
-          leading: Icon(icon, color: Colors.black54),
+          leading: Icon(icon, color: AppColors.textSecondary),
           title: Text(text),
-          trailing: const Icon(Icons.edit_outlined, color: Colors.black54),
+          trailing: const Icon(Icons.edit_outlined, color: AppColors.textSecondary),
           onTap: () {
             Navigator.push(
               context,

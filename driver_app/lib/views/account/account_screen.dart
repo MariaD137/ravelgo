@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/services/auth_service.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/account/profile_screen.dart';
 import 'package:ravelgo_driver_app/views/assistance/driver_assistance_screen.dart';
@@ -33,7 +34,7 @@ class AccountScreen extends StatelessWidget {
               decoration: AppComponents.cardDecoration(),
               child: Row(
                 children: [
-                  const CircleAvatar(radius: 26, backgroundColor: Color(0xFFF0F0F0), child: Icon(Icons.person, color: Colors.black45)),
+                  const CircleAvatar(radius: 26, backgroundColor: AppColors.surfaceElevated, child: Icon(Icons.person, color: AppColors.textSecondary)),
                   const SizedBox(width: 14),
                   const Expanded(
                     child: Column(
@@ -41,7 +42,7 @@ class AccountScreen extends StatelessWidget {
                       children: [
                         Text("Thelma Ibeh", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
                         SizedBox(height: 4),
-                        Text("View & edit profile", style: TextStyle(fontSize: 12, color: Colors.black54)),
+                        Text("View & edit profile", style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                       ],
                     ),
                   ),
@@ -96,10 +97,16 @@ class AccountScreen extends StatelessWidget {
                 AppComponents.tile(
                   title: "Log out",
                   leading: Icons.logout,
-                  onTap: () => Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    (route) => false,
-                  ),
+                  onTap: () async {
+                    // Clear the persisted Cognito session so a refresh does
+                    // not silently sign the driver back in.
+                    await AuthService.signOut();
+                    if (!context.mounted) return;
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      (route) => false,
+                    );
+                  },
                 ),
               ],
             ),

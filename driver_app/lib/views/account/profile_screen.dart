@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/theme/app_theme.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -12,7 +13,7 @@ class ProfileScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Check and update your driver profile details here if needed", style: TextStyle(fontSize: 14, color: Colors.black54)),
+            const Text("Check and update your driver profile details here if needed", style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
             const SizedBox(height: 24),
             _lockedField("First Name", "Thelma"),
             const SizedBox(height: 16),
@@ -24,7 +25,7 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 16),
             _lockedField("In-App Profile Name", "Thelma Ibeh"),
             const SizedBox(height: 20),
-            const Text("To update, please contact our support team via the app", style: TextStyle(fontSize: 13, color: Colors.black54)),
+            const Text("To update, please contact our support team via the app", style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
           ],
         ),
       ),

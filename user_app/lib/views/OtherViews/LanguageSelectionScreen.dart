@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/Model/app_state.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class LanguageSelectionScreen extends StatefulWidget {
   const LanguageSelectionScreen({super.key});
@@ -50,13 +52,13 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       appBar: AppBar(
-        leading: const BackButton(color: Colors.black),
-        backgroundColor: Colors.white,
+        leading: const BackButton(color: AppColors.textPrimary),
+        backgroundColor: AppColors.surface,
         elevation: 0,
         centerTitle: true,
-        title: const Text("Select a Language", style: TextStyle(color: Colors.black)),
+        title: const Text("Select a Language", style: TextStyle(color: AppColors.textPrimary)),
       ),
       body: Column(
         children: [
@@ -69,11 +71,19 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
               itemCount: _filteredLanguages.length,
               itemBuilder: (context, index) {
                 final lang = _filteredLanguages[index];
+                final selected = RiderAppState.instance.language == lang["name"];
                 return ListTile(
                   leading: Text(lang["flag"]!, style: const TextStyle(fontSize: 20)),
                   title: Text(lang["name"]!),
+                  trailing: selected ? const Icon(Icons.check, color: AppColors.success) : null,
                   onTap: () {
-                    // Handle language selection
+                    // LOCAL STATE ONLY: persists the choice for this session;
+                    // wiring it into localization delivery is a follow-up.
+                    RiderAppState.instance.setLanguage(lang["name"]!);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Language set to ${lang["name"]}')),
+                    );
+                    Navigator.pop(context, lang["name"]);
                   },
                 );
               },
@@ -88,12 +98,12 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        border: Border.all(color: Colors.yellow[700]!),
+        border: Border.all(color: AppColors.primary),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
-          const Icon(Icons.search, color: Colors.black54),
+          const Icon(Icons.search, color: AppColors.textSecondary),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
@@ -107,7 +117,7 @@ class _LanguageSelectionScreenState extends State<LanguageSelectionScreen> {
           ),
           if (_searchController.text.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.clear, color: Colors.black45),
+              icon: const Icon(Icons.clear, color: AppColors.textSecondary),
               onPressed: () {
                 _searchController.clear();
                 _filterLanguages('');

@@ -1,42 +1,112 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_admin/models/rental_listing.dart';
+import 'package:ravelgo_admin/config/currency.dart';
+import 'package:ravelgo_admin/services/admin_api.dart';
+import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 
-class RentalListingsScreen extends StatelessWidget {
+/// Luxury rental listings awaiting review (GET /api/rentals, admin sees all).
+class RentalListingsScreen extends StatefulWidget {
   const RentalListingsScreen({super.key});
 
-  Color _statusColor(RentalListingStatus s) {
-    switch (s) {
-      case RentalListingStatus.pendingApproval:
-        return AppColors.warning;
-      case RentalListingStatus.approved:
-        return AppColors.success;
-      case RentalListingStatus.rejected:
-        return AppColors.danger;
+  @override
+  State<RentalListingsScreen> createState() => _RentalListingsScreenState();
+}
+
+class _RentalListingsScreenState extends State<RentalListingsScreen> {
+  bool _loading = true;
+  bool _busy = false;
+  String? _error;
+  List<RentalListing> _items = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final items = await AdminApi.rentals();
+      if (!mounted) return;
+      setState(() {
+        _items = items;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e is ApiException && e.statusCode == 403 ? 'Sign in as an admin to view listings.' : e.toString();
+        _loading = false;
+      });
     }
   }
 
-  String _statusLabel(RentalListingStatus s) {
-    switch (s) {
-      case RentalListingStatus.pendingApproval:
-        return "Pending approval";
-      case RentalListingStatus.approved:
-        return "Approved";
-      case RentalListingStatus.rejected:
-        return "Rejected";
+  Future<void> _setStatus(RentalListing r, String status) async {
+    setState(() => _busy = true);
+    try {
+      await AdminApi.setRentalStatus(r.id, status);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
+
+  Color _color(String s) {
+    switch (s) {
+      case 'APPROVED':
+        return AppColors.success;
+      case 'REJECTED':
+        return AppColors.danger;
+      default:
+        return AppColors.warning;
+    }
+  }
+
+  String _label(String s) => s.isEmpty ? '' : s[0] + s.substring(1).toLowerCase().replaceAll('_', ' ');
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Luxury Car Rental Listings")),
-      body: ListView.separated(
+      appBar: AppBar(title: const Text("Luxury Rental Listings")),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : (_error != null ? _err() : _list()),
+    );
+  }
+
+  Widget _err() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
+            TextButton(onPressed: _load, child: const Text('Try again')),
+          ]),
+        ),
+      );
+
+  Widget _list() {
+    if (_items.isEmpty) {
+      return const Center(child: Text("No rental listings.", style: TextStyle(color: AppColors.textSecondary)));
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.separated(
         padding: const EdgeInsets.all(16),
-        itemCount: mockRentalListings.length,
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: _items.length,
         separatorBuilder: (_, __) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
-          final l = mockRentalListings[i];
+          final r = _items[i];
+          final decided = r.status == 'APPROVED' || r.status == 'REJECTED';
           return Container(
             padding: const EdgeInsets.all(14),
             decoration: AppComponents.cardDecoration(),
@@ -44,26 +114,26 @@ class RentalListingsScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(child: Text(l.vehicle, style: const TextStyle(fontWeight: FontWeight.w600))),
-                    AppComponents.badge(_statusLabel(l.status), color: _statusColor(l.status)),
+                    Expanded(
+                        child: Text(r.vehicle.isEmpty ? 'Vehicle' : r.vehicle,
+                            style: const TextStyle(fontWeight: FontWeight.w600))),
+                    AppComponents.badge(_label(r.status), color: _color(r.status)),
                   ],
                 ),
-                const SizedBox(height: 6),
-                Text("Owner: ${l.ownerName} · ${l.location}", style: const TextStyle(fontSize: 12, color: Colors.black54)),
-                const SizedBox(height: 6),
-                Text("₦${l.dailyRate.toStringAsFixed(0)} / day", style: const TextStyle(fontWeight: FontWeight.w700)),
-                if (l.status == RentalListingStatus.pendingApproval) ...[
-                  const SizedBox(height: 10),
+                const SizedBox(height: 4),
+                Text("${Currency.format(r.dailyRate, decimals: 0)}/day · ${r.location}"
+                    "${r.driverName.isNotEmpty ? ' · ${r.driverName}' : ''}",
+                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                if (!decided)
                   Row(
                     children: [
-                      Expanded(child: AppComponents.outlineButton(text: "Reject", color: AppColors.danger, onPressed: () {})),
-                      const SizedBox(width: 10),
-                      Expanded(child: AppComponents.primaryButton(text: "Approve", onPressed: () {})),
+                      TextButton(onPressed: _busy ? null : () => _setStatus(r, 'APPROVED'), child: const Text('Approve')),
+                      TextButton(
+                          onPressed: _busy ? null : () => _setStatus(r, 'REJECTED'),
+                          child: const Text('Reject', style: TextStyle(color: AppColors.danger))),
                     ],
                   ),
-                ],
               ],
             ),
           );

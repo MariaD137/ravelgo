@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/HomeView/scheduled_rides_screen.dart';
-import 'package:ravelgo_driver/views/User/invite_a_friend.dart';
-import 'package:ravelgo_driver/views/bottommenu/BottomNavigationView.dart';
-import 'dart:io';
+import 'package:ravelgo_user_app/views/HomeView/scheduled_rides_screen.dart';
+import 'package:ravelgo_user_app/views/User/invite_a_friend.dart';
+import 'package:ravelgo_user_app/views/bottommenu/BottomNavigationView.dart';
 
 import '../User/user_summary.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 
 class SideMenu extends StatelessWidget {
@@ -14,7 +14,7 @@ class SideMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     return Drawer(
       elevation: 0,
-      backgroundColor: Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -49,74 +49,15 @@ class SideMenu extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text("Thelma",
-                            style: TextStyle(fontSize: 16, color: Color(0xFF3A3A3A))),
+                            style: TextStyle(fontSize: 16, color: AppColors.textSecondary)),
                         Text("Ibeh",
-                            style: TextStyle(fontSize: 16, color: Color(0xFF3A3A3A))),
+                            style: TextStyle(fontSize: 16, color: AppColors.textSecondary)),
                       ],
                     ),
                   ],
                 ),
               ),
 
-            ),
-
-            SizedBox(height: 10),
-
-            // YELLOW UPDATE CARD
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Color(0xFFFFF6C8),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.transparent,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Image.asset("assets/update_download.png",height: 30,width: 30,),
-                    ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Your app needs an update',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.w600, fontSize: 15,color: Color(0xFF3A3A3A)),
-                                ),
-                              ),
-                              GestureDetector(
-                                onTap: () => Navigator.pop(context),
-                                child: Icon(Icons.close, size: 18, color: Colors.black54),
-                              )
-                            ],
-                          ),
-                          SizedBox(height: 2),
-                          Text('New features and improvements',
-                              style: TextStyle(color: Color(0xFF757575), fontSize: 13)),
-                          SizedBox(height: 4),
-                          Text('Update now',
-                              style: TextStyle(
-                                  color: Color(0xFF665600),
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ),
 
             SizedBox(height: 20),
@@ -128,7 +69,10 @@ class SideMenu extends StatelessWidget {
                 child: ListView(
                   padding: EdgeInsets.only(top: 0),
                   children: [
-                    _menuItem(assetsImg: "assets/trip_history.png", label: "Trip history", onTap: () {}),
+                    _menuItem(assetsImg: "assets/trip_history.png", label: "Trip history", onTap: () {
+                      BottomNavigationView.globalKey.currentState?.changeTab(2);
+                      Navigator.pop(context);
+                    }),
                     _menuItem(assetsImg: "assets/service.png", label: "Services", onTap: () {
                       BottomNavigationView.globalKey.currentState?.changeTab(1);
                       Navigator.pop(context);
@@ -175,7 +119,7 @@ class SideMenu extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 0, vertical: 0),
       child: Material(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(0),
         child: InkWell(
           onTap: onTap,
@@ -191,7 +135,7 @@ class SideMenu extends StatelessWidget {
                       style: TextStyle(
                           fontSize: 15, fontWeight: FontWeight.w500)),
                 ),
-                Icon(Icons.chevron_right, size: 20, color: Colors.black45),
+                Icon(Icons.chevron_right, size: 20, color: AppColors.textSecondary),
               ],
             ),
           ),

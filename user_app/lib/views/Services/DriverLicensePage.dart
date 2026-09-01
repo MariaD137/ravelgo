@@ -1,13 +1,14 @@
 
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/components/basic_components.dart';
+import 'package:ravelgo_user_app/components/basic_components.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 class DriverLicensePage extends StatelessWidget {
   const DriverLicensePage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -42,7 +43,7 @@ class DriverLicensePage extends StatelessWidget {
 
               const Text(
                 "if vehicle would be used for delivery",
-                style: TextStyle(fontSize: 12, color: Colors.black54),
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
               ),
 
               const SizedBox(height: 20),

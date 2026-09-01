@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 
 
@@ -16,19 +18,18 @@ class _PostCarScreenState extends State<PostCarScreen> {
 
   @override
   Widget build(BuildContext context) {
-    print(Navigator.of(context).canPop()); // should be false
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
         centerTitle: true, // 👈 This centers the title
         title: const Text(
           'Post your car',
-          style: TextStyle(color: Colors.black),
+          style: TextStyle(color: AppColors.textPrimary),
         ),
-        leading: const BackButton(color: Colors.black),
+        leading: const BackButton(color: AppColors.textPrimary),
       ),
       body:Container(
-    color: Colors.white, // Set background color here
+    color: AppColors.surface, // Set background color here
     padding: const EdgeInsets.all(16),
     child:
     SingleChildScrollView(
@@ -39,15 +40,19 @@ class _PostCarScreenState extends State<PostCarScreen> {
           children: [
             Spacer(),
             ElevatedButton.icon(
-              onPressed: () {},
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("You haven't posted any cars yet")),
+                );
+              },
               icon: const Icon(Icons.remove_red_eye, size: 16),
               label: const Text('View posts'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.grey,
+                backgroundColor: AppColors.surface,
+                foregroundColor: AppColors.textMuted,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
-                  side: const BorderSide(color: Colors.black12),
+                  side: const BorderSide(color: AppColors.border),
                 ),
               ),
             ),
@@ -113,8 +118,8 @@ class _PostCarScreenState extends State<PostCarScreen> {
         child: ElevatedButton(
           style: ElevatedButton.styleFrom(
             minimumSize: const Size(double.infinity, 50),
-            backgroundColor: Colors.yellow.shade600,
-            foregroundColor: Colors.black,
+            backgroundColor: AppColors.primary,
+            foregroundColor: AppColors.textPrimary,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
           onPressed: () {
@@ -165,11 +170,26 @@ class _DropdownTile extends StatelessWidget {
   }
 }
 
-class UploadSection extends StatelessWidget {
+class UploadSection extends StatefulWidget {
   final String title;
   final bool showSave;
 
   const UploadSection({required this.title, this.showSave = false});
+
+  @override
+  State<UploadSection> createState() => _UploadSectionState();
+}
+
+class _UploadSectionState extends State<UploadSection> {
+  final ImagePicker _picker = ImagePicker();
+  XFile? _file;
+
+  Future<void> _chooseFile() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+    if (image != null && mounted) {
+      setState(() => _file = image);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -177,19 +197,19 @@ class UploadSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          title,
+          widget.title,
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 4),
         const Text(
           'Make sure your photo is clear and unobstructed.',
-          style: TextStyle(color: Color(0xFF867804)), // gold-brown style
+          style: TextStyle(color: AppColors.primaryDark), // gold-brown style
         ),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            border: Border.all(color: Colors.grey.shade300),
+            border: Border.all(color: AppColors.border),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
@@ -199,9 +219,9 @@ class UploadSection extends StatelessWidget {
                 height: 60,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
-                  color: Colors.grey.shade200,
+                  color: AppColors.surfaceElevated,
                 ),
-                child: const Icon(Icons.image, size: 32, color: Colors.grey),
+                child: const Icon(Icons.image, size: 32, color: AppColors.textMuted),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -220,28 +240,33 @@ class UploadSection extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                       height: 50,
                       decoration: BoxDecoration(
-                        color: Colors.yellow.shade50,
+                        color: AppColors.primaryTint,
                       ),
                       child:Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           ElevatedButton(
-                            onPressed: () {
-
-                            },
+                            onPressed: _chooseFile,
                             style: ElevatedButton.styleFrom(
-                              foregroundColor: Colors.black,
+                              foregroundColor: AppColors.textPrimary,
                               backgroundColor: Colors.transparent,
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                               elevation: 0,
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(6),
-                                side: BorderSide(color: Colors.grey.shade400),
+                                side: BorderSide(color: AppColors.border),
                               ),
                             ),
                             child: const Text('Choose File', style: TextStyle(fontWeight: FontWeight.bold)),
                           ),
-                          const Text('No File Chosen', style: TextStyle(fontWeight: FontWeight.w400)),
+                          Expanded(
+                            child: Text(
+                              _file == null ? 'No File Chosen' : _file!.name,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.end,
+                              style: const TextStyle(fontWeight: FontWeight.w400),
+                            ),
+                          ),
                         ],
                       )
                     ),

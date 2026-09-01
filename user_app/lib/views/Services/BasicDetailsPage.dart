@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class BasicDetailsPage extends StatefulWidget {
   const BasicDetailsPage({super.key});
@@ -16,7 +17,7 @@ class _BasicDetailsPageState extends State<BasicDetailsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFFFFF),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -48,7 +49,7 @@ class _BasicDetailsPageState extends State<BasicDetailsPage> {
                             width: 80,
                             height: 80,
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade300,
+                              color: AppColors.border,
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(Icons.person_outline, size: 30),
@@ -59,7 +60,7 @@ class _BasicDetailsPageState extends State<BasicDetailsPage> {
                             child: Container(
                               padding: const EdgeInsets.all(6),
                               decoration: const BoxDecoration(
-                                color: Color(0xFFFFD500),
+                                color: AppColors.primary,
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(Icons.edit, size: 14),
@@ -115,7 +116,7 @@ class _BasicDetailsPageState extends State<BasicDetailsPage> {
                       "Acceptable form of ID include: NIN, driver’s license, passport or voters card. Make sure your photos are readable and unobstructed.",
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.black54,
+                        color: AppColors.textSecondary,
                         height: 1.4,
                       ),
                     ),
@@ -127,8 +128,8 @@ class _BasicDetailsPageState extends State<BasicDetailsPage> {
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: Colors.grey.shade300),
-                        color: Colors.white,
+                        border: Border.all(color: AppColors.border),
+                        color: AppColors.surface,
                       ),
                       child: Row(
                         children: [
@@ -138,7 +139,7 @@ class _BasicDetailsPageState extends State<BasicDetailsPage> {
                             width: 70,
                             height: 70,
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
+                              color: AppColors.surfaceElevated,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: const Icon(Icons.image_outlined),
@@ -206,8 +207,8 @@ class _BasicDetailsPageState extends State<BasicDetailsPage> {
                             Navigator.pop(context);
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFFD500),
-                          foregroundColor: Colors.black,
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: AppColors.textPrimary,
                           elevation: 0,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -241,21 +242,21 @@ class _BasicDetailsPageState extends State<BasicDetailsPage> {
       decoration: InputDecoration(
         counterText: "",
         filled: true,
-        fillColor: Colors.white,
+        fillColor: AppColors.surface,
         contentPadding:
         const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderSide: BorderSide(color: AppColors.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderSide: BorderSide(color: AppColors.border),
         ),
         suffixIcon: IconButton(
           icon: Icon(
             obscure ? Icons.visibility_off : Icons.visibility,
-            color: Colors.grey,
+            color: AppColors.textMuted,
           ),
           onPressed: onToggle,
         ),
@@ -263,18 +264,4 @@ class _BasicDetailsPageState extends State<BasicDetailsPage> {
     );
   }
 
-  /// BOTTOM NAV
-  Widget _bottomNav() {
-    return BottomNavigationBar(
-      currentIndex: 1,
-      selectedItemColor: const Color(0xFFFFD500),
-      unselectedItemColor: Colors.grey,
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: "Home"),
-        BottomNavigationBarItem(icon: Icon(Icons.grid_view), label: "Services"),
-        BottomNavigationBarItem(icon: Icon(Icons.calendar_today), label: "Rides"),
-        BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Account"),
-      ],
-    );
-  }
 }

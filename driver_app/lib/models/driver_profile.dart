@@ -1,3 +1,6 @@
+import 'package:ravelgo_driver_app/services/auth_service.dart';
+import 'package:ravelgo_driver_app/services/driver_api.dart';
+
 class DriverProfile {
   final String firstName;
   final String lastName;
@@ -8,20 +11,44 @@ class DriverProfile {
   final String preferredLanguage;
   final bool quietModePreferred;
   final bool isOnline;
+  final String status; // PENDING_REVIEW | ACTIVE | SUSPENDED
 
   const DriverProfile({
-    this.firstName = "Thelma",
-    this.lastName = "Ibeh",
-    this.email = "thelma123@gmail.com",
-    this.phoneNumber = "07037530052",
-    this.rating = 4.8,
-    this.totalTrips = 214,
+    this.firstName = "Driver",
+    this.lastName = "",
+    this.email = "",
+    this.phoneNumber = "",
+    this.rating = 5.0,
+    this.totalTrips = 0,
     this.preferredLanguage = "English",
     this.quietModePreferred = false,
     this.isOnline = false,
+    this.status = "PENDING_REVIEW",
   });
 
-  DriverProfile copyWith({bool? isOnline, String? preferredLanguage, bool? quietModePreferred}) {
+  bool get isApproved => status == "ACTIVE";
+
+  String get fullName => [firstName, lastName].where((e) => e.trim().isNotEmpty).join(' ').trim();
+
+  /// Build a profile from the backend driver record, filling name/email from
+  /// the signed-in Cognito identity (those live on the Cognito profile).
+  factory DriverProfile.fromRecord(DriverRecord r) => DriverProfile(
+        firstName: AuthService.givenName ?? "Driver",
+        lastName: AuthService.familyName ?? "",
+        email: AuthService.email ?? "",
+        rating: r.rating,
+        totalTrips: r.totalTrips,
+        preferredLanguage: r.preferredLanguage,
+        isOnline: r.isOnline,
+        status: r.status,
+      );
+
+  DriverProfile copyWith({
+    bool? isOnline,
+    String? preferredLanguage,
+    bool? quietModePreferred,
+    String? status,
+  }) {
     return DriverProfile(
       firstName: firstName,
       lastName: lastName,
@@ -32,6 +59,7 @@ class DriverProfile {
       preferredLanguage: preferredLanguage ?? this.preferredLanguage,
       quietModePreferred: quietModePreferred ?? this.quietModePreferred,
       isOnline: isOnline ?? this.isOnline,
+      status: status ?? this.status,
     );
   }
 }

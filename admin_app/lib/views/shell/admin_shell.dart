@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/views/dashboard/dashboard_screen.dart';
 import 'package:ravelgo_admin/views/drivers/driver_list_screen.dart';
+import 'package:ravelgo_admin/views/notifications/notifications_screen.dart';
 import 'package:ravelgo_admin/views/shell/side_menu_admin.dart';
 import 'package:ravelgo_admin/views/support/support_tickets_screen.dart';
 import 'package:ravelgo_admin/views/trips/trip_monitoring_screen.dart';
@@ -31,11 +32,14 @@ class _AdminShellState extends State<AdminShell> {
       drawer: const SideMenuAdmin(),
       appBar: AppBar(
         title: Text(_titles[_index]),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
+        backgroundColor: AppColors.surface,
+        foregroundColor: AppColors.textPrimary,
         elevation: 0,
         actions: [
-          IconButton(icon: const Icon(Icons.notifications_none), onPressed: () {}),
+          IconButton(
+              icon: const Icon(Icons.notifications_none),
+              onPressed: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
         ],
       ),
       body: pages[_index],
@@ -43,7 +47,7 @@ class _AdminShellState extends State<AdminShell> {
         currentIndex: _index,
         onTap: (i) => setState(() => _index = i),
         selectedItemColor: AppColors.primaryDark,
-        unselectedItemColor: Colors.grey,
+        unselectedItemColor: AppColors.textMuted,
         type: BottomNavigationBarType.fixed,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), label: "Dashboard"),

@@ -1,19 +1,39 @@
-import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/components/basic_components.dart';
+import 'package:ravelgo_user_app/components/platform_file_image.dart';
 
-class PhotoLicensePage extends StatelessWidget {
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:ravelgo_user_app/components/basic_components.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
+
+/// License-photo step of the list-your-car flow.
+/// The picked photo stays in local state; uploading it is the integration
+/// point for the verification backend.
+class PhotoLicensePage extends StatefulWidget {
   const PhotoLicensePage({super.key});
+
+  @override
+  State<PhotoLicensePage> createState() => _PhotoLicensePageState();
+}
+
+class _PhotoLicensePageState extends State<PhotoLicensePage> {
+  final ImagePicker _picker = ImagePicker();
+  XFile? _photo;
+
+  Future<void> _pickPhoto() async {
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+    if (image != null && mounted) {
+      setState(() => _photo = image);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
-
             AppComponents.header(context, "Photo with drivers license"),
-
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -22,29 +42,27 @@ class PhotoLicensePage extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-
                       Container(
                         width: 180,
                         height: 180,
+                        clipBehavior: Clip.antiAlias,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
-                          color: Colors.grey.shade300,
+                          color: AppColors.border,
                         ),
+                        child: _photo != null
+                            ? localFileImage(_photo!.path, fit: BoxFit.cover)
+                            : const Icon(Icons.badge_outlined, size: 56, color: AppColors.textMuted),
                       ),
-
                       const SizedBox(height: 20),
-
                       OutlinedButton(
-                        onPressed: () {},
+                        onPressed: _pickPhoto,
                         style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         ),
-                        child: const Text("Add a photo"),
+                        child: Text(_photo == null ? "Add a photo" : "Change photo"),
                       ),
-
                       const SizedBox(height: 20),
-
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 20),
                         child: Text(
@@ -57,10 +75,11 @@ class PhotoLicensePage extends StatelessWidget {
                 ),
               ),
             ),
-
-            AppComponents.primaryButton(text: "Done", onPressed: (){
-              Navigator.pop(context);
-            })
+            AppComponents.primaryButton(
+                text: "Done",
+                onPressed: () {
+                  Navigator.pop(context, _photo);
+                }),
           ],
         ),
       ),

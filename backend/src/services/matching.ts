@@ -23,6 +23,7 @@ export async function matchDriverToTrip(tripId: string) {
   const driver = await prisma.driver.findFirst({
     where: {
       status: "ACTIVE",
+      isOnline: true,
       tripsAsDriver: { none: { status: { in: ["MATCHED", "IN_PROGRESS"] } } },
     },
     orderBy: { rating: "desc" },

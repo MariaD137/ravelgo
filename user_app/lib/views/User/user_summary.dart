@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/bottommenu/BottomNavigationView.dart';
+import 'package:ravelgo_user_app/views/bottommenu/BottomNavigationView.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class UserSummary extends StatelessWidget {
   const UserSummary({Key? key}) : super(key: key);
@@ -8,7 +9,7 @@ class UserSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -57,7 +58,7 @@ class UserSummary extends StatelessWidget {
                 children: const [
                   Icon(
                     Icons.star,
-                    color: Colors.green,
+                    color: AppColors.success,
                     size: 20,
                   ),
                   SizedBox(width: 6),
@@ -136,7 +137,7 @@ class SummaryCard extends StatelessWidget {
       // height: 70,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: const Color(0xFFE8C75F),

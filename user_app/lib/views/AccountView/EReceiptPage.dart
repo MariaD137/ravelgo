@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class EReceiptPage extends StatelessWidget {
   const EReceiptPage({super.key});
@@ -6,7 +7,7 @@ class EReceiptPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -43,7 +44,7 @@ class EReceiptPage extends StatelessWidget {
                     Container(
                       height: 80,
                       width: double.infinity,
-                      color: Colors.white,
+                      color: AppColors.surface,
                       child: const Center(
                         child: Text("|||||||||||||||||||||||||||||",
                             style: TextStyle(letterSpacing: 2)),
@@ -88,7 +89,7 @@ class EReceiptPage extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -111,7 +112,7 @@ class EReceiptPage extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: const TextStyle(color: Colors.black54),
+            style: const TextStyle(color: AppColors.textSecondary),
           ),
         ),
         Text(
@@ -126,9 +127,9 @@ class EReceiptPage extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         boxShadow: [
-          BoxShadow(color: Colors.black12, blurRadius: 10),
+          BoxShadow(color: AppColors.border, blurRadius: 10),
         ],
       ),
       child: SizedBox(
@@ -137,8 +138,8 @@ class EReceiptPage extends StatelessWidget {
         child: ElevatedButton(
           onPressed: onTap,
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFFFD500),
-            foregroundColor: Colors.black,
+            backgroundColor: AppColors.primary,
+            foregroundColor: AppColors.textPrimary,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),

@@ -1,0 +1,178 @@
+import 'package:flutter/material.dart';
+
+/// RavelGo design tokens - premium black-and-white surfaces, Turo-inspired.
+/// White is the dominant background, black is the primary action color.
+/// Semantic roles only: a color is used for what it means
+/// (success/warning/error/disabled), never picked for decoration.
+/// Kept in sync with driver_app and admin_app's own AppColors so the three
+/// apps read as one product instead of each screen picking its own shade.
+class AppColors {
+  // Surfaces (white is dominant; elevated/variant are light neutral grays)
+  static const background = Color(0xFFFFFFFF);
+  static const surface = Color(0xFFFFFFFF);
+  static const surfaceElevated = Color(0xFFF5F5F5);
+  static const surfaceVariant = Color(0xFFF5F5F5);
+
+  // Text
+  static const textPrimary = Color(0xFF000000);
+  static const textSecondary = Color(0xFF555555);
+  static const textMuted = Color(0xFF888888);
+
+  // Structure
+  static const border = Color(0xFFE5E5E5);
+  static const divider = Color(0xFFE5E5E5);
+
+  // Primary action color (black, per the Turo-inspired direction)
+  static const primary = Color(0xFF000000);
+  static const primaryDark = Color(0xFF1A1A1A);
+  static const primaryTint = Color(0xFFF0F0F0);
+  static const primaryContainer = Color(0xFFF5F5F5);
+
+  // Semantic
+  static const success = Color(0xFF2E7D32);
+  static const warning = Color(0xFFED6C02);
+  static const error = Color(0xFFD32F2F);
+  static const info = Color(0xFF1565C0);
+  static const disabled = Color(0xFFE5E5E5);
+
+  // Legacy aliases kept for screens not yet migrated off these names.
+  static const danger = error;
+}
+
+/// 4/8-based spacing scale. Not applied mechanically everywhere - use
+/// whichever step reads right for the given gap.
+class AppSpacing {
+  static const xs = 4.0;
+  static const sm = 8.0;
+  static const md = 12.0;
+  static const base = 16.0;
+  static const lg = 20.0;
+  static const xl = 24.0;
+  static const xxl = 32.0;
+  static const xxxl = 40.0;
+  static const huge = 48.0;
+}
+
+/// Shape scale shared by cards, buttons, inputs, sheets, chips.
+class AppRadius {
+  static const small = 8.0;
+  static const medium = 12.0;
+  static const large = 20.0;
+  static const pill = 999.0;
+}
+
+/// Type scale. Colors are intentionally omitted here (callers set color
+/// per-context via AppColors) except where a role always means one thing.
+class AppTypography {
+  static const display = TextStyle(fontSize: 32, fontWeight: FontWeight.w700, height: 1.2, letterSpacing: -0.5);
+  static const headline = TextStyle(fontSize: 24, fontWeight: FontWeight.w700, height: 1.25);
+  static const title = TextStyle(fontSize: 18, fontWeight: FontWeight.w700, height: 1.3);
+  static const cardTitle = TextStyle(fontSize: 16, fontWeight: FontWeight.w600, height: 1.3);
+  static const body = TextStyle(fontSize: 15, fontWeight: FontWeight.w400, height: 1.45);
+  static const bodySmall = TextStyle(fontSize: 13, fontWeight: FontWeight.w400, height: 1.4);
+  static const label = TextStyle(fontSize: 13, fontWeight: FontWeight.w600, height: 1.3);
+  static const caption = TextStyle(fontSize: 12, fontWeight: FontWeight.w400, height: 1.3);
+  static const button = TextStyle(fontSize: 16, fontWeight: FontWeight.w600, height: 1.2);
+  static const navigation = TextStyle(fontSize: 11, fontWeight: FontWeight.w500, height: 1.2);
+}
+
+ThemeData buildAppTheme() {
+  return ThemeData(
+    useMaterial3: true,
+    brightness: Brightness.light,
+    scaffoldBackgroundColor: AppColors.background,
+    fontFamily: "Roboto",
+    colorScheme: ColorScheme.fromSeed(
+      seedColor: AppColors.primary,
+      brightness: Brightness.light,
+      primary: AppColors.primary,
+      surface: AppColors.surface,
+      error: AppColors.error,
+    ),
+    textTheme: const TextTheme(
+      displayLarge: AppTypography.display,
+      headlineLarge: AppTypography.headline,
+      titleLarge: AppTypography.title,
+      titleMedium: AppTypography.cardTitle,
+      bodyLarge: AppTypography.body,
+      bodyMedium: AppTypography.bodySmall,
+      labelLarge: AppTypography.button,
+      labelSmall: AppTypography.caption,
+    ).apply(
+      bodyColor: AppColors.textPrimary,
+      displayColor: AppColors.textPrimary,
+    ),
+    appBarTheme: AppBarTheme(
+      backgroundColor: AppColors.background,
+      foregroundColor: AppColors.textPrimary,
+      elevation: 0,
+      titleTextStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, height: 1.3, color: AppColors.textPrimary),
+    ),
+    cardTheme: CardThemeData(
+      color: AppColors.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.medium),
+        side: const BorderSide(color: AppColors.border, width: 1),
+      ),
+    ),
+    dividerTheme: const DividerThemeData(color: AppColors.divider, thickness: 1, space: 1),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        disabledBackgroundColor: AppColors.disabled,
+        disabledForegroundColor: AppColors.textMuted,
+        elevation: 0,
+        textStyle: AppTypography.button,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.medium)),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.textPrimary,
+        side: const BorderSide(color: AppColors.primary),
+        textStyle: AppTypography.button,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.medium)),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: AppColors.surface,
+      hintStyle: const TextStyle(color: AppColors.textMuted),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.medium),
+        borderSide: const BorderSide(color: AppColors.border),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.medium),
+        borderSide: const BorderSide(color: AppColors.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AppRadius.medium),
+        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+      ),
+    ),
+    bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+      backgroundColor: AppColors.surface,
+      selectedItemColor: AppColors.primary,
+      unselectedItemColor: AppColors.textMuted,
+      type: BottomNavigationBarType.fixed,
+    ),
+    iconTheme: const IconThemeData(color: AppColors.textSecondary),
+    dialogTheme: DialogThemeData(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.large)),
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.selected) ? AppColors.primary : AppColors.surface),
+      trackColor: WidgetStateProperty.resolveWith((states) =>
+          states.contains(WidgetState.selected) ? AppColors.textSecondary : AppColors.disabled),
+      trackOutlineColor: WidgetStateProperty.all(AppColors.border),
+    ),
+  );
+}

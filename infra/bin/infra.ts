@@ -34,10 +34,25 @@ const envName = app.node.tryGetContext("envName") ?? "production";
 const suffix = envName === "production" ? "" : `-${envName}`;
 const stackName = (base: string) => `${base}${suffix}`;
 
-const network = new NetworkStack(app, stackName("RavelGo-Network"), { env });
+// First-deploy bootstrap only: `--context deployService=false` creates the
+// ECR repo (so a first image can be pushed) without the App Runner service,
+// which can't stabilize against an image that doesn't exist yet. Monitoring
+// watches that service, so it's skipped on the same pass. Defaults to true,
+// so `cdk deploy --all` and every redeploy behave exactly as before.
+const deployService = app.node.tryGetContext("deployService") !== "false";
+
+const network = new NetworkStack(app, stackName("RavelGo-Network"), { env, envName });
 const auth = new AuthStack(app, stackName("RavelGo-Auth"), { env, envName });
 const storage = new StorageStack(app, stackName("RavelGo-Storage"), { env });
-const data = new DataStack(app, stackName("RavelGo-Data"), { env, vpc: network.vpc });
+const data = new DataStack(app, stackName("RavelGo-Data"), { env, vpc: network.vpc, envName });
+
+// The three Flutter web apps are served from the assets CloudFront
+// distribution, so browser calls from them carry that domain as their Origin
+// and are subject to CORS (the mobile apps send no Origin and are unaffected).
+// Always allow that domain in addition to any operator-supplied origins, so
+// the deployed web apps can reach the API without a manual context override.
+const assetsOrigin = `https://${storage.assetsDistribution.distributionDomainName}`;
+const apiAllowedOrigins = Array.from(new Set([...allowedOrigins, assetsOrigin]));
 
 const api = new ApiStack(app, stackName("RavelGo-Api"), {
   env,
@@ -48,17 +63,23 @@ const api = new ApiStack(app, stackName("RavelGo-Api"), {
   assetsBucket: storage.assetsBucket,
   cognitoUserPoolId: auth.userPool.userPoolId,
   cognitoUserPoolClientId: auth.userPoolClient.userPoolClientId,
-  allowedOrigins,
+  allowedOrigins: apiAllowedOrigins,
   envName,
+  deployService,
 });
 
-new MonitoringStack(app, stackName("RavelGo-Monitoring"), {
-  env,
-  service: api.service,
-  dbInstance: data.dbInstance,
-  alertEmail,
-  monthlyBudgetUsd,
-});
+// Only meaningful once the App Runner service exists — its alarms and log
+// metric filters reference the service directly. Skipped on a bootstrap pass.
+const apiService = api.service;
+if (deployService && apiService) {
+  new MonitoringStack(app, stackName("RavelGo-Monitoring"), {
+    env,
+    service: apiService,
+    dbInstance: data.dbInstance,
+    alertEmail,
+    monthlyBudgetUsd,
+  });
+}
 
 // CI/CD (GitHub OIDC + deploy role) stays production-only: AWS only allows
 // one OIDC provider per unique issuer URL per account, so a second CiStack
@@ -67,11 +88,11 @@ new MonitoringStack(app, stackName("RavelGo-Monitoring"), {
 // instead of creating a new one. Safer to keep staging deploys manual
 // (`cdk deploy --context envName=staging` from a developer machine with
 // real AWS credentials) than to get account-wide OIDC sharing wrong.
-if (envName === "production") {
+if (envName === "production" && apiService) {
   new CiStack(app, stackName("RavelGo-CI"), {
     env,
     repository: api.repository,
-    service: api.service,
+    service: apiService,
     githubOrg,
     githubRepo,
     githubBranch,

@@ -33,6 +33,7 @@ tags:
   - name: Emergency Alerts
   - name: Subscriptions
   - name: Payments
+  - name: Wallet
   - name: Loyalty & Promotions
   - name: Pricing
 
@@ -404,19 +405,23 @@ paths:
           application/json:
             schema:
               type: object
-              required: [pickup, destination, estimatedFare]
+              required: [pickup, destination, distanceKm, durationMinutes]
               properties:
                 pickup: { type: string }
                 destination: { type: string }
-                estimatedFare: { type: number }
+                distanceKm: { type: number, minimum: 0, maximum: 2000, description: Trip distance; the fare is computed server-side from this against the active pricing rule }
+                durationMinutes: { type: number, minimum: 0, maximum: 1440 }
+                zone: { type: string, description: Optional surge zone name }
                 category: { type: string, default: Personal }
                 pickupNote: { type: string }
+              description: The rider never sends the fare — estimatedFare is computed server-side from the active PricingRule and returned on the created Trip.
       responses:
         "201":
           description: Trip
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Trip" }
+        "409": { $ref: "#/components/responses/Conflict" }
     get:
       tags: [Trips]
       summary: Monitor all trips (Admin)
@@ -493,12 +498,13 @@ paths:
     post:
       tags: [Payments]
       summary: >-
-        Charge the rider for a completed trip's final fare (Driver on the
-        trip, or Admin). CARD creates a real Stripe PaymentIntent and
-        returns the Payment as PENDING plus a clientSecret for the mobile
-        app to confirm; the outcome (SUCCEEDED/FAILED) lands asynchronously
-        via POST /billing/webhook. CASH/WALLET settle immediately, no
-        Stripe involved.
+        Charge the rider for a completed trip's final (tax-inclusive) fare
+        (Driver on the trip, or Admin). CARD creates a real Stripe
+        PaymentIntent and returns the Payment as PENDING plus a clientSecret
+        for the mobile app to confirm; the outcome lands asynchronously via
+        POST /billing/webhook. WALLET debits the rider's Stripe-funded
+        RavelGo balance and settles immediately. Cash is not a payment
+        method.
       parameters:
         - $ref: "#/components/parameters/id"
       requestBody:
@@ -507,10 +513,10 @@ paths:
             schema:
               type: object
               properties:
-                method: { type: string, enum: [CARD, CASH, WALLET], default: CARD }
+                method: { type: string, enum: [CARD, WALLET], default: CARD }
       responses:
         "201":
-          description: Payment record (PENDING with a clientSecret for CARD, SUCCEEDED for CASH/WALLET)
+          description: Payment record (PENDING with a clientSecret for CARD, SUCCEEDED for WALLET)
           content:
             application/json:
               schema:
@@ -519,10 +525,12 @@ paths:
                   - type: object
                     properties:
                       clientSecret: { type: string, nullable: true }
+        "402":
+          description: Wallet balance insufficient for the fare
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
-          description: Trip not eligible to be charged, or already charged
+          description: Trip not eligible to be charged, already charged, or rider has no wallet
 
   /payments/{id}/receipt:
     get:
@@ -1241,12 +1249,78 @@ paths:
               schema:
                 type: object
                 properties:
-                  estimatedFare: { type: number }
+                  subtotal: { type: number, description: Fare before tax }
+                  taxRate: { type: number, description: VAT rate applied (e.g. 0.075) }
+                  tax: { type: number }
+                  estimatedFare: { type: number, description: Tax-inclusive total the rider pays }
                   pricingRule: { type: string }
                   surgeMultiplier: { type: number }
                   surgeZone: { type: string, nullable: true }
         "409":
           description: No active pricing rule configured
+
+  /wallet/me:
+    get:
+      tags: [Wallet]
+      summary: My RavelGo wallet balance (any authenticated user)
+      responses:
+        "200":
+          description: Wallet balance
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  balance: { type: number }
+                  currency: { type: string }
+  /wallet/transactions:
+    get:
+      tags: [Wallet]
+      summary: My wallet transaction history (any authenticated user)
+      responses:
+        "200":
+          description: Recent wallet transactions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string }
+                    type: { type: string, enum: [TOPUP, RIDE_PAYMENT, REFUND] }
+                    status: { type: string, enum: [PENDING, COMPLETED, FAILED] }
+                    amount: { type: number }
+                    tripId: { type: string, nullable: true }
+                    createdAt: { type: string, format: date-time }
+  /wallet/topup:
+    post:
+      tags: [Wallet]
+      summary: >-
+        Add funds to my wallet. Creates a Stripe PaymentIntent and returns a
+        clientSecret for the mobile app to confirm; the balance is credited
+        only once Stripe confirms the charge via POST /billing/webhook.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: number, description: "Amount to add (> 0)" }
+      responses:
+        "201":
+          description: Top-up initiated (PENDING until the webhook confirms)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clientSecret: { type: string }
+                  amount: { type: number }
+                  status: { type: string, enum: [PENDING] }
+        "400": { $ref: "#/components/responses/BadRequest" }
 
 components:
   securitySchemes:
@@ -1612,9 +1686,9 @@ components:
               items:
                 type: object
                 properties:
-                  field: { type: string, description: Field name or path (e.g., "email", "address.zipCode") }
+                  field: { type: string, description: 'Field name or path (e.g., "email", "address.zipCode")' }
                   message: { type: string, description: Error message for this field }
-                  code: { type: string, nullable: true, description: Error code (e.g., "too_small", "invalid_email") }
+                  code: { type: string, nullable: true, description: 'Error code (e.g., "too_small", "invalid_email")' }
             timestamp:
               type: string
               format: date-time

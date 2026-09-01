@@ -23,7 +23,7 @@ class _DriverPreferencesScreenState extends State<DriverPreferencesScreen> {
         children: [
           const Text(
             "These preferences power the Driver Matching Algorithm to pair you with riders that fit your style.",
-            style: TextStyle(fontSize: 14, color: Colors.black54),
+            style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 20),
           Container(

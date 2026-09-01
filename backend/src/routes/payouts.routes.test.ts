@@ -1,0 +1,148 @@
+import assert from "node:assert/strict";
+import { after, afterEach, beforeEach, test } from "node:test";
+import request from "supertest";
+import { app } from "../app";
+import { prisma } from "../db/prisma";
+import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+
+beforeEach(resetDb);
+afterEach(() => {
+  restoreAuth();
+});
+after(async () => {
+  await resetDb();
+  await prisma.$disconnect();
+});
+
+async function createDriver(cognitoSub: string) {
+  const user = await prisma.user.create({
+    data: { cognitoSub, role: "DRIVER", firstName: "D", lastName: "R", email: `${cognitoSub}@example.com` },
+  });
+  const driver = await prisma.driver.create({ data: { userId: user.id, status: "ACTIVE" } });
+  return { user, driver };
+}
+
+// Regression coverage for the driverId confusion bug: DriverBankAccount and
+// Payout are FKs to User.id (see prisma/schema.prisma), not the Cognito sub
+// and not Driver.id. Before the fix, every route below either threw a
+// foreign-key violation or silently returned nothing.
+
+test("POST /payouts/bank-account creates a row the same driver can then read back", async () => {
+  await createDriver("driver-sub-1");
+  const token = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
+
+  const create = await request(app)
+    .post("/api/payouts/bank-account")
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      accountHolderName: "Driver One",
+      bankName: "First Bank",
+      accountNumber: "0123456789",
+      routingNumber: "021000021",
+    });
+  assert.equal(create.status, 201);
+
+  const read = await request(app).get("/api/payouts/bank-account").set("Authorization", `Bearer ${token}`);
+  assert.equal(read.status, 200);
+  assert.equal(read.body.accountHolderName, "Driver One");
+  // Full account/routing numbers are never returned — only the last 4 digits.
+  assert.equal(read.body.accountNumber, "••••6789");
+  assert.equal(read.body.routingNumber, "••••0021");
+  assert.ok(!JSON.stringify(read.body).includes("0123456789"));
+});
+
+test("GET /payouts/history only returns the calling driver's own payouts, including ones an Admin created", async () => {
+  const { user: userA } = await createDriver("driver-sub-2");
+  const { user: userB } = await createDriver("driver-sub-3");
+
+  const adminToken = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+  const createRes = await request(app)
+    .post("/api/payouts/create")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ driverId: userA.id, period: "2026-01", amount: 500 });
+  assert.equal(createRes.status, 201);
+  restoreAuth();
+
+  // A payout for a different driver must never show up in A's history.
+  await prisma.payout.create({ data: { driverId: userB.id, amount: 999, period: "2026-01", status: "PENDING" } });
+
+  const driverAToken = mockAuthAs({ sub: "driver-sub-2", groups: ["Driver"] });
+  const history = await request(app).get("/api/payouts/history").set("Authorization", `Bearer ${driverAToken}`);
+
+  assert.equal(history.status, 200);
+  assert.equal(history.body.data.length, 1);
+  assert.equal(history.body.data[0].amount, 500);
+});
+
+test("GET /payouts/:id 404s a payout that belongs to a different driver", async () => {
+  const { user: userA } = await createDriver("driver-sub-4");
+  const { user: userB } = await createDriver("driver-sub-5");
+
+  const payout = await prisma.payout.create({
+    data: { driverId: userB.id, amount: 250, period: "2026-01", status: "PENDING" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-4", groups: ["Driver"] });
+  const res = await request(app).get(`/api/payouts/${payout.id}`).set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 404);
+  void userA;
+});
+
+test("POST /payouts/calculate computes a real amount from the driver's completed, paid trips", async () => {
+  const { user, driver } = await createDriver("driver-sub-6");
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-1", role: "RIDER", firstName: "R", lastName: "I", email: "r@example.com" },
+  });
+  const trip = await prisma.trip.create({
+    data: {
+      riderId: rider.id,
+      driverId: driver.id,
+      pickup: "A",
+      destination: "B",
+      estimatedFare: 100,
+      finalFare: 100,
+      status: "COMPLETED",
+      completedAt: new Date("2026-01-15"),
+    },
+  });
+  await prisma.payment.create({
+    data: { tripId: trip.id, userId: rider.id, amount: 100, status: "SUCCEEDED", paidAt: new Date("2026-01-15") },
+  });
+
+  const token = mockAuthAs({ sub: "admin-sub-2", groups: ["Admin"] });
+  const res = await request(app)
+    .post("/api/payouts/calculate")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ driverId: user.id, period: "2026-01" });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.tripsIncluded, 1);
+  assert.equal(res.body.grossAmount, 100);
+  // RavelGo keeps 25%; the driver's net is the remaining 75%.
+  assert.equal(res.body.platformFee, 25);
+  assert.equal(res.body.netAmount, 75);
+});
+
+test("Admin-only payout endpoints reject a Driver caller", async () => {
+  const { user } = await createDriver("driver-sub-7");
+  const token = mockAuthAs({ sub: "driver-sub-7", groups: ["Driver"] });
+
+  for (const call of [
+    () => request(app).post("/api/payouts/calculate").send({ driverId: user.id, period: "2026-01" }),
+    () => request(app).post("/api/payouts/create").send({ driverId: user.id, period: "2026-01" }),
+    () => request(app).get("/api/payouts"),
+  ]) {
+    const res = await call().set("Authorization", `Bearer ${token}`);
+    assert.equal(res.status, 403);
+  }
+});
+
+test("GET /payouts (Admin) filters by a validated status enum, rejecting garbage", async () => {
+  const token = mockAuthAs({ sub: "admin-sub-3", groups: ["Admin"] });
+  const res = await request(app)
+    .get("/api/payouts")
+    .query({ status: "NOT_A_REAL_STATUS" })
+    .set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 400);
+});

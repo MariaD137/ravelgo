@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/HomeView/scheduled_rides_screen.dart';
+import 'package:ravelgo_user_app/views/HomeView/scheduled_rides_screen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class PickDeliveryScreen extends StatelessWidget {
   final List<Map<String, String>> deliveryRequests = [
@@ -20,7 +21,7 @@ class PickDeliveryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.surface,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -46,10 +47,6 @@ class PickDeliveryScreen extends StatelessWidget {
                   InkWell(
                     borderRadius: BorderRadius.circular(8),
                     onTap: () {
-                      // 👉 Your action here
-                      print("Scheduled requests tapped");
-
-                      // Example navigation
                       Navigator.push(
                         context,
                         MaterialPageRoute(
@@ -59,12 +56,12 @@ class PickDeliveryScreen extends StatelessWidget {
                     },
                     child: Row(
                       children: const [
-                        Icon(Icons.calendar_month, color: Colors.green),
+                        Icon(Icons.calendar_month, color: AppColors.success),
                         SizedBox(width: 4),
                         Text(
                           "Scheduled requests",
                           style: TextStyle(
-                            color: Colors.green,
+                            color: AppColors.success,
                             fontSize: 14,
                           ),
                         ),
@@ -97,7 +94,7 @@ class PickDeliveryScreen extends StatelessWidget {
                       padding: EdgeInsets.symmetric(vertical: 12),
                       decoration: BoxDecoration(
                         border: Border(
-                          bottom: BorderSide(color: Colors.grey.shade300),
+                          bottom: BorderSide(color: AppColors.border),
                         ),
                       ),
                       child: Column(
@@ -115,7 +112,7 @@ class PickDeliveryScreen extends StatelessWidget {
                           SizedBox(height: 6),
                           Row(
                             children: [
-                              Icon(Icons.radio_button_checked, color: Colors.green),
+                              Icon(Icons.radio_button_checked, color: AppColors.success),
                               SizedBox(width: 8),
                               Text(item['pickup'] ?? ""),
                             ],
@@ -142,13 +139,20 @@ class PickDeliveryScreen extends StatelessWidget {
                               Expanded(
                                 child: ElevatedButton(
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.yellow[700],
+                                    backgroundColor: AppColors.primary,
                                     padding: EdgeInsets.symmetric(vertical: 12),
                                   ),
-                                  onPressed: () {},
+                                  onPressed: () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content: Text(
+                                              'Delivery accepted - the sender has been notified')),
+                                    );
+                                    Navigator.pop(context);
+                                  },
                                   child: Text(
                                     "Accept",
-                                    style: TextStyle(color: Colors.black),
+                                    style: TextStyle(color: AppColors.textPrimary),
                                   ),
                                 ),
                               ),
@@ -156,13 +160,18 @@ class PickDeliveryScreen extends StatelessWidget {
                               Expanded(
                                 child: OutlinedButton(
                                   style: OutlinedButton.styleFrom(
-                                    side: BorderSide(color: Colors.red),
+                                    side: BorderSide(color: AppColors.error),
                                     padding: EdgeInsets.symmetric(vertical: 12),
                                   ),
-                                  onPressed: () {},
+                                  onPressed: () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Delivery request declined')),
+                                    );
+                                    Navigator.pop(context);
+                                  },
                                   child: Text(
                                     "Decline",
-                                    style: TextStyle(color: Colors.red),
+                                    style: TextStyle(color: AppColors.error),
                                   ),
                                 ),
                               ),

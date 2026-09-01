@@ -1,4 +1,4 @@
-import type { Server as HttpServer } from "node:http";
+import type { IncomingMessage, Server as HttpServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import { verifier } from "../middleware/auth";
 import { prisma } from "../db/prisma";
@@ -56,12 +56,35 @@ async function handleLocation(socket: WebSocket, user: ConnectionUser, lat: unkn
   }
 }
 
+/**
+ * Pull the access token out of the connection request. Preferred: the
+ * `Sec-WebSocket-Protocol` header, sent by the client as `["bearer", <token>]`
+ * — this keeps the token out of the URL (query strings are the most commonly
+ * logged by proxies/load balancers). Falls back to a `?token=` query param for
+ * older clients and tests.
+ */
+function extractToken(request: IncomingMessage): string | null {
+  const header = request.headers["sec-websocket-protocol"];
+  if (typeof header === "string") {
+    const parts = header.split(",").map((s) => s.trim());
+    const idx = parts.indexOf("bearer");
+    if (idx !== -1 && parts[idx + 1]) return parts[idx + 1];
+  }
+  const url = new URL(request.url ?? "", "http://localhost");
+  return url.searchParams.get("token");
+}
+
 export function attachRealtime(server: HttpServer) {
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  const wss = new WebSocketServer({
+    server,
+    path: "/ws",
+    // Accept (echo) the "bearer" subprotocol so browsers that offer it don't
+    // fail the handshake. The token rides alongside it and is read below.
+    handleProtocols: (protocols) => (protocols.has("bearer") ? "bearer" : false),
+  });
 
   wss.on("connection", async (socket, request) => {
-    const url = new URL(request.url ?? "", "http://localhost");
-    const token = url.searchParams.get("token");
+    const token = extractToken(request);
     if (!token) {
       socket.close(4401, "Missing token");
       return;

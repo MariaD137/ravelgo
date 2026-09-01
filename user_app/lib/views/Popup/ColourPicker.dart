@@ -1,11 +1,11 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 Future<String?> showColorPickerPopup(BuildContext context) {
   return showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Colors.white,
+    backgroundColor: AppColors.surface,
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
@@ -13,12 +13,12 @@ Future<String?> showColorPickerPopup(BuildContext context) {
       final colors = [
         {"label": "Beige", "color": Color(0xFFF0E1C6)},
         {"label": "Black", "color": Colors.black},
-        {"label": "Blue", "color": Color(0xFF0047FF)},
+        {"label": "Blue", "color": Color(0xFF1565C0)},
         {"label": "Brown", "color": Color(0xFF754C24)},
-        {"label": "Dark gray", "color": Color(0xFF707070)},
+        {"label": "Dark gray", "color": Colors.black54},
         {"label": "Gold", "color": Color(0xFFD4AF37)},
-        {"label": "Gray", "color": Color(0xFFC9C9C9)},
-        {"label": "Green", "color": Color(0xFF00B020)},
+        {"label": "Gray", "color": Color(0xFFE0E0E0)},
+        {"label": "Green", "color": Color(0xFF2E7D32)},
         {"label": "Light blue", "color": Color(0xFFBFCBFF)},
         {"label": "Orange", "color": Color(0xFFF1A100)},
         {"label": "Pink", "color": Color(0xFFFF4FCF)},

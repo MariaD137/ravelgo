@@ -1,6 +1,7 @@
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../config/env";
+import { logSecurityEvent } from "../lib/security-log";
 
 export interface AuthenticatedUser {
   sub: string;
@@ -26,6 +27,7 @@ export const verifier = CognitoJwtVerifier.create({
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
+    logSecurityEvent("AUTH_FAILURE", req, { reason: "missing_token" });
     return res.status(401).json({ error: "Missing bearer token" });
   }
 
@@ -39,6 +41,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     };
     next();
   } catch {
+    logSecurityEvent("AUTH_FAILURE", req, { reason: "invalid_token" });
     return res.status(401).json({ error: "Invalid or expired token" });
   }
 }
@@ -47,6 +50,7 @@ export function requireRole(...allowed: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     const groups = req.user?.groups ?? [];
     if (!allowed.some((role) => groups.includes(role))) {
+      logSecurityEvent("AUTHZ_FAILURE", req, { required: allowed.join("|") });
       return res.status(403).json({ error: "Insufficient permissions" });
     }
     next();

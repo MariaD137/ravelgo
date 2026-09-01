@@ -1,12 +1,20 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:ravelgo_driver/components/LocationService.dart';
-import 'package:ravelgo_driver/components/ride_controller.dart';
-import 'package:ravelgo_driver/views/AppDrawer/AppDrawer.dart';
-import 'package:ravelgo_driver/views/HomeView/ride_view_popup.dart';
-import 'package:ravelgo_driver/views/User/invite_a_friend.dart';
+import 'package:ravelgo_user_app/components/LocationService.dart';
+import 'package:ravelgo_user_app/components/ride_controller.dart';
+import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
+import 'package:ravelgo_user_app/views/AppDrawer/AppDrawer.dart';
+import 'package:ravelgo_user_app/views/HomeView/ride_view_popup.dart';
+import 'package:ravelgo_user_app/views/User/invite_a_friend.dart';
+import 'package:ravelgo_user_app/views/TexiModule/SelectRide.dart';
+import 'package:ravelgo_user_app/views/Services/CarRentalScreen.dart';
+import 'package:ravelgo_user_app/views/Services/IdelivaOnboardingScreen.dart';
+import 'package:ravelgo_user_app/views/ServiceView/ServicesView.dart';
+import 'package:ravelgo_user_app/views/Eats/EatsScreen.dart';
+import 'package:ravelgo_user_app/config/currency.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
+import 'package:ravelgo_user_app/views/OtherViews/NotificationsScreen.dart';
+import 'package:ravelgo_user_app/views/OtherViews/SafetyScreen.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -17,31 +25,18 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  bool _isOnline = false;
-  int _selectedIndex = 0;
 
-  // Mock values, replace with live data
-  final String _earnText = "Earn #20,000";
-  final String _rating = "80%";
-  final String _dailyEarnings = "#0";
-  final String _acceptance = "20%";
+  // Mock value, replace with live data. Kept in sync with the rating shown
+  // on the Account screen for the same rider.
+  final String _rating = "5.00";
   late GoogleMapController _controller;
-  Position? _currentPosition;
 
-  void _onMenuSelect(int index) {
-    setState(() {
-      // widget.onTabRequested?.call(index); // e.g., switch to tab index 2
-    });
-  }
   void _onMapCreated(GoogleMapController controller) {
     _controller = controller;
   }
   Future<void> _loadCurrentLocation() async {
     final position = await LocationService.getCurrentLocation();
     if (position != null) {
-      setState(() {
-        _currentPosition = position;
-      });
       _controller.animateCamera(
         CameraUpdate.newCameraPosition(
           CameraPosition(
@@ -52,8 +47,6 @@ class _HomePageState extends State<HomePage> {
       );
 
       // Optionally, animate camera here if using GoogleMapController
-    } else {
-      print("⚠️ Failed to get location.");
     }
   }
   static const CameraPosition _initialCameraPosition = CameraPosition(
@@ -78,7 +71,7 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       key: _scaffoldKey,
       drawer: SideMenu(),
-      backgroundColor: Color(0xFFF2F2F4),
+      backgroundColor: AppColors.background,
       body: SafeArea(
 
         child:ValueListenableBuilder<bool>(
@@ -87,7 +80,7 @@ class _HomePageState extends State<HomePage> {
               return Stack(
                 children: [
                   // Map / image background
-                  GoogleMap(
+                  SafeGoogleMap(
                     mapType: MapType.hybrid,
                     onMapCreated: _onMapCreated,
                     initialCameraPosition: _initialCameraPosition,
@@ -106,12 +99,32 @@ class _HomePageState extends State<HomePage> {
                     }),
                   ),
 
+                  // Top-right notification bell
+                  Positioned(
+                    top: 12,
+                    right: 64,
+                    child: _circleIconButton(
+                        icon: Icons.notifications_none,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                          );
+                        }),
+                  ),
+
                   // Top-right shield button
                   Positioned(
                     top: 12,
                     right: 12,
                     child: _circleIconButton(
-                        icon: Icons.shield_outlined, onTap: () {}),
+                        icon: Icons.shield_outlined,
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const SafetyScreen()),
+                          );
+                        }),
                   ),
 
 
@@ -151,7 +164,7 @@ class _HomePageState extends State<HomePage> {
   /// Small circular icon button used near map top corners
   Widget _circleIconButton({required IconData icon, required VoidCallback onTap}) {
     return Material(
-      color: Colors.white.withOpacity(0.95),
+      color: AppColors.surface.withOpacity(0.95),
       shape: CircleBorder(),
       elevation: 2,
       child: InkWell(
@@ -159,35 +172,39 @@ class _HomePageState extends State<HomePage> {
         customBorder: CircleBorder(),
         child: Padding(
           padding: EdgeInsets.all(10),
-          child: Icon(icon, size: 22, color: Colors.black87),
+          child: Icon(icon, size: 22, color: AppColors.textPrimary),
         ),
       ),
     );
   }
 
-  /// Mock toggle widget styled like the design
-  Widget _buildToggle() {
-    return GestureDetector(
-      onTap: () => setState(() => _isOnline = !_isOnline),
+  /// "Where to?" entry point into the ride-booking flow
+  Widget _buildDestinationSearch() {
+    return InkWell(
+      borderRadius: BorderRadius.circular(28),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const SelectRide()),
+        );
+      },
       child: Container(
-        width: 56,
-        height: 30,
-        padding: EdgeInsets.all(4),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: _isOnline ? Colors.green : Colors.grey.shade300,
-          borderRadius: BorderRadius.circular(20),
+          color: AppColors.surface,
+          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(28),
         ),
-        child: Align(
-          alignment: _isOnline ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            width: 22,
-            height: 22,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 2)],
+        child: Row(
+          children: [
+            const Icon(Icons.search, color: AppColors.textSecondary),
+            const SizedBox(width: 12),
+            const Text(
+              "Where to?",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -198,10 +215,10 @@ class _HomePageState extends State<HomePage> {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: borderRadius ?? BorderRadius.circular(12),
         boxShadow: [
-          BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2)),
+          BoxShadow(color: AppColors.border, blurRadius: 6, offset: Offset(0, 2)),
         ],
       ),
       child: child,
@@ -221,22 +238,92 @@ class _HomePageState extends State<HomePage> {
             children: [
               Text(label, style: TextStyle(fontSize: 15)),
               SizedBox(height: 2),
-              Text(value, style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFB08A00))),
+              Text(value, style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.primaryDark)),
             ],
           ),
           Spacer(),
-          Icon(Icons.chevron_right, size: 18, color: Colors.grey[400]),
+          Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
         ],
       ),
     );
   }
 
-  Widget _divider() => Divider(height: 1, thickness: 1, color: Colors.grey[300]);
+  void _comingSoon(String name) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$name is coming soon to RavelGo.')),
+    );
+  }
+
+  /// Multi-service launcher: the home is a hub, not just a ride screen. Ride,
+  /// delivery, and rentals route into flows that already exist; Eats/Hotels are
+  /// signposted as coming soon so the surface can grow as RavelGo expands.
+  Widget _buildServicesLauncher() {
+    final services = <(String, IconData, VoidCallback)>[
+      ('Ride', Icons.local_taxi_outlined,
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SelectRide()))),
+      ('Delivery', Icons.local_shipping_outlined,
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => IdelivaOnboardingScreen()))),
+      ('Rentals', Icons.car_rental_outlined,
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CarRentalScreen()))),
+      ('Services', Icons.grid_view_outlined,
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ServicesView()))),
+      ('Eats', Icons.restaurant_outlined,
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EatsScreen()))),
+      ('Hotels', Icons.hotel_outlined, () => _comingSoon('Hotels')),
+    ];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: _cardContainer(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(left: 4, bottom: 10),
+                child: Text('What do you need?',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              ),
+              GridView.count(
+                crossAxisCount: 3,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                childAspectRatio: 1.15,
+                children: [
+                  for (final s in services)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: s.$3,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceElevated,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(s.$2, size: 26, color: AppColors.primaryDark),
+                            const SizedBox(height: 6),
+                            Text(s.$1, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _buildHomeSheet(ScrollController scrollController) {
     return Container(
       decoration: const BoxDecoration(
-        color: Color(0xFFB8BABE),
+        color: AppColors.border,
         borderRadius: BorderRadius.vertical(top: Radius.circular(0)),
       ),
       child: SingleChildScrollView(
@@ -245,12 +332,12 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           children: [
 
-            /// HEADER (Yellow Section)
+            /// HEADER (Where to?)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.only(top: 12, bottom: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
               decoration: const BoxDecoration(
-                color: Color(0xFFFFD500),
+                color: AppColors.surface,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(0)),
               ),
               child: Column(
@@ -262,34 +349,22 @@ class _HomePageState extends State<HomePage> {
                     height: 5,
                     margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.7),
+                      color: AppColors.border,
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
 
-                  /// Toggle + Safety Row
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Row(
-                      children: [
-                        _buildToggle(),
-                        const SizedBox(width: 10),
-                        const Text(
-                          "Get Online",
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const Spacer(),
-                      ],
-                    ),
-                  ),
+                  _buildDestinationSearch(),
                 ],
               ),
             ),
 
             const SizedBox(height: 14),
+
+            /// Multi-service launcher
+            _buildServicesLauncher(),
+
+            const SizedBox(height: 12),
 
             /// Invite Card
             Padding(
@@ -299,13 +374,13 @@ class _HomePageState extends State<HomePage> {
                   contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   leading: const Icon(Icons.card_giftcard_outlined),
-                  title: const Text(
-                    "Earn ₹20,000",
-                    style: TextStyle(fontWeight: FontWeight.w600),
+                  title: Text(
+                    "Earn ${Currency.symbol}20,000",
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  subtitle: const Text("Invite friends to drive"),
+                  subtitle: const Text("Invite friends to RavelGo"),
                   trailing:
-                  const Icon(Icons.chevron_right, color: Colors.grey),
+                  const Icon(Icons.chevron_right, color: AppColors.textMuted),
                   onTap: () {
                     Navigator.push(
                       context,
@@ -326,11 +401,7 @@ class _HomePageState extends State<HomePage> {
               child: _cardContainer(
                 child: Column(
                   children: [
-                    _statRow("Driver Rating / Score", _rating),
-                    _divider(),
-                    _statRow("Daily Earnings", "₹0"),
-                    _divider(),
-                    _statRow("Acceptance Rate", _acceptance),
+                    _statRow("Your Rating", _rating),
                   ],
                 ),
               ),

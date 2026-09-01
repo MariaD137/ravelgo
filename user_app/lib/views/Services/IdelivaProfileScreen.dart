@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_driver/views/Services/AddBankAccountPage.dart';
+import 'package:ravelgo_user_app/views/Services/AddBankAccountPage.dart';
 import 'IdelivaPickUpDeliveryScreen.dart';
+import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class IdelivaProfileScreen extends StatefulWidget {
   const IdelivaProfileScreen({super.key});
@@ -17,7 +18,7 @@ class _IdelivaProfileScreenState extends State<IdelivaProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+      backgroundColor: AppColors.background,
 
       body: SafeArea(
         child: Padding(
@@ -42,7 +43,7 @@ class _IdelivaProfileScreenState extends State<IdelivaProfileScreen> {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 16, vertical: 18),
                 decoration: BoxDecoration(
-                  color: Colors.black,
+                  color: AppColors.textPrimary,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Column(
@@ -55,11 +56,11 @@ class _IdelivaProfileScreenState extends State<IdelivaProfileScreen> {
                         Text(
                           'Total Earns',
                           style: TextStyle(
-                              color: Colors.white, fontSize: 14),
+                              color: AppColors.surface, fontSize: 14),
                         ),
                         SizedBox(width: 6),
                         Icon(Icons.visibility_off,
-                            color: Colors.white, size: 18),
+                            color: AppColors.surface, size: 18),
                       ],
                     ),
 
@@ -69,7 +70,7 @@ class _IdelivaProfileScreenState extends State<IdelivaProfileScreen> {
                     const Text(
                       '₦ 0.00',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: AppColors.surface,
                         fontSize: 22,
                         fontWeight: FontWeight.w700,
                       ),
@@ -81,11 +82,11 @@ class _IdelivaProfileScreenState extends State<IdelivaProfileScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: const [
-                        CircleAvatar(radius: 2, backgroundColor: Colors.white),
+                        CircleAvatar(radius: 2, backgroundColor: AppColors.surface),
                         SizedBox(width: 4),
-                        CircleAvatar(radius: 2, backgroundColor: Colors.white),
+                        CircleAvatar(radius: 2, backgroundColor: AppColors.surface),
                         SizedBox(width: 4),
-                        CircleAvatar(radius: 2, backgroundColor: Colors.white),
+                        CircleAvatar(radius: 2, backgroundColor: AppColors.surface),
                       ],
                     ),
 
@@ -95,7 +96,7 @@ class _IdelivaProfileScreenState extends State<IdelivaProfileScreen> {
                     const Text(
                       'Provide the bank account for receiving payouts',
                       style: TextStyle(
-                          color: Colors.white, fontSize: 13),
+                          color: AppColors.surface, fontSize: 13),
                       textAlign: TextAlign.center,
                     ),
 
@@ -114,8 +115,8 @@ class _IdelivaProfileScreenState extends State<IdelivaProfileScreen> {
                           );
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFFFD500),
-                          foregroundColor: Colors.black,
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: AppColors.textPrimary,
                           padding:
                           const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
@@ -170,7 +171,7 @@ class _IdelivaProfileScreenState extends State<IdelivaProfileScreen> {
                   style: OutlinedButton.styleFrom(
                     padding:
                     const EdgeInsets.symmetric(vertical: 14),
-                    side: BorderSide(color: Colors.grey.shade300),
+                    side: BorderSide(color: AppColors.border),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -180,7 +181,7 @@ class _IdelivaProfileScreenState extends State<IdelivaProfileScreen> {
 
               const SizedBox(height: 20),
 
-              Divider(color: Colors.grey.shade300),
+              Divider(color: AppColors.border),
 
               const SizedBox(height: 12),
 
@@ -199,7 +200,7 @@ class _IdelivaProfileScreenState extends State<IdelivaProfileScreen> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 15, vertical: 0),
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.shade300),
+                      border: Border.all(color: AppColors.border),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: DropdownButton<String>(
@@ -264,8 +265,6 @@ class _IdelivaProfileScreenState extends State<IdelivaProfileScreen> {
 
   /// CUSTOM RADIO (CLEAN LOOK)
   Widget _radio(String value, String title) {
-    final isSelected = selectedMode == value;
-
     return InkWell(
       onTap: () {
         setState(() {

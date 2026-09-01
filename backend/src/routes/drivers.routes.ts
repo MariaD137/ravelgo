@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { recordAudit } from "../lib/audit";
 
 export const driversRouter = Router();
 
@@ -65,6 +66,29 @@ driversRouter.get("/drivers/me", requireAuth, requireRole("Driver"), async (req,
   res.json(driver);
 });
 
+const availabilitySchema = z.object({ isOnline: z.boolean() });
+
+// Driver: go online / offline. Only an ACTIVE (admin-approved) driver can go
+// online; matching (services/matching.ts) only assigns trips to drivers who
+// are both ACTIVE and online.
+driversRouter.patch("/drivers/me/availability", requireAuth, requireRole("Driver"), async (req, res) => {
+  const parsed = availabilitySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  if (parsed.data.isOnline && driver.status !== "ACTIVE") {
+    return res.status(409).json({ error: "Your account is not approved to go online yet." });
+  }
+
+  const updated = await prisma.driver.update({
+    where: { id: driver.id },
+    data: { isOnline: parsed.data.isOnline },
+  });
+  res.json(updated);
+});
+
 // Admin: get a single driver with documents.
 // Registered after the literal "/drivers/me" routes above — Express matches
 // path segments in registration order, so ":id" would otherwise swallow
@@ -90,6 +114,13 @@ driversRouter.patch("/drivers/:id/status", requireAuth, requireRole("Admin"), as
   const driver = await prisma.driver.update({
     where: { id: req.params.id },
     data: { status: parsed.data.status },
+  });
+  void recordAudit({
+    actorSub: req.user!.sub,
+    action: "DRIVER_STATUS_CHANGED",
+    entityType: "Driver",
+    entityId: driver.id,
+    metadata: { status: parsed.data.status },
   });
   res.json(driver);
 });
