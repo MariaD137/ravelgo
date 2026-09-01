@@ -48,6 +48,10 @@ export function mockPaymentIntentCreate(id = `pi_test_${Date.now()}`) {
 
 // Delete in FK-safe order (children before parents).
 export async function resetDb() {
+  // AuditLog has no FK dependents; clear it too so audit-writing admin routes
+  // in one test don't leak entries into another (the audit test asserts an
+  // exact row count).
+  await prisma.auditLog.deleteMany();
   await prisma.foodOrderItem.deleteMany();
   await prisma.foodOrder.deleteMany();
   await prisma.menuItem.deleteMany();
