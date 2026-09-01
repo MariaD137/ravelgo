@@ -1,17 +1,74 @@
 import 'package:amazon_cognito_identity_dart_2/cognito.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// Persists the Cognito session across app restarts / browser refreshes.
+///
+/// amazon_cognito_identity_dart_2 stores the access, id and (long-lived)
+/// refresh tokens through whatever [CognitoStorage] the pool is given. Backing
+/// it with SharedPreferences means the session survives a reload — on Flutter
+/// Web that is localStorage (per-origin, cleared only on explicit logout or
+/// when the refresh token itself expires); on mobile it is the platform's
+/// key/value store. The access token stays short-lived (~1h) and is refreshed
+/// from the stored refresh token, so persistence does not weaken security.
+class _CognitoPrefsStorage extends CognitoStorage {
+  _CognitoPrefsStorage(this._prefs);
+  final SharedPreferences _prefs;
+
+  @override
+  Future<dynamic> getItem(String key) async => _prefs.getString(key);
+
+  @override
+  Future<dynamic> setItem(String key, dynamic value) async {
+    await _prefs.setString(key, value.toString());
+    return value;
+  }
+
+  @override
+  Future<dynamic> removeItem(String key) async {
+    final existing = _prefs.getString(key);
+    await _prefs.remove(key);
+    return existing;
+  }
+
+  @override
+  Future<void> clear() async {
+    await _prefs.clear();
+  }
+}
 
 /// Real authentication against the RavelGo Cognito user pool.
-///
-/// Reads the pool + client IDs from the environment (.env, produced at build
-/// time from the deployed Auth stack). Sign-up sends a real 6-digit code to
-/// the user's email; confirmation and sign-in return Cognito tokens that the
-/// app attaches to backend API calls.
 class AuthService {
-  static final CognitoUserPool _pool = CognitoUserPool(
-    dotenv.env['COGNITO_USER_POOL_ID'] ?? '',
-    dotenv.env['COGNITO_CLIENT_ID'] ?? '',
-  );
+  static CognitoUserPool? _poolInstance;
+
+  /// Build the persistent-storage-backed pool. Called once from main() after
+  /// dotenv is loaded and before the first frame. Falls back to the default
+  /// in-memory pool if storage can't be opened, so the app still runs.
+  static Future<void> init() async {
+    if (_poolInstance != null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _poolInstance = CognitoUserPool(
+        dotenv.env['COGNITO_USER_POOL_ID'] ?? '',
+        dotenv.env['COGNITO_CLIENT_ID'] ?? '',
+        storage: _CognitoPrefsStorage(prefs),
+      );
+    } catch (_) {
+      _poolInstance = CognitoUserPool(
+        dotenv.env['COGNITO_USER_POOL_ID'] ?? '',
+        dotenv.env['COGNITO_CLIENT_ID'] ?? '',
+      );
+    }
+  }
+
+  static CognitoUserPool get _pool {
+    // If init() somehow hasn't run (e.g. a widget test), fall back to a plain
+    // in-memory pool so calls don't NPE.
+    return _poolInstance ??= CognitoUserPool(
+      dotenv.env['COGNITO_USER_POOL_ID'] ?? '',
+      dotenv.env['COGNITO_CLIENT_ID'] ?? '',
+    );
+  }
 
   static CognitoUserSession? session;
   static CognitoUser? currentUser;
@@ -23,16 +80,57 @@ class AuthService {
 
   static bool get isSignedIn => accessToken != null;
 
-  /// The access token the API client sends as a Bearer credential. For now this
-  /// is the in-memory token from sign-in (valid ~1 hour); persistence and
-  /// automatic refresh are the next step.
-  static Future<String?> validAccessToken() async => accessToken;
-
-  /// True only when the app was built with real Cognito settings. Lets the UI
-  /// give a clear message instead of a cryptic error if config is missing.
+  /// True only when the app was built with real Cognito settings.
   static bool get isConfigured =>
       (dotenv.env['COGNITO_USER_POOL_ID'] ?? '').isNotEmpty &&
       (dotenv.env['COGNITO_CLIENT_ID'] ?? '').isNotEmpty;
+
+  /// Restore a persisted session on startup. Returns true only when a valid
+  /// (or successfully refreshed) session exists. getSession() transparently
+  /// exchanges the stored refresh token for fresh access/id tokens when the
+  /// access token has expired.
+  static Future<bool> restoreSession() async {
+    try {
+      final user = await _pool.getCurrentUser();
+      if (user == null) return false;
+      final s = await user.getSession();
+      if (s == null || !s.isValid()) return false;
+      _applySession(user, s);
+      return accessToken != null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// The access token the API client sends. Refreshes first if the current
+  /// access token has expired, so long-lived sessions keep working.
+  static Future<String?> validAccessToken() async {
+    final s = session;
+    if (s != null && s.isValid()) return accessToken;
+    try {
+      final user = currentUser ?? await _pool.getCurrentUser();
+      if (user == null) return null;
+      final refreshed = await user.getSession();
+      if (refreshed != null && refreshed.isValid()) {
+        _applySession(user, refreshed);
+        return accessToken;
+      }
+    } catch (_) {
+      // Refresh failed (refresh token expired/revoked) — treat as signed out.
+    }
+    return null;
+  }
+
+  static void _applySession(CognitoUser user, CognitoUserSession s) {
+    currentUser = user;
+    session = s;
+    accessToken = s.getAccessToken().getJwtToken();
+    idToken = s.getIdToken().getJwtToken();
+    final claims = s.getIdToken().decodePayload();
+    email = claims['email']?.toString() ?? email;
+    givenName = claims['given_name']?.toString() ?? givenName;
+    familyName = claims['family_name']?.toString() ?? familyName;
+  }
 
   /// Create an account. Cognito emails a 6-digit confirmation code.
   static Future<void> signUp({
@@ -92,26 +190,26 @@ class AuthService {
     await user.changePassword(oldPassword, newPassword);
   }
 
-  /// Sign in and keep the resulting tokens for API calls.
+  /// Sign in and persist the resulting tokens (via the pool's storage) for
+  /// API calls and across reloads.
   static Future<void> signIn({required String email, required String password}) async {
     final user = CognitoUser(email, _pool);
     final s = await user.authenticateUser(
       AuthenticationDetails(username: email, password: password),
     );
-    currentUser = user;
-    session = s;
-    accessToken = s?.getAccessToken().getJwtToken();
-    idToken = s?.getIdToken().getJwtToken();
-    AuthService.email = email;
-    final claims = s?.getIdToken().decodePayload();
-    if (claims != null) {
-      givenName = claims['given_name']?.toString();
-      familyName = claims['family_name']?.toString();
-      AuthService.email = claims['email']?.toString() ?? email;
+    if (s != null) {
+      _applySession(user, s);
     }
+    AuthService.email = email;
   }
 
-  static void signOut() {
+  /// Clear the session locally and from persistent storage.
+  static Future<void> signOut() async {
+    try {
+      await currentUser?.signOut();
+    } catch (_) {
+      // best-effort
+    }
     currentUser = null;
     session = null;
     accessToken = null;

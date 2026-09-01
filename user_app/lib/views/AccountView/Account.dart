@@ -267,9 +267,13 @@ class _AccountviewState extends State<Accountview> {
                   _menuRow(
                     icon: Icons.logout,
                     label: 'Log out',
-                    onTap: (){
+                    onTap: () async {
+                      // Clear the persisted Cognito session so a refresh does
+                      // not silently sign the user back in.
+                      await AuthService.signOut();
+                      if (!context.mounted) return;
                       Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(builder: (context) => Login()),
+                        MaterialPageRoute(builder: (context) => const Login()),
                         (route) => false,
                       );
                     }
