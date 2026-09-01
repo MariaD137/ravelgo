@@ -121,6 +121,24 @@ export class ApiStack extends cdk.Stack {
     });
     stripeSecret.grantRead(instanceRole);
 
+    // Same placeholder-then-overwrite pattern as the Stripe secret above: the
+    // backend's Places/Geocoding proxy (src/routes/places.routes.ts) needs a
+    // server-side Google Maps Platform key, which CDK can't know and shouldn't
+    // carry in plaintext context. Deploy lays down a placeholder that makes the
+    // proxy return a clear 5xx (never a silent failure) until you overwrite it:
+    //   aws secretsmanager put-secret-value --secret-id <MapsSecretArn output> \
+    //     --secret-string '{"serverKey":"AIza..."}'
+    // Restrict the real key to this backend's egress IP + the Places and
+    // Geocoding APIs only — unlike the browser Maps-JS key, it is never shipped
+    // to a client.
+    const mapsSecret = new secretsmanager.Secret(this, "MapsSecret", {
+      description: "RavelGo Google Maps server key — replace this placeholder post-deploy, see api-stack.ts",
+      secretObjectValue: {
+        serverKey: cdk.SecretValue.unsafePlainText("AIza_REPLACE_ME"),
+      },
+    });
+    mapsSecret.grantRead(instanceRole);
+
     if (deployService) {
     const service = new apprunner.CfnService(this, "BackendService", {
       serviceName: resourceName,
@@ -149,6 +167,7 @@ export class ApiStack extends cdk.Stack {
               { name: "DB_PASSWORD", value: `${dbSecretArn}:password::` },
               { name: "STRIPE_SECRET_KEY", value: `${stripeSecret.secretArn}:secretKey::` },
               { name: "STRIPE_WEBHOOK_SECRET", value: `${stripeSecret.secretArn}:webhookSecret::` },
+              { name: "GOOGLE_MAPS_SERVER_KEY", value: `${mapsSecret.secretArn}:serverKey::` },
             ],
           },
         },
@@ -180,5 +199,6 @@ export class ApiStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, "EcrRepositoryUri", { value: this.repository.repositoryUri });
     new cdk.CfnOutput(this, "StripeSecretArn", { value: stripeSecret.secretArn });
+    new cdk.CfnOutput(this, "MapsSecretArn", { value: mapsSecret.secretArn });
   }
 }
