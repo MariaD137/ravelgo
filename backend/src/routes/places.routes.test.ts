@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, test } from "node:test";
+import { afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { env } from "../config/env";
@@ -17,6 +17,13 @@ function stubFetch(body: unknown, ok = true, status = 200): FetchLike {
 }
 
 let restoreFetch: FetchLike | null = null;
+
+// Self-contained: CI does not set GOOGLE_MAPS_SERVER_KEY, so install the test
+// key before every test instead of relying on the ambient environment. The
+// "no key configured" test clears it explicitly for its own scope.
+beforeEach(() => {
+  env.GOOGLE_MAPS_SERVER_KEY = "test-server-key";
+});
 
 afterEach(() => {
   restoreAuth();
