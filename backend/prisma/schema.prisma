@@ -124,6 +124,7 @@ model User {
   bankAccount       DriverBankAccount?
   payouts           Payout[]
   wallet            WalletAccount?
+  foodOrders        FoodOrder[]      @relation("RiderFoodOrders")
 }
 
 model Driver {
@@ -451,4 +452,81 @@ model AuditLog {
 
   @@index([createdAt])
   @@index([entityType, entityId])
+}
+
+// ---------------------------------------------------------------------------
+// Eats (food delivery) marketplace — first vertical of the multi-service app.
+// ---------------------------------------------------------------------------
+
+enum FoodOrderStatus {
+  PLACED
+  ACCEPTED
+  PREPARING
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELLED
+}
+
+model Restaurant {
+  id        String     @id @default(uuid())
+  name      String
+  cuisine   String
+  imageUrl  String?
+  address   String
+  isOpen    Boolean    @default(true)
+  rating    Float?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  menuItems MenuItem[]
+  orders    FoodOrder[]
+}
+
+model MenuItem {
+  id           String     @id @default(uuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  name         String
+  description  String?
+  price        Float
+  imageUrl     String?
+  available    Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+
+  orderItems   FoodOrderItem[]
+
+  @@index([restaurantId])
+}
+
+model FoodOrder {
+  id              String          @id @default(uuid())
+  riderId         String
+  rider           User            @relation("RiderFoodOrders", fields: [riderId], references: [id], onDelete: Cascade)
+  restaurantId    String
+  restaurant      Restaurant      @relation(fields: [restaurantId], references: [id])
+  status          FoodOrderStatus @default(PLACED)
+  subtotal        Float
+  deliveryFee     Float
+  total           Float
+  deliveryAddress String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  items           FoodOrderItem[]
+
+  @@index([riderId])
+  @@index([restaurantId])
+}
+
+model FoodOrderItem {
+  id           String    @id @default(uuid())
+  orderId      String
+  order        FoodOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId   String
+  menuItem     MenuItem  @relation(fields: [menuItemId], references: [id])
+  nameSnapshot String
+  unitPrice    Float
+  quantity     Int
+
+  @@index([orderId])
 }

@@ -48,6 +48,10 @@ export function mockPaymentIntentCreate(id = `pi_test_${Date.now()}`) {
 
 // Delete in FK-safe order (children before parents).
 export async function resetDb() {
+  await prisma.foodOrderItem.deleteMany();
+  await prisma.foodOrder.deleteMany();
+  await prisma.menuItem.deleteMany();
+  await prisma.restaurant.deleteMany();
   await prisma.walletTransaction.deleteMany();
   await prisma.walletAccount.deleteMany();
   await prisma.payment.deleteMany();

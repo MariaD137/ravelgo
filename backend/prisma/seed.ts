@@ -120,6 +120,44 @@ async function main() {
     });
   }
 
+  // Eats marketplace demo data.
+  if ((await prisma.restaurant.count()) === 0) {
+    const mamaPut = await prisma.restaurant.create({
+      data: {
+        name: "Mama Put Kitchen",
+        cuisine: "Nigerian",
+        address: "12 Adewale Crescent, Oshodi, Lagos",
+        isOpen: true,
+        rating: 4.6,
+        menuItems: {
+          create: [
+            { name: "Jollof Rice & Chicken", description: "Smoky party jollof with grilled chicken", price: 3500 },
+            { name: "Pounded Yam & Egusi", description: "With assorted meat", price: 4200 },
+            { name: "Suya Platter", description: "Spicy grilled beef skewers", price: 2800 },
+            { name: "Chapman", description: "Chilled Nigerian cocktail (non-alcoholic)", price: 1200 },
+          ],
+        },
+      },
+    });
+    await prisma.restaurant.create({
+      data: {
+        name: "Lagos Grill House",
+        cuisine: "Continental",
+        address: "5 Marina Road, Victoria Island, Lagos",
+        isOpen: true,
+        rating: 4.4,
+        menuItems: {
+          create: [
+            { name: "Beef Shawarma", description: "Double beef, garlic sauce", price: 3000 },
+            { name: "Grilled Tilapia", description: "Whole fish with plantain", price: 5500 },
+            { name: "Chicken & Chips", description: "Crispy fried chicken with fries", price: 4000 },
+          ],
+        },
+      },
+    });
+    console.log("Seeded restaurants:", mamaPut.name, "and Lagos Grill House");
+  }
+
   console.log("Seed complete:", { rider: rider.email, driver: driverUser.email, vehicle: vehicle.plateNumber });
 }
 
