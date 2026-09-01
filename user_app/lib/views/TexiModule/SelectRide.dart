@@ -24,6 +24,9 @@ class _SelectRideState extends State<SelectRide> {
   // commission and pay the driver.
   String _paymentMethod = 'Card';
   DateTime? _scheduledFor;
+  // Which ride tier the rider has selected; drives the highlighted card and the
+  // CTA label so all tiers are actually pickable, not just a fixed default.
+  String _selectedRide = 'Just ride';
 
   // Real trip geometry: pickup = device location, destination = a pin the rider
   // taps on the map. The straight-line distance between them prices the trip.
@@ -215,9 +218,12 @@ class _SelectRideState extends State<SelectRide> {
                       child: ListView(
                         controller: controller,
                         children: [
-                          rideCard("Just ride", "${Currency.symbol}8,000", "2min", "4", isSelected: true),
-                          rideCard("EV", "${Currency.symbol}6,000", "2min", "4"),
-                          rideCard("Lite", "${Currency.symbol}5,000", "4min", "3"),
+                          rideCard("Just ride", "${Currency.symbol}8,000", "2min", "4",
+                              isSelected: _selectedRide == "Just ride"),
+                          rideCard("EV", "${Currency.symbol}6,000", "2min", "4",
+                              isSelected: _selectedRide == "EV"),
+                          rideCard("Lite", "${Currency.symbol}5,000", "4min", "3",
+                              isSelected: _selectedRide == "Lite"),
                         ],
                       ),
                     ),
@@ -278,7 +284,7 @@ class _SelectRideState extends State<SelectRide> {
                                 ),
                               );
                             },
-                            child: const Text("Select Just ride", style: TextStyle(color: AppColors.textPrimary)),
+                            child: Text("Select $_selectedRide", style: const TextStyle(color: AppColors.textPrimary)),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -334,7 +340,9 @@ class _SelectRideState extends State<SelectRide> {
   }
 
   Widget rideCard(String type, String fare, String eta, String seats, {bool isSelected = false}) {
-    return Container(
+    return GestureDetector(
+      onTap: () => setState(() => _selectedRide = type),
+      child: Container(
       margin: const EdgeInsets.only(bottom: 12,left: 5,right: 5),
       decoration: BoxDecoration(
         border: isSelected ? Border.all(color: AppColors.success, style: BorderStyle.solid, width: 1.5, strokeAlign: BorderSide.strokeAlignOutside) : Border.all(color: AppColors.textMuted, style: BorderStyle.solid, width: 1, strokeAlign: BorderSide.strokeAlignOutside) ,
@@ -371,6 +379,7 @@ class _SelectRideState extends State<SelectRide> {
             ],
           )
         ],
+      ),
       ),
     );
   }

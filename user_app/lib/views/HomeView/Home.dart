@@ -7,6 +7,10 @@ import 'package:ravelgo_user_app/views/AppDrawer/AppDrawer.dart';
 import 'package:ravelgo_user_app/views/HomeView/ride_view_popup.dart';
 import 'package:ravelgo_user_app/views/User/invite_a_friend.dart';
 import 'package:ravelgo_user_app/views/TexiModule/SelectRide.dart';
+import 'package:ravelgo_user_app/views/Services/CarRentalScreen.dart';
+import 'package:ravelgo_user_app/views/Services/IdelivaOnboardingScreen.dart';
+import 'package:ravelgo_user_app/views/ServiceView/ServicesView.dart';
+import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:ravelgo_user_app/views/OtherViews/NotificationsScreen.dart';
 import 'package:ravelgo_user_app/views/OtherViews/SafetyScreen.dart';
@@ -243,6 +247,77 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _comingSoon(String name) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$name is coming soon to RavelGo.')),
+    );
+  }
+
+  /// Multi-service launcher: the home is a hub, not just a ride screen. Ride,
+  /// delivery, and rentals route into flows that already exist; Eats/Hotels are
+  /// signposted as coming soon so the surface can grow as RavelGo expands.
+  Widget _buildServicesLauncher() {
+    final services = <(String, IconData, VoidCallback)>[
+      ('Ride', Icons.local_taxi_outlined,
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SelectRide()))),
+      ('Delivery', Icons.local_shipping_outlined,
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => IdelivaOnboardingScreen()))),
+      ('Rentals', Icons.car_rental_outlined,
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CarRentalScreen()))),
+      ('Services', Icons.grid_view_outlined,
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ServicesView()))),
+      ('Eats', Icons.restaurant_outlined, () => _comingSoon('Eats')),
+      ('Hotels', Icons.hotel_outlined, () => _comingSoon('Hotels')),
+    ];
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: _cardContainer(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(left: 4, bottom: 10),
+                child: Text('What do you need?',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              ),
+              GridView.count(
+                crossAxisCount: 3,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                childAspectRatio: 1.15,
+                children: [
+                  for (final s in services)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: s.$3,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceElevated,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(s.$2, size: 26, color: AppColors.primaryDark),
+                            const SizedBox(height: 6),
+                            Text(s.$1, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildHomeSheet(ScrollController scrollController) {
     return Container(
       decoration: const BoxDecoration(
@@ -284,6 +359,11 @@ class _HomePageState extends State<HomePage> {
 
             const SizedBox(height: 14),
 
+            /// Multi-service launcher
+            _buildServicesLauncher(),
+
+            const SizedBox(height: 12),
+
             /// Invite Card
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -292,9 +372,9 @@ class _HomePageState extends State<HomePage> {
                   contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   leading: const Icon(Icons.card_giftcard_outlined),
-                  title: const Text(
-                    "Earn ₹20,000",
-                    style: TextStyle(fontWeight: FontWeight.w600),
+                  title: Text(
+                    "Earn ${Currency.symbol}20,000",
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                   subtitle: const Text("Invite friends to RavelGo"),
                   trailing:
