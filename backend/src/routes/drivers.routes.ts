@@ -38,7 +38,11 @@ driversRouter.post("/drivers/apply", sensitiveLimiter, requireAuth, async (req, 
   // failure converges rather than duplicating or corrupting anything.
   const user = await prisma.user.upsert({
     where: { cognitoSub: req.user!.sub },
-    update: { role: "DRIVER", ...userFields },
+    // On an EXISTING user only flip the role — never overwrite their stored
+    // name/email from the application payload (the client may send placeholder
+    // names, which must not clobber a real profile). New users are seeded with
+    // the supplied fields.
+    update: { role: "DRIVER" },
     create: { cognitoSub: req.user!.sub, role: "DRIVER", ...userFields },
   });
 
