@@ -3,7 +3,7 @@ import { createServer, type Server } from "node:http";
 import { after, afterEach, before, beforeEach, test } from "node:test";
 import type { AddressInfo } from "node:net";
 import request from "supertest";
-import WebSocket from "ws";
+import WebSocket, { type WebSocketServer } from "ws";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
 import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
@@ -11,12 +11,13 @@ import { attachRealtime } from "./server";
 import { resetRealtimeState } from "./hub";
 
 let server: Server;
+let wss: WebSocketServer;
 let baseUrl: string;
 let wsUrl: string;
 
 before(async () => {
   server = createServer(app);
-  attachRealtime(server);
+  wss = attachRealtime(server);
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const { port } = server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${port}`;
@@ -33,7 +34,12 @@ afterEach(() => {
 after(async () => {
   await resetDb();
   await prisma.$disconnect();
-  await new Promise((resolve) => server.close(resolve));
+  // Forcibly drop any still-open WebSocket connections and close the WS
+  // server, otherwise server.close() waits on the upgraded sockets forever
+  // and `node --test` never exits.
+  for (const client of wss.clients) client.terminate();
+  await new Promise<void>((resolve) => wss.close(() => resolve()));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
 function waitForMessage(socket: WebSocket): Promise<Record<string, unknown>> {
