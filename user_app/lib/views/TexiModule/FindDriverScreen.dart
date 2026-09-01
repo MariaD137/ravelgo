@@ -14,6 +14,12 @@ class FindDriverScreen extends StatefulWidget {
   // Real trip metrics from the destination selection on SelectRide, when available.
   final double? distanceKm;
   final double? durationMinutes;
+  // Pickup + dropoff coordinates — required by the backend, which computes the
+  // authoritative distance/fare from them (the client no longer sends distance).
+  final double? pickupLat;
+  final double? pickupLng;
+  final double? dropoffLat;
+  final double? dropoffLng;
   const FindDriverScreen({
     super.key,
     this.pickup,
@@ -21,6 +27,10 @@ class FindDriverScreen extends StatefulWidget {
     this.paymentMethod = 'Card',
     this.distanceKm,
     this.durationMinutes,
+    this.pickupLat,
+    this.pickupLng,
+    this.dropoffLat,
+    this.dropoffLng,
   });
 
   @override
@@ -84,13 +94,24 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
   }
 
   Future<void> _findDriver() async {
+    // The backend computes fare from coordinates, so they're required. If the
+    // rider reached here without both a pickup and a dropoff pin, send them
+    // back to choose a destination rather than firing a request that 400s.
+    if (widget.pickupLat == null || widget.pickupLng == null || widget.dropoffLat == null || widget.dropoffLng == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Set your pickup and destination on the map first.')),
+      );
+      return;
+    }
     setState(() => _requesting = true);
     try {
       final trip = await BookingApi.requestTrip(
         pickup: _pickup,
         destination: _destination,
-        distanceKm: _distanceKm,
-        durationMinutes: _durationMinutes,
+        pickupLat: widget.pickupLat!,
+        pickupLng: widget.pickupLng!,
+        dropoffLat: widget.dropoffLat!,
+        dropoffLng: widget.dropoffLng!,
       );
       if (!mounted) return;
       Navigator.of(context).push(

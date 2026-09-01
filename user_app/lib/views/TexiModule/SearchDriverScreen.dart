@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
+import 'package:ravelgo_user_app/services/booking_api.dart';
 import 'package:ravelgo_user_app/services/realtime_service.dart';
 import 'package:ravelgo_user_app/services/trips_api.dart';
-import 'package:ravelgo_user_app/views/TexiModule/CancelRideScreen.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
@@ -32,6 +32,41 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
   int _rating = 0;
   bool _ratingBusy = false;
   bool _rated = false;
+
+  // Cancellation.
+  bool _cancelBusy = false;
+
+  /// Cancel the trip on the backend (P0 #7). Only allowed while the trip is
+  /// still REQUESTED or MATCHED — the backend enforces this too. On success the
+  /// screen reflects the real CANCELLED status instead of pretending locally.
+  Future<void> _cancelTrip() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel this trip?'),
+        content: const Text('Your driver request will be withdrawn.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Keep trip')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Cancel trip', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _cancelBusy = true);
+    try {
+      await BookingApi.cancelTrip(trip.id);
+      if (!mounted) return;
+      setState(() => _status = 'CANCELLED');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _cancelBusy = false);
+    }
+  }
 
   Future<void> _submitRating(int stars) async {
     setState(() {
@@ -82,6 +117,9 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
   bool get _inProgress => _status == 'IN_PROGRESS';
   bool get _completed => _status == 'COMPLETED';
   bool get _cancelled => _status == 'CANCELLED' || _status == 'DISPUTED';
+  // Cancellation is only offered before the ride is under way — mirrors the
+  // backend's riderMayCancel (REQUESTED or MATCHED only).
+  bool get _cancellable => _status == 'REQUESTED' || _status == 'MATCHED';
 
   @override
   void initState() {
@@ -158,7 +196,10 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
                       children: [
                         _buildTripInfo(),
                         const SizedBox(height: 16),
-                        if (_completed) _ratingSection() else _buildCancelButton(),
+                        if (_completed)
+                          _ratingSection()
+                        else if (_cancellable)
+                          _buildCancelButton(),
                       ],
                     ),
                   ),
@@ -306,7 +347,67 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ],
         ),
+        if (_matched || _inProgress) ...[
+          const SizedBox(height: 16),
+          _buildDriverCard(),
+        ],
       ],
+    );
+  }
+
+  /// The matched driver's summary — shown once a driver is assigned so MATCHED
+  /// results in a visible driver card rather than an endless spinner (P0 #8).
+  /// All fields come from the backend's safe trip serialization.
+  Widget _buildDriverCard() {
+    final name = trip.driverName ?? 'Your driver';
+    final rating = trip.driverRating;
+    final vehicle = trip.vehicleLabel;
+    final plate = trip.vehiclePlate;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          const CircleAvatar(
+            radius: 22,
+            backgroundColor: AppColors.primary,
+            child: Icon(Icons.person, color: AppColors.surface),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                if (vehicle != null && vehicle.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(vehicle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                  ),
+                if (plate != null && plate.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(plate,
+                        style: const TextStyle(fontWeight: FontWeight.w600, letterSpacing: 1, fontSize: 13)),
+                  ),
+              ],
+            ),
+          ),
+          if (rating != null)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.star, color: AppColors.warning, size: 18),
+                const SizedBox(width: 2),
+                Text(rating.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.w600)),
+              ],
+            ),
+        ],
+      ),
     );
   }
 
@@ -314,27 +415,17 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton(
-        onPressed: () {
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-            builder: (context) => FractionallySizedBox(
-              heightFactor: 0.8,
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                child: const CancelRideScreen(),
-              ),
-            ),
-          );
-        },
+        onPressed: _cancelBusy ? null : _cancelTrip,
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
           foregroundColor: AppColors.textPrimary,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           padding: const EdgeInsets.symmetric(vertical: 14),
         ),
-        child: const Text("Cancel request"),
+        child: _cancelBusy
+            ? const SizedBox(
+                height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textPrimary))
+            : Text(_matched ? 'Cancel trip' : 'Cancel request'),
       ),
     );
   }

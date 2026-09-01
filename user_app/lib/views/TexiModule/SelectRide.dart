@@ -358,6 +358,10 @@ class _SelectRideState extends State<SelectRide> {
                                     distanceKm: _distanceKm,
                                     durationMinutes:
                                         _distanceKm == null ? null : BookingApi.estimatedMinutes(_distanceKm!),
+                                    pickupLat: _pickupLatLng?.latitude,
+                                    pickupLng: _pickupLatLng?.longitude,
+                                    dropoffLat: _destLatLng?.latitude,
+                                    dropoffLng: _destLatLng?.longitude,
                                   ),
                                 ),
                               );
