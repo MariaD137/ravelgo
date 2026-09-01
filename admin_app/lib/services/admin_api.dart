@@ -315,6 +315,53 @@ class SubscriptionPlan {
       );
 }
 
+class PricingRule {
+  final String id;
+  final String name;
+  final double baseFare;
+  final double perKm;
+  final double perMinute;
+  final bool active;
+  PricingRule({
+    required this.id,
+    required this.name,
+    required this.baseFare,
+    required this.perKm,
+    required this.perMinute,
+    required this.active,
+  });
+  factory PricingRule.fromJson(Map<String, dynamic> j) => PricingRule(
+        id: '${j['id']}',
+        name: '${j['name'] ?? ''}',
+        baseFare: _d(j['baseFare']),
+        perKm: _d(j['perKm']),
+        perMinute: _d(j['perMinute']),
+        active: j['active'] != false,
+      );
+}
+
+class SurgeZone {
+  final String id;
+  final String name;
+  final String location;
+  final double multiplier;
+  final bool active;
+  SurgeZone({
+    required this.id,
+    required this.name,
+    required this.location,
+    required this.multiplier,
+    required this.active,
+  });
+  factory SurgeZone.fromJson(Map<String, dynamic> j) => SurgeZone(
+        id: '${j['id']}',
+        name: '${j['name'] ?? ''}',
+        location: '${j['location'] ?? ''}',
+        multiplier: _d(j['multiplier']),
+        active: j['active'] != false,
+      );
+}
+
 class AdminApi {
   static List _list(dynamic data) => (data is Map ? data['data'] : data) as List? ?? const [];
 
@@ -410,5 +457,75 @@ class AdminApi {
   static Future<List<SubscriptionPlan>> subscriptionPlans() async {
     final data = await ApiClient.get('/api/subscription-plans');
     return _list(data).whereType<Map<String, dynamic>>().map(SubscriptionPlan.fromJson).toList();
+  }
+
+  // ---- Pricing rules (real backend, admin-only writes) ----
+  static Future<List<PricingRule>> pricingRules() async {
+    final data = await ApiClient.get('/api/pricing-rules');
+    return _list(data).whereType<Map<String, dynamic>>().map(PricingRule.fromJson).toList();
+  }
+
+  static Future<PricingRule> createPricingRule({
+    required String name,
+    required double baseFare,
+    required double perKm,
+    required double perMinute,
+  }) async {
+    final data = await ApiClient.post('/api/pricing-rules', {
+      'name': name,
+      'baseFare': baseFare,
+      'perKm': perKm,
+      'perMinute': perMinute,
+    });
+    return PricingRule.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<PricingRule> updatePricingRule(
+    String id, {
+    String? name,
+    double? baseFare,
+    double? perKm,
+    double? perMinute,
+    bool? active,
+  }) async {
+    final data = await ApiClient.patch('/api/pricing-rules/$id', {
+      if (name != null) 'name': name,
+      if (baseFare != null) 'baseFare': baseFare,
+      if (perKm != null) 'perKm': perKm,
+      if (perMinute != null) 'perMinute': perMinute,
+      if (active != null) 'active': active,
+    });
+    return PricingRule.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ---- Surge zones (real backend, admin-only writes) ----
+  static Future<List<SurgeZone>> surgeZones() async {
+    final data = await ApiClient.get('/api/surge-zones');
+    return _list(data).whereType<Map<String, dynamic>>().map(SurgeZone.fromJson).toList();
+  }
+
+  static Future<SurgeZone> createSurgeZone({
+    required String name,
+    required String location,
+    required double multiplier,
+  }) async {
+    final data = await ApiClient.post('/api/surge-zones', {
+      'name': name,
+      'location': location,
+      'multiplier': multiplier,
+    });
+    return SurgeZone.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<SurgeZone> updateSurgeZone(
+    String id, {
+    double? multiplier,
+    bool? active,
+  }) async {
+    final data = await ApiClient.patch('/api/surge-zones/$id', {
+      if (multiplier != null) 'multiplier': multiplier,
+      if (active != null) 'active': active,
+    });
+    return SurgeZone.fromJson(data as Map<String, dynamic>);
   }
 }
