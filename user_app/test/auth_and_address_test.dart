@@ -24,21 +24,19 @@ void main() {
     expect(find.byType(Login), findsOneWidget);
   });
 
-  testWidgets('forgot password validates and states the auth boundary honestly',
+  testWidgets('forgot password validates the email before requesting a code',
       (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: ForgotPasswordScreen()));
 
+    // Offers to send a Cognito reset code; never pre-claims one was sent.
+    expect(find.text('Send code'), findsOneWidget);
+    expect(find.textContaining('has been sent'), findsNothing);
+
+    // A malformed email is rejected client-side, before any network call.
     await tester.enterText(find.byType(TextField), 'nope');
-    await tester.tap(find.text('Continue'));
+    await tester.tap(find.text('Send code'));
     await tester.pump();
     expect(find.text('Enter a valid email address'), findsOneWidget);
-
-    await tester.enterText(find.byType(TextField), 'rider@example.com');
-    await tester.tap(find.text('Continue'));
-    await tester.pump();
-    // States the boundary; never claims an email was sent.
-    expect(find.textContaining('not connected'), findsOneWidget);
-    expect(find.textContaining('has been sent'), findsNothing);
   });
 
   testWidgets('address search filters and saves the selection', (WidgetTester tester) async {

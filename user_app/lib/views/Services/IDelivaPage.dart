@@ -272,18 +272,4 @@ class _IDelivaPageState extends State<IDelivaPage> {
     );
   }
 
-  /// BOTTOM NAV (OPTIONAL)
-  Widget _bottomNav() {
-    return BottomNavigationBar(
-      currentIndex: 1,
-      selectedItemColor: AppColors.primary,
-      unselectedItemColor: AppColors.textMuted,
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: "Home"),
-        BottomNavigationBarItem(icon: Icon(Icons.grid_view), label: "Services"),
-        BottomNavigationBarItem(icon: Icon(Icons.directions_car), label: "Rides"),
-        BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Account"),
-      ],
-    );
-  }
 }

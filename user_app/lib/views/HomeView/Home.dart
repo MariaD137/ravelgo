@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/LocationService.dart';
 import 'package:ravelgo_user_app/components/ride_controller.dart';
@@ -26,7 +25,6 @@ class _HomePageState extends State<HomePage> {
   // on the Account screen for the same rider.
   final String _rating = "5.00";
   late GoogleMapController _controller;
-  Position? _currentPosition;
 
   void _onMapCreated(GoogleMapController controller) {
     _controller = controller;
@@ -34,9 +32,6 @@ class _HomePageState extends State<HomePage> {
   Future<void> _loadCurrentLocation() async {
     final position = await LocationService.getCurrentLocation();
     if (position != null) {
-      setState(() {
-        _currentPosition = position;
-      });
       _controller.animateCamera(
         CameraUpdate.newCameraPosition(
           CameraPosition(

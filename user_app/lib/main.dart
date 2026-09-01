@@ -4,7 +4,7 @@ import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
-  WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
   runApp(MyApp());
 }

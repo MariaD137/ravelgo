@@ -265,8 +265,6 @@ class _IdelivaProfileScreenState extends State<IdelivaProfileScreen> {
 
   /// CUSTOM RADIO (CLEAN LOOK)
   Widget _radio(String value, String title) {
-    final isSelected = selectedMode == value;
-
     return InkWell(
       onTap: () {
         setState(() {

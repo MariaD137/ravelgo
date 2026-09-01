@@ -4,7 +4,7 @@ import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/views/splash/splash_screen.dart';
 
 void main() async {
-  WidgetsBinding widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
+  WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
   runApp(const RavelGoAdminApp());
 }

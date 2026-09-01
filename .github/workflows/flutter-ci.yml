@@ -38,8 +38,12 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # Fail on genuine problems (errors and warnings such as dead code or
+      # unused imports) but not on the large body of pre-existing stylistic
+      # lints (file naming, deprecated-member hints, super-parameters) inherited
+      # from the original UI scaffold.
       - name: Analyze
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: Test
         run: flutter test

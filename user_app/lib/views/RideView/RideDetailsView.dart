@@ -1,4 +1,3 @@
-import 'package:ravelgo_user_app/components/platform_file_image.dart';
 import 'package:flutter/material.dart';
 import 'RidesView.dart'; // adjust path if needed; this imports the Ride class
 import 'package:ravelgo_user_app/theme/app_theme.dart';
@@ -33,9 +32,6 @@ class RideDetailsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // You can replace this image with a live map widget (GoogleMap) when ready
-    const mapPreviewPath = '/mnt/data/RideDetailsView.png';
-
     return Scaffold(
       backgroundColor: AppColors.surface,
       body: SafeArea(
@@ -170,10 +166,5 @@ class RideDetailsScreen extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  Widget _localImage(String path, {BoxFit fit = BoxFit.cover}) {
-    return localFileImage(path, fit: fit,
-        fallback: Container(color: AppColors.surfaceElevated, child: const Center(child: Icon(Icons.map, size: 48))));
   }
 }

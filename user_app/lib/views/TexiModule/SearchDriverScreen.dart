@@ -18,7 +18,6 @@ class SearchDriverScreen extends StatefulWidget {
 }
 
 class _SearchDriverScreenState extends State<SearchDriverScreen> {
-  GoogleMapController? _mapController;
   final RealtimeService _rt = RealtimeService();
 
   Trip get trip => widget.trip;
@@ -127,7 +126,6 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
       body: Stack(
         children: [
           SafeGoogleMap(
-            onMapCreated: (controller) => _mapController = controller,
             initialCameraPosition: const CameraPosition(
               target: LatLng(6.5244, 3.3792),
               zoom: 14,

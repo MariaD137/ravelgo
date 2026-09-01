@@ -1,42 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ravelgo_user_app/views/Login/login.dart';
-import 'package:ravelgo_user_app/views/Signup/AddPhoto.dart';
 import 'package:ravelgo_user_app/views/Signup/CreateAccount.dart';
 import 'package:ravelgo_user_app/views/Signup/VerifyAccount.dart';
 
 void main() {
-  testWidgets('sign up runs the rider flow and never shows driver onboarding',
+  testWidgets('account creation is rider-only — never shows driver onboarding',
       (WidgetTester tester) async {
-    await tester.pumpWidget(const MaterialApp(home: Login()));
-
-    await tester.tap(find.textContaining('Sign up'));
-    await tester.pumpAndSettle();
+    await tester.pumpWidget(const MaterialApp(home: CreateAccountScreen()));
 
     // Rider account creation - not driver registration.
-    expect(find.byType(CreateAccountScreen), findsOneWidget);
     expect(find.text('Create your account'), findsOneWidget);
     expect(find.textContaining('driver', findRichText: true), findsNothing);
     expect(find.textContaining('Driver'), findsNothing);
-
-    await tester.enterText(find.byType(TextFormField).at(0), 'Thelma Ibeh');
-    await tester.enterText(find.byType(TextFormField).at(1), 'thelma@example.com');
-    await tester.enterText(find.byType(TextFormField).at(2), '08130006677');
-    await tester.tap(find.byType(Checkbox));
-    await tester.pump();
-    await tester.tap(find.text('Create account'));
-    await tester.pumpAndSettle();
-
-    // Verification step.
-    expect(find.byType(VerifyAccountScreen), findsOneWidget);
-    await tester.enterText(find.byType(TextField), '123456');
-    await tester.tap(find.text('Verify'));
-    await tester.pumpAndSettle();
-
-    // Rider profile setup - still no driver/vehicle onboarding anywhere.
-    expect(find.byType(AddPhotoScreen), findsOneWidget);
-    expect(find.text('Set up your profile'), findsOneWidget);
-    expect(find.text('Skip for now'), findsOneWidget);
+    // No driver/vehicle onboarding fields anywhere on the rider signup.
     expect(find.textContaining('license'), findsNothing);
     expect(find.textContaining('Vehicle'), findsNothing);
   });

@@ -25,7 +25,6 @@ class FindDriverScreen extends StatefulWidget {
 }
 
 class _FindDriverScreenState extends State<FindDriverScreen> {
-  GoogleMapController? _mapController;
   Set<Marker> _markers = {};
 
   static const _pickup = 'Current location';
@@ -128,7 +127,6 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
       body: Stack(
         children: [
           SafeGoogleMap(
-            onMapCreated: (controller) => setState(() => _mapController = controller),
             initialCameraPosition: const CameraPosition(
               target: LatLng(6.5244, 3.3792),
               zoom: 14,
