@@ -46,6 +46,14 @@ const auth = new AuthStack(app, stackName("RavelGo-Auth"), { env, envName });
 const storage = new StorageStack(app, stackName("RavelGo-Storage"), { env });
 const data = new DataStack(app, stackName("RavelGo-Data"), { env, vpc: network.vpc, envName });
 
+// The three Flutter web apps are served from the assets CloudFront
+// distribution, so browser calls from them carry that domain as their Origin
+// and are subject to CORS (the mobile apps send no Origin and are unaffected).
+// Always allow that domain in addition to any operator-supplied origins, so
+// the deployed web apps can reach the API without a manual context override.
+const assetsOrigin = `https://${storage.assetsDistribution.distributionDomainName}`;
+const apiAllowedOrigins = Array.from(new Set([...allowedOrigins, assetsOrigin]));
+
 const api = new ApiStack(app, stackName("RavelGo-Api"), {
   env,
   vpc: network.vpc,
@@ -55,7 +63,7 @@ const api = new ApiStack(app, stackName("RavelGo-Api"), {
   assetsBucket: storage.assetsBucket,
   cognitoUserPoolId: auth.userPool.userPoolId,
   cognitoUserPoolClientId: auth.userPoolClient.userPoolClientId,
-  allowedOrigins,
+  allowedOrigins: apiAllowedOrigins,
   envName,
   deployService,
 });
