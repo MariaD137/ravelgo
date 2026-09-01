@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/Model/app_state.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/wallet_api.dart';
@@ -242,7 +243,7 @@ class _PaymentScreenState extends State<PaymentView> {
             Text(_walletError!, style: const TextStyle(color: Colors.white))
           else
             Text(
-              '${_wallet!.currency} ${_wallet!.balance.toStringAsFixed(2)}',
+              Currency.format(_wallet!.balance),
               style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold),
             ),
           if (!_walletLoading && _walletError == null) ...[
@@ -260,7 +261,7 @@ class _PaymentScreenState extends State<PaymentView> {
                           child: Text('${_prettyTxn(t.type)} · ${t.status.toLowerCase()}',
                               style: const TextStyle(color: Colors.white, fontSize: 13)),
                         ),
-                        Text('\$${t.amount.toStringAsFixed(2)}',
+                        Text(Currency.format(t.amount),
                             style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
                       ],
                     ),

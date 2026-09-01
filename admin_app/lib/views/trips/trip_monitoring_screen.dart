@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_admin/config/currency.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
@@ -124,7 +125,7 @@ class _TripMonitoringScreenState extends State<TripMonitoringScreen> {
                   children: [
                     AppComponents.badge(_label(t.status), color: _statusColor(t.status)),
                     const SizedBox(height: 6),
-                    Text("₦${t.fare.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.w700)),
+                    Text(Currency.format(t.fare, decimals: 0), style: const TextStyle(fontWeight: FontWeight.w700)),
                   ],
                 ),
               ],

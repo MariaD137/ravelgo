@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/config/currency.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
@@ -138,7 +139,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text("Fare", style: TextStyle(fontWeight: FontWeight.w700)),
-                      Text("\$${_trip.fare.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.w700)),
+                      Text(Currency.format(_trip.fare), style: const TextStyle(fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ],

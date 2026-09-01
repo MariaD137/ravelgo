@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/config/currency.dart';
 import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
@@ -129,7 +130,7 @@ class _MyTripsScreenState extends State<MyTripsScreen> {
                       ],
                     ),
                   ),
-                  Text("\$${t.fare.toStringAsFixed(2)}",
+                  Text(Currency.format(t.fare),
                       style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
                 ],
               ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/config/currency.dart';
 import 'package:ravelgo_driver_app/models/ride_request.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
@@ -38,10 +39,10 @@ class _TripCompleteScreenState extends State<TripCompleteScreen> {
                 decoration: AppComponents.cardDecoration(),
                 child: Column(
                   children: [
-                    _fareRow("Trip fare", "₦${r.estimatedFare.toStringAsFixed(0)}"),
-                    _fareRow("RavelGo service fee", "- ₦${platformFee.toStringAsFixed(0)}"),
+                    _fareRow("Trip fare", Currency.format(r.estimatedFare, decimals: 0)),
+                    _fareRow("RavelGo service fee", "- ${Currency.format(platformFee, decimals: 0)}"),
                     AppComponents.divider(),
-                    _fareRow("You earned", "₦${earnings.toStringAsFixed(0)}", bold: true),
+                    _fareRow("You earned", Currency.format(earnings, decimals: 0), bold: true),
                   ],
                 ),
               ),

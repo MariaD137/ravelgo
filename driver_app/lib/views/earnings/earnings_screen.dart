@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/config/currency.dart';
 import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
@@ -107,7 +108,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                         ? const Padding(
                             padding: EdgeInsets.symmetric(vertical: 8),
                             child: SizedBox(height: 24, width: 24, child: CircularProgressIndicator(strokeWidth: 2)))
-                        : Text("\$${_weekTotal.toStringAsFixed(2)}",
+                        : Text(Currency.format(_weekTotal),
                             style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 20),
                     IntrinsicHeight(

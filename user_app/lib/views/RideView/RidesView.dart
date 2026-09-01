@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/trips_api.dart';
 import 'package:ravelgo_user_app/views/RideView/RideDetailsView.dart';
@@ -192,7 +193,7 @@ class _RidesViewState extends State<RidesView> {
                   ],
                 ),
               ),
-              trailing: Text('\$${ride.fare.toStringAsFixed(2)}',
+              trailing: Text(Currency.format(ride.fare),
                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => RideDetailsScreen(ride: ride)),

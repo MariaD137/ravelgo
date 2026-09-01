@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_admin/config/currency.dart';
 import 'package:ravelgo_admin/models/admin_actions_state.dart';
 import 'package:ravelgo_admin/models/trip_record.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
@@ -32,7 +33,7 @@ class _TripAdminDetailScreenState extends State<TripAdminDetailScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Refund rider?'),
         content: Text(
-            'Record a refund of ₦${trip.fare.toStringAsFixed(0)} to ${trip.riderName} for trip ${trip.id}? '
+            'Record a refund of ${Currency.format(trip.fare, decimals: 0)} to ${trip.riderName} for trip ${trip.id}? '
             'The refund is queued as REQUESTED - money moves only when the payments service processes it.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
@@ -95,7 +96,7 @@ class _TripAdminDetailScreenState extends State<TripAdminDetailScreen> {
                 _row("Pickup", trip.pickup),
                 _row("Destination", trip.destination),
                 _row("Date", formatFriendlyDate(trip.date)),
-                _row("Fare", "₦${trip.fare.toStringAsFixed(0)}"),
+                _row("Fare", Currency.format(trip.fare, decimals: 0)),
               ],
             ),
           ),

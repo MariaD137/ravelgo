@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/config/currency.dart';
 import 'package:ravelgo_driver_app/models/ride_request.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 
@@ -44,7 +45,7 @@ class _IncomingRequestSheetState extends State<IncomingRequestSheet> {
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(prefixText: "₦ ", border: OutlineInputBorder()),
+          decoration: InputDecoration(prefixText: "${Currency.symbol} ", border: const OutlineInputBorder()),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
@@ -118,7 +119,7 @@ class _IncomingRequestSheetState extends State<IncomingRequestSheet> {
             children: [
               Text("${r.distanceKm} km · ${r.etaMinutes} min away", style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
               Text(
-                _counterOffer != null ? "₦${_counterOffer!.toStringAsFixed(0)} (proposed)" : "₦${r.estimatedFare.toStringAsFixed(0)}",
+                _counterOffer != null ? "${Currency.format(_counterOffer!, decimals: 0)} (proposed)" : Currency.format(r.estimatedFare, decimals: 0),
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             ],

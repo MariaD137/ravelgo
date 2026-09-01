@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/config/currency.dart';
 import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
@@ -101,7 +102,7 @@ class _PayoutHistoryScreenState extends State<PayoutHistoryScreen> {
           final p = _payouts[i];
           return ListTile(
             leading: const Icon(Icons.account_balance_outlined, color: AppColors.textSecondary),
-            title: Text('\$${p.amount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(Currency.format(p.amount), style: const TextStyle(fontWeight: FontWeight.w600)),
             subtitle: Text(
               [if (p.period.isNotEmpty) p.period, formatFriendlyDate(p.createdAt)].join(' · '),
               style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),

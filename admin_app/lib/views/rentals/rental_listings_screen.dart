@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_admin/config/currency.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
@@ -121,7 +122,7 @@ class _RentalListingsScreenState extends State<RentalListingsScreen> {
                   ],
                 ),
                 const SizedBox(height: 4),
-                Text("₦${r.dailyRate.toStringAsFixed(0)}/day · ${r.location}"
+                Text("${Currency.format(r.dailyRate, decimals: 0)}/day · ${r.location}"
                     "${r.driverName.isNotEmpty ? ' · ${r.driverName}' : ''}",
                     style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                 if (!decided)

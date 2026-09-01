@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/config/currency.dart';
 import 'RidesView.dart'; // adjust path if needed; this imports the Ride class
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:ravelgo_user_app/views/AccountView/EReceiptPage.dart';
@@ -126,7 +127,7 @@ class RideDetailsScreen extends StatelessWidget {
                     const Text('Payments', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 12),
 
-                    _paymentRow('Ride Fare', '\$${ride.fare.toStringAsFixed(2)}'),
+                    _paymentRow('Ride Fare', Currency.format(ride.fare)),
                     const Divider(height: 22, color: AppColors.textMuted),
 
                     Padding(
@@ -134,7 +135,7 @@ class RideDetailsScreen extends StatelessWidget {
                       child: Row(
                         children: [
                           const Expanded(child: Text('Total', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700))),
-                          Text('\$${ride.fare.toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                          Text(Currency.format(ride.fare), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
                         ],
                       ),
                     ),
