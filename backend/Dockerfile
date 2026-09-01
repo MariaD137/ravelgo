@@ -1,4 +1,11 @@
-FROM node:22-slim AS build
+# Pulled from ECR Public's mirror of the official Docker Hub image, not
+# docker.io directly: CodeBuild's IP range is shared across many AWS
+# customers and routinely exhausts Docker Hub's anonymous-pull rate limit
+# ("429 Too Many Requests" on the very first FROM). ECR Public mirrors the
+# same official image with a separate, much higher quota, so builds inside
+# AWS (CodeBuild, CodePipeline, etc.) don't compete with the public internet
+# for pulls.
+FROM public.ecr.aws/docker/library/node:22-slim AS build
 WORKDIR /app
 # Prisma's query engine links against OpenSSL, which the -slim base image
 # does not ship. Without it Prisma fails to detect/load libssl and the
@@ -12,7 +19,7 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run prisma:generate && npm run build
 
-FROM node:22-slim AS runtime
+FROM public.ecr.aws/docker/library/node:22-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 # Same OpenSSL requirement in the runtime image — this is the one that
