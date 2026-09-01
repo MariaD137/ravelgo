@@ -53,8 +53,8 @@ test("GET /eats/restaurants lists open restaurants for an authed rider", async (
     .set("Authorization", `Bearer ${token}`);
 
   assert.equal(res.status, 200);
-  assert.equal(res.body.items.length, 1);
-  assert.equal(res.body.items[0].name, "Mama Put Kitchen");
+  assert.equal(res.body.data.length, 1);
+  assert.equal(res.body.data[0].name, "Mama Put Kitchen");
 });
 
 test("GET /eats/restaurants/:id returns the restaurant with its menu", async () => {

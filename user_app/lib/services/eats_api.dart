@@ -77,7 +77,7 @@ class FoodOrder {
 class EatsApi {
   static Future<List<Restaurant>> restaurants() async {
     final data = await ApiClient.get('/api/eats/restaurants?page=1&pageSize=50');
-    final items = (data as Map<String, dynamic>)['items'] as List? ?? const [];
+    final items = (data as Map<String, dynamic>)['data'] as List? ?? const [];
     return items.map((e) => Restaurant.fromJson(e as Map<String, dynamic>)).toList();
   }
 
