@@ -21,8 +21,10 @@
 #       --source-group <CLOUDSHELL_SG_ID>
 #   Remove that rule when you're done migrating.
 #
-# Then, in that VPC environment:
-#   git clone https://github.com/MariaD137/ravelgo.git && cd ravelgo
+# Then, in that VPC environment (it has its OWN home directory, so set up a
+# deploy key there too — see the "authenticate to GitHub" step in
+# docs/DEPLOY-RUNBOOK.md; the repo is private and a bare clone will fail):
+#   git clone git@github.com:MariaD137/ravelgo.git && cd ravelgo
 #   bash scripts/cloudshell-migrate.sh
 #
 set -euo pipefail

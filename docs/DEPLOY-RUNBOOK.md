@@ -22,13 +22,59 @@ CloudShell already has your credentials, the AWS CLI, Node, git **and Docker**
 `eu-west-1`, `eu-central-1`, `ap-southeast-1/2`, `ap-northeast-1`), so the whole
 deploy — image build included — can run there.
 
-Open **AWS CloudShell** in your target Region and paste:
+### First: authenticate to GitHub (the repo is private)
+
+A bare `git clone` fails with `remote: invalid credentials` — CloudShell has your
+*AWS* credentials, not your GitHub ones. Set up a **read-only deploy key** once
+(it persists in CloudShell's home directory, per Region):
+
+```bash
+# Clear any stale credential that may be cached from an earlier attempt
+git config --global --unset-all credential.helper 2>/dev/null || true
+rm -f ~/.git-credentials
+
+ssh-keygen -t ed25519 -f ~/.ssh/ravelgo_deploy -N "" -C "cloudshell-ravelgo"
+cat ~/.ssh/ravelgo_deploy.pub
+```
+
+Add that public key at **Settings → Deploy keys → Add deploy key**
+(<https://github.com/MariaD137/ravelgo/settings/keys>). Leave *Allow write
+access* **unchecked** — the deploy only needs to read. Then:
+
+```bash
+cat >> ~/.ssh/config <<'EOF'
+Host github.com
+  IdentityFile ~/.ssh/ravelgo_deploy
+  IdentitiesOnly yes
+  StrictHostKeyChecking accept-new
+EOF
+chmod 600 ~/.ssh/config
+ssh -T git@github.com    # expect: "Hi MariaD137/ravelgo! You've successfully authenticated"
+```
+
+<details>
+<summary>Alternative: a fine-grained personal access token</summary>
+
+Create one at <https://github.com/settings/personal-access-tokens/new> scoped to
+this repository only, with **Contents: Read-only**. Then clone with it and
+immediately scrub it from `.git/config`:
+
+```bash
+read -rsp "GitHub PAT: " GH_TOKEN; echo      # read -s keeps it out of history
+git clone --branch main \
+  "https://x-access-token:${GH_TOKEN}@github.com/MariaD137/ravelgo.git"
+cd ravelgo && git remote set-url origin https://github.com/MariaD137/ravelgo.git
+unset GH_TOKEN
+```
+</details>
+
+### Then: deploy
 
 ```bash
 # Work under /tmp: CloudShell's home directory is capped at 1 GB and
 # node_modules for CDK + backend will blow past it.
 cd /tmp && rm -rf ravelgo
-git clone --branch main https://github.com/MariaD137/ravelgo.git
+git clone --branch main git@github.com:MariaD137/ravelgo.git
 cd ravelgo
 
 # --- configure this deploy ---------------------------------------------------
@@ -51,9 +97,12 @@ Then apply migrations from a CloudShell **VPC environment** (step 6 — the DB i
 private and unreachable from a normal shell):
 
 ```bash
-cd /tmp && git clone https://github.com/MariaD137/ravelgo.git && cd ravelgo
+cd /tmp && git clone git@github.com:MariaD137/ravelgo.git && cd ravelgo
 bash scripts/cloudshell-migrate.sh
 ```
+
+(A VPC environment is a separate CloudShell environment with its **own** home
+directory, so repeat the deploy-key setup above there — or use the PAT method.)
 
 If a CloudShell session times out mid-deploy, just re-clone and re-run the
 phase — CloudFormation holds the state, so the phases are idempotent.
