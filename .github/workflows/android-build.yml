@@ -40,8 +40,15 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # The rider app's Android toolchain (Gradle 8.12 / AGP 8.9.1 / Kotlin
+      # 2.1.0) is the self-consistent set Flutter generated for this project
+      # and builds a working debug APK, but it sits just below the minimums
+      # the current Flutter stable bundles. Skip that advisory version check
+      # (Flutter's own recommended flag) rather than force a toolchain bump
+      # that would require migrating the generated Gradle scripts to the K2
+      # script compiler.
       - name: Build debug APK
-        run: flutter build apk --debug
+        run: flutter build apk --debug --android-skip-build-dependency-validation
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
