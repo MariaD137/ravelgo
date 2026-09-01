@@ -10,6 +10,7 @@ import 'package:ravelgo_user_app/views/TexiModule/SelectRide.dart';
 import 'package:ravelgo_user_app/views/Services/CarRentalScreen.dart';
 import 'package:ravelgo_user_app/views/Services/IdelivaOnboardingScreen.dart';
 import 'package:ravelgo_user_app/views/ServiceView/ServicesView.dart';
+import 'package:ravelgo_user_app/views/Eats/EatsScreen.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:ravelgo_user_app/views/OtherViews/NotificationsScreen.dart';
@@ -266,7 +267,8 @@ class _HomePageState extends State<HomePage> {
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CarRentalScreen()))),
       ('Services', Icons.grid_view_outlined,
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ServicesView()))),
-      ('Eats', Icons.restaurant_outlined, () => _comingSoon('Eats')),
+      ('Eats', Icons.restaurant_outlined,
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EatsScreen()))),
       ('Hotels', Icons.hotel_outlined, () => _comingSoon('Hotels')),
     ];
     return Padding(
