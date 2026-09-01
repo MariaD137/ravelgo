@@ -133,6 +133,52 @@ test("POST /api/trips/:id/charge (WALLET) rejects when the balance is insufficie
   assert.equal(await prisma.payment.count(), 0);
 });
 
+// --- P0 #5: wallet double-debit protection --------------------------------
+
+test("two concurrent WALLET charges for one trip debit exactly once", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const wallet = await prisma.walletAccount.create({ data: { userId: rider.id, balanceCents: 10000 } }); // plenty for two
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 14.5, status: "COMPLETED" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
+  const fire = () =>
+    request(app).post(`/api/trips/${trip.id}/charge`).set("Authorization", `Bearer ${token}`).send({ method: "WALLET" });
+
+  const [a, b] = await Promise.all([fire(), fire()]);
+  const statuses = [a.status, b.status].sort();
+  assert.deepEqual(statuses, [201, 409]); // one settles, the other is a conflict
+
+  // The money moved once: 10000 - 1450 = 8550. One Payment, one ledger debit.
+  const w = await prisma.walletAccount.findUnique({ where: { id: wallet.id } });
+  assert.equal(w?.balanceCents, 8550);
+  assert.equal(await prisma.payment.count({ where: { tripId: trip.id } }), 1);
+  const debits = await prisma.walletTransaction.count({ where: { walletId: wallet.id, type: "RIDE_PAYMENT" } });
+  assert.equal(debits, 1);
+});
+
+test("a duplicate WALLET charge (sequential) is rejected and does not debit again", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const wallet = await prisma.walletAccount.create({ data: { userId: rider.id, balanceCents: 5000 } });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 14.5, status: "COMPLETED" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
+  const charge = () =>
+    request(app).post(`/api/trips/${trip.id}/charge`).set("Authorization", `Bearer ${token}`).send({ method: "WALLET" });
+
+  const first = await charge();
+  assert.equal(first.status, 201);
+  const second = await charge();
+  assert.equal(second.status, 409);
+
+  const w = await prisma.walletAccount.findUnique({ where: { id: wallet.id } });
+  assert.equal(w?.balanceCents, 3550); // 5000 - 1450, once
+  assert.equal(await prisma.walletTransaction.count({ where: { walletId: wallet.id, type: "RIDE_PAYMENT" } }), 1);
+});
+
 test("POST /api/trips/:id/charge rejects a driver who wasn't on the trip", async () => {
   const { rider, driver } = await createRiderAndDriver();
   const trip = await prisma.trip.create({

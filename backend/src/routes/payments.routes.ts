@@ -6,7 +6,7 @@ import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { stripeClient } from "../billing/stripe";
 import { MAX_MONEY_AMOUNT, toCents } from "../lib/money";
 import { sensitiveLimiter } from "../middleware/rate-limit";
-import { debitWalletForRide, InsufficientFundsError } from "../services/wallet";
+import { AlreadyChargedError, chargeWalletForRide, InsufficientFundsError } from "../services/wallet";
 
 export const paymentsRouter = Router();
 
@@ -67,30 +67,30 @@ paymentsRouter.post("/trips/:id/charge", sensitiveLimiter, requireAuth, requireR
     return res.status(201).json({ ...payment, clientSecret: intent.client_secret });
   }
 
-  // WALLET: the rider must have a funded wallet with sufficient balance.
+  // WALLET: the rider must have a funded wallet with sufficient balance. The
+  // debit, ledger entry and Payment row are written atomically (services/
+  // wallet.ts) so a crash or a concurrent double-tap can never debit twice.
   const wallet = await prisma.walletAccount.findUnique({ where: { userId: trip.riderId } });
   if (!wallet) return res.status(409).json({ error: "Rider has no wallet; top up before paying by wallet" });
 
   try {
-    await debitWalletForRide(wallet.id, toCents(trip.finalFare), trip.id);
+    const payment = await chargeWalletForRide({
+      walletId: wallet.id,
+      amountCents: toCents(trip.finalFare),
+      tripId: trip.id,
+      riderId: trip.riderId,
+      fareAmount: trip.finalFare,
+    });
+    return res.status(201).json(payment);
   } catch (err) {
     if (err instanceof InsufficientFundsError) {
       return res.status(402).json({ error: "Insufficient wallet balance" });
     }
+    if (err instanceof AlreadyChargedError) {
+      return res.status(409).json({ error: "Trip has already been charged" });
+    }
     return next(err);
   }
-
-  const payment = await prisma.payment.create({
-    data: {
-      tripId: trip.id,
-      userId: trip.riderId,
-      amount: trip.finalFare,
-      method: "WALLET",
-      status: "SUCCEEDED",
-      paidAt: new Date(),
-    },
-  });
-  res.status(201).json(payment);
 });
 
 // Rider (who owns the payment) or Admin: a receipt for a charged trip

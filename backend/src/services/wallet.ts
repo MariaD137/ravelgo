@@ -33,18 +33,48 @@ export class InsufficientFundsError extends Error {
   }
 }
 
+export class AlreadyChargedError extends Error {
+  constructor() {
+    super("Trip has already been charged");
+    this.name = "AlreadyChargedError";
+  }
+}
+
 /**
- * Debit a wallet for a ride, atomically. The conditional updateMany (balance
- * must still be >= the amount) means two concurrent charges can't both spend
- * the same funds — if the guarded update touches zero rows, the balance moved
- * out from under us and we reject rather than overdraw.
+ * Charge a wallet for a completed ride — the balance debit, the ledger entry,
+ * and the Payment record are written in ONE transaction (P0 #5).
+ *
+ * Two failure modes this closes, both of which previously double-debited a
+ * rider (the debit committed in its own transaction, and the Payment row was
+ * created separately afterwards):
+ *
+ *  - A crash between the debit and the Payment insert left the balance
+ *    decremented with no Payment, so the trip looked uncharged and a retry
+ *    debited a second time. Now both live in one transaction: if the Payment
+ *    insert fails, the debit rolls back with it.
+ *  - Two concurrent charges both passed a pre-check and both debited. Now the
+ *    Payment insert is inside the transaction and guarded by Payment.tripId
+ *    @unique, so the loser's INSERT raises P2002, the whole transaction
+ *    (including its balance decrement) rolls back, and the wallet moves exactly
+ *    once. A fast-path check also returns AlreadyChargedError for the common,
+ *    non-racing duplicate so the caller gets a clean 409.
+ *
+ * The guarded conditional decrement (balance must still be >= the amount)
+ * additionally prevents an overdraw under concurrency.
  */
-export async function debitWalletForRide(
-  walletId: string,
-  amountCents: number,
-  tripId: string,
-): Promise<void> {
-  await prisma.$transaction(async (tx) => {
+export async function chargeWalletForRide(params: {
+  walletId: string;
+  amountCents: number;
+  tripId: string;
+  riderId: string;
+  /** The tax-inclusive fare recorded on the Payment row (display/receipt). */
+  fareAmount: number;
+}) {
+  const { walletId, amountCents, tripId, riderId, fareAmount } = params;
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.payment.findUnique({ where: { tripId } });
+    if (existing) throw new AlreadyChargedError();
+
     const updated = await tx.walletAccount.updateMany({
       where: { id: walletId, balanceCents: { gte: amountCents } },
       data: { balanceCents: { decrement: amountCents } },
@@ -52,12 +82,19 @@ export async function debitWalletForRide(
     if (updated.count === 0) throw new InsufficientFundsError();
 
     await tx.walletTransaction.create({
+      data: { walletId, type: "RIDE_PAYMENT", status: "COMPLETED", amountCents: -amountCents, tripId },
+    });
+
+    // Guarded by Payment.tripId @unique — a concurrent second charge for the
+    // same trip fails here and rolls back the debit above.
+    return tx.payment.create({
       data: {
-        walletId,
-        type: "RIDE_PAYMENT",
-        status: "COMPLETED",
-        amountCents: -amountCents,
         tripId,
+        userId: riderId,
+        amount: fareAmount,
+        method: "WALLET",
+        status: "SUCCEEDED",
+        paidAt: new Date(),
       },
     });
   });

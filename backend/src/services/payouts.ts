@@ -207,12 +207,27 @@ export async function generatePayoutsForPeriod(period: string): Promise<PayoutWi
   const payouts: PayoutWithDriverBank[] = [];
   for (const driver of drivers) {
     try {
+      // Idempotency (P0 #6): if this driver already has a payout for the
+      // period, skip — a re-run to recover from a partial failure must not
+      // pay anyone twice. The @@unique([driverId, period]) index is the
+      // authoritative backstop; this check just avoids the wasted work and a
+      // noisy conflict for the common re-run case.
+      const already = await prisma.payout.findUnique({
+        where: { driverId_period: { driverId: driver.id, period } },
+      });
+      if (already) continue;
+
       const calculation = await calculatePayoutForPeriod(driver.id, period);
       if (calculation.netAmount > 0) {
         const payout = await createPayout(calculation);
         payouts.push(payout);
       }
     } catch (error) {
+      // A P2002 here means a concurrent run created this driver's payout first
+      // — that is the constraint doing its job, not a failure to surface. Any
+      // other error is a genuine per-driver problem worth logging while the
+      // rest of the batch proceeds.
+      if (error && typeof error === "object" && (error as { code?: string }).code === "P2002") continue;
       console.error(`Failed to create payout for driver ${driver.id}:`, error);
     }
   }

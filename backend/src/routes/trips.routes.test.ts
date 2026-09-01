@@ -4,6 +4,8 @@ import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
 import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { estimateDurationMinutes, haversineKm } from "../lib/geo";
+import { computeFare } from "../services/pricing";
 
 beforeEach(async () => {
   await resetDb();
@@ -22,9 +24,24 @@ after(async () => {
   await prisma.$disconnect();
 });
 
-// distanceKm 10, durationMinutes 20 -> subtotal 2 + 10 + 4 = 16, + 7.5% VAT = 17.2.
-const tripInput = { pickup: "Home", destination: "Airport", distanceKm: 10, durationMinutes: 20 };
-const EXPECTED_FARE = 17.2;
+// Coordinates are the authoritative fare input now — the server computes the
+// distance (and thus the fare); the client can no longer assert distanceKm.
+const RULE = { name: "Standard", baseFare: 2, perKm: 1, perMinute: 0.2 };
+const PICKUP = { lat: 6.5244, lng: 3.3792 }; // Lagos
+const DROPOFF = { lat: 6.4478, lng: 3.4723 };
+const tripInput = {
+  pickup: "Home",
+  destination: "Airport",
+  pickupLat: PICKUP.lat,
+  pickupLng: PICKUP.lng,
+  dropoffLat: DROPOFF.lat,
+  dropoffLng: DROPOFF.lng,
+};
+// Recompute the expected fare exactly as the server would, from the same geo
+// + pricing helpers — proves the stored fare matches the authoritative figure
+// for these coordinates without hardcoding a magic number.
+const _dist = haversineKm(PICKUP, DROPOFF);
+const EXPECTED_FARE = computeFare(RULE, _dist, estimateDurationMinutes(_dist)).estimatedFare;
 
 test("POST /api/trips lets a Rider request a trip, with a server-computed fare", async () => {
   await prisma.user.create({
@@ -74,10 +91,10 @@ test("POST /api/trips rejects missing, malformed, and negative trip inputs", asy
   const token = mockAuthAs({ sub: "rider-bad", groups: ["Rider"] });
 
   const bad: Array<Record<string, unknown>> = [
-    { pickup: "H", destination: "A" }, // missing distance/duration
-    { ...tripInput, distanceKm: "lots" }, // malformed
-    { ...tripInput, distanceKm: -5 }, // negative
-    { ...tripInput, distanceKm: 999999 }, // absurd (over cap)
+    { pickup: "H", destination: "A" }, // missing coordinates
+    { ...tripInput, pickupLat: "north" }, // malformed
+    { ...tripInput, dropoffLat: 200 }, // out of range
+    { ...tripInput, pickupLng: -999 }, // out of range
   ];
   for (const body of bad) {
     const res = await request(app).post("/api/trips").set("Authorization", `Bearer ${token}`).send(body);
@@ -174,6 +191,17 @@ test("PATCH /api/trips/:id/status lets the assigned Driver or an Admin advance t
   });
 
   const token = mockAuthAs({ sub: "driver-sub-2", groups: ["Driver"] });
+
+  // Real forward flow: MATCHED -> IN_PROGRESS -> COMPLETED. The state machine
+  // requires the intermediate step; jumping straight to COMPLETED is rejected
+  // (proved separately below).
+  const start = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "IN_PROGRESS" });
+  assert.equal(start.status, 200);
+  assert.equal(start.body.status, "IN_PROGRESS");
+
   const res = await request(app)
     .patch(`/api/trips/${trip.id}/status`)
     .set("Authorization", `Bearer ${token}`)
@@ -375,4 +403,128 @@ test("POST /api/trips/:id/rating rejects a non-owner and an uncompleted trip", a
     .set("Authorization", `Bearer ${strangerToken}`)
     .send({ rating: 5 });
   assert.equal(stranger.status, 403);
+});
+
+// --- P0 #10: server-authoritative fare ------------------------------------
+
+test("POST /api/trips computes the fare from coordinates and ignores a client distanceKm", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-geo", role: "RIDER", firstName: "A", lastName: "B", email: "geo@example.com" },
+  });
+  const token = mockAuthAs({ sub: "rider-geo", groups: ["Rider"] });
+
+  const res = await request(app)
+    .post("/api/trips")
+    .set("Authorization", `Bearer ${token}`)
+    // Attacker tries to force a zero-distance fare; the server ignores it.
+    .send({ ...tripInput, distanceKm: 0, durationMinutes: 0 });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.estimatedFare, EXPECTED_FARE);
+  assert.ok(res.body.distanceKm > 1, "server stored its own computed distance");
+});
+
+// --- P0 #8: matched-driver detail on the create response ------------------
+
+test("POST /api/trips returns a safe driver summary when matched (no sensitive fields)", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-disp", role: "RIDER", firstName: "G", lastName: "H", email: "disp@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-disp", role: "DRIVER", firstName: "Dele", lastName: "Okoro", email: "dele@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE", isOnline: true, rating: 4.7 } });
+  await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Toyota", model: "Corolla", colour: "Silver", plateNumber: "LND-482-KJ", year: "2020" },
+  });
+
+  const token = mockAuthAs({ sub: "rider-disp", groups: ["Rider"] });
+  const res = await request(app).post("/api/trips").set("Authorization", `Bearer ${token}`).send(tripInput);
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.status, "MATCHED");
+  assert.equal(res.body.driver.user.firstName, "Dele");
+  assert.equal(res.body.driver.rating, 4.7);
+  assert.equal(res.body.driver.vehicle.plateNumber, "LND-482-KJ");
+  // The leak the raw relation used to carry must be gone.
+  const blob = JSON.stringify(res.body);
+  assert.ok(!blob.includes("dele@example.com"), "driver email must not be exposed");
+  assert.ok(!blob.includes("driver-disp"), "driver cognitoSub must not be exposed");
+});
+
+// --- P0 #9: trip status state machine -------------------------------------
+
+async function seedAssignedTrip(riderSub: string, driverSub: string, status: "REQUESTED" | "MATCHED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED") {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: riderSub, role: "RIDER", firstName: "R", lastName: "R", email: `${riderSub}@example.com` },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: driverSub, role: "DRIVER", firstName: "D", lastName: "D", email: `${driverSub}@example.com` },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id } });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "X", destination: "Y", estimatedFare: 16, status },
+  });
+  return trip;
+}
+
+test("state machine rejects REQUESTED->COMPLETED (billing a trip never driven)", async () => {
+  const trip = await seedAssignedTrip("rider-sm1", "driver-sm1", "REQUESTED");
+  const token = mockAuthAs({ sub: "driver-sm1", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "COMPLETED", finalFare: 16 });
+  assert.equal(res.status, 409);
+  assert.equal(res.body.error.code, "INVALID_TRIP_TRANSITION");
+  const after = await prisma.trip.findUnique({ where: { id: trip.id } });
+  assert.equal(after?.status, "REQUESTED");
+  assert.equal(after?.finalFare, null);
+});
+
+test("state machine rejects reviving a COMPLETED trip to IN_PROGRESS", async () => {
+  const trip = await seedAssignedTrip("rider-sm2", "driver-sm2", "COMPLETED");
+  const token = mockAuthAs({ sub: "admin-sm", groups: ["Admin"] });
+  const res = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "IN_PROGRESS" });
+  assert.equal(res.status, 409);
+});
+
+test("state machine forbids a driver-only actor from a dispute transition", async () => {
+  const trip = await seedAssignedTrip("rider-sm3", "driver-sm3", "MATCHED");
+  const token = mockAuthAs({ sub: "driver-sm3", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "DISPUTED" });
+  assert.equal(res.status, 403);
+});
+
+// --- P0 #7: rider cancellation --------------------------------------------
+
+test("POST /api/trips/:id/cancel lets the owning rider cancel a MATCHED trip", async () => {
+  const trip = await seedAssignedTrip("rider-cx1", "driver-cx1", "MATCHED");
+  const token = mockAuthAs({ sub: "rider-cx1", groups: ["Rider"] });
+  const res = await request(app).post(`/api/trips/${trip.id}/cancel`).set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "CANCELLED");
+  const after = await prisma.trip.findUnique({ where: { id: trip.id } });
+  assert.equal(after?.status, "CANCELLED");
+});
+
+test("POST /api/trips/:id/cancel refuses to cancel an IN_PROGRESS trip", async () => {
+  const trip = await seedAssignedTrip("rider-cx2", "driver-cx2", "IN_PROGRESS");
+  const token = mockAuthAs({ sub: "rider-cx2", groups: ["Rider"] });
+  const res = await request(app).post(`/api/trips/${trip.id}/cancel`).set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 409);
+  assert.equal(res.body.error.code, "TRIP_NOT_CANCELLABLE");
+});
+
+test("POST /api/trips/:id/cancel denies a rider who does not own the trip", async () => {
+  const trip = await seedAssignedTrip("rider-cx3", "driver-cx3", "MATCHED");
+  const token = mockAuthAs({ sub: "rider-not-owner", groups: ["Rider"] });
+  const res = await request(app).post(`/api/trips/${trip.id}/cancel`).set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 403);
 });

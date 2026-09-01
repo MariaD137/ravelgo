@@ -69,7 +69,9 @@ phases:
       - echo "Applying migrations"
       - npx prisma migrate deploy
       - echo "Seeding"
-      - npx prisma db seed
+      # The seed refuses to run without this explicit opt-in (prisma/seed.ts).
+      # It is set here only for the staging seed job; production is never seeded.
+      - ALLOW_DEMO_SEED=true npx prisma db seed
 '
 
 SUBNET_JSON="$(printf '"%s",' "${SUBNET_ARR[@]}")"; SUBNET_JSON="[${SUBNET_JSON%,}]"
