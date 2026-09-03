@@ -34,7 +34,7 @@ AWS_REGION="${AWS_REGION:-us-east-1}"
 ENVNAME="${ENVNAME:-production}"
 SUFFIX=""
 [[ "$ENVNAME" != "production" ]] && SUFFIX="-$ENVNAME"
-API_STACK="RavelGo-Api${SUFFIX}"
+DATA_STACK="RavelGo-Data${SUFFIX}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -43,9 +43,9 @@ warn() { printf '\033[33m!! %s\033[0m\n' "$*" >&2; }
 die()  { printf '\033[31mXX %s\033[0m\n' "$*" >&2; exit 1; }
 
 say "Locating the database secret"
-DB_SECRET_ARN="$(aws cloudformation describe-stacks --stack-name "$API_STACK" --region "$AWS_REGION" \
+DB_SECRET_ARN="$(aws cloudformation describe-stacks --stack-name "$DATA_STACK" --region "$AWS_REGION" \
   --query "Stacks[0].Outputs[?OutputKey=='DatabaseSecretArn'].OutputValue" --output text)"
-[[ -n "$DB_SECRET_ARN" && "$DB_SECRET_ARN" != "None" ]] || die "DatabaseSecretArn not found on $API_STACK."
+[[ -n "$DB_SECRET_ARN" && "$DB_SECRET_ARN" != "None" ]] || die "DatabaseSecretArn not found on $DATA_STACK."
 
 SECRET_JSON="$(aws secretsmanager get-secret-value --region "$AWS_REGION" \
   --secret-id "$DB_SECRET_ARN" --query SecretString --output text)"
