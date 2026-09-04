@@ -253,16 +253,17 @@ class _HomePageState extends State<HomePage> {
   /// Eats/Hotels have no photography yet, so none of the three get a tile
   /// here.
   Widget _buildServicesLauncher() {
-    // Photo path is null for services without real photography yet — those
-    // fall back to an icon tile so the grid never ships a mismatched image.
-    final photoServices = <(String, String?, IconData, VoidCallback)>[
-      ('Ride', 'assets/hero_banner.jpg', Icons.local_taxi_outlined,
+    // Each card image already has its own title, description, icon badge and
+    // "go" arrow baked in by design, so these render as full self-contained
+    // tiles with no separate label overlaid on top.
+    final photoServices = <(String, String, VoidCallback)>[
+      ('Ride', 'assets/card_ride.png',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SelectRide()))),
-      ('Car Rentals', 'assets/car_keys.png', Icons.car_rental_outlined,
+      ('Car Rentals', 'assets/card_car_rental.png',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CarRentalScreen()))),
-      ('Delivery', 'assets/courier.png', Icons.local_shipping_outlined,
+      ('Delivery', 'assets/card_delivery.png',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => IdelivaOnboardingScreen()))),
-      ('Short stay rentals', null, Icons.apartment_outlined,
+      ('Short stay rentals', 'assets/card_short_stay.png',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StaysScreen()))),
     ];
     return Column(
@@ -282,36 +283,23 @@ class _HomePageState extends State<HomePage> {
             separatorBuilder: (_, __) => const SizedBox(width: 10),
             itemBuilder: (context, i) {
               final s = photoServices[i];
-              return InkWell(
-                borderRadius: BorderRadius.circular(14),
-                onTap: s.$4,
-                child: Container(
-                  width: 140,
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [
-                      BoxShadow(color: AppColors.border, blurRadius: 6, offset: const Offset(0, 2)),
-                    ],
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: s.$2 != null
-                            ? Image.asset(s.$2!, width: double.infinity, fit: BoxFit.cover)
-                            : Container(
-                                width: double.infinity,
-                                color: AppColors.surfaceElevated,
-                                child: Icon(s.$3, size: 30, color: AppColors.primaryDark),
-                              ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        child: Text(s.$1, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                      ),
-                    ],
+              return Semantics(
+                button: true,
+                label: s.$1,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: s.$3,
+                  child: Container(
+                    width: 160,
+                    height: 160,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(color: AppColors.border, blurRadius: 6, offset: const Offset(0, 2)),
+                      ],
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Image.asset(s.$2, width: 160, height: 160, fit: BoxFit.cover),
                   ),
                 ),
               );
