@@ -11,19 +11,33 @@ class CarRentalScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFFFFBF4), // Soft cream background
       body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(30),
-              child: Image.asset(
-                'assets/car_keys.png', // replace with your image path
-                width: 300,
-                height: 300,
-                fit: BoxFit.cover,
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.pop(context),
+                ),
               ),
-            ),
-            const SizedBox(height: 30),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(30),
+                  // AspectRatio keeps the whole car (not just a cropped
+                  // slice of it) visible at any screen width.
+                  child: AspectRatio(
+                    aspectRatio: 477 / 296,
+                    child: Image.asset(
+                      'assets/car_keys.png',
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 30),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 24),
               child: Column(
@@ -101,6 +115,7 @@ class CarRentalScreen extends StatelessWidget {
               ),
             ),
           ],
+          ),
         ),
       ),
     );
