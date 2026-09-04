@@ -1,49 +1,32 @@
 import 'package:flutter/material.dart';
-import 'package:ravelgo_user_app/components/RideOptionCard.dart';
 import 'package:ravelgo_user_app/views//Services/CarRentalScreen.dart';
 import 'package:ravelgo_user_app/views/Services/IdelivaOnboardingScreen.dart';
+import 'package:ravelgo_user_app/views/Stays/StaysScreen.dart';
 import 'package:ravelgo_user_app/views/TexiModule/FindRoute.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
-class ServicesView extends StatefulWidget {
+class ServicesView extends StatelessWidget {
   const ServicesView({super.key});
 
   @override
-  State<ServicesView> createState() => _ServicesViewSelectorState();
-}
-
-class _ServicesViewSelectorState extends State<ServicesView> {
-  int selectedIndex = -1;
-
-  void onCardTapped(int index) {
-    setState(() {
-      selectedIndex = index;
-      switch (index) {
-        case 0:
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (context) => FindRouteScreen()),
-          );
-          break;
-        case 1:
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (context) => CarRentalScreen()),
-          );
-          break;
-        case 2:
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (context) => IdelivaOnboardingScreen()),
-          );
-          break;
-        default:
-      }
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
+    // Each card image already has its own title, description, icon badge and
+    // "go" arrow baked in by design, so these render as full self-contained
+    // tiles with no separate label overlaid on top.
+    final services = <(String, String, VoidCallback)>[
+      ('Ride', 'assets/card_ride.png',
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => FindRouteScreen()))),
+      ('Car Rentals', 'assets/card_car_rental.png',
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => CarRentalScreen()))),
+      ('Delivery', 'assets/card_delivery.png',
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => IdelivaOnboardingScreen()))),
+      ('Short stay rentals', 'assets/card_short_stay.png',
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StaysScreen()))),
+    ];
+
     return Scaffold(
       backgroundColor: AppColors.surface,
-      body: SafeArea( // ✅ helps on iOS with notch/safe area
+      body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
@@ -60,54 +43,26 @@ class _ServicesViewSelectorState extends State<ServicesView> {
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 20),
-
-              // Ride Card
-              Container(
-                width: double.infinity,
-                height: 160,
-                decoration: BoxDecoration(
-                  border: Border.all(color: AppColors.textPrimary, width: 2.0),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                padding: const EdgeInsets.all(20),
-                child: RideOptionCard(
-                  label: 'Ride',
-                  iconPath: 'assets/ic_ride.png',
-                  isSelected: selectedIndex == 0,
-                  onTap: () => onCardTapped(0),
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Rental + i-deliva
-              Container(
-                width: double.infinity,
-                height: 160,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  border: Border.all(color: AppColors.textPrimary, width: 2.0),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Row(
+              Expanded(
+                child: GridView.count(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 16,
+                  crossAxisSpacing: 16,
+                  childAspectRatio: 1,
                   children: [
-                    Expanded(
-                      child: RideOptionCard(
-                        label: 'Rental',
-                        iconPath: 'assets/ic_rent_car.png',
-                        isSelected: selectedIndex == 1,
-                        onTap: () => onCardTapped(1),
+                    for (final s in services)
+                      Semantics(
+                        button: true,
+                        label: s.$1,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: s.$3,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: Image.asset(s.$2, fit: BoxFit.cover),
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: RideOptionCard(
-                        label: 'i-deliva',
-                        iconPath: 'assets/ic_ideliva.png',
-                        isSelected: selectedIndex == 2,
-                        onTap: () => onCardTapped(2),
-                      ),
-                    ),
                   ],
                 ),
               ),
