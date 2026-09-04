@@ -91,7 +91,7 @@ class _ReferralCodePageState extends State<ReferralCodePage> {
                       : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
-                    foregroundColor: AppColors.textPrimary,
+                    foregroundColor: Colors.white,
                     disabledBackgroundColor:
                     AppColors.primary.withOpacity(0.4),
                     padding: const EdgeInsets.symmetric(vertical: 14),

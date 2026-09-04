@@ -125,7 +125,7 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
                   },
                   child: Text(
                     'Done',
-                    style: TextStyle(color: AppColors.textPrimary),
+                    style: TextStyle(color: Colors.white),
                   ),
                 ),
               ),

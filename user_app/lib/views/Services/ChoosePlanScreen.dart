@@ -121,7 +121,7 @@ class ChoosePlanScreen extends StatelessWidget {
                         MaterialPageRoute(builder: (context) => PlanReviewSummaryScreen()),
                       );
                     },
-                    child: const Text('Select Plan', style: TextStyle(color: AppColors.textPrimary)),
+                    child: const Text('Select Plan', style: TextStyle(color: Colors.white)),
                   ),
                 ),
               ],

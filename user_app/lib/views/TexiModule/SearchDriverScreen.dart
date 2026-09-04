@@ -509,13 +509,13 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
         onPressed: _cancelBusy ? null : _cancelTrip,
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
-          foregroundColor: AppColors.textPrimary,
+          foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           padding: const EdgeInsets.symmetric(vertical: 14),
         ),
         child: _cancelBusy
             ? const SizedBox(
-                height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textPrimary))
+                height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
             : Text(_matched ? 'Cancel trip' : 'Cancel request'),
       ),
     );

@@ -119,7 +119,7 @@ class _PostCarScreenState extends State<PostCarScreen> {
           style: ElevatedButton.styleFrom(
             minimumSize: const Size(double.infinity, 50),
             backgroundColor: AppColors.primary,
-            foregroundColor: AppColors.textPrimary,
+            foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
           onPressed: () {

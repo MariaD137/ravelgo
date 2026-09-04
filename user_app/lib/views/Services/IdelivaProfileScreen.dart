@@ -116,7 +116,7 @@ class _IdelivaProfileScreenState extends State<IdelivaProfileScreen> {
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppColors.primary,
-                          foregroundColor: AppColors.textPrimary,
+                          foregroundColor: Colors.white,
                           padding:
                           const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(

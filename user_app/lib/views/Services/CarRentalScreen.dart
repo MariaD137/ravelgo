@@ -29,7 +29,7 @@ class CarRentalScreen extends StatelessWidget {
               child: Column(
                 children: [
                   Text(
-                    'Welcome to Rav car rental',
+                    'Welcome to RavelGo car rental',
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
@@ -73,7 +73,7 @@ class CarRentalScreen extends StatelessWidget {
                       },
                       child: const Text(
                         'Rent a car',
-                        style: TextStyle(color: AppColors.textPrimary, fontSize: 16),
+                        style: TextStyle(color: Colors.white, fontSize: 16),
                       ),
                     ),
                   ),

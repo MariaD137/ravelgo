@@ -59,7 +59,7 @@ class PlanReviewSummaryScreen extends StatelessWidget {
                     onPressed: () {
                       Navigator.pop(context);
                     },
-                    child: const Text('Select Plan', style: TextStyle(color: AppColors.textPrimary)),
+                    child: const Text('Select Plan', style: TextStyle(color: Colors.white)),
                   ),
                 ),
               ],
@@ -124,7 +124,7 @@ class PlanReviewSummaryScreen extends StatelessWidget {
             },
             child: const Text(
               'Confirm payment',
-              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ),
         ),
