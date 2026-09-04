@@ -40,13 +40,10 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: const Padding(
-        padding: EdgeInsets.all(80.0),
+      body: Padding(
+        padding: const EdgeInsets.all(80.0),
         child: Center(
-          child: Text(
-            "RavelGo",
-            style: TextStyle(fontSize: 34, fontWeight: FontWeight.bold, color: AppColors.primary, letterSpacing: -0.5),
-          ),
+          child: Image.asset('assets/logo.png', width: 160),
         ),
       ),
     );
