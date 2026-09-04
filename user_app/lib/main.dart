@@ -25,6 +25,22 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       home: SplashScreen(),
+      // RavelGo is a phone-shaped app. On a wide desktop browser window
+      // (there's no way to tell a plain web build it's "really" a phone),
+      // stretching every screen edge-to-edge looks broken and forces
+      // fixed-height images/maps into extreme aspect ratios. Cap every
+      // screen at a phone-like width and letterbox the rest instead.
+      builder: (context, child) {
+        return Container(
+          color: AppColors.background,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: child,
+            ),
+          ),
+        );
+      },
     );
   }
 }
