@@ -23,6 +23,19 @@ class RavelGoDriverApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       home: const SplashScreen(),
+      // Phone-shaped app viewed in an ordinary wide desktop browser window
+      // still needs to look like a phone screen, not stretch edge to edge.
+      builder: (context, child) {
+        return Container(
+          color: AppColors.background,
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: child,
+            ),
+          ),
+        );
+      },
     );
   }
 }

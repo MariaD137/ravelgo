@@ -329,13 +329,7 @@ class _HomePageState extends State<HomePage> {
       child: SingleChildScrollView(
         controller: scrollController,
         padding: const EdgeInsets.only(bottom: 12),
-        // Caps the sheet at a phone-like width so images/cards don't get
-        // crushed to a thin strip when this Flutter web build is opened in
-        // an ordinary wide desktop browser window instead of a phone.
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: Column(
+        child: Column(
           children: [
 
             /// HEADER (Where to?)
@@ -429,8 +423,6 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ],
-            ),
-          ),
         ),
       ),
     );
