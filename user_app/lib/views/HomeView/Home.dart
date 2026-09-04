@@ -329,7 +329,13 @@ class _HomePageState extends State<HomePage> {
       child: SingleChildScrollView(
         controller: scrollController,
         padding: const EdgeInsets.only(bottom: 12),
-        child: Column(
+        // Caps the sheet at a phone-like width so images/cards don't get
+        // crushed to a thin strip when this Flutter web build is opened in
+        // an ordinary wide desktop browser window instead of a phone.
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Column(
           children: [
 
             /// HEADER (Where to?)
@@ -356,13 +362,14 @@ class _HomePageState extends State<HomePage> {
 
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    // The source image is pre-cropped tight around the
-                    // RavelGo door logo (1080x454). A fixed height only ever
-                    // trims the sides on a wide viewport, never the logo.
+                    // Source image is a wide crop (1080x691) showing the
+                    // whole car with the RavelGo logo. Sheet width is now
+                    // capped above, so this only trims a little off the
+                    // sides instead of squashing the whole car vertically.
                     child: Image.asset(
                       'assets/hero_banner.jpg',
                       width: double.infinity,
-                      height: 220,
+                      height: 260,
                       fit: BoxFit.cover,
                       alignment: Alignment.center,
                     ),
@@ -422,6 +429,8 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ],
+            ),
+          ),
         ),
       ),
     );
