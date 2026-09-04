@@ -5,13 +5,7 @@ import 'package:ravelgo_driver_app/views/auth/create_account_screen.dart';
 import 'package:ravelgo_driver_app/views/auth/forgot_password_screen.dart';
 import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
 
-/// Driver sign-in.
-///
-/// AUTH BOUNDARY (MOCKED): no authentication backend is connected, so
-/// credentials cannot actually be verified. Input is validated locally
-/// (well-formed email, non-empty password) and rejected with visible errors;
-/// valid input proceeds to the driver shell. `_signIn` is the integration
-/// point for the auth service.
+/// Driver sign-in, wired to the RavelGo Cognito user pool via [AuthService].
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 

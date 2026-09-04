@@ -206,23 +206,53 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: AppComponents.cardDecoration(),
-                    child: Row(
-                      children: [
-                        Icon(Icons.circle, size: 12, color: profile.isOnline ? AppColors.online : AppColors.offline),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            profile.isOnline ? "You're online and visible to riders" : "You're offline",
-                            style: const TextStyle(fontWeight: FontWeight.w600),
+                  if (!profile.isApproved)
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: AppComponents.cardDecoration(),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.hourglass_top, size: 20, color: AppColors.warning),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  "Application under review",
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  profile.status == 'SUSPENDED'
+                                      ? "Your account is suspended. Contact support for help."
+                                      : "We'll notify you as soon as your documents are approved and you can go online.",
+                                  style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        Switch(value: profile.isOnline, onChanged: widget.onOnlineToggle),
-                      ],
+                        ],
+                      ),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: AppComponents.cardDecoration(),
+                      child: Row(
+                        children: [
+                          Icon(Icons.circle, size: 12, color: profile.isOnline ? AppColors.online : AppColors.offline),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              profile.isOnline ? "You're online and visible to riders" : "You're offline",
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                          Switch(value: profile.isOnline, onChanged: widget.onOnlineToggle),
+                        ],
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 16),
                   Row(
                     children: [
@@ -234,7 +264,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     ],
                   ),
                   const SizedBox(height: 20),
-                  if (profile.isOnline)
+                  if (!profile.isApproved)
+                    const SizedBox.shrink()
+                  else if (profile.isOnline)
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: AppComponents.cardDecoration(),
