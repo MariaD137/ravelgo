@@ -9,8 +9,6 @@ import 'package:ravelgo_user_app/views/User/invite_a_friend.dart';
 import 'package:ravelgo_user_app/views/TexiModule/SelectRide.dart';
 import 'package:ravelgo_user_app/views/Services/CarRentalScreen.dart';
 import 'package:ravelgo_user_app/views/Services/IdelivaOnboardingScreen.dart';
-import 'package:ravelgo_user_app/views/ServiceView/ServicesView.dart';
-import 'package:ravelgo_user_app/views/Eats/EatsScreen.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:ravelgo_user_app/views/OtherViews/NotificationsScreen.dart';
@@ -248,32 +246,19 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _comingSoon(String name) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$name is coming soon to RavelGo.')),
-    );
-  }
-
-  /// Multi-service launcher: the home is a hub, not just a ride screen. Ride,
-  /// delivery, and rentals route into flows that already exist and have real
-  /// photography, so they get the Uber-style photo-card treatment. Services/
-  /// Eats/Hotels have no photography yet, so they stay a compact icon row
-  /// underneath rather than showing a placeholder image.
+  /// Multi-service launcher: Ride, Car Rentals, and Delivery route into flows
+  /// that already exist and have real photography, shown as Uber-style photo
+  /// cards. Services is already reachable from the bottom nav bar, and
+  /// Eats/Hotels have no photography yet, so none of the three get a tile
+  /// here.
   Widget _buildServicesLauncher() {
     final photoServices = <(String, String, VoidCallback)>[
       ('Ride', 'assets/hero_banner.jpg',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SelectRide()))),
-      ('Rentals', 'assets/car_keys.png',
+      ('Car Rentals', 'assets/car_keys.png',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CarRentalScreen()))),
       ('Delivery', 'assets/courier.png',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => IdelivaOnboardingScreen()))),
-    ];
-    final moreServices = <(String, IconData, VoidCallback)>[
-      ('Services', Icons.grid_view_outlined,
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ServicesView()))),
-      ('Eats', Icons.restaurant_outlined,
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EatsScreen()))),
-      ('Hotels', Icons.hotel_outlined, () => _comingSoon('Hotels')),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -320,36 +305,6 @@ class _HomePageState extends State<HomePage> {
                 ),
               );
             },
-          ),
-        ),
-        const SizedBox(height: 12),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: _cardContainer(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-              child: Row(
-                children: [
-                  for (final s in moreServices)
-                    Expanded(
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: s.$3,
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Column(
-                            children: [
-                              Icon(s.$2, size: 22, color: AppColors.primaryDark),
-                              const SizedBox(height: 6),
-                              Text(s.$1, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
           ),
         ),
       ],
