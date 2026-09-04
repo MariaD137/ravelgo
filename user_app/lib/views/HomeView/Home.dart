@@ -131,7 +131,7 @@ class _HomePageState extends State<HomePage> {
                   /// HOME SHEET
                   if (!isRideActive)
                     DraggableScrollableSheet(
-                      initialChildSize: 0.46,
+                      initialChildSize: 0.5,
                       minChildSize: 0.25,
                       maxChildSize: 0.65,
                       builder: (context, scrollController) {
