@@ -31,7 +31,7 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
                     },
                   ),
                   Text(
-                    'I deliva',
+                    'RavelGo Logistics',
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
                   ),
                 ],
@@ -53,7 +53,7 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: const [
-                          Text('hhh',
+                          Text('Deliver with RavelGo',
                               style: TextStyle(
                                   fontSize: 18, fontWeight: FontWeight.bold)),
                           SizedBox(height: 5),
@@ -136,7 +136,7 @@ class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
             Center(
               child: Text.rich(
                   TextSpan(
-                    text: "Don’t have an I deliva account? ",
+                    text: "Don’t have a RavelGo Logistics account? ",
                     style: const TextStyle(color: AppColors.textSecondary),
                     children: [
                       TextSpan(

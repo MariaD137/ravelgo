@@ -52,7 +52,7 @@ class _IDelivaPageState extends State<IDelivaPage> {
                   ),
                   const SizedBox(width: 12),
                   const Text(
-                    "I deliva",
+                    "RavelGo Logistics",
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
