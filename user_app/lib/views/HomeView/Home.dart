@@ -131,9 +131,9 @@ class _HomePageState extends State<HomePage> {
                   /// HOME SHEET
                   if (!isRideActive)
                     DraggableScrollableSheet(
-                      initialChildSize: 0.35,
-                      minChildSize: 0.2,
-                      maxChildSize: 0.55,
+                      initialChildSize: 0.46,
+                      minChildSize: 0.25,
+                      maxChildSize: 0.65,
                       builder: (context, scrollController) {
                         return _buildHomeSheet(scrollController);
                       },
@@ -359,8 +359,9 @@ class _HomePageState extends State<HomePage> {
                     child: Image.asset(
                       'assets/hero_banner.jpg',
                       width: double.infinity,
-                      height: 120,
+                      height: 190,
                       fit: BoxFit.cover,
+                      alignment: Alignment.center,
                     ),
                   ),
                   const SizedBox(height: 12),
