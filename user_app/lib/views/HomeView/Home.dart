@@ -354,6 +354,17 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
 
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Image.asset(
+                      'assets/hero_banner.jpg',
+                      width: double.infinity,
+                      height: 120,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
                   _buildDestinationSearch(),
                 ],
               ),
