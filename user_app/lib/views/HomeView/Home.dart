@@ -356,10 +356,13 @@ class _HomePageState extends State<HomePage> {
 
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
+                    // The source image is pre-cropped tight around the
+                    // RavelGo door logo (1080x454). A fixed height only ever
+                    // trims the sides on a wide viewport, never the logo.
                     child: Image.asset(
                       'assets/hero_banner.jpg',
                       width: double.infinity,
-                      height: 190,
+                      height: 220,
                       fit: BoxFit.cover,
                       alignment: Alignment.center,
                     ),
