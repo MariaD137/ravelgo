@@ -77,7 +77,7 @@ class EReceiptScreen extends StatelessWidget {
             ),
             child: const Text(
               'Download E-receipt',
-              style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold),
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
             ),
           ),
         ),

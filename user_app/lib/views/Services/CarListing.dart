@@ -97,7 +97,7 @@ class _CarListingState extends State<CarListing> {
                             Navigator.push(context,
                                 MaterialPageRoute(builder: (_) => const ChoosePlanScreen()));
                           },
-                          child: const Text('Subscribe to be a Member',style:TextStyle(color: AppColors.textPrimary,fontSize: 12),),
+                          child: const Text('Subscribe to be a Member',style:TextStyle(color: Colors.white,fontSize: 12),),
                         ),
                         Spacer(),
                       ],

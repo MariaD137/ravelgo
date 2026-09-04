@@ -82,7 +82,7 @@ class _AddBankAccountPageState extends State<AddBankAccountPage> {
                       onPressed: isValid ? () {} : null,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
-                        foregroundColor: AppColors.textPrimary,
+                        foregroundColor: Colors.white,
                         disabledBackgroundColor:
                         AppColors.primary.withOpacity(0.4),
                         padding:

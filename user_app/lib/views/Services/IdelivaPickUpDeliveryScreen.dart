@@ -152,7 +152,7 @@ class PickDeliveryScreen extends StatelessWidget {
                                   },
                                   child: Text(
                                     "Accept",
-                                    style: TextStyle(color: AppColors.textPrimary),
+                                    style: TextStyle(color: Colors.white),
                                   ),
                                 ),
                               ),

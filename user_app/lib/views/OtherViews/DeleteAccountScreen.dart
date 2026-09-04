@@ -103,7 +103,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                 onPressed: _selectedReasonIndex == null ? null : _confirmDelete,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
-                  foregroundColor: AppColors.textPrimary,
+                  foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),

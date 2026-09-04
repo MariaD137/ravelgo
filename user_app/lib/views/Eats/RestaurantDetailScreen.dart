@@ -217,7 +217,7 @@ class _RestaurantDetailScreenState extends State<RestaurantDetailScreen> {
               onPressed: _placing ? null : _placeOrder,
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
-                foregroundColor: AppColors.textPrimary,
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
               ),
               child: _placing

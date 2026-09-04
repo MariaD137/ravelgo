@@ -359,7 +359,7 @@ class _SelectRideState extends State<SelectRide> {
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
                         onPressed: _canProceed ? _goToFindDriver : null,
-                        child: Text(_ctaLabel, style: const TextStyle(color: AppColors.textPrimary)),
+                        child: Text(_ctaLabel, style: const TextStyle(color: Colors.white)),
                       ),
                     ),
                   ],

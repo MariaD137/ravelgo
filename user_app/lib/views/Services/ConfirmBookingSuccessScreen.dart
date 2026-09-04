@@ -63,7 +63,7 @@ class ConfirmBookingSuccessScreen extends StatelessWidget {
                       },
                       child: const Text(
                         'View E-receipt',
-                        style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600),
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),

@@ -311,13 +311,13 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
         onPressed: canRequest ? _findDriver : null,
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
-          foregroundColor: AppColors.textPrimary,
+          foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           padding: const EdgeInsets.symmetric(vertical: 14),
         ),
         child: _requesting
             ? const SizedBox(
-                height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.textPrimary))
+                height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
             : const Text("Find a driver", style: TextStyle(fontSize: 16)),
       ),
     );
