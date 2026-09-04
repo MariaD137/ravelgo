@@ -20,10 +20,42 @@ export class AuthStack extends cdk.Stack {
     super(scope, id, props);
     const envName = props?.envName ?? "production";
 
+    // Email delivery (P0 #13). Cognito's built-in sender is capped at 50
+    // emails/day account-wide, which silently breaks sign-up verification and
+    // password reset at any real volume. When an SES sender is supplied (via
+    // `-c sesFromEmail=no-reply@ravelgo.com`, optionally sesFromName /
+    // sesReplyTo / sesRegion / sesVerifiedDomain) the pool sends through SES
+    // instead, which has production sending limits.
+    //
+    // Manual prerequisites SES requires that CDK cannot do for you:
+    //   1. Verify the sending identity (the domain, or the exact fromEmail) in
+    //      SES in the sesRegion below.
+    //   2. Move that SES account out of the sandbox (request production access)
+    //      so it can email arbitrary recipients — in the sandbox only verified
+    //      addresses receive mail.
+    // Until sesFromEmail is set the pool falls back to the capped Cognito
+    // sender and the MISSING-SES output below flags it.
+    const sesFromEmail = this.node.tryGetContext("sesFromEmail") as string | undefined;
+    const sesFromName = (this.node.tryGetContext("sesFromName") as string | undefined) ?? "RavelGo";
+    const sesReplyTo = this.node.tryGetContext("sesReplyTo") as string | undefined;
+    const sesRegion = (this.node.tryGetContext("sesRegion") as string | undefined) ?? this.region;
+    const sesVerifiedDomain = this.node.tryGetContext("sesVerifiedDomain") as string | undefined;
+
+    const email = sesFromEmail
+      ? cognito.UserPoolEmail.withSES({
+          fromEmail: sesFromEmail,
+          fromName: sesFromName,
+          replyTo: sesReplyTo,
+          sesRegion,
+          ...(sesVerifiedDomain ? { sesVerifiedDomain } : {}),
+        })
+      : undefined;
+
     this.userPool = new cognito.UserPool(this, "UserPool", {
       userPoolName: envName === "production" ? "ravelgo-users" : `ravelgo-users-${envName}`,
       selfSignUpEnabled: true,
       signInAliases: { email: true },
+      ...(email ? { email } : {}),
       autoVerify: { email: true },
       standardAttributes: {
         givenName: { required: true, mutable: true },
@@ -89,5 +121,10 @@ export class AuthStack extends cdk.Stack {
 
     new cdk.CfnOutput(this, "UserPoolId", { value: this.userPool.userPoolId });
     new cdk.CfnOutput(this, "UserPoolClientId", { value: this.userPoolClient.userPoolClientId });
+    new cdk.CfnOutput(this, "EmailSender", {
+      value: sesFromEmail
+        ? `SES <${sesFromEmail}> (region ${sesRegion}) — ensure the identity is verified and the account is out of the SES sandbox`
+        : "COGNITO_DEFAULT — capped at 50 emails/day; set -c sesFromEmail=... to send via SES before launch",
+    });
   }
 }

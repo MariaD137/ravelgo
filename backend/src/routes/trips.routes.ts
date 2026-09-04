@@ -8,22 +8,26 @@ import { matchDriverToTrip } from "../services/matching";
 import { quoteFare } from "../services/pricing";
 import { MAX_FINAL_FARE_MULTIPLIER, MIN_FINAL_FARE_MULTIPLIER, moneyAmountSchema } from "../lib/money";
 import { sensitiveLimiter } from "../middleware/rate-limit";
+import { estimateDurationMinutes, haversineKm, isValidCoordinate, MAX_TRIP_DISTANCE_KM } from "../lib/geo";
+import { driverMayTransition, isValidTransition, riderMayCancel } from "../services/trip-status";
+import { serializeTrip } from "../lib/trip-view";
 
 export const tripsRouter = Router();
 
-// The rider supplies the trip inputs (distance/duration/zone) — NOT the fare.
-// The fare is computed server-side from the active PricingRule (see
-// services/pricing.ts), so a client cannot assert `estimatedFare: 1` (or any
-// other value) and have the backend treat it as the agreed price. Distance
-// and duration are still client-provided in this MVP because there is no
-// routing/geocoding service yet — that is an honest limitation, but the RATE
-// applied to them is authoritative and admin-controlled, and baseFare acts as
-// a floor even if the client claims a zero-distance trip.
+// The rider supplies pickup + dropoff COORDINATES (and display strings) — never
+// the distance or the fare. The server computes the great-circle distance from
+// the coordinates (lib/geo.ts) and the fare from the active PricingRule
+// (services/pricing.ts), so a client can neither assert `estimatedFare: 1` nor
+// post `distanceKm: 0` to collapse the fare (P0 #10). `distanceKm`/`duration`
+// in the body, if present, are ignored.
+const coord = z.number().finite();
 const createTripSchema = z.object({
   pickup: z.string().min(1),
   destination: z.string().min(1),
-  distanceKm: z.number().finite().nonnegative().max(2000),
-  durationMinutes: z.number().finite().nonnegative().max(1440),
+  pickupLat: coord.min(-90).max(90),
+  pickupLng: coord.min(-180).max(180),
+  dropoffLat: coord.min(-90).max(90),
+  dropoffLng: coord.min(-180).max(180),
   zone: z.string().min(1).optional(),
   category: z.string().default("Personal"),
   pickupNote: z.string().optional(),
@@ -34,13 +38,27 @@ tripsRouter.post("/trips", sensitiveLimiter, requireAuth, requireRole("Rider"), 
   const parsed = createTripSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+  const { pickupLat, pickupLng, dropoffLat, dropoffLng } = parsed.data;
+  const from = { lat: pickupLat, lng: pickupLng };
+  const to = { lat: dropoffLat, lng: dropoffLng };
+  if (!isValidCoordinate(from) || !isValidCoordinate(to)) {
+    return res.status(400).json({ error: "Invalid pickup or dropoff coordinates" });
+  }
+
+  // Authoritative distance + duration, computed server-side from coordinates.
+  const distanceKm = haversineKm(from, to);
+  if (distanceKm > MAX_TRIP_DISTANCE_KM) {
+    return res.status(400).json({ error: "Trip distance exceeds the serviceable maximum" });
+  }
+  const durationMinutes = estimateDurationMinutes(distanceKm);
+
   const rider = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
   if (!rider) return res.status(404).json({ error: "Rider not found" });
 
   // Authoritative fare — never taken from the request body.
   let fare;
   try {
-    fare = await quoteFare(parsed.data.distanceKm, parsed.data.durationMinutes, parsed.data.zone);
+    fare = await quoteFare(distanceKm, durationMinutes, parsed.data.zone);
   } catch (err) {
     return next(err); // 409 when no active pricing rule is configured
   }
@@ -49,6 +67,11 @@ tripsRouter.post("/trips", sensitiveLimiter, requireAuth, requireRole("Rider"), 
     data: {
       pickup: parsed.data.pickup,
       destination: parsed.data.destination,
+      pickupLat,
+      pickupLng,
+      dropoffLat,
+      dropoffLng,
+      distanceKm,
       category: parsed.data.category,
       pickupNote: parsed.data.pickupNote,
       estimatedFare: fare.estimatedFare,
@@ -57,7 +80,7 @@ tripsRouter.post("/trips", sensitiveLimiter, requireAuth, requireRole("Rider"), 
   });
 
   const matched = await matchDriverToTrip(trip.id);
-  res.status(201).json(matched ?? trip);
+  res.status(201).json(serializeTrip(matched ?? trip));
 });
 
 // Rider or Driver: list the trips I'm party to (as the rider, or as the
@@ -86,7 +109,7 @@ tripsRouter.get("/trips/mine", requireAuth, async (req, res) => {
     }),
     prisma.trip.count({ where }),
   ]);
-  res.json(paginate(trips, total, page, pageSize));
+  res.json(paginate(trips.map(serializeTrip), total, page, pageSize));
 });
 
 const rateSchema = z.object({
@@ -149,7 +172,7 @@ tripsRouter.get("/trips/:id", requireAuth, async (req, res) => {
   if (!isOwner && !groups.includes("Admin")) {
     return res.status(403).json({ error: "Not authorized to view this trip" });
   }
-  res.json(trip);
+  res.json(serializeTrip(trip));
 });
 
 const updateStatusSchema = z.object({
@@ -171,6 +194,24 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
     if (!driver || existing.driverId !== driver.id) {
       return res.status(403).json({ error: "Not authorized to update this trip" });
     }
+  }
+
+  // Enforce the state machine (P0 #9): the backend is authoritative about which
+  // status can follow which. This blocks REQUESTED→COMPLETED (billing a trip
+  // never driven), COMPLETED→IN_PROGRESS (resurrecting a finished trip), and
+  // reviving a CANCELLED trip. Admins are still bounded by the matrix but may
+  // drive dispute transitions a driver cannot.
+  if (!isValidTransition(existing.status, parsed.data.status)) {
+    return res.status(409).json({
+      error: {
+        code: "INVALID_TRIP_TRANSITION",
+        message: `Cannot move a trip from ${existing.status} to ${parsed.data.status}`,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
+  if (!isAdmin && !driverMayTransition(existing.status, parsed.data.status)) {
+    return res.status(403).json({ error: "A driver may not perform this trip transition" });
   }
 
   // The final fare is what actually gets charged (payments.routes.ts) and
@@ -200,9 +241,43 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
       finalFare: parsed.data.finalFare,
       completedAt: parsed.data.status === "COMPLETED" ? new Date() : undefined,
     },
+    include: { rider: true, driver: { include: { user: true, vehicles: true } } },
   });
   broadcastTripStatus(trip.id, trip.status, trip.finalFare);
-  res.json(trip);
+  res.json(serializeTrip(trip));
+});
+
+// Rider: cancel a trip they own, before it is under way (P0 #7). The rider app
+// used to only navigate home — the trip stayed live and a driver could still
+// be dispatched to someone who believed they had cancelled. This is the
+// authoritative, ownership-checked cancel path; the status-PATCH route above
+// stays Driver/Admin-only.
+tripsRouter.post("/trips/:id/cancel", requireAuth, requireRole("Rider"), async (req, res) => {
+  const existing = await prisma.trip.findUnique({
+    where: { id: req.params.id },
+    include: { rider: true },
+  });
+  if (!existing) return res.status(404).json({ error: "Trip not found" });
+  if (existing.rider.cognitoSub !== req.user!.sub) {
+    return res.status(403).json({ error: "Not authorized to cancel this trip" });
+  }
+  if (!riderMayCancel(existing.status)) {
+    return res.status(409).json({
+      error: {
+        code: "TRIP_NOT_CANCELLABLE",
+        message: `A ${existing.status} trip can no longer be cancelled`,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
+
+  const trip = await prisma.trip.update({
+    where: { id: existing.id },
+    data: { status: "CANCELLED" },
+    include: { rider: true, driver: { include: { user: true, vehicles: true } } },
+  });
+  broadcastTripStatus(trip.id, trip.status, trip.finalFare);
+  res.json(serializeTrip(trip));
 });
 
 // Rider or Driver: poll the assigned driver's last known location (a
@@ -244,5 +319,5 @@ tripsRouter.get("/trips", requireAuth, requireRole("Admin"), async (req, res) =>
     }),
     prisma.trip.count(),
   ]);
-  res.json(paginate(trips, total, page, pageSize));
+  res.json(paginate(trips.map(serializeTrip), total, page, pageSize));
 });

@@ -30,8 +30,13 @@ export async function matchDriverToTrip(tripId: string) {
   });
   if (!driver) return null;
 
+  // Include the driver relation on the returned trip so the rider's "driver
+  // found" card can render immediately (P0 #8). Without this include the
+  // create response carried no driver, so the rider app stayed on the
+  // "looking for a driver" spinner even though one was already assigned.
   return prisma.trip.update({
     where: { id: tripId },
     data: { driverId: driver.id, status: "MATCHED" },
+    include: { rider: true, driver: { include: { user: true, vehicles: true } } },
   });
 }

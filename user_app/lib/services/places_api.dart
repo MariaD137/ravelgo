@@ -66,4 +66,20 @@ class PlacesApi {
     final address = (data as Map<String, dynamic>)['address'];
     return address == null ? null : address.toString();
   }
+
+  /// Forward-geocode a typed address into coordinates. Returns null when the
+  /// backend found no match. This is what keeps booking possible when the
+  /// device gives us no pin — location permission denied, or the map failed to
+  /// load — since the trip API prices from coordinates.
+  static Future<PlaceLocation?> forwardGeocode(String address) async {
+    final q = address.trim();
+    if (q.isEmpty) return null;
+    try {
+      final data = await ApiClient.get('/api/geocode/forward?q=${Uri.encodeQueryComponent(q)}');
+      return PlaceLocation.fromJson(data as Map<String, dynamic>);
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null; // no match — caller decides what to do
+      rethrow;
+    }
+  }
 }

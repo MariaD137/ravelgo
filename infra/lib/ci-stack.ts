@@ -25,13 +25,22 @@ export class CiStack extends cdk.Stack {
       clientIds: ["sts.amazonaws.com"],
     });
 
-    const subject = `repo:${props.githubOrg}/${props.githubRepo}:ref:refs/heads/${props.githubBranch}`;
+    // Two subject forms, because the token's `sub` claim depends on how the
+    // workflow job is written: a plain job presents `...:ref:refs/heads/<branch>`,
+    // but a job that declares `environment: production` (as
+    // backend-deploy.yml does) presents `...:environment:production` instead.
+    // Allowing only the branch form would reject the real deploy job at
+    // AssumeRoleWithWebIdentity time.
+    const subjects = [
+      `repo:${props.githubOrg}/${props.githubRepo}:ref:refs/heads/${props.githubBranch}`,
+      `repo:${props.githubOrg}/${props.githubRepo}:environment:production`,
+    ];
 
     const deployRole = new iam.Role(this, "GitHubActionsDeployRole", {
       roleName: "ravelgo-github-actions-deploy",
       assumedBy: new iam.WebIdentityPrincipal(provider.openIdConnectProviderArn, {
         StringEquals: { "token.actions.githubusercontent.com:aud": "sts.amazonaws.com" },
-        StringLike: { "token.actions.githubusercontent.com:sub": subject },
+        StringLike: { "token.actions.githubusercontent.com:sub": subjects },
       }),
       description: `Assumed by GitHub Actions on ${props.githubOrg}/${props.githubRepo}@${props.githubBranch} to deploy the backend`,
       maxSessionDuration: cdk.Duration.hours(1),

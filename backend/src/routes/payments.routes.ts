@@ -3,12 +3,19 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
-import { stripeClient } from "../billing/stripe";
-import { MAX_MONEY_AMOUNT, toCents } from "../lib/money";
 import { sensitiveLimiter } from "../middleware/rate-limit";
-import { debitWalletForRide, InsufficientFundsError } from "../services/wallet";
+import { AlreadyChargedError, InsufficientFundsError } from "../services/wallet";
+import { settleTripPayment, TripNotChargeableError } from "../services/trip-payment";
 
 export const paymentsRouter = Router();
+
+/** Map the settlement service's typed errors to HTTP; rethrow anything else. */
+function respondToSettleError(res: import("express").Response, err: unknown, next: import("express").NextFunction) {
+  if (err instanceof InsufficientFundsError) return res.status(402).json({ error: "Insufficient wallet balance" });
+  if (err instanceof AlreadyChargedError) return res.status(409).json({ error: "Trip has already been charged" });
+  if (err instanceof TripNotChargeableError) return res.status(409).json({ error: err.message });
+  return next(err);
+}
 
 // Cash is intentionally NOT a payment method: with cash the rider hands money
 // straight to the driver, RavelGo never touches it, and the platform can't
@@ -30,67 +37,48 @@ paymentsRouter.post("/trips/:id/charge", sensitiveLimiter, requireAuth, requireR
 
   const trip = await prisma.trip.findUnique({ where: { id: req.params.id }, include: { driver: { include: { user: true } } } });
   if (!trip) return res.status(404).json({ error: "Trip not found" });
-  if (trip.status !== "COMPLETED" || trip.finalFare == null) {
-    return res.status(409).json({ error: "Trip must be COMPLETED with a finalFare before it can be charged" });
-  }
-  // Defense in depth: finalFare is already bounded when written (trips.routes.ts),
-  // but this is the exact value that becomes a real charge, so re-check it here
-  // rather than trusting that every write path stayed in range.
-  if (!Number.isFinite(trip.finalFare) || trip.finalFare <= 0 || trip.finalFare > MAX_MONEY_AMOUNT) {
-    return res.status(409).json({ error: "Trip finalFare is outside the chargeable range" });
-  }
 
   const isAdmin = req.user!.groups.includes("Admin");
   if (!isAdmin && trip.driver?.user.cognitoSub !== req.user!.sub) {
     return res.status(403).json({ error: "Not authorized to charge this trip" });
   }
 
-  const existing = await prisma.payment.findUnique({ where: { tripId: trip.id } });
-  if (existing) return res.status(409).json({ error: "Trip has already been charged" });
-
-  if (parsed.data.method === "CARD") {
-    const intent = await stripeClient.paymentIntents.create({
-      amount: toCents(trip.finalFare),
-      currency: "usd",
-      metadata: { tripId: trip.id },
-    });
-    const payment = await prisma.payment.create({
-      data: {
-        tripId: trip.id,
-        userId: trip.riderId,
-        amount: trip.finalFare,
-        method: "CARD",
-        status: "PENDING",
-        providerReference: intent.id,
-      },
-    });
-    return res.status(201).json({ ...payment, clientSecret: intent.client_secret });
+  try {
+    const { payment, clientSecret } = await settleTripPayment(trip, parsed.data.method);
+    return res.status(201).json(clientSecret ? { ...(payment as object), clientSecret } : payment);
+  } catch (err) {
+    return respondToSettleError(res, err, next);
   }
+});
 
-  // WALLET: the rider must have a funded wallet with sufficient balance.
-  const wallet = await prisma.walletAccount.findUnique({ where: { userId: trip.riderId } });
-  if (!wallet) return res.status(409).json({ error: "Rider has no wallet; top up before paying by wallet" });
+// Rider (who owns the trip): pay for my OWN completed trip (P0 #1). This is the
+// rider-initiated payment path — the driver-charge route above is one way a
+// trip gets settled, this is the other. Same server-authoritative amount
+// (trip.finalFare), same one-Payment-per-trip guarantee, so the two paths can
+// never double-charge: whichever settles first wins and the other gets 409.
+// CARD returns a Stripe clientSecret for the rider to confirm in the app's
+// PaymentSheet; WALLET debits the rider's own prepaid balance immediately.
+paymentsRouter.post("/trips/:id/pay", sensitiveLimiter, requireAuth, async (req, res, next) => {
+  const parsed = chargeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const user = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
+  if (!user) return res.status(404).json({ error: "User profile not found" });
+
+  const trip = await prisma.trip.findUnique({ where: { id: req.params.id } });
+  if (!trip) return res.status(404).json({ error: "Trip not found" });
+
+  // Ownership: a rider may only pay for their own trip.
+  if (trip.riderId !== user.id) {
+    return res.status(403).json({ error: "Not authorized to pay for this trip" });
+  }
 
   try {
-    await debitWalletForRide(wallet.id, toCents(trip.finalFare), trip.id);
+    const { payment, clientSecret } = await settleTripPayment(trip, parsed.data.method);
+    return res.status(201).json(clientSecret ? { ...(payment as object), clientSecret } : payment);
   } catch (err) {
-    if (err instanceof InsufficientFundsError) {
-      return res.status(402).json({ error: "Insufficient wallet balance" });
-    }
-    return next(err);
+    return respondToSettleError(res, err, next);
   }
-
-  const payment = await prisma.payment.create({
-    data: {
-      tripId: trip.id,
-      userId: trip.riderId,
-      amount: trip.finalFare,
-      method: "WALLET",
-      status: "SUCCEEDED",
-      paidAt: new Date(),
-    },
-  });
-  res.status(201).json(payment);
 });
 
 // Rider (who owns the payment) or Admin: a receipt for a charged trip

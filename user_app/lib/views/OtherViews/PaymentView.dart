@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/Model/app_state.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
+import 'package:ravelgo_user_app/services/stripe_service.dart';
 import 'package:ravelgo_user_app/services/wallet_api.dart';
 import 'package:ravelgo_user_app/views/OtherViews/AddPaymentMethodScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
@@ -64,6 +66,70 @@ class _PaymentScreenState extends State<PaymentView> {
       MaterialPageRoute(builder: (context) => const AddPaymentMethodScreen()),
     );
     if (mounted) setState(() {});
+  }
+
+  bool _toppingUp = false;
+
+  /// Add funds to the RavelGo wallet: the backend starts a real Stripe
+  /// PaymentIntent, and the rider confirms it in the PaymentSheet. The balance
+  /// is credited by the signed webhook once Stripe settles, so we reload after
+  /// (it may take a moment) rather than assuming the money landed.
+  Future<void> _topUp() async {
+    if (!StripeService.isConfigured) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Card payments are not configured yet.')),
+      );
+      return;
+    }
+    final amount = await _askAmount();
+    if (amount == null) return;
+    setState(() => _toppingUp = true);
+    try {
+      final clientSecret = await WalletApi.startTopUp(amount);
+      await StripeService.presentPaymentSheet(clientSecret: clientSecret);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Payment received. Your balance will update shortly.')),
+      );
+      await _loadWallet();
+    } on StripeException catch (_) {
+      // Rider cancelled or the sheet failed — nothing was charged.
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e is ApiException ? e.message : e.toString();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } finally {
+      if (mounted) setState(() => _toppingUp = false);
+    }
+  }
+
+  Future<double?> _askAmount() async {
+    final ctrl = TextEditingController();
+    return showDialog<double>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add funds'),
+        content: TextField(
+          controller: ctrl,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(prefixText: '${Currency.symbol} ', hintText: 'Amount', border: const OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              final v = double.tryParse(ctrl.text.trim());
+              if (v == null || v <= 0) {
+                Navigator.pop(context);
+              } else {
+                Navigator.pop(context, v);
+              }
+            },
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -247,6 +313,21 @@ class _PaymentScreenState extends State<PaymentView> {
               style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold),
             ),
           if (!_walletLoading && _walletError == null) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _toppingUp ? null : _topUp,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: AppColors.primaryDark,
+                ),
+                icon: _toppingUp
+                    ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.add),
+                label: Text(_toppingUp ? 'Starting…' : 'Add funds'),
+              ),
+            ),
             const Divider(color: Colors.white24, height: 28),
             const Text('Recent activity', style: TextStyle(color: Colors.white70, fontSize: 13)),
             const SizedBox(height: 6),

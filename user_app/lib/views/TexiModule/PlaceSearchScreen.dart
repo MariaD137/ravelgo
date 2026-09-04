@@ -11,7 +11,8 @@ import 'package:ravelgo_user_app/theme/app_theme.dart';
 /// send to the backend, not just a name string.
 class PlaceSearchScreen extends StatefulWidget {
   final String title;
-  const PlaceSearchScreen({super.key, this.title = 'Where to?'});
+  final String hint;
+  const PlaceSearchScreen({super.key, this.title = 'Where to?', this.hint = 'Search for a destination'});
 
   @override
   State<PlaceSearchScreen> createState() => _PlaceSearchScreenState();
@@ -115,8 +116,8 @@ class _PlaceSearchScreenState extends State<PlaceSearchScreen> {
                       controller: _controller,
                       autofocus: true,
                       onChanged: _onChanged,
-                      decoration: const InputDecoration(
-                        hintText: 'Search for a destination',
+                      decoration: InputDecoration(
+                        hintText: widget.hint,
                         border: InputBorder.none,
                       ),
                     ),

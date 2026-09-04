@@ -12,6 +12,9 @@ class Trip {
   final DateTime requestedAt;
   final DateTime? completedAt;
   final String? driverName;
+  final double? driverRating;
+  final String? vehicleLabel; // e.g. "Silver Toyota Corolla"
+  final String? vehiclePlate;
 
   Trip({
     required this.id,
@@ -24,6 +27,9 @@ class Trip {
     required this.requestedAt,
     required this.completedAt,
     required this.driverName,
+    this.driverRating,
+    this.vehicleLabel,
+    this.vehiclePlate,
   });
 
   /// The amount actually owed: the final fare once set, otherwise the estimate.
@@ -37,14 +43,29 @@ class Trip {
 
   factory Trip.fromJson(Map<String, dynamic> j) {
     String? driverName;
+    double? driverRating;
+    String? vehicleLabel;
+    String? vehiclePlate;
     final driver = j['driver'];
-    if (driver is Map && driver['user'] is Map) {
-      final u = driver['user'] as Map;
-      driverName = [u['firstName'], u['lastName']]
-          .where((e) => e != null && '$e'.trim().isNotEmpty)
-          .join(' ')
-          .trim();
-      if (driverName.isEmpty) driverName = null;
+    if (driver is Map) {
+      if (driver['user'] is Map) {
+        final u = driver['user'] as Map;
+        driverName = [u['firstName'], u['lastName']]
+            .where((e) => e != null && '$e'.trim().isNotEmpty)
+            .join(' ')
+            .trim();
+        if (driverName.isEmpty) driverName = null;
+      }
+      if (driver['rating'] != null) driverRating = _toDouble(driver['rating']);
+      final v = driver['vehicle'];
+      if (v is Map) {
+        vehicleLabel = [v['color'], v['make'], v['model']]
+            .where((e) => e != null && '$e'.trim().isNotEmpty)
+            .join(' ')
+            .trim();
+        if (vehicleLabel.isEmpty) vehicleLabel = null;
+        vehiclePlate = v['plateNumber']?.toString();
+      }
     }
     return Trip(
       id: '${j['id']}',
@@ -57,6 +78,9 @@ class Trip {
       requestedAt: _toDate(j['requestedAt']),
       completedAt: j['completedAt'] == null ? null : _toDate(j['completedAt']),
       driverName: driverName,
+      driverRating: driverRating,
+      vehicleLabel: vehicleLabel,
+      vehiclePlate: vehiclePlate,
     );
   }
 }

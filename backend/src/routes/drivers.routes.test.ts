@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, restoreAuth, resetDb, mockCognitoAddToGroup } from "../test/helpers";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -12,6 +12,78 @@ afterEach(() => {
 after(async () => {
   await resetDb();
   await prisma.$disconnect();
+});
+
+// P0 #2 — server-authoritative driver onboarding. The Driver role is granted
+// by the SERVER (Cognito AdminAddUserToGroup), never self-assigned by a client.
+
+test("POST /api/drivers/apply lets any authenticated user apply and grants the Driver group server-side", async () => {
+  // A plain signed-up user — only in the Rider group, NOT already a Driver.
+  const token = mockAuthAs({ sub: "applicant-1", groups: ["Rider"] });
+  const addToGroup = mockCognitoAddToGroup();
+
+  const res = await request(app)
+    .post("/api/drivers/apply")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "Ada", lastName: "N", email: "ada@example.com" });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.status, "PENDING_REVIEW");
+
+  // The role grant went through the SERVER, with the caller's sub + Driver group.
+  assert.equal(addToGroup.mock.callCount(), 1);
+  assert.deepEqual(addToGroup.mock.calls[0].arguments, ["applicant-1", "Driver"]);
+
+  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: "applicant-1" } } });
+  assert.ok(driver);
+});
+
+test("POST /api/drivers/apply requires authentication", async () => {
+  const res = await request(app)
+    .post("/api/drivers/apply")
+    .send({ firstName: "No", lastName: "Auth", email: "noauth@example.com" });
+  assert.equal(res.status, 401);
+});
+
+test("POST /api/drivers/apply is idempotent — re-applying returns the existing profile, no duplicate", async () => {
+  const token = mockAuthAs({ sub: "applicant-2", groups: ["Rider"] });
+  mockCognitoAddToGroup();
+
+  const first = await request(app)
+    .post("/api/drivers/apply")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "Rex", lastName: "T", email: "rex@example.com" });
+  assert.equal(first.status, 201);
+
+  const second = await request(app)
+    .post("/api/drivers/apply")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "Rex", lastName: "T", email: "rex@example.com" });
+  assert.equal(second.status, 200);
+  assert.equal(second.body.id, first.body.id);
+
+  const count = await prisma.driver.count({ where: { user: { cognitoSub: "applicant-2" } } });
+  assert.equal(count, 1);
+});
+
+test("POST /api/drivers/apply does NOT report success when the Cognito group grant fails", async () => {
+  const token = mockAuthAs({ sub: "applicant-3", groups: ["Rider"] });
+  mockCognitoAddToGroup({ shouldThrow: true });
+
+  const res = await request(app)
+    .post("/api/drivers/apply")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "Fai", lastName: "L", email: "fail@example.com" });
+
+  // The role never took effect, so the caller must not be told it worked.
+  assert.equal(res.status, 502);
+});
+
+test("POST /api/drivers/apply is server-authoritative — a rider cannot reach Driver-only routes without it", async () => {
+  // Before applying, a Rider-group token is rejected by a Driver-only route.
+  const token = mockAuthAs({ sub: "applicant-4", groups: ["Rider"] });
+  const blocked = await request(app).get("/api/drivers/me").set("Authorization", `Bearer ${token}`);
+  assert.equal(blocked.status, 403);
 });
 
 test("POST /api/drivers/me creates a user + driver profile together", async () => {

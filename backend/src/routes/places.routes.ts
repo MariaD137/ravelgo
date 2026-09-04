@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "../middleware/auth";
 import { placesLimiter } from "../middleware/rate-limit";
 import { formatZodError } from "../lib/errors";
-import { autocomplete, details, reverseGeocode } from "../services/places";
+import { autocomplete, details, forwardGeocode, reverseGeocode } from "../services/places";
 
 export const placesRouter = Router();
 
@@ -60,6 +60,24 @@ placesRouter.get("/geocode/reverse", placesLimiter, requireAuth, async (req, res
     if (!parsed.success) throw formatZodError(parsed.error);
     const place = await reverseGeocode(parsed.data.lat, parsed.data.lng);
     if (!place) return res.json({ address: null, lat: parsed.data.lat, lng: parsed.data.lng });
+    res.json(place);
+  } catch (err) {
+    next(err);
+  }
+});
+
+const forwardSchema = z.object({ q: z.string().min(1, "q is required").max(200) });
+
+// Forward-geocode a typed address into coordinates. This is the fallback the
+// rider app uses when it has no pickup/dropoff pin (location permission denied,
+// or the map failed to load) — the trip API needs coordinates, so without this
+// booking would be impossible rather than merely less precise.
+placesRouter.get("/geocode/forward", placesLimiter, requireAuth, async (req, res, next) => {
+  try {
+    const parsed = forwardSchema.safeParse(req.query);
+    if (!parsed.success) throw formatZodError(parsed.error);
+    const place = await forwardGeocode(parsed.data.q);
+    if (!place) return res.status(404).json({ error: "No match for that address" });
     res.json(place);
   } catch (err) {
     next(err);

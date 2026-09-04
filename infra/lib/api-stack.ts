@@ -99,6 +99,26 @@ export class ApiStack extends cdk.Stack {
     props.documentsBucket.grantReadWrite(instanceRole);
     props.assetsBucket.grantReadWrite(instanceRole);
 
+    // Server-authoritative driver onboarding (P0 #2): the backend adds a user
+    // to the Cognito "Driver" group on its own IAM role — the client never
+    // touches group membership. Scope this to AdminAddUserToGroup on THIS pool
+    // only (not a wildcard), so a compromised container can grant the Driver
+    // role but cannot create/delete users, reset passwords, or touch any other
+    // pool. Approving a driver to ACTIVE (the step that enables earning) is a
+    // separate admin action, so this permission alone confers no ability to pay
+    // out to a self-created account.
+    const userPoolArn = cdk.Stack.of(this).formatArn({
+      service: "cognito-idp",
+      resource: "userpool",
+      resourceName: props.cognitoUserPoolId,
+    });
+    instanceRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ["cognito-idp:AdminAddUserToGroup"],
+        resources: [userPoolArn],
+      }),
+    );
+
     const dbSecretArn = props.dbInstance.secret!.secretArn;
 
     // Placeholder values — CDK can't know your real Stripe keys, and they

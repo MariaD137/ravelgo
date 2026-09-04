@@ -74,14 +74,17 @@ class BookingApi {
     return FareQuote.fromJson(data as Map<String, dynamic>);
   }
 
-  /// Request a trip. The backend computes the authoritative fare and tries to
-  /// match an available driver, returning the created (and possibly MATCHED)
-  /// trip.
+  /// Request a trip. Pickup + dropoff COORDINATES are sent (not a distance):
+  /// the backend computes the authoritative distance and fare from them and
+  /// tries to match an available driver, returning the created (and possibly
+  /// MATCHED) trip. A client-asserted distance is neither sent nor trusted.
   static Future<Trip> requestTrip({
     required String pickup,
     required String destination,
-    required double distanceKm,
-    required double durationMinutes,
+    required double pickupLat,
+    required double pickupLng,
+    required double dropoffLat,
+    required double dropoffLng,
     String category = 'Personal',
     String? zone,
     String? pickupNote,
@@ -89,12 +92,20 @@ class BookingApi {
     final data = await ApiClient.post('/api/trips', {
       'pickup': pickup,
       'destination': destination,
-      'distanceKm': distanceKm,
-      'durationMinutes': durationMinutes,
+      'pickupLat': pickupLat,
+      'pickupLng': pickupLng,
+      'dropoffLat': dropoffLat,
+      'dropoffLng': dropoffLng,
       'category': category,
       if (zone != null && zone.isNotEmpty) 'zone': zone,
       if (pickupNote != null && pickupNote.isNotEmpty) 'pickupNote': pickupNote,
     });
     return Trip.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Cancel a trip the rider owns (before it is under way). P0 #7 — this now
+  /// calls the real backend endpoint instead of only navigating home.
+  static Future<void> cancelTrip(String tripId) async {
+    await ApiClient.post('/api/trips/$tripId/cancel');
   }
 }

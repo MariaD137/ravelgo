@@ -40,7 +40,7 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
     }
 
     if (prismaErr.code === "P2025") {
-      // Record not found
+      // Record not found (e.g. update/delete of a row that doesn't exist)
       const response: ErrorResponse = {
         error: {
           code: ErrorCodes.NOT_FOUND,
@@ -49,6 +49,20 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
         },
       };
       return res.status(404).json(response);
+    }
+
+    if (prismaErr.code === "P2003") {
+      // Foreign-key constraint violation — a referenced record is missing, or
+      // a still-referenced record was being removed. The client's request
+      // referenced something invalid; never echo the raw constraint name.
+      const response: ErrorResponse = {
+        error: {
+          code: ErrorCodes.CONFLICT,
+          message: "Operation references a record that does not exist or is still in use",
+          timestamp: new Date().toISOString(),
+        },
+      };
+      return res.status(409).json(response);
     }
 
     // Other Prisma errors

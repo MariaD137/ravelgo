@@ -2,7 +2,35 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+/**
+ * Refuse to run against anything that looks like production (P0 #14). This seed
+ * creates an ACTIVE, online, matchable driver and a wallet with a real
+ * spendable balance — harmless demo data in dev/test, dangerous in prod
+ * (a real rider could be matched to a ghost driver, and un-funded money could
+ * be spent on rides). Guard requires BOTH:
+ *   - NODE_ENV must not be "production", and
+ *   - ALLOW_DEMO_SEED=true must be set explicitly.
+ * so no single misconfigured env var can seed a production database.
+ */
+function assertSeedingAllowed(): void {
+  const nodeEnv = process.env.NODE_ENV;
+  if (nodeEnv === "production") {
+    throw new Error("Refusing to seed: NODE_ENV=production. Demo seed data must never touch production.");
+  }
+  if (process.env.ALLOW_DEMO_SEED !== "true") {
+    throw new Error(
+      "Refusing to seed: set ALLOW_DEMO_SEED=true to confirm this is a development/test database. " +
+        "This seed creates a matchable demo driver and a funded wallet and must never run against real data.",
+    );
+  }
+  const url = process.env.DATABASE_URL ?? "";
+  if (/\b(prod|production)\b/i.test(url)) {
+    throw new Error(`Refusing to seed: DATABASE_URL looks production-like (${url.replace(/:\/\/.*@/, "://***@")}).`);
+  }
+}
+
 async function main() {
+  assertSeedingAllowed();
   console.log("Seeding...");
 
   const rider = await prisma.user.upsert({

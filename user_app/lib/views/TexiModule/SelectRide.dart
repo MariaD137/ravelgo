@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/LocationService.dart';
 import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
+import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/booking_api.dart';
 import 'package:ravelgo_user_app/services/places_api.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
@@ -30,14 +31,10 @@ class _SelectRideState extends State<SelectRide> {
   // RavelGo wallet, both handled by the backend so the platform can take its
   // commission and pay the driver.
   String _paymentMethod = 'Card';
-  DateTime? _scheduledFor;
-  // Which ride tier the rider has selected; drives the highlighted card and the
-  // CTA label so all tiers are actually pickable, not just a fixed default.
-  String _selectedRide = 'Just ride';
 
-  // Real trip geometry: pickup = device location, destination = either an
+  // Real trip geometry: pickup defaults to the device's location but the rider
+  // can always override it by search (below) — destination is either an
   // address the rider searches (Places proxy) or a pin they tap on the map.
-  // The straight-line distance between them prices the trip.
   LatLng? _pickupLatLng;
   LatLng? _destLatLng;
   double? _distanceKm;
@@ -45,6 +42,22 @@ class _SelectRideState extends State<SelectRide> {
   // the trip's pickup/destination. Reverse-geocoded from coordinates.
   String? _pickupLabel;
   String? _destLabel;
+
+  // True while the device's location is still being attempted, so we know
+  // when to offer "Set pickup manually" instead of leaving the rider staring
+  // at "Locating you…" forever (P0: booking dead-end when geolocation is
+  // denied/unavailable — the only prior way to set pickup at all).
+  bool _locatingPickup = true;
+
+  // The real backend-computed fare for this trip, loaded once both pickup and
+  // destination coordinates are known. There is only one fare per trip on the
+  // backend today (a single active PricingRule) — no per-tier rate cards — so
+  // this screen shows exactly one real, trustworthy price rather than
+  // fabricated tier prices that would just be overwritten by the real one on
+  // the next screen.
+  FareQuote? _quote;
+  String? _quoteError;
+  bool _quoteLoading = false;
 
   @override
   void initState() {
@@ -61,11 +74,19 @@ class _SelectRideState extends State<SelectRide> {
 
   Future<void> _initPickup() async {
     final position = await LocationService.getCurrentLocation();
-    if (position == null || !mounted) return;
+    if (!mounted) return;
+    if (position == null) {
+      // Geolocation denied/unavailable/timed out: don't leave the rider on a
+      // permanently stuck "Locating you…" with no way forward. They can still
+      // set pickup by search, exactly like they do for the destination.
+      setState(() => _locatingPickup = false);
+      return;
+    }
     final me = LatLng(position.latitude, position.longitude);
     setState(() {
       _pickupLatLng = me;
-      _recompute();
+      _locatingPickup = false;
+      _recomputeAndQuote();
     });
     mapController?.animateCamera(CameraUpdate.newLatLng(me));
     _resolvePickupLabel(me);
@@ -84,12 +105,64 @@ class _SelectRideState extends State<SelectRide> {
     if (mounted) setState(() => _pickupLabel = label);
   }
 
-  void _recompute() {
+  /// Let the rider set pickup by search — the fallback when the device has no
+  /// location (permission denied, unavailable, or they simply want to start
+  /// from somewhere else). Reuses the same Places-backed search as destination.
+  Future<void> _openPickupSearch() async {
+    final place = await Navigator.of(context).push<PlaceLocation>(
+      MaterialPageRoute(
+        builder: (_) => const PlaceSearchScreen(title: 'Pickup location', hint: 'Search for a pickup address'),
+      ),
+    );
+    if (place == null || !mounted) return;
+    final pt = LatLng(place.lat, place.lng);
+    setState(() {
+      _pickupLatLng = pt;
+      _pickupLabel = place.address;
+      _recomputeAndQuote();
+    });
+    mapController?.animateCamera(CameraUpdate.newLatLng(pt));
+  }
+
+  void _recomputeAndQuote() {
     final from = _pickupLatLng;
     final to = _destLatLng;
     _distanceKm = (from == null || to == null)
         ? null
         : BookingApi.distanceKm(from.latitude, from.longitude, to.latitude, to.longitude);
+    if (_distanceKm != null) {
+      _loadQuote();
+    } else {
+      setState(() {
+        _quote = null;
+        _quoteError = null;
+      });
+    }
+  }
+
+  Future<void> _loadQuote() async {
+    final km = _distanceKm;
+    if (km == null) return;
+    setState(() {
+      _quoteLoading = true;
+      _quoteError = null;
+    });
+    try {
+      final q = await BookingApi.quote(distanceKm: km, durationMinutes: BookingApi.estimatedMinutes(km));
+      if (!mounted) return;
+      setState(() {
+        _quote = q;
+        _quoteLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _quoteError = e is ApiException && e.statusCode == 409
+            ? 'Pricing isn\'t set up yet — please try later.'
+            : 'Could not get a fare estimate.';
+        _quoteLoading = false;
+      });
+    }
   }
 
   /// Open the address search; on selection, drop the destination and price it.
@@ -102,7 +175,7 @@ class _SelectRideState extends State<SelectRide> {
     setState(() {
       _destLatLng = dest;
       _destLabel = place.address;
-      _recompute();
+      _recomputeAndQuote();
     });
     mapController?.animateCamera(CameraUpdate.newLatLng(dest));
   }
@@ -111,7 +184,7 @@ class _SelectRideState extends State<SelectRide> {
     setState(() {
       _destLatLng = point;
       _destLabel = 'Dropped pin (${point.latitude.toStringAsFixed(4)}, ${point.longitude.toStringAsFixed(4)})';
-      _recompute();
+      _recomputeAndQuote();
     });
     // Try to upgrade the pin label to a real address in the background.
     _resolveDestLabel(point);
@@ -162,7 +235,7 @@ class _SelectRideState extends State<SelectRide> {
     final me = LatLng(position.latitude, position.longitude);
     setState(() {
       _pickupLatLng = me;
-      _recompute();
+      _recomputeAndQuote();
     });
     mapController!.animateCamera(CameraUpdate.newLatLng(me));
     _resolvePickupLabel(me);
@@ -193,28 +266,6 @@ class _SelectRideState extends State<SelectRide> {
       ),
     );
     if (result != null) setState(() => _paymentMethod = result);
-  }
-
-  /// Schedule this ride for later (LOCAL STATE ONLY until the trips backend
-  /// accepts scheduled requests).
-  Future<void> _scheduleRide() async {
-    final now = DateTime.now();
-    final date = await showDatePicker(
-      context: context,
-      initialDate: now,
-      firstDate: now,
-      lastDate: now.add(const Duration(days: 30)),
-    );
-    if (date == null || !mounted) return;
-    final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
-    if (time == null || !mounted) return;
-    setState(() {
-      _scheduledFor = DateTime(date.year, date.month, date.day, time.hour, time.minute);
-    });
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(
-          'Ride scheduled for ${_scheduledFor!.day}/${_scheduledFor!.month} at ${time.format(context)}'),
-    ));
   }
 
   final LatLng _center = const LatLng(6.6018, 3.3515); // Sample: Lagos
@@ -260,131 +311,91 @@ class _SelectRideState extends State<SelectRide> {
 
           // Bottom draggable sheet
           DraggableScrollableSheet(
-            initialChildSize: 0.35,
-            minChildSize: 0.35,
-            maxChildSize: 0.65,
+            initialChildSize: 0.4,
+            minChildSize: 0.4,
+            maxChildSize: 0.7,
             builder: (_, controller) {
               return Container(
                 decoration: const BoxDecoration(
                   color: AppColors.surface,
                   borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 ),
-                padding: const EdgeInsets.only(left: 12,top: 12,right: 12),
+                padding: const EdgeInsets.only(left: 16, top: 12, right: 16, bottom: 16),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      "Choose a ride",
+                      "Confirm your ride",
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     // From / To summary so the rider can see the pickup that was
-                    // auto-detected and the destination they chose.
+                    // auto-detected (or set manually) and the destination they chose.
                     _buildRouteSummary(),
-                    if (_destLatLng == null)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 4),
-                        child: Text('Search "Where to?" above, or tap the map to drop a pin',
-                            style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                      )
-                    else if (_distanceKm != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text('≈ ${_distanceKm!.toStringAsFixed(1)} km trip',
-                            style: const TextStyle(fontSize: 12, color: AppColors.primaryDark, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 12),
+                    Expanded(child: SingleChildScrollView(controller: controller, child: _buildFareCard())),
+                    const SizedBox(height: 12),
+
+                    // Payment row
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.surface,
+                        foregroundColor: AppColors.textPrimary,
+                        elevation: 0,
+                        side: const BorderSide(color: AppColors.border),
                       ),
-                    Expanded(
-                      child: ListView(
-                        controller: controller,
-                        children: [
-                          rideCard("Just ride", "${Currency.symbol}8,000", "2min", "4",
-                              isSelected: _selectedRide == "Just ride"),
-                          rideCard("EV", "${Currency.symbol}6,000", "2min", "4",
-                              isSelected: _selectedRide == "EV"),
-                          rideCard("Lite", "${Currency.symbol}5,000", "4min", "3",
-                              isSelected: _selectedRide == "Lite"),
-                        ],
-                      ),
+                      icon: const Icon(Icons.credit_card, size: 20),
+                      label: Text(_paymentMethod),
+                      onPressed: _pickPaymentMethod,
                     ),
                     const SizedBox(height: 12),
 
-                    // Payment and Delivery Row
-                    Row(
-                      children: [
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.surface,
-                            foregroundColor: AppColors.textPrimary,
-                            elevation: 0,
-                            side: const BorderSide(color: AppColors.border),
-                          ),
-                          icon: const Icon(Icons.credit_card, size: 20),
-                          label: Text(_paymentMethod),
-                          onPressed: _pickPaymentMethod,
+                    // Main CTA — a real ride, priced by the backend, or a clear
+                    // reason it can't proceed yet (no fake fallback price).
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Container(
-                            height: 48,
-                            decoration: BoxDecoration(
-                              color: AppColors.surfaceElevated,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            child: const Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text("Pick up a delivery"),
-                            ),
-                          ),
-                        ),
-                      ],
+                        onPressed: _canProceed ? _goToFindDriver : null,
+                        child: Text(_ctaLabel, style: const TextStyle(color: AppColors.textPrimary)),
+                      ),
                     ),
-                    const SizedBox(height: 12),
-
-                    // Main CTA
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                            ),
-                            onPressed: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (context) => FindDriverScreen(
-                                    pickup: _pickupLabel,
-                                    destination: _destLabel ?? widget.destination,
-                                    paymentMethod: _paymentMethod,
-                                    distanceKm: _distanceKm,
-                                    durationMinutes:
-                                        _distanceKm == null ? null : BookingApi.estimatedMinutes(_distanceKm!),
-                                  ),
-                                ),
-                              );
-                            },
-                            child: Text("Select $_selectedRide", style: const TextStyle(color: AppColors.textPrimary)),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.textPrimary,
-                            shape: const CircleBorder(),
-                            padding: const EdgeInsets.all(12),
-                          ),
-                          onPressed: _scheduleRide,
-                          child: const Icon(Icons.calendar_today, color: AppColors.surface, size: 20),
-                        )
-                      ],
-                    ),
-                    const SizedBox(height: 0),
                   ],
-
                 ),
               );
             },
           ),
         ],
+      ),
+    );
+  }
+
+  bool get _canProceed => _destLatLng != null && !_quoteLoading && _quoteError == null && _quote != null;
+
+  String get _ctaLabel {
+    if (_destLatLng == null) return 'Choose a destination';
+    if (_pickupLatLng == null) return 'Set your pickup';
+    if (_quoteLoading) return 'Getting fare…';
+    if (_quoteError != null) return 'Fare unavailable';
+    return 'Confirm ride';
+  }
+
+  void _goToFindDriver() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FindDriverScreen(
+          pickup: _pickupLabel,
+          destination: _destLabel ?? widget.destination,
+          paymentMethod: _paymentMethod,
+          distanceKm: _distanceKm,
+          durationMinutes: _distanceKm == null ? null : BookingApi.estimatedMinutes(_distanceKm!),
+          pickupLat: _pickupLatLng?.latitude,
+          pickupLng: _pickupLatLng?.longitude,
+          dropoffLat: _destLatLng?.latitude,
+          dropoffLng: _destLatLng?.longitude,
+        ),
       ),
     );
   }
@@ -433,10 +444,20 @@ class _SelectRideState extends State<SelectRide> {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
         children: [
-          _routeRow(
-            icon: Icons.my_location,
-            color: AppColors.success,
-            label: _pickupLabel ?? 'Locating you…',
+          // Pickup row: tap to search a different pickup, always available —
+          // this is what fixes the "stuck on Locating you…" dead end when
+          // geolocation is denied or unavailable.
+          InkWell(
+            onTap: _openPickupSearch,
+            child: _routeRow(
+              icon: Icons.my_location,
+              color: AppColors.success,
+              label: _pickupLabel ?? (_locatingPickup ? 'Locating you…' : 'Tap to set your pickup'),
+              muted: _pickupLabel == null,
+              trailing: _locatingPickup
+                  ? const SizedBox(height: 14, width: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.edit_location_alt_outlined, size: 16, color: AppColors.textSecondary),
+            ),
           ),
           const Padding(
             padding: EdgeInsets.only(left: 9),
@@ -445,18 +466,27 @@ class _SelectRideState extends State<SelectRide> {
               child: SizedBox(height: 14, child: VerticalDivider(width: 2, thickness: 1, color: AppColors.border)),
             ),
           ),
-          _routeRow(
-            icon: Icons.location_on,
-            color: AppColors.primary,
-            label: _destLabel ?? 'Choose your destination',
-            muted: _destLabel == null,
+          InkWell(
+            onTap: _openDestinationSearch,
+            child: _routeRow(
+              icon: Icons.location_on,
+              color: AppColors.primary,
+              label: _destLabel ?? 'Choose your destination',
+              muted: _destLabel == null,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _routeRow({required IconData icon, required Color color, required String label, bool muted = false}) {
+  Widget _routeRow({
+    required IconData icon,
+    required Color color,
+    required String label,
+    bool muted = false,
+    Widget? trailing,
+  }) {
     return Row(
       children: [
         Icon(icon, size: 18, color: color),
@@ -472,21 +502,38 @@ class _SelectRideState extends State<SelectRide> {
             ),
           ),
         ),
+        if (trailing != null) trailing,
       ],
     );
   }
 
-  Widget rideCard(String type, String fare, String eta, String seats, {bool isSelected = false}) {
-    return GestureDetector(
-      onTap: () => setState(() => _selectedRide = type),
-      child: Container(
-      margin: const EdgeInsets.only(bottom: 12,left: 5,right: 5),
+  /// The one real ride option, priced by the backend. There is no per-tier
+  /// rate card on the backend today, so this shows exactly what will be
+  /// charged — never a placeholder number that gets replaced by a different
+  /// real number on the next screen.
+  Widget _buildFareCard() {
+    if (_destLatLng == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text('Search "Where to?" above, or tap the map to drop a pin',
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+      );
+    }
+    if (_pickupLatLng == null) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text('Set your pickup above to get a fare',
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+      );
+    }
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        border: isSelected ? Border.all(color: AppColors.success, style: BorderStyle.solid, width: 1.5, strokeAlign: BorderSide.strokeAlignOutside) : Border.all(color: AppColors.textMuted, style: BorderStyle.solid, width: 1, strokeAlign: BorderSide.strokeAlignOutside) ,
+        border: Border.all(color: AppColors.border),
         borderRadius: BorderRadius.circular(12),
         color: AppColors.surface,
       ),
-      padding: const EdgeInsets.all(12),
       child: Row(
         children: [
           const Icon(Icons.directions_car),
@@ -495,28 +542,28 @@ class _SelectRideState extends State<SelectRide> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(type, style: const TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Text(eta),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.person, size: 16),
-                    Text(seats),
-                  ],
-                )
+                const Text('Ride', style: TextStyle(fontWeight: FontWeight.w600)),
+                if (_distanceKm != null)
+                  Text('≈ ${_distanceKm!.toStringAsFixed(1)} km',
+                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(fare, style: const TextStyle(fontWeight: FontWeight.w600)),
-              Text("${Currency.symbol}2,444", style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-            ],
-          )
+          if (_quoteLoading)
+            const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+          else if (_quoteError != null)
+            Flexible(child: Text(_quoteError!, style: const TextStyle(color: AppColors.error, fontSize: 12)))
+          else if (_quote != null)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(Currency.format(_quote!.estimatedFare), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                if (_quote!.surgeMultiplier > 1)
+                  Text('Surge ${_quote!.surgeMultiplier.toStringAsFixed(1)}x',
+                      style: const TextStyle(fontSize: 11, color: AppColors.error)),
+              ],
+            ),
         ],
-      ),
       ),
     );
   }

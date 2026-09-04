@@ -1,3 +1,9 @@
+// MUST be imported before any router is registered: this patches Express 4's
+// Layer so a rejected promise from an `async` route handler is forwarded to
+// errorHandler instead of becoming an unhandledRejection that terminates the
+// process. Without it, an ordinary Prisma P2002 (duplicate key) thrown outside
+// a try/catch crashes the whole API. See middleware/error-handler.ts.
+import "express-async-errors";
 import cors from "cors";
 import express, { type Request, type Response } from "express";
 import helmet from "helmet";
