@@ -9,6 +9,7 @@ import 'package:ravelgo_user_app/views/User/invite_a_friend.dart';
 import 'package:ravelgo_user_app/views/TexiModule/SelectRide.dart';
 import 'package:ravelgo_user_app/views/Services/CarRentalScreen.dart';
 import 'package:ravelgo_user_app/views/Services/IdelivaOnboardingScreen.dart';
+import 'package:ravelgo_user_app/views/Stays/StaysScreen.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:ravelgo_user_app/views/OtherViews/NotificationsScreen.dart';
@@ -252,13 +253,17 @@ class _HomePageState extends State<HomePage> {
   /// Eats/Hotels have no photography yet, so none of the three get a tile
   /// here.
   Widget _buildServicesLauncher() {
-    final photoServices = <(String, String, VoidCallback)>[
-      ('Ride', 'assets/hero_banner.jpg',
+    // Photo path is null for services without real photography yet — those
+    // fall back to an icon tile so the grid never ships a mismatched image.
+    final photoServices = <(String, String?, IconData, VoidCallback)>[
+      ('Ride', 'assets/hero_banner.jpg', Icons.local_taxi_outlined,
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SelectRide()))),
-      ('Car Rentals', 'assets/car_keys.png',
+      ('Car Rentals', 'assets/car_keys.png', Icons.car_rental_outlined,
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CarRentalScreen()))),
-      ('Delivery', 'assets/courier.png',
+      ('Delivery', 'assets/courier.png', Icons.local_shipping_outlined,
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => IdelivaOnboardingScreen()))),
+      ('Short stay rentals', null, Icons.apartment_outlined,
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StaysScreen()))),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -279,7 +284,7 @@ class _HomePageState extends State<HomePage> {
               final s = photoServices[i];
               return InkWell(
                 borderRadius: BorderRadius.circular(14),
-                onTap: s.$3,
+                onTap: s.$4,
                 child: Container(
                   width: 140,
                   decoration: BoxDecoration(
@@ -294,7 +299,13 @@ class _HomePageState extends State<HomePage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        child: Image.asset(s.$2, width: double.infinity, fit: BoxFit.cover),
+                        child: s.$2 != null
+                            ? Image.asset(s.$2!, width: double.infinity, fit: BoxFit.cover)
+                            : Container(
+                                width: double.infinity,
+                                color: AppColors.surfaceElevated,
+                                child: Icon(s.$3, size: 30, color: AppColors.primaryDark),
+                              ),
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),

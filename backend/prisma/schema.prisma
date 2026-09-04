@@ -49,6 +49,18 @@ enum RentalListingStatus {
   REJECTED
 }
 
+enum PropertyListingStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
+enum StayBookingStatus {
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
 enum TicketStatus {
   OPEN
   IN_PROGRESS
@@ -129,6 +141,8 @@ model User {
   payouts           Payout[]
   wallet            WalletAccount?
   foodOrders        FoodOrder[]      @relation("RiderFoodOrders")
+  hostedProperties  PropertyListing[] @relation("HostProperties")
+  stayBookings      StayBooking[]     @relation("GuestStayBookings")
 }
 
 model Driver {
@@ -239,6 +253,47 @@ model RentalListing {
   location   String
   status     RentalListingStatus  @default(PENDING_APPROVAL)
   createdAt  DateTime             @default(now())
+}
+
+// Short-stay property rentals (book a place for a range of nights). Mirrors
+// RentalListing's list-then-admin-approve shape, but hosting isn't tied to a
+// Driver profile — any authenticated user can list or book a stay.
+model PropertyListing {
+  id            String                 @id @default(uuid())
+  hostId        String
+  host          User                   @relation("HostProperties", fields: [hostId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?
+  address       String
+  imageUrl      String?
+  pricePerNight Float
+  maxGuests     Int                    @default(2)
+  status        PropertyListingStatus  @default(PENDING_APPROVAL)
+  createdAt     DateTime               @default(now())
+
+  bookings      StayBooking[]
+
+  @@index([hostId])
+}
+
+model StayBooking {
+  id          String            @id @default(uuid())
+  guestId     String
+  guest       User              @relation("GuestStayBookings", fields: [guestId], references: [id], onDelete: Cascade)
+  propertyId  String
+  property    PropertyListing   @relation(fields: [propertyId], references: [id])
+  checkIn     DateTime
+  checkOut    DateTime
+  guests      Int
+  // Server-computed from (checkOut - checkIn) and the listing's
+  // pricePerNight at booking time — never trusted from the client.
+  nights      Int
+  totalPrice  Float
+  status      StayBookingStatus @default(CONFIRMED)
+  createdAt   DateTime          @default(now())
+
+  @@index([guestId])
+  @@index([propertyId])
 }
 
 model SupportTicket {

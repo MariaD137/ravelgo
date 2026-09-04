@@ -186,6 +186,43 @@ async function main() {
     console.log("Seeded restaurants:", mamaPut.name, "and Lagos Grill House");
   }
 
+  // Short-stay rentals demo data — pre-approved so they're immediately
+  // browsable without a separate admin-approval step in the seed.
+  if ((await prisma.propertyListing.count()) === 0) {
+    await prisma.propertyListing.createMany({
+      data: [
+        {
+          hostId: driverUser.id,
+          title: "Cozy 1-Bedroom in Lekki Phase 1",
+          description: "Quiet, secure compound with 24/7 power and fast wifi. 10 min from the beach.",
+          address: "14 Admiralty Way, Lekki Phase 1, Lagos",
+          pricePerNight: 45000,
+          maxGuests: 2,
+          status: "APPROVED",
+        },
+        {
+          hostId: driverUser.id,
+          title: "Modern 2-Bedroom Apartment, Ikoyi",
+          description: "Serviced apartment with a pool and gym, walking distance to the waterfront.",
+          address: "8 Bourdillon Road, Ikoyi, Lagos",
+          pricePerNight: 85000,
+          maxGuests: 4,
+          status: "APPROVED",
+        },
+        {
+          hostId: driverUser.id,
+          title: "Studio near Victoria Island",
+          description: "Compact, self-contained studio, great for a short business trip.",
+          address: "22 Adeola Odeku Street, Victoria Island, Lagos",
+          pricePerNight: 30000,
+          maxGuests: 2,
+          status: "APPROVED",
+        },
+      ],
+    });
+    console.log("Seeded short-stay listings: 3");
+  }
+
   console.log("Seed complete:", { rider: rider.email, driver: driverUser.email, vehicle: vehicle.plateNumber });
 }
 
