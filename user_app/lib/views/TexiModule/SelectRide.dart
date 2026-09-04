@@ -252,7 +252,7 @@ class _SelectRideState extends State<SelectRide> {
               padding: EdgeInsets.all(16),
               child: Text('Pay with', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             ),
-            for (final m in const ['Card', 'RavelGo Wallet'])
+            for (final m in const ['Card', 'RavelGo Cash'])
               ListTile(
                 title: Text(m),
                 trailing: m == _paymentMethod

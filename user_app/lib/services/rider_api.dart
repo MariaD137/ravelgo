@@ -21,4 +21,20 @@ class RiderApi {
     final data = await ApiClient.get('/api/riders/me');
     return data is Map<String, dynamic> ? data : null;
   }
+
+  /// Update the signed-in rider's own name/phone. Email isn't editable here —
+  /// it's tied to the Cognito identity used to sign in.
+  static Future<Map<String, dynamic>?> updateMe({
+    String? firstName,
+    String? lastName,
+    String? phoneNumber,
+  }) async {
+    final body = <String, dynamic>{
+      if (firstName != null) 'firstName': firstName,
+      if (lastName != null) 'lastName': lastName,
+      if (phoneNumber != null) 'phoneNumber': phoneNumber,
+    };
+    final data = await ApiClient.patch('/api/riders/me', body);
+    return data is Map<String, dynamic> ? data : null;
+  }
 }

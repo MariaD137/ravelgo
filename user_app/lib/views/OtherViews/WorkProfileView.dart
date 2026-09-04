@@ -60,7 +60,7 @@ class _WorkProfileViewState extends State<WorkProfileView> {
               child: Text('Work payment method',
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
             ),
-            for (final m in const ['Card', 'RavelGo Wallet', 'Company billing'])
+            for (final m in const ['Card', 'RavelGo Cash', 'Company billing'])
               ListTile(
                 title: Text(m),
                 trailing: m == _paymentMethod ? const Icon(Icons.check, color: AppColors.success) : null,
