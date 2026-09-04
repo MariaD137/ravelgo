@@ -255,68 +255,104 @@ class _HomePageState extends State<HomePage> {
   }
 
   /// Multi-service launcher: the home is a hub, not just a ride screen. Ride,
-  /// delivery, and rentals route into flows that already exist; Eats/Hotels are
-  /// signposted as coming soon so the surface can grow as RavelGo expands.
+  /// delivery, and rentals route into flows that already exist and have real
+  /// photography, so they get the Uber-style photo-card treatment. Services/
+  /// Eats/Hotels have no photography yet, so they stay a compact icon row
+  /// underneath rather than showing a placeholder image.
   Widget _buildServicesLauncher() {
-    final services = <(String, IconData, VoidCallback)>[
-      ('Ride', Icons.local_taxi_outlined,
+    final photoServices = <(String, String, VoidCallback)>[
+      ('Ride', 'assets/hero_banner.jpg',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SelectRide()))),
-      ('Delivery', Icons.local_shipping_outlined,
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => IdelivaOnboardingScreen()))),
-      ('Rentals', Icons.car_rental_outlined,
+      ('Rentals', 'assets/car_keys.png',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CarRentalScreen()))),
+      ('Delivery', 'assets/courier.png',
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => IdelivaOnboardingScreen()))),
+    ];
+    final moreServices = <(String, IconData, VoidCallback)>[
       ('Services', Icons.grid_view_outlined,
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ServicesView()))),
       ('Eats', Icons.restaurant_outlined,
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EatsScreen()))),
       ('Hotels', Icons.hotel_outlined, () => _comingSoon('Hotels')),
     ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: _cardContainer(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Padding(
-                padding: EdgeInsets.only(left: 4, bottom: 10),
-                child: Text('What do you need?',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-              ),
-              GridView.count(
-                crossAxisCount: 3,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                childAspectRatio: 1.15,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 16, bottom: 10),
+          child: Text('What do you need?',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+        ),
+        SizedBox(
+          height: 160,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            itemCount: photoServices.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, i) {
+              final s = photoServices[i];
+              return InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: s.$3,
+                child: Container(
+                  width: 140,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(color: AppColors.border, blurRadius: 6, offset: const Offset(0, 2)),
+                    ],
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Image.asset(s.$2, width: double.infinity, fit: BoxFit.cover),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        child: Text(s.$1, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: _cardContainer(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+              child: Row(
                 children: [
-                  for (final s in services)
-                    InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: s.$3,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceElevated,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(s.$2, size: 26, color: AppColors.primaryDark),
-                            const SizedBox(height: 6),
-                            Text(s.$1, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                          ],
+                  for (final s in moreServices)
+                    Expanded(
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: s.$3,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Column(
+                            children: [
+                              Icon(s.$2, size: 22, color: AppColors.primaryDark),
+                              const SizedBox(height: 6),
+                              Text(s.$1, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
-      ),
+      ],
     );
   }
 
