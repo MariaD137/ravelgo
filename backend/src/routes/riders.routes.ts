@@ -67,6 +67,31 @@ ridersRouter.get("/riders/me", requireAuth, requireRole("Rider"), async (req, re
   }
 });
 
+// Rider: update my own profile. Email is intentionally excluded — it's tied
+// to the Cognito identity used to sign in, not editable from here.
+const updateMeSchema = z
+  .object({
+    firstName: z.string().min(1),
+    lastName: z.string().min(1),
+    phoneNumber: z.string().min(1),
+  })
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, "At least one field is required");
+
+ridersRouter.patch("/riders/me", requireAuth, requireRole("Rider"), async (req, res, next) => {
+  try {
+    const data = validate<typeof updateMeSchema._output>(updateMeSchema, req.body, "Request body");
+
+    const existing = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
+    if (!existing) throw Errors.notFound("Rider profile");
+
+    const rider = await prisma.user.update({ where: { id: existing.id }, data });
+    res.json(rider);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Admin: get a single rider with trip history.
 // Registered after the literal "/riders/me" routes above — Express matches
 // path segments in registration order, so ":id" would otherwise swallow

@@ -1,19 +1,69 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/services/rider_api.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
-
 class EditPersonalInfo extends StatefulWidget {
-  const EditPersonalInfo({super.key});
+  final String? initialFirstName;
+  final String? initialLastName;
+  final String? initialPhoneNumber;
+  final String? email;
+
+  const EditPersonalInfo({
+    super.key,
+    this.initialFirstName,
+    this.initialLastName,
+    this.initialPhoneNumber,
+    this.email,
+  });
 
   @override
   State<EditPersonalInfo> createState() => _EditPersonalInfoState();
 }
 
 class _EditPersonalInfoState extends State<EditPersonalInfo> {
-  final TextEditingController _firstNameController = TextEditingController(text: 'Thelma');
-  final TextEditingController _lastNameController = TextEditingController(text: 'Ibeh');
-  final TextEditingController _phoneController = TextEditingController(text: '+2348130006677');
-  final TextEditingController _emailController = TextEditingController(text: 'user@gmail.com');
+  late final TextEditingController _firstNameController =
+      TextEditingController(text: widget.initialFirstName ?? '');
+  late final TextEditingController _lastNameController =
+      TextEditingController(text: widget.initialLastName ?? '');
+  late final TextEditingController _phoneController =
+      TextEditingController(text: widget.initialPhoneNumber ?? '');
+
+  bool _saving = false;
+
+  Future<void> _save() async {
+    final firstName = _firstNameController.text.trim();
+    final lastName = _lastNameController.text.trim();
+    final phone = _phoneController.text.trim();
+    if (firstName.isEmpty || lastName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('First and last name are required.')),
+      );
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      await RiderApi.updateMe(
+        firstName: firstName,
+        lastName: lastName,
+        phoneNumber: phone.isEmpty ? null : phone,
+      );
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not save: $e')));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,7 +95,31 @@ class _EditPersonalInfoState extends State<EditPersonalInfo> {
             _buildTextField(controller: _phoneController, icon: Icons.phone_outlined, keyboardType: TextInputType.phone),
             const SizedBox(height: 20),
             _buildLabel("Email address"),
-            _buildTextField(controller: _emailController, icon: Icons.email_outlined, keyboardType: TextInputType.emailAddress),
+            TextFormField(
+              enabled: false,
+              initialValue: widget.email ?? '',
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.email_outlined),
+                helperText: 'Email is tied to your sign-in and can\'t be changed here.',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _saving ? null : _save,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: _saving
+                    ? const SizedBox(
+                        height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('Save', style: TextStyle(color: Colors.white, fontSize: 16)),
+              ),
+            ),
             const SizedBox(height: 40),
           ],
         ),
@@ -93,7 +167,7 @@ class _ProfilePhotoSection extends StatelessWidget {
     return Container(
       color: AppColors.background,
       height: 180,
-      width: double.infinity,// 👈 Set background color here
+      width: double.infinity,
       child: Column(
         children: [
           const SizedBox(height: 20),
@@ -126,6 +200,7 @@ class _ProfilePhotoSection extends StatelessWidget {
           ),
           const SizedBox(height: 20),
         ],
-      ),);
+      ),
+    );
   }
 }

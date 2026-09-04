@@ -230,7 +230,7 @@ class _PaymentScreenState extends State<PaymentView> {
                     ),
                     ListTile(
                       leading: const Icon(Icons.account_balance_wallet_outlined, color: AppColors.textSecondary),
-                      title: const Text('RavelGo Wallet'),
+                      title: const Text('RavelGo Cash'),
                       trailing: Checkbox(
                         activeColor: AppColors.primary,
                         value: !isCardSelected,

@@ -74,6 +74,44 @@ test("GET /api/riders/me 404s before a profile has been created", async () => {
   assert.equal(res.status, 404);
 });
 
+test("PATCH /api/riders/me lets a rider update their own name and phone", async () => {
+  const token = mockAuthAs({ sub: "rider-sub-6", groups: ["Rider"] });
+  await request(app)
+    .post("/api/riders/me")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "Old", lastName: "Name", email: "rider6@example.com" });
+
+  const res = await request(app)
+    .patch("/api/riders/me")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "New", lastName: "Name", phoneNumber: "+2348000000000" });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.firstName, "New");
+  assert.equal(res.body.phoneNumber, "+2348000000000");
+  assert.equal(res.body.email, "rider6@example.com");
+});
+
+test("PATCH /api/riders/me rejects an empty body", async () => {
+  const token = mockAuthAs({ sub: "rider-sub-7", groups: ["Rider"] });
+  await request(app)
+    .post("/api/riders/me")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "A", lastName: "B", email: "rider7@example.com" });
+
+  const res = await request(app).patch("/api/riders/me").set("Authorization", `Bearer ${token}`).send({});
+  assert.equal(res.status, 400);
+});
+
+test("PATCH /api/riders/me 404s before a profile has been created", async () => {
+  const token = mockAuthAs({ sub: "rider-sub-8", groups: ["Rider"] });
+  const res = await request(app)
+    .patch("/api/riders/me")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "A" });
+  assert.equal(res.status, 404);
+});
+
 test("PATCH /api/riders/:id/status lets an Admin suspend a rider", async () => {
   const rider = await prisma.user.create({
     data: { cognitoSub: "rider-sub-5", role: "RIDER", firstName: "Zed", lastName: "Q", email: "zed@example.com" },
