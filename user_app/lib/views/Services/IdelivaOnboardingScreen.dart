@@ -1,168 +1,106 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:ravelgo_user_app/views/Services/IDelivaPage.dart';
 import 'IdelivaProfileScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
-class IdelivaOnboardingScreen extends StatefulWidget {
-  @override
-  _IdelivaOnboardingScreenState createState() => _IdelivaOnboardingScreenState();
-}
-
-class _IdelivaOnboardingScreenState extends State<IdelivaOnboardingScreen> {
-  bool _obscurePin = true;
-  final TextEditingController _pinController = TextEditingController();
+/// Entry point into delivery/courier work. No separate login, PIN, or
+/// account — you're already signed in to RavelGo, so this just carries that
+/// same session into the courier profile.
+class IdelivaOnboardingScreen extends StatelessWidget {
+  const IdelivaOnboardingScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return  SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                ),
+                const Text(
+                  'RavelGo Logistics',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            // Banner card
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(15),
+                boxShadow: [BoxShadow(color: AppColors.border, blurRadius: 4)],
+              ),
+              child: Row(
                 children: [
-                  IconButton(
-                    icon: Icon(Icons.arrow_back),
-                    onPressed: () {
-                      Navigator.pop(context);
-                    },
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Deliver with RavelGo',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold)),
+                        SizedBox(height: 5),
+                        Text(
+                          'Join us today and turn your time into income as a courier.',
+                          style: TextStyle(fontSize: 14),
+                        ),
+                      ],
+                    ),
                   ),
-                  Text(
-                    'RavelGo Logistics',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w500),
+                  const SizedBox(width: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.asset(
+                      'assets/courier.png',
+                      width: 118,
+                      height: 145,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ],
               ),
-              SizedBox(height: 10),
+            ),
 
-              // Banner card
-              Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: AppColors.background,
-                  borderRadius: BorderRadius.circular(15),
-                  boxShadow: [BoxShadow(color: AppColors.border, blurRadius: 4)],
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text('Deliver with RavelGo',
-                              style: TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.bold)),
-                          SizedBox(height: 5),
-                          Text(
-                            'Join us today and turn your time into income as a courier.',
-                            style: TextStyle(fontSize: 14),
-                          ),
-                        ],
-                      ),
-                    ),
-                    SizedBox(width: 10),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.asset(
-                        'assets/courier.png', // Replace with actual image path
-                        width: 118,
-                        height: 145,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            const SizedBox(height: 30),
 
-              SizedBox(height: 30),
-
-              // PIN Input
-              Text('Enter 6 digit security pin'),
-              SizedBox(height: 10),
-              TextField(
-                controller: _pinController,
-                obscureText: _obscurePin,
-                maxLength: 6,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  counterText: "",
-                  border: OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscurePin ? Icons.visibility_off : Icons.visibility,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _obscurePin = !_obscurePin;
-                      });
-                    },
-                  ),
-                  hintText: 'Enter PIN',
-                ),
-              ),
-
-              SizedBox(height: 20),
-
-              // Done Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    padding: EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (context) => IdelivaProfileScreen()),
-                    );
-                  },
-                  child: Text(
-                    'Done',
-                    style: TextStyle(color: Colors.white),
+            // Continue Button — no PIN, no separate account: this session's
+            // login is all that's needed to start delivering.
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (context) => IdelivaProfileScreen()),
+                  );
+                },
+                child: const Text(
+                  'Continue',
+                  style: TextStyle(color: Colors.white),
+                ),
               ),
-
-              SizedBox(height: 20),
-
-              // Register Link
-            Center(
-              child: Text.rich(
-                  TextSpan(
-                    text: "Don’t have a RavelGo Logistics account? ",
-                    style: const TextStyle(color: AppColors.textSecondary),
-                    children: [
-                      TextSpan(
-                        text: "Register",
-                        style: TextStyle(
-                        color: AppColors.primaryDark,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    recognizer: TapGestureRecognizer()
-                        ..onTap = () {
-                    // Navigate to Register Screen
-                         Navigator.push(
-                            context,
-                             MaterialPageRoute(
-                               builder: (_) => const IDelivaPage(), // your screen
-                               ),
-                             );
-                           },
-                         ),
-                       ],
-                    ),
-                  ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
+      ),
     );
   }
 }
