@@ -81,13 +81,11 @@ if (deployService && apiService) {
   });
 }
 
-// CI/CD (GitHub OIDC + deploy role) stays production-only: AWS only allows
-// one OIDC provider per unique issuer URL per account, so a second CiStack
-// for staging would fail at actual `cdk deploy` time (not something `cdk
-// synth` alone would catch) unless it imported the existing provider
-// instead of creating a new one. Safer to keep staging deploys manual
-// (`cdk deploy --context envName=staging` from a developer machine with
-// real AWS credentials) than to get account-wide OIDC sharing wrong.
+// CI/CD (GitHub OIDC + deploy role), one CiStack per environment. AWS only
+// allows one OIDC provider per unique issuer URL per account, so only the
+// production instance below creates it — every other environment's CiStack
+// imports that same provider by its account-scoped ARN (computed inside the
+// stack itself; see ci-stack.ts) rather than creating a second one.
 if (envName === "production" && apiService) {
   new CiStack(app, stackName("RavelGo-CI"), {
     env,
@@ -96,5 +94,28 @@ if (envName === "production" && apiService) {
     githubOrg,
     githubRepo,
     githubBranch,
+  });
+}
+
+// Staging's role additionally covers publishing the three Flutter web builds
+// (production doesn't auto-deploy its web apps via CI yet, so its role stays
+// narrower). Database migrations stay a deliberate manual step even for
+// staging — see scripts/migrate-staging.sh and .github/workflows/staging-deploy.yml's
+// "check-for-new-migrations" job, which reminds a human to run it rather than
+// running it unattended.
+if (envName === "staging" && apiService) {
+  new CiStack(app, stackName("RavelGo-CI"), {
+    env,
+    repository: api.repository,
+    service: apiService,
+    githubOrg,
+    githubRepo,
+    githubBranch,
+    environmentName: "staging",
+    webAppsConfig: {
+      assetsBucket: storage.assetsBucket,
+      assetsDistribution: storage.assetsDistribution,
+      configStackNames: [stackName("RavelGo-Storage"), stackName("RavelGo-Api"), stackName("RavelGo-Auth")],
+    },
   });
 }

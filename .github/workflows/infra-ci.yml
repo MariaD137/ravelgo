@@ -28,5 +28,8 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
-      - name: CDK synth (no AWS credentials needed — stacks are environment-agnostic)
+      - name: CDK synth - production (no AWS credentials needed — stacks are environment-agnostic)
         run: npx cdk synth
+
+      - name: CDK synth - staging
+        run: npx cdk synth --context envName=staging
