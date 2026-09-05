@@ -1,16 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
-import 'package:ravelgo_user_app/Model/app_state.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/stripe_service.dart';
 import 'package:ravelgo_user_app/services/wallet_api.dart';
-import 'package:ravelgo_user_app/views/OtherViews/AddPaymentMethodScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
-/// Payment settings: trip profile, active payment method, and saved cards.
-/// LOCAL STATE ONLY: selections and saved cards live in RiderAppState for
-/// this session; the payments backend is the integration point.
+/// Payment settings: trip profile and the RavelGo Cash wallet.
 /// (Communication preferences and Work profile were removed from this screen -
 /// they live under Account, where the same functionality already exists.)
 class PaymentView extends StatefulWidget {
@@ -19,9 +15,6 @@ class PaymentView extends StatefulWidget {
 }
 
 class _PaymentScreenState extends State<PaymentView> {
-  // Which of the two active RavelGo methods is selected. Cash was removed:
-  // rides are paid by card or the RavelGo wallet.
-  bool isCardSelected = true;
   int selectedIndex = 0;
 
   // Live wallet, loaded from the backend (GET /api/wallet/me + /transactions).
@@ -58,14 +51,6 @@ class _PaymentScreenState extends State<PaymentView> {
         _walletLoading = false;
       });
     }
-  }
-
-  Future<void> _addCard() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const AddPaymentMethodScreen()),
-    );
-    if (mounted) setState(() {});
   }
 
   bool _toppingUp = false;
@@ -134,7 +119,6 @@ class _PaymentScreenState extends State<PaymentView> {
 
   @override
   Widget build(BuildContext context) {
-    final cards = RiderAppState.instance.paymentMethods;
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: PreferredSize(
@@ -217,45 +201,27 @@ class _PaymentScreenState extends State<PaymentView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text('Payment methods', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    ListTile(
-                      leading: const Icon(Icons.credit_card, color: AppColors.textSecondary),
-                      title: const Text('Card'),
-                      trailing: Checkbox(
-                        activeColor: AppColors.primary,
-                        value: isCardSelected,
-                        onChanged: (bool? value) {
-                          setState(() => isCardSelected = value!);
-                        },
-                      ),
+                    const SizedBox(height: 12),
+                    const ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.credit_card, color: AppColors.textSecondary),
+                      title: Text('Card'),
+                      subtitle: Text('Entered securely at checkout via Stripe, each time.'),
                     ),
-                    ListTile(
-                      leading: const Icon(Icons.account_balance_wallet_outlined, color: AppColors.textSecondary),
-                      title: const Text('RavelGo Cash'),
-                      trailing: Checkbox(
-                        activeColor: AppColors.primary,
-                        value: !isCardSelected,
-                        onChanged: (bool? value) {
-                          setState(() => isCardSelected = !value!);
-                        },
-                      ),
+                    const ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.account_balance_wallet_outlined, color: AppColors.textSecondary),
+                      title: Text('RavelGo Cash'),
+                      subtitle: Text('Your prepaid balance above.'),
                     ),
-                    if (cards.isNotEmpty) ...[
-                      const Divider(),
-                      for (final card in cards)
-                        ListTile(
-                          leading: const Icon(Icons.credit_card, color: AppColors.textSecondary),
-                          title: Text('${card.brand} •••• ${card.lastFour}'),
-                          subtitle: Text('Expires ${card.expiry}',
-                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                        ),
-                    ],
                     const SizedBox(height: 4),
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: _addCard,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add payment method'),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: AppColors.surfaceElevated, borderRadius: BorderRadius.circular(10)),
+                      child: const Text(
+                        'Saved cards aren\'t supported yet — you\'ll enter your card details at checkout for each '
+                        'ride, rental or booking. Nothing is stored on this device or by RavelGo.',
+                        style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
                       ),
                     ),
                   ],
