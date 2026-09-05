@@ -33,11 +33,21 @@ courierRouter.post("/courier-requests", requireAuth, requireRole("Rider"), async
   res.status(201).json(request);
 });
 
-// Driver: view unassigned courier requests to accept
+// Driver: view unassigned courier requests to accept. Gated on the same
+// admin-approved ACTIVE status as ride matching (see /drivers/me/availability)
+// — being in the Driver Cognito group alone (PENDING_REVIEW) is not enough to
+// do delivery work, only to apply and manage a profile.
 courierRouter.get("/courier-requests/available", requireAuth, requireRole("Driver"), async (req, res) => {
   const parsed = paginationQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { page, pageSize } = parsed.data;
+
+  const driver = await findOwnDriver(req.user!.sub);
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+  if (driver.status !== "ACTIVE") {
+    return res.status(409).json({ error: "Your account is not approved for deliveries yet." });
+  }
+
   const where = { status: "REQUESTED" as const, driverId: null };
 
   const [requests, total] = await Promise.all([
@@ -52,10 +62,35 @@ courierRouter.get("/courier-requests/available", requireAuth, requireRole("Drive
   res.json(paginate(requests, total, page, pageSize));
 });
 
-// Driver: accept a courier request
+// Driver: my own accepted/in-progress courier deliveries.
+courierRouter.get("/courier-requests/mine", requireAuth, requireRole("Driver"), async (req, res) => {
+  const parsed = paginationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { page, pageSize } = parsed.data;
+
+  const driver = await findOwnDriver(req.user!.sub);
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  const where = { driverId: driver.id };
+  const [requests, total] = await Promise.all([
+    prisma.courierRequest.findMany({
+      where,
+      orderBy: { requestedAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.courierRequest.count({ where }),
+  ]);
+  res.json(paginate(requests, total, page, pageSize));
+});
+
+// Driver: accept a courier request. Same ACTIVE gate as above.
 courierRouter.patch("/courier-requests/:id/accept", requireAuth, requireRole("Driver"), async (req, res) => {
   const driver = await findOwnDriver(req.user!.sub);
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+  if (driver.status !== "ACTIVE") {
+    return res.status(409).json({ error: "Your account is not approved for deliveries yet." });
+  }
 
   const existing = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: "Courier request not found" });

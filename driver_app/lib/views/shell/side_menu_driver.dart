@@ -5,6 +5,7 @@ import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/assistance/driver_assistance_screen.dart';
 import 'package:ravelgo_driver_app/views/auth/login_screen.dart';
 import 'package:ravelgo_driver_app/views/carpaddy/car_paddy_screen.dart';
+import 'package:ravelgo_driver_app/views/deliveries/deliveries_screen.dart';
 import 'package:ravelgo_driver_app/views/documents/my_documents_screen.dart';
 import 'package:ravelgo_driver_app/views/incentives/incentives_screen.dart';
 import 'package:ravelgo_driver_app/views/preferences/driver_preferences_screen.dart';
@@ -54,6 +55,7 @@ class SideMenuDriver extends StatelessWidget {
                 ],
               ),
             ),
+            _item(context, Icons.local_shipping_outlined, "Deliveries", () => const DeliveriesScreen()),
             _item(context, Icons.description_outlined, "My Documents", () => const MyDocumentsScreen()),
             _item(context, Icons.badge_outlined, "Car Paddy – License Renewal", () => const CarPaddyScreen()),
             _item(context, Icons.directions_car_outlined, "My Vehicles", () => const VehicleListScreen()),

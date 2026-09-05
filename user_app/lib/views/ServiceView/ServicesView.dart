@@ -1,12 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views//Services/CarRentalScreen.dart';
 import 'package:ravelgo_user_app/views/Services/IdelivaOnboardingScreen.dart';
-import 'package:ravelgo_user_app/views/Stays/StaysScreen.dart';
 import 'package:ravelgo_user_app/views/TexiModule/FindRoute.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class ServicesView extends StatelessWidget {
   const ServicesView({super.key});
+
+  void _showComingSoon(BuildContext context, String feature) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Coming soon'),
+        content: Text('$feature is coming soon.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,8 +32,7 @@ class ServicesView extends StatelessWidget {
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => CarRentalScreen()))),
       ('Delivery', 'assets/card_delivery.png',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => IdelivaOnboardingScreen()))),
-      ('Short stay rentals', 'assets/card_short_stay.png',
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StaysScreen()))),
+      ('Short stay rentals', 'assets/card_short_stay.png', () => _showComingSoon(context, 'Short stay rentals')),
     ];
 
     return Scaffold(

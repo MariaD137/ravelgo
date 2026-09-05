@@ -9,7 +9,6 @@ import 'package:ravelgo_user_app/views/User/invite_a_friend.dart';
 import 'package:ravelgo_user_app/views/TexiModule/SelectRide.dart';
 import 'package:ravelgo_user_app/views/Services/CarRentalScreen.dart';
 import 'package:ravelgo_user_app/views/Services/IdelivaOnboardingScreen.dart';
-import 'package:ravelgo_user_app/views/Stays/StaysScreen.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:ravelgo_user_app/views/OtherViews/NotificationsScreen.dart';
@@ -252,6 +251,19 @@ class _HomePageState extends State<HomePage> {
   /// cards. Services is already reachable from the bottom nav bar, and
   /// Eats/Hotels have no photography yet, so none of the three get a tile
   /// here.
+  void _showComingSoon(BuildContext context, String feature) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Coming soon'),
+        content: Text('$feature is coming soon.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
+        ],
+      ),
+    );
+  }
+
   Widget _buildServicesLauncher() {
     // Each card image already has its own title, description, icon badge and
     // "go" arrow baked in by design, so these render as full self-contained
@@ -263,8 +275,7 @@ class _HomePageState extends State<HomePage> {
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CarRentalScreen()))),
       ('Delivery', 'assets/card_delivery.png',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => IdelivaOnboardingScreen()))),
-      ('Short stay rentals', 'assets/card_short_stay.png',
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StaysScreen()))),
+      ('Short stay rentals', 'assets/card_short_stay.png', () => _showComingSoon(context, 'Short stay rentals')),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

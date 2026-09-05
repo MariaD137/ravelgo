@@ -133,6 +133,48 @@ class DriverDocument {
       );
 }
 
+/// A package delivery request, from the driver's perspective.
+class CourierRequest {
+  final String id;
+  final String pickupAddress;
+  final String dropoffAddress;
+  final String packageDescription;
+  final String recipientName;
+  final String recipientPhone;
+  final double estimatedFare;
+  final double? finalFare;
+  final String status; // REQUESTED | MATCHED | IN_TRANSIT | DELIVERED | CANCELLED
+  final DateTime requestedAt;
+
+  CourierRequest({
+    required this.id,
+    required this.pickupAddress,
+    required this.dropoffAddress,
+    required this.packageDescription,
+    required this.recipientName,
+    required this.recipientPhone,
+    required this.estimatedFare,
+    required this.finalFare,
+    required this.status,
+    required this.requestedAt,
+  });
+
+  static double _d(dynamic v) => v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
+
+  factory CourierRequest.fromJson(Map<String, dynamic> j) => CourierRequest(
+        id: '${j['id']}',
+        pickupAddress: '${j['pickupAddress'] ?? ''}',
+        dropoffAddress: '${j['dropoffAddress'] ?? ''}',
+        packageDescription: '${j['packageDescription'] ?? ''}',
+        recipientName: '${j['recipientName'] ?? ''}',
+        recipientPhone: '${j['recipientPhone'] ?? ''}',
+        estimatedFare: _d(j['estimatedFare']),
+        finalFare: j['finalFare'] == null ? null : _d(j['finalFare']),
+        status: '${j['status'] ?? ''}',
+        requestedAt: DateTime.tryParse('${j['requestedAt']}')?.toLocal() ?? DateTime.now(),
+      );
+}
+
 class Vehicle {
   final String id;
   final String label;
@@ -301,5 +343,36 @@ class DriverApi {
     final data = await ApiClient.get('/api/payouts/history');
     final list = (data is Map ? (data['data'] ?? data['payouts']) : data) as List? ?? const [];
     return list.whereType<Map<String, dynamic>>().map(Payout.fromJson).toList();
+  }
+
+  /// Unassigned delivery requests available to accept. Only an ACTIVE
+  /// (admin-approved) driver may call this — a PENDING_REVIEW driver gets a
+  /// 409, the same approval gate ride matching uses.
+  static Future<List<CourierRequest>> availableDeliveries() async {
+    final data = await ApiClient.get('/api/courier-requests/available?pageSize=50');
+    final list = (data is Map ? data['data'] : data) as List? ?? const [];
+    return list.whereType<Map<String, dynamic>>().map(CourierRequest.fromJson).toList();
+  }
+
+  /// Deliveries already accepted by this driver.
+  static Future<List<CourierRequest>> myDeliveries() async {
+    final data = await ApiClient.get('/api/courier-requests/mine?pageSize=50');
+    final list = (data is Map ? data['data'] : data) as List? ?? const [];
+    return list.whereType<Map<String, dynamic>>().map(CourierRequest.fromJson).toList();
+  }
+
+  /// Accept an available delivery request.
+  static Future<CourierRequest> acceptDelivery(String id) async {
+    final data = await ApiClient.patch('/api/courier-requests/$id/accept');
+    return CourierRequest.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Advance an accepted delivery (picked up -> in transit, dropped off -> delivered).
+  static Future<CourierRequest> updateDeliveryStatus(String id, String status, {double? finalFare}) async {
+    final data = await ApiClient.patch('/api/courier-requests/$id/status', {
+      'status': status,
+      if (finalFare != null) 'finalFare': finalFare,
+    });
+    return CourierRequest.fromJson(data as Map<String, dynamic>);
   }
 }

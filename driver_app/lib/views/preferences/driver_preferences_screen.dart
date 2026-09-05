@@ -52,7 +52,7 @@ class _DriverPreferencesScreenState extends State<DriverPreferencesScreen> {
                 AppComponents.divider(),
                 SwitchListTile(
                   title: const Text("Accept courier requests"),
-                  subtitle: const Text("Note: courier pickups are handled via the Riders app", style: TextStyle(fontSize: 12)),
+                  subtitle: const Text("Browse and accept deliveries from the Deliveries menu once you're approved", style: TextStyle(fontSize: 12)),
                   value: _acceptCourier,
                   onChanged: (v) => setState(() => _acceptCourier = v),
                 ),
