@@ -28,11 +28,11 @@ after(async () => {
   await prisma.$disconnect();
 });
 
-async function createDriverWithVehicle(cognitoSub: string) {
+async function createDriverWithVehicle(cognitoSub: string, status: "PENDING_REVIEW" | "ACTIVE" = "ACTIVE") {
   const user = await prisma.user.create({
     data: { cognitoSub, role: "DRIVER", firstName: "D", lastName: "R", email: `${cognitoSub}@example.com` },
   });
-  const driver = await prisma.driver.create({ data: { userId: user.id } });
+  const driver = await prisma.driver.create({ data: { userId: user.id, status } });
   const vehicle = await prisma.vehicle.create({
     data: { driverId: driver.id, brand: "Tesla", model: "Model 3", colour: "White", plateNumber: `${cognitoSub}-1`, year: "2022" },
   });
@@ -53,6 +53,18 @@ test("POST /api/rentals lists the driver's own vehicle and marks it listedForRen
 
   const updated = await prisma.vehicle.findUnique({ where: { id: vehicle.id } });
   assert.equal(updated?.listedForRental, true);
+});
+
+test("POST /api/rentals rejects a driver pending admin approval", async () => {
+  const { vehicle } = await createDriverWithVehicle("driver-sub-1b", "PENDING_REVIEW");
+  const token = mockAuthAs({ sub: "driver-sub-1b", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/rentals")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ vehicleId: vehicle.id, dailyRate: 99.5, location: "Lagos" });
+
+  assert.equal(res.status, 409);
 });
 
 test("POST /api/rentals 404s when the vehicle belongs to someone else", async () => {

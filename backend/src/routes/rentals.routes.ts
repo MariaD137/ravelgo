@@ -31,13 +31,18 @@ const createRentalSchema = z.object({
   location: z.string().min(1),
 });
 
-// Driver: list a vehicle for luxury rental
+// Driver: list a vehicle for luxury rental. Gated on the same admin-approved
+// ACTIVE status as ride/delivery matching — a PENDING_REVIEW driver can
+// manage their profile and documents, but can't yet offer provider services.
 rentalsRouter.post("/rentals", requireAuth, requireRole("Driver"), async (req, res) => {
   const parsed = createRentalSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const driver = await findOwnDriver(req.user!.sub);
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+  if (driver.status !== "ACTIVE") {
+    return res.status(409).json({ error: "Your account must be approved before you can list a vehicle for rental." });
+  }
 
   const vehicle = await prisma.vehicle.findUnique({ where: { id: parsed.data.vehicleId } });
   if (!vehicle || vehicle.driverId !== driver.id) {

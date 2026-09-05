@@ -175,17 +175,41 @@ class CourierRequest {
       );
 }
 
+/// A driver's vehicle. This is the single model both the vehicle-management
+/// screen and the rental-listing flow use — there is no separate local
+/// vehicle list anymore.
 class Vehicle {
   final String id;
-  final String label;
+  final String brand;
+  final String model;
+  final String colour;
   final String plateNumber;
+  final String year;
   final bool isPrimary;
-  Vehicle({required this.id, required this.label, required this.plateNumber, required this.isPrimary});
+  final bool listedForRental;
+
+  Vehicle({
+    required this.id,
+    required this.brand,
+    required this.model,
+    required this.colour,
+    required this.plateNumber,
+    required this.year,
+    required this.isPrimary,
+    required this.listedForRental,
+  });
+
+  String get label => '$brand $model'.trim();
+
   factory Vehicle.fromJson(Map<String, dynamic> j) => Vehicle(
         id: '${j['id']}',
-        label: '${j['brand'] ?? ''} ${j['model'] ?? ''}'.trim(),
+        brand: '${j['brand'] ?? ''}',
+        model: '${j['model'] ?? ''}',
+        colour: '${j['colour'] ?? ''}',
         plateNumber: '${j['plateNumber'] ?? ''}',
+        year: '${j['year'] ?? ''}',
         isPrimary: j['isPrimary'] == true,
+        listedForRental: j['listedForRental'] == true,
       );
 }
 
@@ -297,6 +321,53 @@ class DriverApi {
     final data = await ApiClient.get('/api/vehicles/me');
     final list = data as List? ?? const [];
     return list.whereType<Map<String, dynamic>>().map(Vehicle.fromJson).toList();
+  }
+
+  /// Add a vehicle owned by the calling driver.
+  static Future<Vehicle> addVehicle({
+    required String brand,
+    required String model,
+    required String colour,
+    required String plateNumber,
+    required String year,
+    bool isPrimary = false,
+  }) async {
+    final data = await ApiClient.post('/api/vehicles', {
+      'brand': brand,
+      'model': model,
+      'colour': colour,
+      'plateNumber': plateNumber,
+      'year': year,
+      'isPrimary': isPrimary,
+    });
+    return Vehicle.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Update one of the calling driver's own vehicles.
+  static Future<Vehicle> updateVehicle(
+    String id, {
+    required String brand,
+    required String model,
+    required String colour,
+    required String plateNumber,
+    required String year,
+    bool isPrimary = false,
+  }) async {
+    final data = await ApiClient.patch('/api/vehicles/$id', {
+      'brand': brand,
+      'model': model,
+      'colour': colour,
+      'plateNumber': plateNumber,
+      'year': year,
+      'isPrimary': isPrimary,
+    });
+    return Vehicle.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Delete one of the calling driver's own vehicles. The backend rejects
+  /// this (409) while the vehicle is listed for rental.
+  static Future<void> deleteVehicle(String id) async {
+    await ApiClient.delete('/api/vehicles/$id');
   }
 
   /// List one of the driver's vehicles for luxury rental.

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/models/driver_profile.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 
 class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({super.key});
+  final DriverProfile profile;
+  const ProfileScreen({super.key, this.profile = const DriverProfile()});
 
   @override
   Widget build(BuildContext context) {
@@ -15,15 +17,15 @@ class ProfileScreen extends StatelessWidget {
           children: [
             const Text("Check and update your driver profile details here if needed", style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
             const SizedBox(height: 24),
-            _lockedField("First Name", "Thelma"),
+            _lockedField("First Name", profile.firstName),
             const SizedBox(height: 16),
-            _lockedField("Last Name", "Ibeh"),
+            _lockedField("Last Name", profile.lastName.isNotEmpty ? profile.lastName : "Not provided"),
             const SizedBox(height: 16),
-            _lockedField("Email", "thelma123@gmail.com"),
+            _lockedField("Email", profile.email.isNotEmpty ? profile.email : "Not provided"),
             const SizedBox(height: 16),
-            _lockedField("Phone Number", "07037530052"),
+            _lockedField("Phone Number", profile.phoneNumber.isNotEmpty ? profile.phoneNumber : "Not provided"),
             const SizedBox(height: 16),
-            _lockedField("In-App Profile Name", "Thelma Ibeh"),
+            _lockedField("In-App Profile Name", profile.fullName.isNotEmpty ? profile.fullName : "Driver"),
             const SizedBox(height: 20),
             const Text("To update, please contact our support team via the app", style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
           ],

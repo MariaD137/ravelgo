@@ -10,13 +10,18 @@ const submitSchema = z.object({
   plateNumber: z.string().min(1),
 });
 
-// Driver: submit a Car Paddy (vehicle license renewal) request
+// Driver: submit a Car Paddy (vehicle license renewal) request. Gated on the
+// same admin-approved ACTIVE status as ride/delivery matching and rental
+// listing — a PENDING_REVIEW driver isn't yet an approved provider.
 carPaddyRouter.post("/car-paddy", requireAuth, requireRole("Driver"), async (req, res) => {
   const parsed = submitSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+  if (driver.status !== "ACTIVE") {
+    return res.status(409).json({ error: "Your account must be approved before you can submit a Car Paddy request." });
+  }
 
   const request = await prisma.carPaddyRequest.create({
     data: { driverId: driver.id, plateNumber: parsed.data.plateNumber },

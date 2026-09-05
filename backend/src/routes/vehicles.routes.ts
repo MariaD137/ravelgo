@@ -62,3 +62,26 @@ vehiclesRouter.patch("/vehicles/:id", requireAuth, requireRole("Driver"), async 
   });
   res.json(updated);
 });
+
+// Driver: delete one of my own vehicles. Blocked while it's listed for
+// rental — a RentalBooking is RESTRICTed against RentalListing, so deleting
+// the vehicle out from under an active listing would otherwise fail at the
+// DB layer with a raw 500 instead of a clear, actionable error.
+vehiclesRouter.delete("/vehicles/:id", requireAuth, requireRole("Driver"), async (req, res) => {
+  const driver = await findOwnDriver(req.user!.sub);
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  const vehicle = await prisma.vehicle.findUnique({
+    where: { id: req.params.id },
+    include: { rentalListings: true },
+  });
+  if (!vehicle || vehicle.driverId !== driver.id) {
+    return res.status(404).json({ error: "Vehicle not found" });
+  }
+  if (vehicle.rentalListings.length > 0) {
+    return res.status(409).json({ error: "This vehicle is listed for rental. Remove the rental listing before deleting it." });
+  }
+
+  await prisma.vehicle.delete({ where: { id: vehicle.id } });
+  res.status(204).send();
+});
