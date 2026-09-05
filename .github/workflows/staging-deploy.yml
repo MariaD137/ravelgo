@@ -1,21 +1,18 @@
 name: Deploy to Staging
 
+# Manual only, on purpose — this does NOT run on every push to main. Staging
+# deploys are something you trigger deliberately: from the Actions tab, pick
+# this workflow and click "Run workflow" (branch defaults to main), or ask
+# Claude to run it. This avoids surprise AWS deployments from an ordinary
+# push.
 on:
-  push:
-    branches: [main]
-    paths:
-      - "backend/**"
-      - "user_app/**"
-      - "driver_app/**"
-      - "admin_app/**"
-      - ".github/workflows/staging-deploy.yml"
   workflow_dispatch: {}
 
 permissions:
   id-token: write # required to assume the AWS role via OIDC
   contents: read
 
-# Only one staging deploy runs at a time; a second push queues behind it
+# Only one staging deploy runs at a time; a second run queues behind it
 # rather than racing it (never cancels a deploy already in flight).
 concurrency:
   group: staging-deploy
@@ -30,7 +27,7 @@ jobs:
   # infra/lib/ci-stack.ts and infra/bin/infra.ts). This job never blocks the
   # deploy (a permanently-red, unblockable gate would be worse than a missed
   # migration) — it just makes sure one is never applied silently by loudly
-  # warning when this push adds one.
+  # warning when the commit you're deploying adds one.
   check-migrations:
     runs-on: ubuntu-latest
     steps:
@@ -38,13 +35,13 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Warn if this push adds Prisma migrations
+      - name: Warn if the deployed commit adds Prisma migrations
         run: |
           if git diff --name-only HEAD~1 HEAD -- backend/prisma/migrations | grep -q .; then
-            echo "::warning::This push adds or changes Prisma migrations. Run 'bash scripts/migrate-staging.sh' against staging before (or right after) this deploy, or the backend may not work against the old schema. New migration files:"
+            echo "::warning::The commit being deployed adds or changes Prisma migrations. Run 'bash scripts/migrate-staging.sh' against staging before (or right after) this deploy, or the backend may not work against the old schema. New migration files:"
             git diff --name-only HEAD~1 HEAD -- backend/prisma/migrations
           else
-            echo "No migration changes in this push."
+            echo "No migration changes in the commit being deployed."
           fi
 
   backend:
