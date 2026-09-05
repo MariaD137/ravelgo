@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/booking_api.dart';
 import 'package:ravelgo_user_app/services/payments_api.dart';
@@ -254,14 +252,12 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          SafeGoogleMap(
-            initialCameraPosition: const CameraPosition(
-              target: LatLng(6.5244, 3.3792),
-              zoom: 14,
-            ),
-            myLocationEnabled: true,
-            zoomControlsEnabled: false,
-          ),
+          // The map is intentionally not shown here — it was purely a
+          // decorative backdrop (no markers, no camera tied to driver
+          // location). Live trip updates arrive over the WebSocket
+          // (RealtimeService) but only drive a text status/timestamp, never
+          // the map.
+          Positioned.fill(child: Container(color: AppColors.background)),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16),
