@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter/services.dart';
 import 'package:dotted_border/dotted_border.dart';
+import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class InviteFriendsView extends StatelessWidget {
@@ -96,11 +97,11 @@ class InviteFriendsView extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  const Text(
-                    "Invite your friends to RavelGo\n"
-                        "and earn ride rewards together!",
+                  Text(
+                    "Invite 5 friends to RavelGo — once each of them\n"
+                        "completes 2 rides, you earn ${Currency.symbol}5,000 in RavelGo Cash!",
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 15,
                       color: AppColors.textSecondary,
                     ),
@@ -248,13 +249,13 @@ class InviteFriendsView extends StatelessWidget {
               ));
             },
             icon: const Icon(Icons.share,
-                color: AppColors.textPrimary),
+                color: AppColors.surface),
             label: const Text(
               "Share",
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
+                color: AppColors.surface,
               ),
             ),
           ),
