@@ -117,13 +117,15 @@ This creates separate, parallel resources:
 - Cognito User Pool name becomes `ravelgo-users-staging`
 - All other resource names are automatically suffixed
 
-### Automating staging deploys via GitHub Actions
+### Deploying staging via GitHub Actions (manual trigger)
 
-Staging can auto-deploy on every push to `main` via
-`.github/workflows/staging-deploy.yml` — it builds and pushes the backend
-image, restarts the App Runner service, and publishes all three Flutter web
-apps. AWS only allows one GitHub OIDC provider per issuer per account, so
-staging's `CiStack` imports the same provider production's created rather
+`.github/workflows/staging-deploy.yml` builds and pushes the backend image,
+restarts the App Runner service, and publishes all three Flutter web apps —
+but only when you trigger it yourself (GitHub → Actions →
+"Deploy to Staging" → "Run workflow"). It deliberately does **not** run on
+every push to `main`, so an ordinary merge never kicks off an AWS deployment
+on its own. AWS only allows one GitHub OIDC provider per issuer per account,
+so staging's `CiStack` imports the same provider production's created rather
 than making a second one (see `infra/lib/ci-stack.ts`) — no manual OIDC setup
 needed beyond what step 5 above already did for production.
 
@@ -145,8 +147,8 @@ Database migrations are **not** part of this automation — the database has no
 public endpoint, so applying one requires the separate, deliberately manual
 `bash scripts/migrate-staging.sh` (see its own comments for why this stays a
 human step rather than something the CI role can trigger unattended). The
-workflow's `check-migrations` job just warns, non-blockingly, when a push
-adds a new migration you haven't applied yet.
+workflow's `check-migrations` job just warns, non-blockingly, when the commit
+you're deploying adds a new migration you haven't applied yet.
 
 For production, GitHub Actions CI/CD covers only the backend today (see
 `.github/workflows/backend-deploy.yml`) — its web apps and migrations aren't
