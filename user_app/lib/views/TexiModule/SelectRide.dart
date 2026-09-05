@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 import 'package:ravelgo_user_app/components/LocationService.dart';
-import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/booking_api.dart';
 import 'package:ravelgo_user_app/services/places_api.dart';
@@ -26,15 +25,15 @@ class SelectRide extends StatefulWidget {
 }
 
 class _SelectRideState extends State<SelectRide> {
-  GoogleMapController? mapController;
   // Cash is no longer a RavelGo payment method — rides are paid by card or the
   // RavelGo wallet, both handled by the backend so the platform can take its
   // commission and pay the driver.
   String _paymentMethod = 'Card';
 
   // Real trip geometry: pickup defaults to the device's location but the rider
-  // can always override it by search (below) — destination is either an
-  // address the rider searches (Places proxy) or a pin they tap on the map.
+  // can always override it by search (below) — destination is always chosen
+  // via the "Where to?" search (Places proxy). No map is shown on this
+  // screen, so nothing here depends on one being rendered.
   LatLng? _pickupLatLng;
   LatLng? _destLatLng;
   double? _distanceKm;
@@ -88,7 +87,6 @@ class _SelectRideState extends State<SelectRide> {
       _locatingPickup = false;
       _recomputeAndQuote();
     });
-    mapController?.animateCamera(CameraUpdate.newLatLng(me));
     _resolvePickupLabel(me);
   }
 
@@ -121,7 +119,6 @@ class _SelectRideState extends State<SelectRide> {
       _pickupLabel = place.address;
       _recomputeAndQuote();
     });
-    mapController?.animateCamera(CameraUpdate.newLatLng(pt));
   }
 
   void _recomputeAndQuote() {
@@ -177,54 +174,13 @@ class _SelectRideState extends State<SelectRide> {
       _destLabel = place.address;
       _recomputeAndQuote();
     });
-    mapController?.animateCamera(CameraUpdate.newLatLng(dest));
   }
 
-  void _onMapTap(LatLng point) {
-    setState(() {
-      _destLatLng = point;
-      _destLabel = 'Dropped pin (${point.latitude.toStringAsFixed(4)}, ${point.longitude.toStringAsFixed(4)})';
-      _recomputeAndQuote();
-    });
-    // Try to upgrade the pin label to a real address in the background.
-    _resolveDestLabel(point);
-  }
-
-  Future<void> _resolveDestLabel(LatLng point) async {
-    try {
-      final address = await PlacesApi.reverseGeocode(point.latitude, point.longitude);
-      if (address != null && address.isNotEmpty && mounted && _destLatLng == point) {
-        setState(() => _destLabel = address);
-      }
-    } catch (_) {
-      // keep the coordinate label
-    }
-  }
-
-  Set<Marker> _markers() {
-    final m = <Marker>{};
-    if (_pickupLatLng != null) {
-      m.add(Marker(
-        markerId: const MarkerId('pickup'),
-        position: _pickupLatLng!,
-        infoWindow: const InfoWindow(title: 'Pickup'),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-      ));
-    }
-    if (_destLatLng != null) {
-      m.add(Marker(
-        markerId: const MarkerId('destination'),
-        position: _destLatLng!,
-        infoWindow: const InfoWindow(title: 'Destination'),
-      ));
-    }
-    return m;
-  }
-
-  /// Recenter the map on the device's real location (geolocator).
+  /// Refresh pickup from the device's current location (geolocator) — the
+  /// same real coordinates _initPickup() uses on first load.
   Future<void> _recenterOnMe() async {
     final position = await LocationService.getCurrentLocation();
-    if (position == null || mapController == null || !mounted) {
+    if (position == null || !mounted) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not get your location - check permissions')),
@@ -237,7 +193,6 @@ class _SelectRideState extends State<SelectRide> {
       _pickupLatLng = me;
       _recomputeAndQuote();
     });
-    mapController!.animateCamera(CameraUpdate.newLatLng(me));
     _resolvePickupLabel(me);
   }
 
@@ -268,25 +223,17 @@ class _SelectRideState extends State<SelectRide> {
     if (result != null) setState(() => _paymentMethod = result);
   }
 
-  final LatLng _center = const LatLng(6.6018, 3.3515); // Sample: Lagos
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
-          // Google Map
-          SafeGoogleMap(
-            onMapCreated: (controller) => mapController = controller,
-            initialCameraPosition: CameraPosition(
-              target: _pickupLatLng ?? _center,
-              zoom: 14.0,
-            ),
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            onTap: _onMapTap,
-            markers: _markers(),
-          ),
+          // The map is intentionally not shown here — pickup is set from the
+          // device's real location (or searched, below) and the destination is
+          // always chosen via the "Where to?" search, so nothing on this
+          // screen depends on a rendered map. Booking, distance and fare are
+          // all computed by the backend from the coordinates either way.
+          Positioned.fill(child: Container(color: AppColors.background)),
 
           // Top bar with back, location search, and add
           SafeArea(
@@ -296,7 +243,7 @@ class _SelectRideState extends State<SelectRide> {
             ),
           ),
 
-          // Location button
+          // Refresh pickup from the device's current location.
           Positioned(
             right: 16,
             bottom: 280,
@@ -515,7 +462,7 @@ class _SelectRideState extends State<SelectRide> {
     if (_destLatLng == null) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 12),
-        child: Text('Search "Where to?" above, or tap the map to drop a pin',
+        child: Text('Search "Where to?" above to set your destination',
             style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
       );
     }
