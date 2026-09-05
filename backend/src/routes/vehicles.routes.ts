@@ -2,12 +2,37 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const vehiclesRouter = Router();
 
 async function findOwnDriver(cognitoSub: string) {
   return prisma.driver.findFirst({ where: { user: { cognitoSub } } });
 }
+
+// Admin: inventory of every vehicle across all drivers, with owner info and
+// whether it's currently listed for rental. Registered before "/vehicles/me"
+// would matter only if it were also literal "/vehicles" - Express matches
+// the two paths independently either way.
+vehiclesRouter.get("/vehicles", requireAuth, requireRole("Admin"), async (req, res) => {
+  const parsed = paginationQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { page, pageSize } = parsed.data;
+
+  const [vehicles, total] = await Promise.all([
+    prisma.vehicle.findMany({
+      include: {
+        driver: { include: { user: { select: { firstName: true, lastName: true, email: true } } } },
+        _count: { select: { rentalListings: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.vehicle.count(),
+  ]);
+  res.json(paginate(vehicles, total, page, pageSize));
+});
 
 // Driver: list my own vehicles
 vehiclesRouter.get("/vehicles/me", requireAuth, requireRole("Driver"), async (req, res) => {

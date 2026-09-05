@@ -194,6 +194,18 @@ class AdminTrip {
   }
 }
 
+class AnalyticsDay {
+  final String date; // YYYY-MM-DD
+  final double revenue;
+  final int completedTrips;
+  AnalyticsDay({required this.date, required this.revenue, required this.completedTrips});
+  factory AnalyticsDay.fromJson(Map<String, dynamic> j) => AnalyticsDay(
+        date: '${j['date'] ?? ''}',
+        revenue: _d(j['revenue']),
+        completedTrips: _i(j['completedTrips']),
+      );
+}
+
 class AuditEntry {
   final String id;
   final String actor;
@@ -594,6 +606,97 @@ class AdminPayout {
   }
 }
 
+class AdminVehicle {
+  final String id;
+  final String brand;
+  final String model;
+  final String colour;
+  final String plateNumber;
+  final String year;
+  final bool listedForRental;
+  final String ownerName;
+  final String ownerEmail;
+  AdminVehicle({
+    required this.id,
+    required this.brand,
+    required this.model,
+    required this.colour,
+    required this.plateNumber,
+    required this.year,
+    required this.listedForRental,
+    required this.ownerName,
+    required this.ownerEmail,
+  });
+  factory AdminVehicle.fromJson(Map<String, dynamic> j) {
+    final driver = j['driver'] as Map?;
+    final user = driver?['user'] as Map?;
+    return AdminVehicle(
+      id: '${j['id']}',
+      brand: '${j['brand'] ?? ''}',
+      model: '${j['model'] ?? ''}',
+      colour: '${j['colour'] ?? ''}',
+      plateNumber: '${j['plateNumber'] ?? ''}',
+      year: '${j['year'] ?? ''}',
+      listedForRental: j['listedForRental'] == true,
+      ownerName: _name(user),
+      ownerEmail: '${user?['email'] ?? ''}',
+    );
+  }
+}
+
+class LoyaltyTier {
+  final String id;
+  final String name;
+  final int minCompletedTrips;
+  final double discountPercent;
+  final String? perks;
+  LoyaltyTier({
+    required this.id,
+    required this.name,
+    required this.minCompletedTrips,
+    required this.discountPercent,
+    required this.perks,
+  });
+  factory LoyaltyTier.fromJson(Map<String, dynamic> j) => LoyaltyTier(
+        id: '${j['id']}',
+        name: '${j['name'] ?? ''}',
+        minCompletedTrips: _i(j['minCompletedTrips']),
+        discountPercent: _d(j['discountPercent']),
+        perks: j['perks']?.toString(),
+      );
+}
+
+class Promotion {
+  final String id;
+  final String code;
+  final String description;
+  final double discountPercent;
+  final bool active;
+  final DateTime? expiresAt;
+  final int? maxRedemptions;
+  final int redemptionCount;
+  Promotion({
+    required this.id,
+    required this.code,
+    required this.description,
+    required this.discountPercent,
+    required this.active,
+    required this.expiresAt,
+    required this.maxRedemptions,
+    required this.redemptionCount,
+  });
+  factory Promotion.fromJson(Map<String, dynamic> j) => Promotion(
+        id: '${j['id']}',
+        code: '${j['code'] ?? ''}',
+        description: '${j['description'] ?? ''}',
+        discountPercent: _d(j['discountPercent']),
+        active: j['active'] != false,
+        expiresAt: j['expiresAt'] == null ? null : _dt(j['expiresAt']),
+        maxRedemptions: j['maxRedemptions'] == null ? null : _i(j['maxRedemptions']),
+        redemptionCount: _i(j['redemptionCount']),
+      );
+}
+
 class AdminApi {
   static List _list(dynamic data) => (data is Map ? data['data'] : data) as List? ?? const [];
 
@@ -631,6 +734,12 @@ class AdminApi {
   static Future<List<AdminTrip>> trips() async {
     final data = await ApiClient.get('/api/trips?pageSize=100');
     return _list(data).whereType<Map<String, dynamic>>().map(AdminTrip.fromJson).toList();
+  }
+
+  static Future<List<AnalyticsDay>> analytics() async {
+    final data = await ApiClient.get('/api/admin/analytics') as Map<String, dynamic>;
+    final days = (data['days'] as List?) ?? const [];
+    return days.whereType<Map<String, dynamic>>().map(AnalyticsDay.fromJson).toList();
   }
 
   static Future<List<AuditEntry>> audit() async {
@@ -704,6 +813,55 @@ class AdminApi {
   static Future<List<StayBooking>> stayBookings(String id) async {
     final data = await ApiClient.get('/api/stays/$id/bookings');
     return (data as List).whereType<Map<String, dynamic>>().map(StayBooking.fromJson).toList();
+  }
+
+  // ---- Loyalty tiers & promotions ----
+  static Future<List<LoyaltyTier>> loyaltyTiers() async {
+    final data = await ApiClient.get('/api/loyalty-tiers');
+    return (data as List).whereType<Map<String, dynamic>>().map(LoyaltyTier.fromJson).toList();
+  }
+
+  static Future<LoyaltyTier> createLoyaltyTier({
+    required String name,
+    required int minCompletedTrips,
+    required double discountPercent,
+    String? perks,
+  }) async {
+    final data = await ApiClient.post('/api/loyalty-tiers', {
+      'name': name,
+      'minCompletedTrips': minCompletedTrips,
+      'discountPercent': discountPercent,
+      if (perks != null && perks.isNotEmpty) 'perks': perks,
+    });
+    return LoyaltyTier.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<List<Promotion>> promotions() async {
+    final data = await ApiClient.get('/api/promotions');
+    return (data as List).whereType<Map<String, dynamic>>().map(Promotion.fromJson).toList();
+  }
+
+  static Future<Promotion> createPromotion({
+    required String code,
+    required String description,
+    required double discountPercent,
+    DateTime? expiresAt,
+    int? maxRedemptions,
+  }) async {
+    final data = await ApiClient.post('/api/promotions', {
+      'code': code,
+      'description': description,
+      'discountPercent': discountPercent,
+      if (expiresAt != null) 'expiresAt': expiresAt.toIso8601String(),
+      if (maxRedemptions != null) 'maxRedemptions': maxRedemptions,
+    });
+    return Promotion.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ---- Vehicle inventory (admin, cross-driver) ----
+  static Future<List<AdminVehicle>> vehicles() async {
+    final data = await ApiClient.get('/api/vehicles?pageSize=100');
+    return _list(data).whereType<Map<String, dynamic>>().map(AdminVehicle.fromJson).toList();
   }
 
   // ---- Payouts ----
