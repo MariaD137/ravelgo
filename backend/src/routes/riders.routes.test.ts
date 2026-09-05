@@ -126,3 +126,20 @@ test("PATCH /api/riders/:id/status lets an Admin suspend a rider", async () => {
   assert.equal(res.status, 200);
   assert.equal(res.body.suspended, true);
 });
+
+test("PATCH /api/riders/:id/status rejects a Finance Viewer admin preset", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-6", role: "RIDER", firstName: "Yaw", lastName: "Q", email: "yaw@example.com" },
+  });
+  await prisma.user.create({
+    data: { cognitoSub: "finance-viewer-2", role: "ADMIN", firstName: "F", lastName: "V", email: "fv2@example.com", adminRole: "FINANCE_VIEWER" },
+  });
+  const token = mockAuthAs({ sub: "finance-viewer-2", groups: ["Admin"] });
+
+  const res = await request(app)
+    .patch(`/api/riders/${rider.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ suspended: true });
+
+  assert.equal(res.status, 403);
+});

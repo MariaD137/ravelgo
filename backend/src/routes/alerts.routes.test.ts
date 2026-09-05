@@ -68,3 +68,39 @@ test("PATCH /api/emergency-alerts/:id/status lets an Admin resolve an alert and 
   assert.equal(res.body.status, "RESOLVED");
   assert.ok(res.body.resolvedAt);
 });
+
+test("PATCH /api/emergency-alerts/:id/status lets a Support Agent admin preset resolve an alert", async () => {
+  const user = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-6", role: "RIDER", firstName: "I", lastName: "J", email: "ij@example.com" },
+  });
+  const alert = await prisma.emergencyAlert.create({ data: { userId: user.id, type: "SOS" } });
+  await prisma.user.create({
+    data: { cognitoSub: "support-agent-3", role: "ADMIN", firstName: "S", lastName: "A", email: "sa3@example.com", adminRole: "SUPPORT_AGENT" },
+  });
+  const token = mockAuthAs({ sub: "support-agent-3", groups: ["Admin"] });
+
+  const res = await request(app)
+    .patch(`/api/emergency-alerts/${alert.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "RESOLVED" });
+
+  assert.equal(res.status, 200);
+});
+
+test("PATCH /api/emergency-alerts/:id/status rejects a Finance Viewer admin preset", async () => {
+  const user = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-7", role: "RIDER", firstName: "K", lastName: "L", email: "kl@example.com" },
+  });
+  const alert = await prisma.emergencyAlert.create({ data: { userId: user.id, type: "SOS" } });
+  await prisma.user.create({
+    data: { cognitoSub: "finance-viewer-3", role: "ADMIN", firstName: "F", lastName: "V", email: "fv3@example.com", adminRole: "FINANCE_VIEWER" },
+  });
+  const token = mockAuthAs({ sub: "finance-viewer-3", groups: ["Admin"] });
+
+  const res = await request(app)
+    .patch(`/api/emergency-alerts/${alert.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "RESOLVED" });
+
+  assert.equal(res.status, 403);
+});

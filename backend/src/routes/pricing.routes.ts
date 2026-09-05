@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
-import { requireAuth, requireRole } from "../middleware/auth";
+import { requireAuth } from "../middleware/auth";
+import { requireAdminPermission } from "../lib/admin-permissions";
 import { computeFare, findActiveSurgeZone, requireActivePricingRule } from "../services/pricing";
 
 export const pricingRouter = Router();
@@ -21,7 +22,7 @@ const createPricingRuleSchema = z.object({
 });
 
 // Admin: define a pricing rule
-pricingRouter.post("/pricing-rules", requireAuth, requireRole("Admin"), async (req, res) => {
+pricingRouter.post("/pricing-rules", requireAuth, requireAdminPermission("pricing:write"), async (req, res) => {
   const parsed = createPricingRuleSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -34,7 +35,7 @@ const updatePricingRuleSchema = createPricingRuleSchema.partial().extend({
 });
 
 // Admin: update or (de)activate a pricing rule
-pricingRouter.patch("/pricing-rules/:id", requireAuth, requireRole("Admin"), async (req, res) => {
+pricingRouter.patch("/pricing-rules/:id", requireAuth, requireAdminPermission("pricing:write"), async (req, res) => {
   const parsed = updatePricingRuleSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -57,7 +58,7 @@ const createSurgeZoneSchema = z.object({
 });
 
 // Admin: define a surge zone
-pricingRouter.post("/surge-zones", requireAuth, requireRole("Admin"), async (req, res) => {
+pricingRouter.post("/surge-zones", requireAuth, requireAdminPermission("pricing:write"), async (req, res) => {
   const parsed = createSurgeZoneSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -70,7 +71,7 @@ const updateSurgeZoneSchema = createSurgeZoneSchema.partial().extend({
 });
 
 // Admin: update or (de)activate a surge zone
-pricingRouter.patch("/surge-zones/:id", requireAuth, requireRole("Admin"), async (req, res) => {
+pricingRouter.patch("/surge-zones/:id", requireAuth, requireAdminPermission("pricing:write"), async (req, res) => {
   const parsed = updateSurgeZoneSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 

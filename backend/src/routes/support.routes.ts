@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { requireAdminPermission } from "../lib/admin-permissions";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const supportRouter = Router();
@@ -58,7 +59,7 @@ supportRouter.get("/support-tickets", requireAuth, requireRole("Admin"), async (
 const statusSchema = z.object({ status: z.enum(["OPEN", "IN_PROGRESS", "RESOLVED"]) });
 
 // Admin: update ticket status
-supportRouter.patch("/support-tickets/:id/status", requireAuth, requireRole("Admin"), async (req, res) => {
+supportRouter.patch("/support-tickets/:id/status", requireAuth, requireAdminPermission("alerts:write"), async (req, res) => {
   const parsed = statusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 

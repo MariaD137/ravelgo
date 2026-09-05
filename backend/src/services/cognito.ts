@@ -1,6 +1,9 @@
 import {
   CognitoIdentityProviderClient,
   AdminAddUserToGroupCommand,
+  AdminCreateUserCommand,
+  AdminDisableUserCommand,
+  AdminEnableUserCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { env } from "../config/env";
 
@@ -39,5 +42,47 @@ export const cognitoGroups = {
         GroupName: group,
       }),
     );
+  },
+
+  /**
+   * Invite a brand-new admin user: Cognito creates the account, generates a
+   * temporary password, and emails it (Cognito's default invitation
+   * template) since no password is supplied here — the invitee sets their
+   * own permanent password on first sign-in. Only ever called from the
+   * Admin-Users management routes, themselves Super-Admin-only.
+   *
+   * Returns the pool's actual Username for this account. We pass `email` as
+   * the requested Username (valid since the pool's only sign-in alias is
+   * email), but read back whatever Cognito actually assigned rather than
+   * assuming — that returned value is what every other admin API in this
+   * file addresses the user by, and it's what we store as cognitoSub.
+   */
+  async createAdminUser(params: { email: string; firstName: string; lastName: string }): Promise<{ username: string }> {
+    const result = await client.send(
+      new AdminCreateUserCommand({
+        UserPoolId: env.COGNITO_USER_POOL_ID,
+        Username: params.email,
+        UserAttributes: [
+          { Name: "email", Value: params.email },
+          { Name: "email_verified", Value: "true" },
+          { Name: "given_name", Value: params.firstName },
+          { Name: "family_name", Value: params.lastName },
+        ],
+        DesiredDeliveryMediums: ["EMAIL"],
+      }),
+    );
+    const username = result.User?.Username;
+    if (!username) throw new Error("Cognito did not return a Username for the new admin user");
+    return { username };
+  },
+
+  /**
+   * Disable/enable an admin's Cognito account outright, so a suspended admin
+   * cannot obtain a new token at all — not just a soft Postgres flag. Used by
+   * PATCH /admin-users/:id/status alongside setting User.suspended.
+   */
+  async setUserEnabled(username: string, enabled: boolean): Promise<void> {
+    const Command = enabled ? AdminEnableUserCommand : AdminDisableUserCommand;
+    await client.send(new Command({ UserPoolId: env.COGNITO_USER_POOL_ID, Username: username }));
   },
 };

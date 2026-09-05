@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { requireAdminPermission } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
 
 export const documentsRouter = Router();
@@ -49,7 +50,7 @@ const reviewSchema = z.object({
 });
 
 // Admin: approve/reject a document
-documentsRouter.patch("/documents/:id/review", requireAuth, requireRole("Admin"), async (req, res) => {
+documentsRouter.patch("/documents/:id/review", requireAuth, requireAdminPermission("drivers:write"), async (req, res) => {
   const parsed = reviewSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 

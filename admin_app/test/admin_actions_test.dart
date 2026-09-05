@@ -6,6 +6,7 @@ import 'package:ravelgo_admin/views/carpaddy/car_paddy_requests_screen.dart';
 import 'package:ravelgo_admin/views/payouts/payouts_screen.dart';
 import 'package:ravelgo_admin/views/rentals/rental_listings_screen.dart';
 import 'package:ravelgo_admin/views/safety/fraud_alerts_screen.dart';
+import 'package:ravelgo_admin/views/settings/admin_users_screen.dart';
 import 'package:ravelgo_admin/views/stays/stays_management_screen.dart';
 import 'package:ravelgo_admin/views/trips/trip_admin_detail_screen.dart';
 
@@ -69,5 +70,10 @@ void main() {
   testWidgets('payouts screen renders its scaffold', (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: PayoutsScreen()));
     expect(find.text('Payouts'), findsOneWidget);
+  });
+
+  testWidgets('admin users screen renders its scaffold', (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: AdminUsersScreen()));
+    expect(find.text('Admin Users'), findsOneWidget);
   });
 }
