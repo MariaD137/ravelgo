@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/Model/app_state.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class CommunicationTogglePage extends StatefulWidget {
@@ -14,7 +15,7 @@ class CommunicationTogglePage extends StatefulWidget {
 class _CommunicationTogglePageState
     extends State<CommunicationTogglePage> {
 
-  final Map<String, bool> settings = {
+  static const _defaults = {
     "E-mail": false,
     "Push": false,
     "SMS": false,
@@ -22,6 +23,22 @@ class _CommunicationTogglePageState
     "Voice calls": false,
     "Whatsapp": false,
   };
+
+  // LOCAL STATE ONLY: saved into RiderAppState for this session. There's no
+  // backend concept of per-channel notification preferences yet, so this
+  // isn't sent anywhere - the point is that Save actually persists the
+  // choice instead of silently discarding it.
+  late final Map<String, bool> settings = Map.of(
+    RiderAppState.instance.communicationPreferences[widget.title] ?? _defaults,
+  );
+
+  void _save() {
+    RiderAppState.instance.saveCommunicationPreferences(widget.title, settings);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${widget.title} preferences saved')),
+    );
+    Navigator.pop(context);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -105,9 +122,7 @@ class _CommunicationTogglePageState
                   width: double.infinity,
                   height: 48,
                   child: ElevatedButton(
-                    onPressed: () {
-                      // Save logic
-                    },
+                    onPressed: _save,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,

@@ -110,9 +110,8 @@ class _AccountviewState extends State<Accountview> {
                           textAlign: TextAlign.center,
                           style: const TextStyle(fontSize: 11, color: AppColors.error)),
                     )
-                  else
-                    Text('✓ Live from backend · ${_email ?? ''}',
-                        style: const TextStyle(fontSize: 12, color: AppColors.success)),
+                  else if (_email != null)
+                    Text(_email!, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                   const SizedBox(height: 18),
                 ],
               ),
