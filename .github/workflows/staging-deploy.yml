@@ -100,6 +100,11 @@ jobs:
     if: vars.AWS_STAGING_DEPLOY_ROLE_ARN != ''
     runs-on: ubuntu-latest
     environment: staging
+    # The `secrets` context can't be used in a step's `if:` (GitHub rejects
+    # the whole workflow file if it is — see the step below), so it's copied
+    # into a job-level env var here, which `if:` can read instead.
+    env:
+      HAS_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -178,7 +183,7 @@ jobs:
         run: flutter pub get
 
       - name: Inject the Google Maps JS SDK into the page
-        if: ${{ secrets.GOOGLE_MAPS_API_KEY != '' }}
+        if: env.HAS_MAPS_KEY == 'true'
         working-directory: ${{ matrix.app }}
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
