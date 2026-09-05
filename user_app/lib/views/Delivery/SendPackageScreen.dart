@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/courier_api.dart';
+import 'package:ravelgo_user_app/services/places_api.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:ravelgo_user_app/views/Delivery/DeliveryTrackingScreen.dart';
+import 'package:ravelgo_user_app/views/TexiModule/PlaceSearchScreen.dart';
 
 /// The customer's "send a package" request form. Backed by the real
 /// POST /api/courier-requests — the same endpoint a driver later browses and
@@ -29,6 +31,17 @@ class _SendPackageScreenState extends State<SendPackageScreen> {
   final _descriptionController = TextEditingController();
   String _packageSize = 'MEDIUM';
   bool _sending = false;
+
+  /// Opens the same real, Places-backed address search used by the ride
+  /// booking flow, so pickup/drop-off here resolve to actual verified
+  /// addresses instead of whatever free text a rider happens to type.
+  Future<void> _pickAddress(TextEditingController controller, {required String title, required String hint}) async {
+    final place = await Navigator.of(context).push<PlaceLocation>(
+      MaterialPageRoute(builder: (_) => PlaceSearchScreen(title: title, hint: hint)),
+    );
+    if (place == null || !mounted) return;
+    setState(() => controller.text = place.address);
+  }
 
   @override
   void dispose() {
@@ -103,14 +116,28 @@ class _SendPackageScreenState extends State<SendPackageScreen> {
             _label('Pickup address'),
             TextFormField(
               controller: _pickupController,
-              decoration: const InputDecoration(prefixIcon: Icon(Icons.trip_origin), border: OutlineInputBorder()),
+              readOnly: true,
+              onTap: () => _pickAddress(_pickupController, title: 'Pickup address', hint: 'Search for a pickup address'),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.trip_origin),
+                suffixIcon: Icon(Icons.search),
+                hintText: 'Search for a pickup address',
+                border: OutlineInputBorder(),
+              ),
               validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter a pickup address' : null,
             ),
             const SizedBox(height: 16),
             _label('Drop-off address'),
             TextFormField(
               controller: _dropoffController,
-              decoration: const InputDecoration(prefixIcon: Icon(Icons.location_on_outlined), border: OutlineInputBorder()),
+              readOnly: true,
+              onTap: () => _pickAddress(_dropoffController, title: 'Drop-off address', hint: 'Search for a drop-off address'),
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.location_on_outlined),
+                suffixIcon: Icon(Icons.search),
+                hintText: 'Search for a drop-off address',
+                border: OutlineInputBorder(),
+              ),
               validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter a drop-off address' : null,
             ),
             const SizedBox(height: 16),
