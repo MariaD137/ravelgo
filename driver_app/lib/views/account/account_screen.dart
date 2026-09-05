@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_driver_app/models/driver_profile.dart';
 import 'package:ravelgo_driver_app/services/auth_service.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/account/profile_screen.dart';
@@ -18,17 +19,19 @@ import 'package:ravelgo_driver_app/views/vehicles/vehicle_list_screen.dart';
 
 class AccountScreen extends StatelessWidget {
   final bool embedded;
-  const AccountScreen({super.key, this.embedded = false});
+  final DriverProfile profile;
+  const AccountScreen({super.key, this.embedded = false, this.profile = const DriverProfile()});
 
   @override
   Widget build(BuildContext context) {
+    final name = profile.fullName.isNotEmpty ? profile.fullName : 'Driver';
     final body = SafeArea(
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           if (embedded) AppComponents.sectionTitle("Account"),
           InkWell(
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen())),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileScreen(profile: profile))),
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: AppComponents.cardDecoration(),
@@ -36,13 +39,13 @@ class AccountScreen extends StatelessWidget {
                 children: [
                   const CircleAvatar(radius: 26, backgroundColor: AppColors.surfaceElevated, child: Icon(Icons.person, color: AppColors.textSecondary)),
                   const SizedBox(width: 14),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("Thelma Ibeh", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                        SizedBox(height: 4),
-                        Text("View & edit profile", style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                        Text(name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                        const SizedBox(height: 4),
+                        const Text("View & edit profile", style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                       ],
                     ),
                   ),

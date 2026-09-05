@@ -14,11 +14,11 @@ after(async () => {
   await prisma.$disconnect();
 });
 
-async function createDriver(cognitoSub: string) {
+async function createDriver(cognitoSub: string, status: "PENDING_REVIEW" | "ACTIVE" = "ACTIVE") {
   const user = await prisma.user.create({
     data: { cognitoSub, role: "DRIVER", firstName: "D", lastName: "R", email: `${cognitoSub}@example.com` },
   });
-  return prisma.driver.create({ data: { userId: user.id } });
+  return prisma.driver.create({ data: { userId: user.id, status } });
 }
 
 test("POST /api/car-paddy submits a request for the calling driver", async () => {
@@ -32,6 +32,18 @@ test("POST /api/car-paddy submits a request for the calling driver", async () =>
 
   assert.equal(res.status, 201);
   assert.equal(res.body.status, "SUBMITTED");
+});
+
+test("POST /api/car-paddy rejects a driver pending admin approval", async () => {
+  await createDriver("driver-sub-1b", "PENDING_REVIEW");
+  const token = mockAuthAs({ sub: "driver-sub-1b", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/car-paddy")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ plateNumber: "XYZ-999" });
+
+  assert.equal(res.status, 409);
 });
 
 test("GET /api/car-paddy rejects a non-Admin caller", async () => {

@@ -67,3 +67,44 @@ test("PATCH /api/vehicles/:id 404s when the vehicle belongs to a different drive
 
   assert.equal(res.status, 404);
 });
+
+test("DELETE /api/vehicles/:id removes a vehicle the calling driver owns", async () => {
+  const driver = await createDriver("driver-sub-6");
+  const vehicle = await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Mazda", model: "3", colour: "Grey", plateNumber: "DDD-444", year: "2020" },
+  });
+  const token = mockAuthAs({ sub: "driver-sub-6", groups: ["Driver"] });
+
+  const res = await request(app).delete(`/api/vehicles/${vehicle.id}`).set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 204);
+
+  const gone = await prisma.vehicle.findUnique({ where: { id: vehicle.id } });
+  assert.equal(gone, null);
+});
+
+test("DELETE /api/vehicles/:id 404s when the vehicle belongs to a different driver", async () => {
+  const driverA = await createDriver("driver-sub-7");
+  await createDriver("driver-sub-8");
+  const vehicle = await prisma.vehicle.create({
+    data: { driverId: driverA.id, brand: "Kia", model: "Sportage", colour: "Blue", plateNumber: "EEE-555", year: "2021" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-8", groups: ["Driver"] });
+  const res = await request(app).delete(`/api/vehicles/${vehicle.id}`).set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 404);
+});
+
+test("DELETE /api/vehicles/:id rejects deleting a vehicle that's listed for rental", async () => {
+  const driver = await createDriver("driver-sub-9");
+  const vehicle = await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Lexus", model: "RX", colour: "Black", plateNumber: "FFF-666", year: "2022", listedForRental: true },
+  });
+  await prisma.rentalListing.create({ data: { driverId: driver.id, vehicleId: vehicle.id, dailyRate: 100, location: "Lagos" } });
+
+  const token = mockAuthAs({ sub: "driver-sub-9", groups: ["Driver"] });
+  const res = await request(app).delete(`/api/vehicles/${vehicle.id}`).set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 409);
+
+  const stillThere = await prisma.vehicle.findUnique({ where: { id: vehicle.id } });
+  assert.ok(stillThere);
+});

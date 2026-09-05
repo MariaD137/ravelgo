@@ -69,7 +69,7 @@ class _DriverShellState extends State<DriverShell> {
       DriverHomeScreen(profile: _profile, onOnlineToggle: _setOnline),
       const MyTripsScreen(embedded: true),
       const EarningsScreen(embedded: true),
-      const AccountScreen(embedded: true),
+      AccountScreen(embedded: true, profile: _profile),
     ];
 
     return Scaffold(
