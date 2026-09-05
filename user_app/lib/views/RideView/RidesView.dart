@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
+import 'package:ravelgo_user_app/services/places_api.dart';
 import 'package:ravelgo_user_app/services/trips_api.dart';
 import 'package:ravelgo_user_app/views/RideView/RideDetailsView.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
@@ -37,6 +38,17 @@ class Ride {
         status: t.status,
         driverName: t.driverName,
       );
+
+  Ride copyWith({String? title, String? pickup, String? destination}) => Ride(
+        dateTime: dateTime,
+        title: title ?? this.title,
+        id: id,
+        pickup: pickup ?? this.pickup,
+        destination: destination ?? this.destination,
+        fare: fare,
+        status: status,
+        driverName: driverName,
+      );
 }
 
 class RidesView extends StatefulWidget {
@@ -62,6 +74,29 @@ class _RidesViewState extends State<RidesView> {
     _load();
   }
 
+  // Matches a trailing raw "(lat, lng)" pair — the fallback a since-removed
+  // map flow used to store as the pickup/destination text when it couldn't
+  // resolve an address. Trips booked today always carry a real address, but
+  // older trips created through that flow still have this stored verbatim.
+  static final RegExp _coordLabelPattern = RegExp(r'\((-?\d+\.\d+),\s*(-?\d+\.\d+)\)\s*$');
+
+  /// Reverse-geocodes a pickup/destination label if it's just raw coordinates;
+  /// returns it unchanged (no network call) if it already looks like an address.
+  Future<String> _resolveLabel(String label) async {
+    final m = _coordLabelPattern.firstMatch(label);
+    if (m == null) return label;
+    final lat = double.tryParse(m.group(1)!);
+    final lng = double.tryParse(m.group(2)!);
+    if (lat == null || lng == null) return label;
+    try {
+      final address = await PlacesApi.reverseGeocode(lat, lng);
+      if (address != null && address.isNotEmpty) return address;
+    } catch (_) {
+      // keep the original label
+    }
+    return label;
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -71,7 +106,16 @@ class _RidesViewState extends State<RidesView> {
       final trips = await TripsApi.mine();
       final grouped = <String, List<Ride>>{};
       for (final t in trips) {
-        final ride = Ride.fromTrip(t);
+        var ride = Ride.fromTrip(t);
+        final pickup = await _resolveLabel(ride.pickup);
+        final destination = await _resolveLabel(ride.destination);
+        if (pickup != ride.pickup || destination != ride.destination) {
+          ride = ride.copyWith(
+            pickup: pickup,
+            destination: destination,
+            title: destination.isNotEmpty ? destination : ride.title,
+          );
+        }
         final key = '${_months[ride.dateTime.month]} ${ride.dateTime.year}';
         grouped.putIfAbsent(key, () => []).add(ride);
       }
