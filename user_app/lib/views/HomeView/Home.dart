@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:ravelgo_user_app/components/LocationService.dart';
 import 'package:ravelgo_user_app/components/ride_controller.dart';
-import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/views/AppDrawer/AppDrawer.dart';
 import 'package:ravelgo_user_app/views/HomeView/ride_view_popup.dart';
 import 'package:ravelgo_user_app/views/User/invite_a_friend.dart';
@@ -27,41 +24,6 @@ class _HomePageState extends State<HomePage> {
   // Mock value, replace with live data. Kept in sync with the rating shown
   // on the Account screen for the same rider.
   final String _rating = "5.00";
-  late GoogleMapController _controller;
-
-  void _onMapCreated(GoogleMapController controller) {
-    _controller = controller;
-  }
-  Future<void> _loadCurrentLocation() async {
-    final position = await LocationService.getCurrentLocation();
-    if (position != null) {
-      _controller.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: LatLng(position.latitude, position.longitude),
-            zoom: 16.0,
-          ),
-        ),
-      );
-
-      // Optionally, animate camera here if using GoogleMapController
-    }
-  }
-  static const CameraPosition _initialCameraPosition = CameraPosition(
-    target: LatLng(20.5937, 78.9629), // Default center (India in this case)
-    zoom: 5.0,
-  );
-
-  @override
-  void initState() {
-    super.initState();
-    Future.delayed(Duration(milliseconds: 300), _loadCurrentLocation);
-
-  }
-  @override
-  void dispose() {
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -77,15 +39,9 @@ class _HomePageState extends State<HomePage> {
             builder: (context, isRideActive, _) {
               return Stack(
                 children: [
-                  // Map / image background
-                  SafeGoogleMap(
-                    mapType: MapType.hybrid,
-                    onMapCreated: _onMapCreated,
-                    initialCameraPosition: _initialCameraPosition,
-                    myLocationEnabled: true,
-                    myLocationButtonEnabled: false,
-                    compassEnabled: false,
-                  ),
+                  // Plain background behind the top icons and the home sheet
+                  // below — purely decorative, so nothing here depends on it.
+                  Positioned.fill(child: Container(color: AppColors.background)),
 
 
                   // Top-left menu button (circular)
