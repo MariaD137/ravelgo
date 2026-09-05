@@ -85,9 +85,13 @@ class _HomePageState extends State<HomePage> {
                   /// HOME SHEET
                   if (!isRideActive)
                     DraggableScrollableSheet(
-                      initialChildSize: 0.5,
-                      minChildSize: 0.25,
-                      maxChildSize: 0.65,
+                      // With the decorative map gone, there's no background
+                      // left worth revealing by dragging the sheet down — so
+                      // it now opens filling almost the whole screen instead
+                      // of leaving a large empty gap above it.
+                      initialChildSize: 0.88,
+                      minChildSize: 0.55,
+                      maxChildSize: 0.95,
                       builder: (context, scrollController) {
                         return _buildHomeSheet(scrollController);
                       },
@@ -281,8 +285,9 @@ class _HomePageState extends State<HomePage> {
     return Container(
       decoration: const BoxDecoration(
         color: AppColors.border,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(0)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      clipBehavior: Clip.antiAlias,
       child: SingleChildScrollView(
         controller: scrollController,
         padding: const EdgeInsets.only(bottom: 12),
@@ -295,7 +300,7 @@ class _HomePageState extends State<HomePage> {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
               decoration: const BoxDecoration(
                 color: AppColors.surface,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(0)),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
               child: Column(
                 children: [
