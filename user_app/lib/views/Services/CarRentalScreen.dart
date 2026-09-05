@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'CarListing.dart';
-import 'PostCarScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
+import 'package:ravelgo_user_app/views/Rentals/RentalBrowseScreen.dart';
 
 class CarRentalScreen extends StatelessWidget {
   const CarRentalScreen({Key? key}) : super(key: key);
@@ -53,7 +52,7 @@ class CarRentalScreen extends StatelessWidget {
                   ),
                   SizedBox(height: 16),
                   Text(
-                    'Need a car for your next trip? Our rental service offers convenience, affordability, and a smooth booking process. Get on the road today!',
+                    'Choose a real vehicle listed by a RavelGo driver, pick your dates, and pay securely in the app.',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -68,52 +67,32 @@ class CarRentalScreen extends StatelessWidget {
             const SizedBox(height: 30),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary, // Yellow
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (context) => CarListing()),
-                        );
-                      },
-                      child: const Text(
-                        'Rent a car',
-                        style: TextStyle(color: Colors.white, fontSize: 16),
-                      ),
+              child: SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary, // Yellow
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 50,
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: AppColors.textMuted),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      onPressed: () {
-                        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => PostCarScreen()));
-                      },
-                      child: const Text(
-                        'Post your car',
-                        style: TextStyle(color: AppColors.textPrimary, fontSize: 16),
-                      ),
-                    ),
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(builder: (context) => const RentalBrowseScreen()),
+                    );
+                  },
+                  child: const Text(
+                    'Rent a car',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
                   ),
-                ],
+                ),
               ),
             ),
+            // Listing your own car for rental is a RavelGo Driver capability
+            // (it requires an approved vehicle on file) and lives in the
+            // driver app, not here — this screen is for customers renting,
+            // not owners listing.
           ],
           ),
         ),

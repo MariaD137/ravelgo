@@ -96,6 +96,9 @@ export async function resetDb() {
   await prisma.courierRequest.deleteMany();
   await prisma.driverSubscription.deleteMany();
   await prisma.supportTicket.deleteMany();
+  // RentalBooking -> RentalListing is ON DELETE RESTRICT, so bookings must
+  // go first.
+  await prisma.rentalBooking.deleteMany();
   await prisma.rentalListing.deleteMany();
   // StayBooking -> PropertyListing is ON DELETE RESTRICT, so bookings must
   // go first.

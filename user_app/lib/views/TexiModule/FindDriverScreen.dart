@@ -39,8 +39,6 @@ class FindDriverScreen extends StatefulWidget {
 }
 
 class _FindDriverScreenState extends State<FindDriverScreen> {
-  Set<Marker> _markers = {};
-
   String get _pickup =>
       (widget.pickup != null && widget.pickup!.trim().isNotEmpty)
           ? widget.pickup!.trim()
@@ -64,7 +62,6 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
   @override
   void initState() {
     super.initState();
-    _loadMarkers();
     _loadQuote();
   }
 
@@ -149,26 +146,6 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
     }
   }
 
-  Future<void> _loadMarkers() async {
-    final markers = await _generateCarMarkers();
-    if (mounted) setState(() => _markers = markers);
-  }
-
-  Future<Set<Marker>> _generateCarMarkers() async {
-    final icon = await BitmapDescriptor.fromAssetImage(
-      ImageConfiguration.empty,
-      'assets/car_marker.png',
-    );
-    return List.generate(
-      10,
-      (i) => Marker(
-        markerId: MarkerId('car_$i'),
-        position: LatLng(6.524 + i * 0.001, 3.379 + i * 0.001),
-        icon: icon,
-      ),
-    ).toSet();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -181,7 +158,6 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
             ),
             myLocationEnabled: true,
             zoomControlsEnabled: false,
-            markers: _markers,
           ),
           SafeArea(
             child: Padding(
