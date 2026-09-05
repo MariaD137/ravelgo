@@ -10,7 +10,7 @@ Provisions everything the backend needs to run in AWS:
 | `RavelGo-Data` | RDS PostgreSQL (single-AZ, `db.t4g.micro` to start) |
 | `RavelGo-Api` | ECR repo + App Runner service running the backend container |
 | `RavelGo-Monitoring` | CloudWatch alarms (5xx rate, RDS CPU/storage) + AWS Budget, both -> one SNS topic -> email |
-| `RavelGo-CI` | GitHub OIDC provider + IAM role GitHub Actions assumes to deploy (production only, see "Staging" below) |
+| `RavelGo-CI` / `RavelGo-CI-staging` | GitHub OIDC provider (created once, by the production stack) + one IAM role per environment that GitHub Actions assumes to deploy (see "Staging" below) |
 
 Validated locally with `cdk synth` (no AWS credentials needed for that). Actually
 deploying (`cdk deploy`) does need your own AWS credentials — nobody's AWS
@@ -117,9 +117,38 @@ This creates separate, parallel resources:
 - Cognito User Pool name becomes `ravelgo-users-staging`
 - All other resource names are automatically suffixed
 
-**Note:** GitHub Actions CI/CD (GitHub OIDC + IAM role) is **production-only**. AWS
-only allows one OIDC provider per issuer per account, so staging deploys must be
-manual (`cdk deploy --context envName=staging` from a developer machine with
-real AWS credentials). To automate staged deployments, use CDK Pipelines or switch
-to per-environment AWS accounts (a bigger step in complexity — only worth it once
-you have real users depending on staging isolation).
+### Automating staging deploys via GitHub Actions
+
+Staging can auto-deploy on every push to `main` via
+`.github/workflows/staging-deploy.yml` — it builds and pushes the backend
+image, restarts the App Runner service, and publishes all three Flutter web
+apps. AWS only allows one GitHub OIDC provider per issuer per account, so
+staging's `CiStack` imports the same provider production's created rather
+than making a second one (see `infra/lib/ci-stack.ts`) — no manual OIDC setup
+needed beyond what step 5 above already did for production.
+
+One-time setup:
+
+1. Deploy staging's CI role (after `npx cdk deploy --all --context envName=staging` has run at least once):
+   ```bash
+   cd infra
+   npm run bootstrap-ci-staging
+   ```
+   Note the `GitHubActionsDeployRoleArn` output.
+2. Add these as **repository (or "staging" environment) variables** in
+   GitHub → Settings → Secrets and variables → Actions:
+   - `AWS_REGION` — e.g. `us-east-1` (shared with production's workflow if already set)
+   - `AWS_STAGING_DEPLOY_ROLE_ARN` — the role ARN from step 1
+3. Optional: add a `GOOGLE_MAPS_API_KEY` **secret** so the deployed web apps render maps.
+
+Database migrations are **not** part of this automation — the database has no
+public endpoint, so applying one requires the separate, deliberately manual
+`bash scripts/migrate-staging.sh` (see its own comments for why this stays a
+human step rather than something the CI role can trigger unattended). The
+workflow's `check-migrations` job just warns, non-blockingly, when a push
+adds a new migration you haven't applied yet.
+
+For production, GitHub Actions CI/CD covers only the backend today (see
+`.github/workflows/backend-deploy.yml`) — its web apps and migrations aren't
+auto-deployed. Extending it the same way staging's workflow does is a
+reasonable next step once production has its own web-app hosting story.

@@ -1,0 +1,204 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "user_app/**"
+      - "driver_app/**"
+      - "admin_app/**"
+      - ".github/workflows/staging-deploy.yml"
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write # required to assume the AWS role via OIDC
+  contents: read
+
+# Only one staging deploy runs at a time; a second push queues behind it
+# rather than racing it (never cancels a deploy already in flight).
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
+jobs:
+  # Database migrations stay a deliberate manual step (see
+  # scripts/migrate-staging.sh) — the backend has no public DB endpoint, so
+  # applying one requires a CodeBuild job running inside the VPC, and running
+  # that unattended would need granting this workflow's AWS role IAM
+  # self-service permissions this repo has decided against (see
+  # infra/lib/ci-stack.ts and infra/bin/infra.ts). This job never blocks the
+  # deploy (a permanently-red, unblockable gate would be worse than a missed
+  # migration) — it just makes sure one is never applied silently by loudly
+  # warning when this push adds one.
+  check-migrations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Warn if this push adds Prisma migrations
+        run: |
+          if git diff --name-only HEAD~1 HEAD -- backend/prisma/migrations | grep -q .; then
+            echo "::warning::This push adds or changes Prisma migrations. Run 'bash scripts/migrate-staging.sh' against staging before (or right after) this deploy, or the backend may not work against the old schema. New migration files:"
+            git diff --name-only HEAD~1 HEAD -- backend/prisma/migrations
+          else
+            echo "No migration changes in this push."
+          fi
+
+  backend:
+    # Deploy only once the one-time AWS setup has been done (an OIDC deploy
+    # role in AWS — see infra/bin/infra.ts's staging CiStack, deployed via
+    # `npm run bootstrap-ci-staging` in infra/ — plus the AWS_STAGING_DEPLOY_ROLE_ARN
+    # / AWS_REGION GitHub → Settings → Secrets and variables → Actions →
+    # Variables). Skips cleanly before that setup exists, same as
+    # backend-deploy.yml does for production.
+    if: vars.AWS_STAGING_DEPLOY_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_STAGING_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Discover the staging ECR repository
+        id: ecr
+        run: |
+          set -euo pipefail
+          URI="$(aws ecr describe-repositories --repository-names ravelgo-backend-staging \
+            --query 'repositories[0].repositoryUri' --output text)"
+          echo "uri=$URI" >> "$GITHUB_OUTPUT"
+
+      - name: Build, tag, and push image
+        working-directory: backend
+        env:
+          REPOSITORY_URI: ${{ steps.ecr.outputs.uri }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker build -t "$REPOSITORY_URI:$IMAGE_TAG" -t "$REPOSITORY_URI:latest" .
+          docker push "$REPOSITORY_URI:$IMAGE_TAG"
+          docker push "$REPOSITORY_URI:latest"
+
+      - name: Trigger App Runner deployment
+        run: |
+          set -euo pipefail
+          SERVICE_ARN="$(aws apprunner list-services \
+            --query "ServiceSummaryList[?ServiceName=='ravelgo-backend-staging'].ServiceArn | [0]" --output text)"
+          aws apprunner start-deployment --service-arn "$SERVICE_ARN"
+
+  web:
+    needs: backend
+    if: vars.AWS_STAGING_DEPLOY_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    environment: staging
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: user_app
+            path: rider-web
+            label: Rider app
+          - app: driver_app
+            path: driver-web
+            label: Driver app
+          - app: admin_app
+            path: admin-web
+            label: Admin app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_STAGING_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # Reads the same deployed-stack outputs scripts/host-web-staging.sh
+      # does, so the web build's backend/Cognito config can never drift from
+      # what's actually deployed.
+      - name: Discover deployed config
+        id: config
+        run: |
+          set -euo pipefail
+          BUCKET="$(aws cloudformation describe-stacks --stack-name RavelGo-Storage-staging \
+            --query "Stacks[0].Outputs[?OutputKey=='AssetsBucketName'].OutputValue" --output text)"
+          DOMAIN="$(aws cloudformation describe-stacks --stack-name RavelGo-Storage-staging \
+            --query "Stacks[0].Outputs[?OutputKey=='AssetsDistributionDomain'].OutputValue" --output text)"
+          DIST_ID="$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?DomainName=='$DOMAIN'].Id | [0]" --output text)"
+          API_URL="$(aws cloudformation describe-stacks --stack-name RavelGo-Api-staging \
+            --query "Stacks[0].Outputs[?OutputKey=='ServiceUrl'].OutputValue" --output text)"
+          POOL_ID="$(aws cloudformation describe-stacks --stack-name RavelGo-Auth-staging \
+            --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text)"
+          CLIENT_ID="$(aws cloudformation describe-stacks --stack-name RavelGo-Auth-staging \
+            --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" --output text)"
+          {
+            echo "bucket=$BUCKET"
+            echo "domain=$DOMAIN"
+            echo "dist_id=$DIST_ID"
+            echo "api_url=$API_URL"
+            echo "pool_id=$POOL_ID"
+            echo "client_id=$CLIENT_ID"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+          cache: true
+
+      # Your Google Maps browser key (optional): set it once as the repo/
+      # environment secret GOOGLE_MAPS_API_KEY. It's fine for this key to ship
+      # in the web build — it's public by design and should be restricted to
+      # your CloudFront domain in the Google console. Left blank, the apps
+      # still build and deploy; maps just render blank.
+      - name: Write .env
+        working-directory: ${{ matrix.app }}
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          cat > .env <<EOF
+          GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+          API_BASE_URL=${{ steps.config.outputs.api_url }}
+          COGNITO_USER_POOL_ID=${{ steps.config.outputs.pool_id }}
+          COGNITO_CLIENT_ID=${{ steps.config.outputs.client_id }}
+          AWS_REGION=${{ vars.AWS_REGION }}
+          EOF
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.app }}
+        run: flutter pub get
+
+      - name: Inject the Google Maps JS SDK into the page
+        if: ${{ secrets.GOOGLE_MAPS_API_KEY != '' }}
+        working-directory: ${{ matrix.app }}
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          set -euo pipefail
+          sed -i "s#</head>#  <script src=\"https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}\"></script>\n  </head>#" web/index.html
+
+      - name: Build web
+        working-directory: ${{ matrix.app }}
+        run: flutter build web --release --base-href "/${{ matrix.path }}/"
+
+      - name: Publish to S3
+        working-directory: ${{ matrix.app }}
+        run: aws s3 sync build/web "s3://${{ steps.config.outputs.bucket }}/${{ matrix.path }}/" --delete
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ steps.config.outputs.dist_id }}" --paths "/${{ matrix.path }}/*"
+
+      - name: Print link
+        run: |
+          echo "${{ matrix.label }} -> https://${{ steps.config.outputs.domain }}/${{ matrix.path }}/index.html"
