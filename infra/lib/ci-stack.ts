@@ -113,6 +113,19 @@ export class CiStack extends cdk.Stack {
       }),
     );
 
+    // ListServices, like ecr:DescribeRepositories and cloudfront:ListDistributions
+    // above/below, has no resource-level permissions in IAM — the staging
+    // workflow uses it to resolve the service ARN from its name rather than
+    // hardcoding the ARN as a GitHub variable (see staging-deploy.yml's
+    // "Trigger App Runner deployment" step).
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "AppRunnerListServices",
+        actions: ["apprunner:ListServices"],
+        resources: ["*"],
+      }),
+    );
+
     this.deployRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "AppRunnerDeploy",
