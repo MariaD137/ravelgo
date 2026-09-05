@@ -23,4 +23,23 @@ class RiderAppState extends ChangeNotifier {
     language = value;
     notifyListeners();
   }
+
+  // Communication channel toggles (Account -> Communication -> Promotions /
+  // Ravel Go's offers), keyed by page title since both share the same set of
+  // channels but are saved independently.
+  final Map<String, Map<String, bool>> communicationPreferences = {};
+
+  void saveCommunicationPreferences(String title, Map<String, bool> values) {
+    communicationPreferences[title] = Map.of(values);
+    notifyListeners();
+  }
+
+  // Surge-hour push notification toggle (Account -> Communication -> Surge
+  // hour Notifications).
+  bool surgeNotificationsEnabled = true;
+
+  void setSurgeNotificationsEnabled(bool value) {
+    surgeNotificationsEnabled = value;
+    notifyListeners();
+  }
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/Model/app_state.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 class SurgeNotificationPage extends StatefulWidget {
@@ -10,7 +11,17 @@ class SurgeNotificationPage extends StatefulWidget {
 }
 
 class _SurgeNotificationPageState extends State<SurgeNotificationPage> {
-  bool isPushEnabled = true;
+  // LOCAL STATE ONLY: saved into RiderAppState for this session — there's no
+  // backend concept of this preference yet.
+  late bool isPushEnabled = RiderAppState.instance.surgeNotificationsEnabled;
+
+  void _save() {
+    RiderAppState.instance.setSurgeNotificationsEnabled(isPushEnabled);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Notification preference saved')),
+    );
+    Navigator.pop(context);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -117,9 +128,7 @@ class _SurgeNotificationPageState extends State<SurgeNotificationPage> {
                   width: double.infinity,
                   height: 48,
                   child: ElevatedButton(
-                    onPressed: () {
-                      // Save action
-                    },
+                    onPressed: _save,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.primary,
                       foregroundColor: Colors.white,
