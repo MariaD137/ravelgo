@@ -101,6 +101,17 @@ export class CiStack extends cdk.Stack {
       }),
     );
     props.repository.grantPullPush(this.deployRole);
+    // grantPullPush covers push/pull layer actions but not DescribeRepositories —
+    // the staging workflow needs that separately to look up the repo's URI at
+    // deploy time instead of hardcoding it as a GitHub variable (see
+    // .github/workflows/staging-deploy.yml's "Discover the staging ECR repository" step).
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "EcrDescribeRepository",
+        actions: ["ecr:DescribeRepositories"],
+        resources: [props.repository.repositoryArn],
+      }),
+    );
 
     this.deployRole.addToPolicy(
       new iam.PolicyStatement({
@@ -112,6 +123,18 @@ export class CiStack extends cdk.Stack {
 
     if (props.webAppsConfig) {
       props.webAppsConfig.assetsBucket.grantReadWrite(this.deployRole);
+
+      // ListDistributions has no resource-level permissions in IAM (it's an
+      // account-wide list call) — the workflow uses it to resolve the
+      // distribution ID from its domain name, since that ID isn't exposed as
+      // a CloudFormation stack output today.
+      this.deployRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "CloudFrontListDistributions",
+          actions: ["cloudfront:ListDistributions"],
+          resources: ["*"],
+        }),
+      );
 
       this.deployRole.addToPolicy(
         new iam.PolicyStatement({
