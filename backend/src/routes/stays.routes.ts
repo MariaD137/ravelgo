@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { recordAudit } from "../lib/audit";
 
 export const staysRouter = Router();
 
@@ -62,13 +63,21 @@ staysRouter.get("/stays", requireAuth, async (req, res) => {
   const [listings, total] = await Promise.all([
     prisma.propertyListing.findMany({
       where,
+      include: { host: { select: { firstName: true, lastName: true, email: true } }, _count: { select: { bookings: true } } },
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
     prisma.propertyListing.count({ where }),
   ]);
-  res.json(paginate(listings, total, page, pageSize));
+  // Host email and booking count are only attached for Admin — this list is
+  // also the guest-facing browse endpoint above.
+  const shaped = listings.map(({ _count, host, ...rest }) => ({
+    ...rest,
+    host: isAdmin ? host : { firstName: host.firstName, lastName: host.lastName },
+    bookingCount: isAdmin ? _count.bookings : undefined,
+  }));
+  res.json(paginate(shaped, total, page, pageSize));
 });
 
 // Guest: my booking history (most recent first).
@@ -87,9 +96,19 @@ staysRouter.get("/stays/bookings/mine", requireAuth, async (req, res) => {
 // Listing detail. Comes after the more specific GET routes above so
 // "mine"/"bookings" never get swallowed by :id.
 staysRouter.get("/stays/:id", requireAuth, async (req, res) => {
-  const listing = await prisma.propertyListing.findUnique({ where: { id: req.params.id } });
+  const listing = await prisma.propertyListing.findUnique({
+    where: { id: req.params.id },
+    include: { host: { select: { firstName: true, lastName: true, email: true } }, _count: { select: { bookings: true } } },
+  });
   if (!listing) return res.status(404).json({ error: "Listing not found" });
-  res.json(listing);
+
+  const isAdmin = req.user!.groups.includes("Admin");
+  const { _count, host, ...rest } = listing;
+  res.json({
+    ...rest,
+    host: isAdmin ? host : { firstName: host.firstName, lastName: host.lastName },
+    bookingCount: isAdmin ? _count.bookings : undefined,
+  });
 });
 
 const bookSchema = z.object({
@@ -140,6 +159,16 @@ staysRouter.post("/stays/:id/book", requireAuth, async (req, res) => {
   res.status(201).json(booking);
 });
 
+// Admin: bookings made against one listing.
+staysRouter.get("/stays/:id/bookings", requireAuth, requireRole("Admin"), async (req, res) => {
+  const bookings = await prisma.stayBooking.findMany({
+    where: { propertyId: req.params.id },
+    include: { guest: { select: { firstName: true, lastName: true, email: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  res.json(bookings);
+});
+
 const decisionSchema = z.object({ status: z.enum(["APPROVED", "REJECTED"]) });
 
 // Admin: approve/reject a listing before it's visible to guests.
@@ -150,6 +179,13 @@ staysRouter.patch("/stays/:id/status", requireAuth, requireRole("Admin"), async 
   const listing = await prisma.propertyListing.update({
     where: { id: req.params.id },
     data: { status: parsed.data.status },
+  });
+  void recordAudit({
+    actorSub: req.user!.sub,
+    action: "STAY_LISTING_REVIEWED",
+    entityType: "PropertyListing",
+    entityId: listing.id,
+    metadata: { status: parsed.data.status },
   });
   res.json(listing);
 });

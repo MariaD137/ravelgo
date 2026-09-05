@@ -14,6 +14,7 @@ import 'package:ravelgo_admin/views/safety/emergency_alerts_screen.dart';
 import 'package:ravelgo_admin/views/safety/fraud_alerts_screen.dart';
 import 'package:ravelgo_admin/views/settings/admin_profile_screen.dart';
 import 'package:ravelgo_admin/views/settings/admin_roles_screen.dart';
+import 'package:ravelgo_admin/views/stays/stays_management_screen.dart';
 import 'package:ravelgo_admin/views/subscriptions/driver_subscriptions_screen.dart';
 
 class SideMenuAdmin extends StatelessWidget {
@@ -51,6 +52,7 @@ class SideMenuAdmin extends StatelessWidget {
             _item(context, Icons.local_shipping_outlined, "Courier Requests", () => const CourierRequestsScreen()),
             _item(context, Icons.badge_outlined, "Car Paddy Requests", () => const CarPaddyRequestsScreen()),
             _item(context, Icons.key_outlined, "Luxury Rental Listings", () => const RentalListingsScreen()),
+            _item(context, Icons.villa_outlined, "Short Stays", () => const StaysManagementScreen()),
             _item(context, Icons.tune_outlined, "Pricing & Surge", () => const PricingSurgeScreen()),
             _item(context, Icons.workspace_premium_outlined, "Driver Subscriptions", () => const DriverSubscriptionsScreen()),
             AppComponents.divider(),

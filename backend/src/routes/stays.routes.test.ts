@@ -124,7 +124,7 @@ test("POST /stays/:id/book rejects booking a listing that isn't APPROVED", async
   assert.equal(res.status, 409);
 });
 
-test("PATCH /stays/:id/status lets an admin approve a listing", async () => {
+test("PATCH /stays/:id/status lets an admin approve a listing and records an audit entry", async () => {
   const host = await seedUser("stays-host-1", "host1@example.com");
   const listing = await seedListing(host.id, { status: "PENDING_APPROVAL" });
   const token = mockAuthAs({ sub: "stays-admin-1", groups: ["Admin"] });
@@ -136,6 +136,59 @@ test("PATCH /stays/:id/status lets an admin approve a listing", async () => {
 
   assert.equal(res.status, 200);
   assert.equal(res.body.status, "APPROVED");
+
+  const entry = await prisma.auditLog.findFirst({ where: { entityType: "PropertyListing", entityId: listing.id } });
+  assert.equal(entry?.action, "STAY_LISTING_REVIEWED");
+});
+
+test("GET /stays exposes host email and booking count to an admin but not to a guest", async () => {
+  const host = await seedUser("stays-host-1", "host1@example.com");
+  const listing = await seedListing(host.id, { status: "APPROVED" });
+  await seedUser("stays-guest-1", "guest1@example.com");
+  const guestToken = mockAuthAs({ sub: "stays-guest-1", groups: ["Rider"] });
+  await request(app)
+    .post(`/api/stays/${listing.id}/book`)
+    .set("Authorization", `Bearer ${guestToken}`)
+    .send({ checkIn: "2026-10-01T00:00:00.000Z", checkOut: "2026-10-02T00:00:00.000Z", guests: 1 });
+
+  const guestView = await request(app).get("/api/stays").set("Authorization", `Bearer ${guestToken}`);
+  assert.equal(guestView.body.data[0].host.email, undefined);
+  assert.equal(guestView.body.data[0].bookingCount, undefined);
+
+  restoreAuth();
+  const adminToken = mockAuthAs({ sub: "stays-admin-1", groups: ["Admin"] });
+  const adminView = await request(app).get("/api/stays").set("Authorization", `Bearer ${adminToken}`);
+  const seen = adminView.body.data.find((l: { id: string }) => l.id === listing.id);
+  assert.equal(seen.host.email, "host1@example.com");
+  assert.equal(seen.bookingCount, 1);
+});
+
+test("GET /stays/:id/bookings lets an admin see who booked a listing", async () => {
+  const host = await seedUser("stays-host-1", "host1@example.com");
+  const listing = await seedListing(host.id, { status: "APPROVED" });
+  await seedUser("stays-guest-1", "guest1@example.com");
+  const guestToken = mockAuthAs({ sub: "stays-guest-1", groups: ["Rider"] });
+  await request(app)
+    .post(`/api/stays/${listing.id}/book`)
+    .set("Authorization", `Bearer ${guestToken}`)
+    .send({ checkIn: "2026-10-01T00:00:00.000Z", checkOut: "2026-10-02T00:00:00.000Z", guests: 1 });
+
+  restoreAuth();
+  const adminToken = mockAuthAs({ sub: "stays-admin-1", groups: ["Admin"] });
+  const res = await request(app).get(`/api/stays/${listing.id}/bookings`).set("Authorization", `Bearer ${adminToken}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.length, 1);
+  assert.equal(res.body[0].guest.email, "guest1@example.com");
+});
+
+test("GET /stays/:id/bookings rejects a non-admin caller", async () => {
+  const host = await seedUser("stays-host-1", "host1@example.com");
+  const listing = await seedListing(host.id, { status: "APPROVED" });
+  const token = mockAuthAs({ sub: "stays-guest-1", groups: ["Rider"] });
+
+  const res = await request(app).get(`/api/stays/${listing.id}/bookings`).set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 403);
 });
 
 test("PATCH /stays/:id/status rejects a non-admin caller", async () => {

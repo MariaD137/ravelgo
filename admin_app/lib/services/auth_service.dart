@@ -80,8 +80,16 @@ class AuthService {
   static String? accessToken;
   static String? idToken;
   static String? email;
+  static List<String> groups = const [];
 
   static bool get isSignedIn => accessToken != null;
+
+  /// True only when the signed-in Cognito user is in the "Admin" group.
+  /// This is a UX convenience only — every backend admin endpoint enforces
+  /// requireRole("Admin") independently, so this check can never itself
+  /// grant access to anything; it just lets the app reject a non-admin
+  /// before showing the dashboard instead of after a confusing 403.
+  static bool get isAdmin => groups.contains('Admin');
 
   /// True only when the app was built with real Cognito settings. Lets the UI
   /// give a clear message instead of a cryptic error if config is missing.
@@ -132,6 +140,8 @@ class AuthService {
     idToken = s.getIdToken().getJwtToken();
     final claims = s.getIdToken().decodePayload();
     email = claims['email']?.toString() ?? email;
+    final rawGroups = claims['cognito:groups'];
+    groups = rawGroups is List ? rawGroups.map((g) => '$g').toList() : const [];
   }
 
   /// Create an account. Cognito emails a 6-digit confirmation code.
@@ -217,6 +227,7 @@ class AuthService {
     accessToken = null;
     idToken = null;
     email = null;
+    groups = const [];
   }
 
   /// Turns a raw Cognito exception into a short, human message for the UI.

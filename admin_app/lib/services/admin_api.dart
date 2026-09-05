@@ -84,6 +84,65 @@ class AdminRider {
       );
 }
 
+class AdminRiderTrip {
+  final String id;
+  final String pickup;
+  final String destination;
+  final String status;
+  final double fare;
+  final DateTime requestedAt;
+  AdminRiderTrip({
+    required this.id,
+    required this.pickup,
+    required this.destination,
+    required this.status,
+    required this.fare,
+    required this.requestedAt,
+  });
+  factory AdminRiderTrip.fromJson(Map<String, dynamic> j) => AdminRiderTrip(
+        id: '${j['id']}',
+        pickup: '${j['pickup'] ?? ''}',
+        destination: '${j['destination'] ?? ''}',
+        status: '${j['status'] ?? ''}',
+        fare: j['finalFare'] == null ? _d(j['estimatedFare']) : _d(j['finalFare']),
+        requestedAt: _dt(j['requestedAt']),
+      );
+}
+
+class AdminRiderDetail {
+  final String id;
+  final String name;
+  final String email;
+  final String? phoneNumber;
+  final bool suspended;
+  final bool isLoyaltyMember;
+  final DateTime createdAt;
+  final List<AdminRiderTrip> recentTrips;
+  AdminRiderDetail({
+    required this.id,
+    required this.name,
+    required this.email,
+    required this.phoneNumber,
+    required this.suspended,
+    required this.isLoyaltyMember,
+    required this.createdAt,
+    required this.recentTrips,
+  });
+  factory AdminRiderDetail.fromJson(Map<String, dynamic> j) {
+    final trips = (j['ridesAsRider'] as List?) ?? const [];
+    return AdminRiderDetail(
+      id: '${j['id']}',
+      name: _name(j),
+      email: '${j['email'] ?? ''}',
+      phoneNumber: j['phoneNumber']?.toString(),
+      suspended: j['suspended'] == true,
+      isLoyaltyMember: j['isLoyaltyMember'] == true,
+      createdAt: _dt(j['createdAt']),
+      recentTrips: trips.whereType<Map<String, dynamic>>().map(AdminRiderTrip.fromJson).toList(),
+    );
+  }
+}
+
 class AdminTrip {
   final String id;
   final String pickup;
@@ -93,6 +152,10 @@ class AdminTrip {
   final String riderName;
   final String? driverName;
   final DateTime requestedAt;
+  // Only ever populated for an Admin caller (see trips.routes.ts) — null for
+  // an unpaid/not-yet-charged trip, not an error.
+  final String? paymentStatus;
+  final String? paymentMethod;
 
   AdminTrip({
     required this.id,
@@ -103,10 +166,13 @@ class AdminTrip {
     required this.riderName,
     required this.driverName,
     required this.requestedAt,
+    this.paymentStatus,
+    this.paymentMethod,
   });
 
   factory AdminTrip.fromJson(Map<String, dynamic> j) {
     final driver = j['driver'] as Map?;
+    final payment = j['payment'] as Map?;
     return AdminTrip(
       id: '${j['id']}',
       pickup: '${j['pickup'] ?? ''}',
@@ -116,6 +182,8 @@ class AdminTrip {
       riderName: _name(j['rider'] as Map?),
       driverName: driver == null ? null : (_name(driver['user'] as Map?).isEmpty ? null : _name(driver['user'] as Map?)),
       requestedAt: _dt(j['requestedAt']),
+      paymentStatus: payment?['status']?.toString(),
+      paymentMethod: payment?['method']?.toString(),
     );
   }
 }
@@ -263,6 +331,90 @@ class CarPaddyRequest {
   }
 }
 
+class StayHost {
+  final String firstName;
+  final String lastName;
+  final String? email;
+  StayHost({required this.firstName, required this.lastName, this.email});
+  String get name => [firstName, lastName].where((e) => e.trim().isNotEmpty).join(' ').trim();
+  factory StayHost.fromJson(Map<String, dynamic> j) => StayHost(
+        firstName: '${j['firstName'] ?? ''}',
+        lastName: '${j['lastName'] ?? ''}',
+        email: j['email']?.toString(),
+      );
+}
+
+class StayListing {
+  final String id;
+  final String title;
+  final String? description;
+  final String address;
+  final double pricePerNight;
+  final int maxGuests;
+  final String status; // PENDING_APPROVAL | APPROVED | REJECTED
+  final StayHost? host;
+  final int? bookingCount;
+  StayListing({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.address,
+    required this.pricePerNight,
+    required this.maxGuests,
+    required this.status,
+    required this.host,
+    required this.bookingCount,
+  });
+  factory StayListing.fromJson(Map<String, dynamic> j) => StayListing(
+        id: '${j['id']}',
+        title: '${j['title'] ?? ''}',
+        description: j['description']?.toString(),
+        address: '${j['address'] ?? ''}',
+        pricePerNight: _d(j['pricePerNight']),
+        maxGuests: _i(j['maxGuests']),
+        status: '${j['status'] ?? ''}',
+        host: j['host'] is Map<String, dynamic> ? StayHost.fromJson(j['host'] as Map<String, dynamic>) : null,
+        bookingCount: j['bookingCount'] == null ? null : _i(j['bookingCount']),
+      );
+}
+
+class StayBooking {
+  final String id;
+  final DateTime checkIn;
+  final DateTime checkOut;
+  final int guests;
+  final int nights;
+  final double totalPrice;
+  final String status;
+  final String guestName;
+  final String? guestEmail;
+  StayBooking({
+    required this.id,
+    required this.checkIn,
+    required this.checkOut,
+    required this.guests,
+    required this.nights,
+    required this.totalPrice,
+    required this.status,
+    required this.guestName,
+    required this.guestEmail,
+  });
+  factory StayBooking.fromJson(Map<String, dynamic> j) {
+    final guest = j['guest'] as Map?;
+    return StayBooking(
+      id: '${j['id']}',
+      checkIn: _dt(j['checkIn']),
+      checkOut: _dt(j['checkOut']),
+      guests: _i(j['guests']),
+      nights: _i(j['nights']),
+      totalPrice: _d(j['totalPrice']),
+      status: '${j['status'] ?? ''}',
+      guestName: _name(guest),
+      guestEmail: guest?['email']?.toString(),
+    );
+  }
+}
+
 class RentalListing {
   final String id;
   final double dailyRate;
@@ -393,6 +545,9 @@ class AdminApi {
     await ApiClient.patch('/api/riders/$id/status', {'suspended': suspended});
   }
 
+  static Future<AdminRiderDetail> rider(String id) async =>
+      AdminRiderDetail.fromJson(await ApiClient.get('/api/riders/$id') as Map<String, dynamic>);
+
   static Future<List<AdminTrip>> trips() async {
     final data = await ApiClient.get('/api/trips?pageSize=100');
     return _list(data).whereType<Map<String, dynamic>>().map(AdminTrip.fromJson).toList();
@@ -451,6 +606,24 @@ class AdminApi {
 
   static Future<void> setRentalStatus(String id, String status) async {
     await ApiClient.patch('/api/rentals/$id/status', {'status': status});
+  }
+
+  // ---- Short Stays (property listings) ----
+  static Future<List<StayListing>> stays() async {
+    final data = await ApiClient.get('/api/stays?pageSize=100');
+    return _list(data).whereType<Map<String, dynamic>>().map(StayListing.fromJson).toList();
+  }
+
+  static Future<StayListing> stay(String id) async =>
+      StayListing.fromJson(await ApiClient.get('/api/stays/$id') as Map<String, dynamic>);
+
+  static Future<void> setStayStatus(String id, String status) async {
+    await ApiClient.patch('/api/stays/$id/status', {'status': status});
+  }
+
+  static Future<List<StayBooking>> stayBookings(String id) async {
+    final data = await ApiClient.get('/api/stays/$id/bookings');
+    return (data as List).whereType<Map<String, dynamic>>().map(StayBooking.fromJson).toList();
   }
 
   // ---- Subscription plans ----

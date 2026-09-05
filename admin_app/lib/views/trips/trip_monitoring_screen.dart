@@ -4,6 +4,7 @@ import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/utils/date_utils.dart';
+import 'package:ravelgo_admin/views/trips/trip_admin_detail_screen.dart';
 
 class TripMonitoringScreen extends StatefulWidget {
   final bool embedded;
@@ -98,7 +99,10 @@ class _TripMonitoringScreenState extends State<TripMonitoringScreen> {
         separatorBuilder: (_, __) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
           final t = _trips[i];
-          return Container(
+          return InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TripAdminDetailScreen(trip: t))),
+            child: Container(
             padding: const EdgeInsets.all(14),
             decoration: AppComponents.cardDecoration(),
             child: Row(
@@ -129,6 +133,7 @@ class _TripMonitoringScreenState extends State<TripMonitoringScreen> {
                   ],
                 ),
               ],
+            ),
             ),
           );
         },
