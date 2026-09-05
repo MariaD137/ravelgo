@@ -8,7 +8,7 @@ import 'package:ravelgo_user_app/views/HomeView/ride_view_popup.dart';
 import 'package:ravelgo_user_app/views/User/invite_a_friend.dart';
 import 'package:ravelgo_user_app/views/TexiModule/SelectRide.dart';
 import 'package:ravelgo_user_app/views/Services/CarRentalScreen.dart';
-import 'package:ravelgo_user_app/views/Services/IdelivaOnboardingScreen.dart';
+import 'package:ravelgo_user_app/views/Delivery/SendPackageScreen.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:ravelgo_user_app/views/OtherViews/NotificationsScreen.dart';
@@ -274,7 +274,7 @@ class _HomePageState extends State<HomePage> {
       ('Car Rentals', 'assets/card_car_rental.png',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CarRentalScreen()))),
       ('Delivery', 'assets/card_delivery.png',
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => IdelivaOnboardingScreen()))),
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SendPackageScreen()))),
       ('Short stay rentals', 'assets/card_short_stay.png', () => _showComingSoon(context, 'Short stay rentals')),
     ];
     return Column(

@@ -10,16 +10,26 @@ async function findOwnDriver(cognitoSub: string) {
   return prisma.driver.findFirst({ where: { user: { cognitoSub } } });
 }
 
+// Flat rate by package size — the only pricing input a delivery has today
+// (there's no pickup/dropoff geocoding on this model, unlike Trip). Server
+// computes the price from this table; the client only says which size.
+const PACKAGE_PRICES: Record<string, number> = {
+  SMALL: 800,
+  MEDIUM: 1500,
+  LARGE: 2500,
+};
+
 const createCourierSchema = z.object({
   pickupAddress: z.string().min(1),
   dropoffAddress: z.string().min(1),
   packageDescription: z.string().min(1),
+  packageSize: z.enum(["SMALL", "MEDIUM", "LARGE"]).default("MEDIUM"),
   recipientName: z.string().min(1),
   recipientPhone: z.string().min(1),
-  estimatedFare: z.number().positive(),
 });
 
-// Rider: request a courier/package delivery
+// Rider: request a courier/package delivery. estimatedFare is always
+// computed server-side from packageSize — the client never asserts a price.
 courierRouter.post("/courier-requests", requireAuth, requireRole("Rider"), async (req, res) => {
   const parsed = createCourierSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -28,9 +38,22 @@ courierRouter.post("/courier-requests", requireAuth, requireRole("Rider"), async
   if (!sender) return res.status(404).json({ error: "Sender not found" });
 
   const request = await prisma.courierRequest.create({
-    data: { ...parsed.data, senderId: sender.id },
+    data: { ...parsed.data, senderId: sender.id, estimatedFare: PACKAGE_PRICES[parsed.data.packageSize] },
   });
   res.status(201).json(request);
+});
+
+// Rider: my own sent delivery requests, most recent first (delivery history).
+courierRouter.get("/courier-requests/sent", requireAuth, requireRole("Rider"), async (req, res) => {
+  const sender = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
+  if (!sender) return res.status(404).json({ error: "Sender not found" });
+
+  const requests = await prisma.courierRequest.findMany({
+    where: { senderId: sender.id },
+    include: { driver: { include: { user: true } } },
+    orderBy: { requestedAt: "desc" },
+  });
+  res.json(requests);
 });
 
 // Driver: view unassigned courier requests to accept. Gated on the same
