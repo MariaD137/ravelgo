@@ -2,6 +2,7 @@ import 'package:ravelgo_user_app/services/auth_service.dart';
 import 'package:ravelgo_user_app/services/rider_api.dart';
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/Model/app_state.dart';
+import 'package:ravelgo_user_app/views/Activity/MyActivityScreen.dart';
 import 'package:ravelgo_user_app/views/AccountView/AppSettingsPage.dart';
 import 'package:ravelgo_user_app/views/AccountView/CommunicationsPage.dart';
 import 'package:ravelgo_user_app/views/Login/login.dart';
@@ -120,6 +121,17 @@ class _AccountviewState extends State<Accountview> {
             /// Section 1
             _section(
               children: [
+                _menuRow(
+                  icon: Icons.receipt_long_outlined,
+                  label: 'My Activity',
+                  onTap: (){
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const MyActivityScreen()),
+                    );
+                  }
+                ),
+                _divider(),
                 _menuRow(
                   icon: Icons.person_outline,
                   label: 'Personal Info',
