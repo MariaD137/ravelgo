@@ -35,6 +35,10 @@ class AdminDocument {
 
 class AdminDriver {
   final String id;
+  // Payout/DriverBankAccount records key off User.id, not this Driver.id —
+  // the payouts endpoints need this separate field. See the comment on
+  // requireOwnUserId in backend/src/routes/payouts.routes.ts.
+  final String userId;
   final String name;
   final String email;
   final String status; // PENDING_REVIEW | ACTIVE | SUSPENDED
@@ -45,6 +49,7 @@ class AdminDriver {
 
   AdminDriver({
     required this.id,
+    required this.userId,
     required this.name,
     required this.email,
     required this.status,
@@ -59,6 +64,7 @@ class AdminDriver {
     final docs = (j['documents'] as List?) ?? const [];
     return AdminDriver(
       id: '${j['id']}',
+      userId: '${user?['id'] ?? j['id']}',
       name: _name(user),
       email: '${user?['email'] ?? ''}',
       status: '${j['status'] ?? 'PENDING_REVIEW'}',
@@ -514,6 +520,80 @@ class SurgeZone {
       );
 }
 
+class PayoutCalculation {
+  final String driverId;
+  final double grossAmount;
+  final double platformFee;
+  final double subscriptionFee;
+  final double netAmount;
+  final int tripsIncluded;
+  final String period;
+  PayoutCalculation({
+    required this.driverId,
+    required this.grossAmount,
+    required this.platformFee,
+    required this.subscriptionFee,
+    required this.netAmount,
+    required this.tripsIncluded,
+    required this.period,
+  });
+  factory PayoutCalculation.fromJson(Map<String, dynamic> j) => PayoutCalculation(
+        driverId: '${j['driverId']}',
+        grossAmount: _d(j['grossAmount']),
+        platformFee: _d(j['platformFee']),
+        subscriptionFee: _d(j['subscriptionFee']),
+        netAmount: _d(j['netAmount']),
+        tripsIncluded: _i(j['tripsIncluded']),
+        period: '${j['period'] ?? ''}',
+      );
+}
+
+class AdminPayout {
+  final String id;
+  final String driverId;
+  final String driverName;
+  final String driverEmail;
+  final double amount;
+  final String currency;
+  final String status; // PENDING | PROCESSING | COMPLETED | FAILED | CANCELLED
+  final String period;
+  final String? transactionId;
+  final String? failureReason;
+  final DateTime? completedAt;
+  final DateTime createdAt;
+  AdminPayout({
+    required this.id,
+    required this.driverId,
+    required this.driverName,
+    required this.driverEmail,
+    required this.amount,
+    required this.currency,
+    required this.status,
+    required this.period,
+    required this.transactionId,
+    required this.failureReason,
+    required this.completedAt,
+    required this.createdAt,
+  });
+  factory AdminPayout.fromJson(Map<String, dynamic> j) {
+    final driver = j['driver'] as Map?;
+    return AdminPayout(
+      id: '${j['id']}',
+      driverId: '${j['driverId']}',
+      driverName: _name(driver),
+      driverEmail: '${driver?['email'] ?? ''}',
+      amount: _d(j['amount']),
+      currency: '${j['currency'] ?? 'USD'}',
+      status: '${j['status'] ?? ''}',
+      period: '${j['period'] ?? ''}',
+      transactionId: j['transactionId']?.toString(),
+      failureReason: j['failureReason']?.toString(),
+      completedAt: j['completedAt'] == null ? null : _dt(j['completedAt']),
+      createdAt: _dt(j['createdAt']),
+    );
+  }
+}
+
 class AdminApi {
   static List _list(dynamic data) => (data is Map ? data['data'] : data) as List? ?? const [];
 
@@ -624,6 +704,44 @@ class AdminApi {
   static Future<List<StayBooking>> stayBookings(String id) async {
     final data = await ApiClient.get('/api/stays/$id/bookings');
     return (data as List).whereType<Map<String, dynamic>>().map(StayBooking.fromJson).toList();
+  }
+
+  // ---- Payouts ----
+  static Future<List<AdminPayout>> payouts({String? status}) async {
+    final query = status == null ? '' : '&status=$status';
+    final data = await ApiClient.get('/api/payouts?pageSize=100$query');
+    return _list(data).whereType<Map<String, dynamic>>().map(AdminPayout.fromJson).toList();
+  }
+
+  static Future<PayoutCalculation> calculatePayout(String driverId, String period) async {
+    final data = await ApiClient.post('/api/payouts/calculate', {'driverId': driverId, 'period': period});
+    return PayoutCalculation.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<AdminPayout> createPayout(String driverId, String period, {double? amount}) async {
+    final data = await ApiClient.post('/api/payouts/create', {
+      'driverId': driverId,
+      'period': period,
+      if (amount != null) 'amount': amount,
+    });
+    return AdminPayout.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<AdminPayout> processPayout(String id) async {
+    final data = await ApiClient.post('/api/payouts/$id/process');
+    return AdminPayout.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<AdminPayout> completePayout(String id, {String? transactionId}) async {
+    final data = await ApiClient.post('/api/payouts/$id/complete', {
+      if (transactionId != null && transactionId.isNotEmpty) 'transactionId': transactionId,
+    });
+    return AdminPayout.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<AdminPayout> failPayout(String id, String reason) async {
+    final data = await ApiClient.post('/api/payouts/$id/fail', {'failureReason': reason});
+    return AdminPayout.fromJson(data as Map<String, dynamic>);
   }
 
   // ---- Subscription plans ----

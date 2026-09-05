@@ -5,6 +5,7 @@ import 'package:ravelgo_admin/views/audit/audit_log_screen.dart';
 import 'package:ravelgo_admin/views/auth/admin_login_screen.dart';
 import 'package:ravelgo_admin/views/carpaddy/car_paddy_requests_screen.dart';
 import 'package:ravelgo_admin/views/couriers/courier_requests_screen.dart';
+import 'package:ravelgo_admin/views/payouts/payouts_screen.dart';
 import 'package:ravelgo_admin/views/pricing/pricing_surge_screen.dart';
 import 'package:ravelgo_admin/views/promotions/loyalty_program_screen.dart';
 import 'package:ravelgo_admin/views/rentals/rental_listings_screen.dart';
@@ -55,6 +56,7 @@ class SideMenuAdmin extends StatelessWidget {
             _item(context, Icons.villa_outlined, "Short Stays", () => const StaysManagementScreen()),
             _item(context, Icons.tune_outlined, "Pricing & Surge", () => const PricingSurgeScreen()),
             _item(context, Icons.workspace_premium_outlined, "Driver Subscriptions", () => const DriverSubscriptionsScreen()),
+            _item(context, Icons.account_balance_wallet_outlined, "Payouts", () => const PayoutsScreen()),
             AppComponents.divider(),
             _item(context, Icons.warning_amber_outlined, "Fraud Alerts", () => const FraudAlertsScreen()),
             _item(context, Icons.sos, "Emergency Alerts", () => const EmergencyAlertsScreen()),
