@@ -353,10 +353,10 @@ class _HomePageState extends State<HomePage> {
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   leading: const Icon(Icons.card_giftcard_outlined),
                   title: Text(
-                    "Earn ${Currency.symbol}20,000",
+                    "Earn ${Currency.symbol}5,000",
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  subtitle: const Text("Invite friends to RavelGo"),
+                  subtitle: const Text("Invite 5 friends who each book 2 rides"),
                   trailing:
                   const Icon(Icons.chevron_right, color: AppColors.textMuted),
                   onTap: () {
