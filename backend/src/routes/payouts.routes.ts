@@ -8,6 +8,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { requireAdminPermission } from "../lib/admin-permissions";
 import { validate } from "../lib/validate";
 import { Errors } from "../lib/errors";
 import { moneyAmountSchema } from "../lib/money";
@@ -138,7 +139,7 @@ payoutsRouter.get("/payouts/:id", requireAuth, requireRole("Driver"), async (req
 });
 
 // Admin: calculate payout for a driver and period
-payoutsRouter.post("/payouts/calculate", requireAuth, requireRole("Admin"), async (req, res, next) => {
+payoutsRouter.post("/payouts/calculate", requireAuth, requireAdminPermission("payouts:write"), async (req, res, next) => {
   try {
     const schema = z.object({
       driverId: z.string(),
@@ -161,7 +162,7 @@ payoutsRouter.post("/payouts/calculate", requireAuth, requireRole("Admin"), asyn
 });
 
 // Admin: create pending payout for a driver
-payoutsRouter.post("/payouts/create", sensitiveLimiter, requireAuth, requireRole("Admin"), async (req, res, next) => {
+payoutsRouter.post("/payouts/create", sensitiveLimiter, requireAuth, requireAdminPermission("payouts:write"), async (req, res, next) => {
   try {
     const schema = z.object({
       driverId: z.string(),
@@ -203,7 +204,7 @@ payoutsRouter.post("/payouts/create", sensitiveLimiter, requireAuth, requireRole
 });
 
 // Admin: process a pending payout
-payoutsRouter.post("/payouts/:id/process", sensitiveLimiter, requireAuth, requireRole("Admin"), async (req, res, next) => {
+payoutsRouter.post("/payouts/:id/process", sensitiveLimiter, requireAuth, requireAdminPermission("payouts:write"), async (req, res, next) => {
   try {
     const payout = await processPayout(req.params.id);
     res.json(payout);
@@ -213,7 +214,7 @@ payoutsRouter.post("/payouts/:id/process", sensitiveLimiter, requireAuth, requir
 });
 
 // Admin: mark payout as completed
-payoutsRouter.post("/payouts/:id/complete", requireAuth, requireRole("Admin"), async (req, res, next) => {
+payoutsRouter.post("/payouts/:id/complete", requireAuth, requireAdminPermission("payouts:write"), async (req, res, next) => {
   try {
     const schema = z.object({ transactionId: z.string().optional() });
     const { transactionId } = validate<typeof schema._output>(schema, req.body, "Request body");
@@ -225,7 +226,7 @@ payoutsRouter.post("/payouts/:id/complete", requireAuth, requireRole("Admin"), a
 });
 
 // Admin: mark payout as failed
-payoutsRouter.post("/payouts/:id/fail", requireAuth, requireRole("Admin"), async (req, res, next) => {
+payoutsRouter.post("/payouts/:id/fail", requireAuth, requireAdminPermission("payouts:write"), async (req, res, next) => {
   try {
     const schema = z.object({ failureReason: z.string() });
     const { failureReason } = validate<typeof schema._output>(schema, req.body, "Request body");

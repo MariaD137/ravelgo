@@ -42,6 +42,30 @@ test("POST /api/pricing-rules lets an Admin create a rule, then it's listed", as
   assert.equal(list.body.length, 1);
 });
 
+test("a Support Agent admin preset cannot create a pricing rule", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "support-agent-1", role: "ADMIN", firstName: "S", lastName: "A", email: "sa1@example.com", adminRole: "SUPPORT_AGENT" },
+  });
+  const token = mockAuthAs({ sub: "support-agent-1", groups: ["Admin"] });
+  const res = await request(app)
+    .post("/api/pricing-rules")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ name: "Standard", baseFare: 2, perKm: 1, perMinute: 0.2 });
+  assert.equal(res.status, 403);
+});
+
+test("an Operations Manager admin preset can create a pricing rule", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "ops-manager-1", role: "ADMIN", firstName: "O", lastName: "M", email: "om1@example.com", adminRole: "OPERATIONS_MANAGER" },
+  });
+  const token = mockAuthAs({ sub: "ops-manager-1", groups: ["Admin"] });
+  const res = await request(app)
+    .post("/api/pricing-rules")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ name: "Standard", baseFare: 2, perKm: 1, perMinute: 0.2 });
+  assert.equal(res.status, 201);
+});
+
 test("PATCH /api/pricing-rules/:id lets an Admin deactivate a rule", async () => {
   const rule = await prisma.pricingRule.create({ data: { name: "Standard", baseFare: 2, perKm: 1, perMinute: 0.2 } });
   const token = mockAuthAs({ sub: "admin-sub-2", groups: ["Admin"] });

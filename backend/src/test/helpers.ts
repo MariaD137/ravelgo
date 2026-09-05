@@ -75,6 +75,20 @@ export function mockCognitoAddToGroup({ shouldThrow = false } = {}) {
   });
 }
 
+/**
+ * Stubs cognitoGroups.createAdminUser so admin-user-invite tests never call a
+ * real Cognito user pool. Returns the mock so a test can inspect call args;
+ * the stubbed username defaults to a synthetic value distinct from the real
+ * email, catching any code that wrongly assumes email === Username.
+ */
+export function mockCognitoCreateAdminUser(username = "cognito-generated-username") {
+  return mock.method(cognitoGroups, "createAdminUser", async () => ({ username }));
+}
+
+export function mockCognitoSetUserEnabled() {
+  return mock.method(cognitoGroups, "setUserEnabled", async () => {});
+}
+
 // Delete in FK-safe order (children before parents).
 export async function resetDb() {
   // AuditLog has no FK dependents; clear it too so audit-writing admin routes

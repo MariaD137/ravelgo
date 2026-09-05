@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { requireAdminPermission } from "../lib/admin-permissions";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { recordAudit } from "../lib/audit";
 import { cognitoGroups } from "../services/cognito";
@@ -175,7 +176,7 @@ const statusSchema = z.object({
 });
 
 // Admin: suspend / reactivate a driver
-driversRouter.patch("/drivers/:id/status", requireAuth, requireRole("Admin"), async (req, res) => {
+driversRouter.patch("/drivers/:id/status", requireAuth, requireAdminPermission("drivers:write"), async (req, res) => {
   const parsed = statusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 

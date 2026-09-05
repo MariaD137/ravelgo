@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { requireAdminPermission } from "../lib/admin-permissions";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { validate } from "../lib/validate";
 import { Errors } from "../lib/errors";
@@ -112,7 +113,7 @@ ridersRouter.get("/riders/:id", requireAuth, requireRole("Admin"), async (req, r
 const statusSchema = z.object({ suspended: z.boolean() });
 
 // Admin: suspend / reactivate a rider
-ridersRouter.patch("/riders/:id/status", requireAuth, requireRole("Admin"), async (req, res, next) => {
+ridersRouter.patch("/riders/:id/status", requireAuth, requireAdminPermission("riders:write"), async (req, res, next) => {
   try {
     const data = validate<{ suspended: boolean }>(statusSchema, req.body, "Request body");
 

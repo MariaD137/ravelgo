@@ -1,7 +1,9 @@
+import 'package:amazon_cognito_identity_dart_2/cognito.dart';
 import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/services/auth_service.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/views/auth/forgot_password_screen.dart';
+import 'package:ravelgo_admin/views/auth/set_new_password_screen.dart';
 import 'package:ravelgo_admin/views/shell/admin_shell.dart';
 
 /// Admin sign-in, backed by the real RavelGo Cognito user pool.
@@ -68,6 +70,12 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const AdminShell()),
         (route) => false,
+      );
+    } on CognitoUserNewPasswordRequiredException {
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => SetNewPasswordScreen(email: _emailController.text.trim())),
       );
     } catch (e) {
       if (!mounted) return;

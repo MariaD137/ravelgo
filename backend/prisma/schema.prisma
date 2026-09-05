@@ -13,6 +13,19 @@ enum Role {
   ADMIN
 }
 
+// Fixed permission presets for Admin-group users, checked by
+// requireAdminPermission (lib/admin-permissions.ts) on top of the base
+// requireRole("Admin") Cognito-group gate. An Admin User with no adminRole
+// set (including every admin that existed before this preset system
+// shipped) is treated as SUPER_ADMIN so existing admin accounts keep full
+// access unless someone explicitly assigns them a restricted preset.
+enum AdminRole {
+  SUPER_ADMIN
+  OPERATIONS_MANAGER
+  SUPPORT_AGENT
+  FINANCE_VIEWER
+}
+
 enum DriverStatus {
   ACTIVE
   PENDING_REVIEW
@@ -136,6 +149,9 @@ model User {
   phoneNumber       String?
   isLoyaltyMember   Boolean  @default(false)
   suspended         Boolean  @default(false)
+  // Only meaningful when role == ADMIN. Null means "no preset assigned" —
+  // see the AdminRole doc comment above for why that means full access.
+  adminRole         AdminRole?
   // Soft-delete marker (P0 #12). Financial relations below are RESTRICT, so a
   // user with payout/wallet/trip history cannot be hard-deleted — deactivate by
   // stamping deletedAt instead, which preserves the ledger and every FK.

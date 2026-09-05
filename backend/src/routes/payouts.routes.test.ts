@@ -138,6 +138,23 @@ test("Admin-only payout endpoints reject a Driver caller", async () => {
   }
 });
 
+test("a Finance Viewer admin can list payouts but cannot process one", async () => {
+  const { user: driver } = await createDriver("driver-sub-8");
+  await prisma.user.create({
+    data: { cognitoSub: "finance-viewer-1", role: "ADMIN", firstName: "Fin", lastName: "V", email: "fv1@example.com", adminRole: "FINANCE_VIEWER" },
+  });
+  const token = mockAuthAs({ sub: "finance-viewer-1", groups: ["Admin"] });
+
+  const list = await request(app).get("/api/payouts").set("Authorization", `Bearer ${token}`);
+  assert.equal(list.status, 200);
+
+  const create = await request(app)
+    .post("/api/payouts/create")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ driverId: driver.id, period: "2026-01" });
+  assert.equal(create.status, 403);
+});
+
 test("GET /payouts (Admin) filters by a validated status enum, rejecting garbage", async () => {
   const token = mockAuthAs({ sub: "admin-sub-3", groups: ["Admin"] });
   const res = await request(app)

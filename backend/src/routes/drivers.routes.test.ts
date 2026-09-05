@@ -129,6 +129,24 @@ test("PATCH /api/drivers/:id/status lets an Admin suspend a driver", async () =>
   assert.equal(res.body.status, "SUSPENDED");
 });
 
+test("PATCH /api/drivers/:id/status rejects a Support Agent admin preset", async () => {
+  const user = await prisma.user.create({
+    data: { cognitoSub: "driver-sub-5", role: "DRIVER", firstName: "Mo", lastName: "P", email: "mo@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: user.id } });
+  await prisma.user.create({
+    data: { cognitoSub: "support-agent-2", role: "ADMIN", firstName: "S", lastName: "A", email: "sa2@example.com", adminRole: "SUPPORT_AGENT" },
+  });
+  const token = mockAuthAs({ sub: "support-agent-2", groups: ["Admin"] });
+
+  const res = await request(app)
+    .patch(`/api/drivers/${driver.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "SUSPENDED" });
+
+  assert.equal(res.status, 403);
+});
+
 test("PATCH /api/drivers/me/availability lets an ACTIVE driver go online, blocks a pending one", async () => {
   // A pending driver cannot go online.
   const pendingUser = await prisma.user.create({

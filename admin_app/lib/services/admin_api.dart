@@ -697,6 +697,31 @@ class Promotion {
       );
 }
 
+class AdminUserAccount {
+  final String id;
+  final String name;
+  final String email;
+  final String adminRole; // SUPER_ADMIN | OPERATIONS_MANAGER | SUPPORT_AGENT | FINANCE_VIEWER
+  final bool suspended;
+  final DateTime createdAt;
+  AdminUserAccount({
+    required this.id,
+    required this.name,
+    required this.email,
+    required this.adminRole,
+    required this.suspended,
+    required this.createdAt,
+  });
+  factory AdminUserAccount.fromJson(Map<String, dynamic> j) => AdminUserAccount(
+        id: '${j['id']}',
+        name: '${j['name'] ?? ''}',
+        email: '${j['email'] ?? ''}',
+        adminRole: '${j['adminRole'] ?? 'SUPER_ADMIN'}',
+        suspended: j['suspended'] == true,
+        createdAt: _dt(j['createdAt']),
+      );
+}
+
 class AdminApi {
   static List _list(dynamic data) => (data is Map ? data['data'] : data) as List? ?? const [];
 
@@ -856,6 +881,37 @@ class AdminApi {
       if (maxRedemptions != null) 'maxRedemptions': maxRedemptions,
     });
     return Promotion.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ---- Admin user management (Super Admin only; backend enforces this) ----
+  static Future<List<AdminUserAccount>> adminUsers() async {
+    final data = await ApiClient.get('/api/admin-users');
+    return (data as List).whereType<Map<String, dynamic>>().map(AdminUserAccount.fromJson).toList();
+  }
+
+  static Future<AdminUserAccount> createAdminUser({
+    required String email,
+    required String firstName,
+    required String lastName,
+    required String adminRole,
+  }) async {
+    final data = await ApiClient.post('/api/admin-users', {
+      'email': email,
+      'firstName': firstName,
+      'lastName': lastName,
+      'adminRole': adminRole,
+    });
+    return AdminUserAccount.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<AdminUserAccount> setAdminUserRole(String id, String adminRole) async {
+    final data = await ApiClient.patch('/api/admin-users/$id/role', {'adminRole': adminRole});
+    return AdminUserAccount.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<AdminUserAccount> setAdminUserSuspended(String id, bool suspended) async {
+    final data = await ApiClient.patch('/api/admin-users/$id/status', {'suspended': suspended});
+    return AdminUserAccount.fromJson(data as Map<String, dynamic>);
   }
 
   // ---- Vehicle inventory (admin, cross-driver) ----
