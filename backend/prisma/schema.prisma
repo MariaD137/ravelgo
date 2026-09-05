@@ -82,6 +82,12 @@ enum CourierStatus {
   CANCELLED
 }
 
+enum PackageSize {
+  SMALL
+  MEDIUM
+  LARGE
+}
+
 enum AlertType {
   SOS
   FRAUD_SUSPECTED
@@ -351,8 +357,10 @@ model CourierRequest {
   pickupAddress        String
   dropoffAddress       String
   packageDescription   String
+  packageSize          PackageSize   @default(MEDIUM)
   recipientName        String
   recipientPhone       String
+  // Server-computed from packageSize at request time — never trusted from the client.
   estimatedFare        Float
   finalFare            Float?
   status               CourierStatus @default(REQUESTED)

@@ -47,6 +47,58 @@ test("POST /api/courier-requests lets a Rider request a delivery", async () => {
   assert.equal(res.body.status, "REQUESTED");
 });
 
+test("POST /api/courier-requests computes the price server-side from packageSize and ignores a client-supplied price", async () => {
+  await createRider("rider-sub-1b");
+  const token = mockAuthAs({ sub: "rider-sub-1b", groups: ["Rider"] });
+
+  const res = await request(app)
+    .post("/api/courier-requests")
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      pickupAddress: "1 Main St",
+      dropoffAddress: "2 Side St",
+      packageDescription: "A large box",
+      packageSize: "LARGE",
+      recipientName: "Sam",
+      recipientPhone: "555-0100",
+      estimatedFare: 1, // must be ignored
+    });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.packageSize, "LARGE");
+  assert.equal(res.body.estimatedFare, 2500);
+});
+
+test("GET /api/courier-requests/sent lists only the caller's own sent requests", async () => {
+  const senderA = await createRider("rider-sub-1c");
+  const tokenA = mockAuthAs({ sub: "rider-sub-1c", groups: ["Rider"] });
+  await request(app)
+    .post("/api/courier-requests")
+    .set("Authorization", `Bearer ${tokenA}`)
+    .send({
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+    });
+
+  restoreAuth();
+  await createRider("rider-sub-1d");
+  const tokenB = mockAuthAs({ sub: "rider-sub-1d", groups: ["Rider"] });
+  const res = await request(app).get("/api/courier-requests/sent").set("Authorization", `Bearer ${tokenB}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.length, 0);
+
+  restoreAuth();
+  const tokenA2 = mockAuthAs({ sub: "rider-sub-1c", groups: ["Rider"] });
+  const resA = await request(app).get("/api/courier-requests/sent").set("Authorization", `Bearer ${tokenA2}`);
+  assert.equal(resA.status, 200);
+  assert.equal(resA.body.length, 1);
+  assert.equal(resA.body[0].senderId, senderA.id);
+});
+
 test("GET /api/courier-requests/available only shows unassigned requests to a Driver", async () => {
   const sender = await createRider("rider-sub-2");
   await createDriver("driver-sub-1");
