@@ -4,15 +4,18 @@ import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/views/auth/forgot_password_screen.dart';
 import 'package:ravelgo_admin/views/shell/admin_shell.dart';
 
-/// Admin sign-in.
+/// Admin sign-in, backed by the real RavelGo Cognito user pool.
 ///
-/// AUTH BOUNDARY (MOCKED): no authentication backend is connected, so
-/// credentials cannot actually be verified. Input is validated locally
-/// (well-formed email, non-empty password) with visible errors; valid input
-/// proceeds to the admin shell. `_signIn` is the integration point for the
-/// auth service - real admin access control MUST be enforced server-side.
+/// Every admin API call is independently enforced server-side
+/// (requireRole("Admin")) — that is the authoritative check and this screen
+/// cannot weaken it. This client-side group check exists purely for UX: it
+/// rejects a non-admin with a clear message before they ever see the
+/// dashboard, instead of a confusing wall of 403s on every screen.
 class AdminLoginScreen extends StatefulWidget {
-  const AdminLoginScreen({super.key});
+  /// Shown once on load — e.g. after a restored session turned out not to
+  /// belong to an Admin.
+  final String? initialError;
+  const AdminLoginScreen({super.key, this.initialError});
 
   @override
   State<AdminLoginScreen> createState() => _AdminLoginScreenState();
@@ -26,6 +29,17 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   bool _loading = false;
 
   static final _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialError != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.initialError!)));
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -42,6 +56,14 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
+      if (!AuthService.isAdmin) {
+        await AuthService.signOut();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('You are not authorized to access the RavelGo Admin Console.'),
+        ));
+        return;
+      }
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const AdminShell()),

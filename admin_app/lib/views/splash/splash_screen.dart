@@ -29,6 +29,20 @@ class _SplashScreenState extends State<SplashScreen> {
     ]);
     if (!mounted) return;
     final restored = results.first == true;
+    if (restored && !AuthService.isAdmin) {
+      // A previously-signed-in non-admin must not silently land back on the
+      // dashboard just because their session is still valid.
+      await AuthService.signOut();
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => const AdminLoginScreen(
+            initialError: 'You are not authorized to access the RavelGo Admin Console.',
+          ),
+        ),
+      );
+      return;
+    }
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => restored ? const AdminShell() : const AdminLoginScreen(),

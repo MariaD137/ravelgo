@@ -21,6 +21,34 @@ async function createDriver(cognitoSub: string) {
   return prisma.driver.create({ data: { userId: user.id } });
 }
 
+test("GET /api/vehicles lets an admin see every driver's vehicles with owner info", async () => {
+  const driverA = await createDriver("driver-sub-admin-1");
+  const driverB = await createDriver("driver-sub-admin-2");
+  await prisma.vehicle.create({
+    data: { driverId: driverA.id, brand: "Toyota", model: "Camry", colour: "Silver", plateNumber: "GGG-777", year: "2021" },
+  });
+  await prisma.vehicle.create({
+    data: { driverId: driverB.id, brand: "Honda", model: "Accord", colour: "Black", plateNumber: "HHH-888", year: "2022" },
+  });
+
+  const token = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+  const res = await request(app).get("/api/vehicles").set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.data.length, 2);
+  const plates = res.body.data.map((v: { plateNumber: string }) => v.plateNumber).sort();
+  assert.deepEqual(plates, ["GGG-777", "HHH-888"]);
+  assert.ok(res.body.data[0].driver.user.email);
+});
+
+test("GET /api/vehicles rejects a non-admin caller", async () => {
+  await createDriver("driver-sub-admin-3");
+  const token = mockAuthAs({ sub: "driver-sub-admin-3", groups: ["Driver"] });
+
+  const res = await request(app).get("/api/vehicles").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 403);
+});
+
 test("POST /api/vehicles adds a vehicle owned by the calling driver", async () => {
   await createDriver("driver-sub-1");
   const token = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });

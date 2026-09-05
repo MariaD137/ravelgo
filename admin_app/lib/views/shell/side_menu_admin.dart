@@ -5,6 +5,7 @@ import 'package:ravelgo_admin/views/audit/audit_log_screen.dart';
 import 'package:ravelgo_admin/views/auth/admin_login_screen.dart';
 import 'package:ravelgo_admin/views/carpaddy/car_paddy_requests_screen.dart';
 import 'package:ravelgo_admin/views/couriers/courier_requests_screen.dart';
+import 'package:ravelgo_admin/views/payouts/payouts_screen.dart';
 import 'package:ravelgo_admin/views/pricing/pricing_surge_screen.dart';
 import 'package:ravelgo_admin/views/promotions/loyalty_program_screen.dart';
 import 'package:ravelgo_admin/views/rentals/rental_listings_screen.dart';
@@ -14,7 +15,9 @@ import 'package:ravelgo_admin/views/safety/emergency_alerts_screen.dart';
 import 'package:ravelgo_admin/views/safety/fraud_alerts_screen.dart';
 import 'package:ravelgo_admin/views/settings/admin_profile_screen.dart';
 import 'package:ravelgo_admin/views/settings/admin_roles_screen.dart';
+import 'package:ravelgo_admin/views/stays/stays_management_screen.dart';
 import 'package:ravelgo_admin/views/subscriptions/driver_subscriptions_screen.dart';
+import 'package:ravelgo_admin/views/vehicles/vehicle_inventory_screen.dart';
 
 class SideMenuAdmin extends StatelessWidget {
   const SideMenuAdmin({super.key});
@@ -51,8 +54,11 @@ class SideMenuAdmin extends StatelessWidget {
             _item(context, Icons.local_shipping_outlined, "Courier Requests", () => const CourierRequestsScreen()),
             _item(context, Icons.badge_outlined, "Car Paddy Requests", () => const CarPaddyRequestsScreen()),
             _item(context, Icons.key_outlined, "Luxury Rental Listings", () => const RentalListingsScreen()),
+            _item(context, Icons.villa_outlined, "Short Stays", () => const StaysManagementScreen()),
+            _item(context, Icons.directions_car_outlined, "Vehicle Inventory", () => const VehicleInventoryScreen()),
             _item(context, Icons.tune_outlined, "Pricing & Surge", () => const PricingSurgeScreen()),
             _item(context, Icons.workspace_premium_outlined, "Driver Subscriptions", () => const DriverSubscriptionsScreen()),
+            _item(context, Icons.account_balance_wallet_outlined, "Payouts", () => const PayoutsScreen()),
             AppComponents.divider(),
             _item(context, Icons.warning_amber_outlined, "Fraud Alerts", () => const FraudAlertsScreen()),
             _item(context, Icons.sos, "Emergency Alerts", () => const EmergencyAlertsScreen()),

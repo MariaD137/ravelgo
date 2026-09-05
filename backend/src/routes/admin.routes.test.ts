@@ -43,6 +43,49 @@ test("GET /api/admin/dashboard returns real KPI counts", async () => {
   assert.equal(res.body.pendingApprovals, 2);
 });
 
+test("GET /api/admin/analytics buckets real revenue and completed trips by day and rejects non-admins", async () => {
+  const riderUser = await prisma.user.create({
+    data: { cognitoSub: "rider-sub-analytics", role: "RIDER", firstName: "A", lastName: "B", email: "analytics-rider@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-sub-analytics", role: "DRIVER", firstName: "C", lastName: "D", email: "analytics-driver@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE" } });
+  const now = new Date();
+
+  const trip = await prisma.trip.create({
+    data: {
+      riderId: riderUser.id,
+      driverId: driver.id,
+      pickup: "A",
+      destination: "B",
+      estimatedFare: 5000,
+      status: "COMPLETED",
+      completedAt: now,
+    },
+  });
+  await prisma.payment.create({
+    data: { tripId: trip.id, userId: riderUser.id, amount: 5000, status: "SUCCEEDED", paidAt: now },
+  });
+
+  const token = mockAuthAs({ sub: "admin-sub-analytics", groups: ["Admin"] });
+  const res = await request(app).get("/api/admin/analytics").set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.days.length, 7);
+  const totalRevenue = res.body.days.reduce((sum: number, d: { revenue: number }) => sum + d.revenue, 0);
+  const totalCompleted = res.body.days.reduce((sum: number, d: { completedTrips: number }) => sum + d.completedTrips, 0);
+  assert.equal(totalRevenue, 5000);
+  assert.equal(totalCompleted, 1);
+  // No fabricated "driver online hours" metric.
+  assert.equal(res.body.hours, undefined);
+
+  restoreAuth();
+  const riderToken = mockAuthAs({ sub: "rider-sub-analytics", groups: ["Rider"] });
+  const denied = await request(app).get("/api/admin/analytics").set("Authorization", `Bearer ${riderToken}`);
+  assert.equal(denied.status, 403);
+});
+
 test("GET /api/admin/audit returns audit entries for an Admin and rejects others", async () => {
   await prisma.auditLog.create({
     data: { actorSub: "admin-sub-1", action: "DRIVER_STATUS_CHANGED", entityType: "Driver", entityId: "drv-1" },

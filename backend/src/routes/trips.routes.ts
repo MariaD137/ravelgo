@@ -162,17 +162,21 @@ tripsRouter.post("/trips/:id/rating", requireAuth, requireRole("Rider"), async (
 tripsRouter.get("/trips/:id", requireAuth, async (req, res) => {
   const trip = await prisma.trip.findUnique({
     where: { id: req.params.id },
-    include: { rider: true, driver: { include: { user: true } } },
+    include: { rider: true, driver: { include: { user: true } }, payment: true },
   });
   if (!trip) return res.status(404).json({ error: "Trip not found" });
 
   const groups = req.user!.groups;
+  const isAdmin = groups.includes("Admin");
   const isOwner =
     trip.rider.cognitoSub === req.user!.sub || trip.driver?.user.cognitoSub === req.user!.sub;
-  if (!isOwner && !groups.includes("Admin")) {
+  if (!isOwner && !isAdmin) {
     return res.status(403).json({ error: "Not authorized to view this trip" });
   }
-  res.json(serializeTrip(trip));
+  const body = serializeTrip(trip);
+  // Payment state is only attached for Admin — serializeTrip is shared with
+  // the rider/driver-facing "mine" list below and must stay minimal for them.
+  res.json(isAdmin && trip.payment ? { ...body, payment: trip.payment } : body);
 });
 
 const updateStatusSchema = z.object({
@@ -312,12 +316,14 @@ tripsRouter.get("/trips", requireAuth, requireRole("Admin"), async (req, res) =>
 
   const [trips, total] = await Promise.all([
     prisma.trip.findMany({
-      include: { rider: true, driver: { include: { user: true } } },
+      include: { rider: true, driver: { include: { user: true } }, payment: true },
       orderBy: { requestedAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
     prisma.trip.count(),
   ]);
-  res.json(paginate(trips.map(serializeTrip), total, page, pageSize));
+  // Admin-only route, so payment state is always safe to attach here.
+  const serialized = trips.map((t) => (t.payment ? { ...serializeTrip(t), payment: t.payment } : serializeTrip(t)));
+  res.json(paginate(serialized, total, page, pageSize));
 });

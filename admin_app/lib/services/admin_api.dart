@@ -35,6 +35,10 @@ class AdminDocument {
 
 class AdminDriver {
   final String id;
+  // Payout/DriverBankAccount records key off User.id, not this Driver.id —
+  // the payouts endpoints need this separate field. See the comment on
+  // requireOwnUserId in backend/src/routes/payouts.routes.ts.
+  final String userId;
   final String name;
   final String email;
   final String status; // PENDING_REVIEW | ACTIVE | SUSPENDED
@@ -45,6 +49,7 @@ class AdminDriver {
 
   AdminDriver({
     required this.id,
+    required this.userId,
     required this.name,
     required this.email,
     required this.status,
@@ -59,6 +64,7 @@ class AdminDriver {
     final docs = (j['documents'] as List?) ?? const [];
     return AdminDriver(
       id: '${j['id']}',
+      userId: '${user?['id'] ?? j['id']}',
       name: _name(user),
       email: '${user?['email'] ?? ''}',
       status: '${j['status'] ?? 'PENDING_REVIEW'}',
@@ -84,6 +90,65 @@ class AdminRider {
       );
 }
 
+class AdminRiderTrip {
+  final String id;
+  final String pickup;
+  final String destination;
+  final String status;
+  final double fare;
+  final DateTime requestedAt;
+  AdminRiderTrip({
+    required this.id,
+    required this.pickup,
+    required this.destination,
+    required this.status,
+    required this.fare,
+    required this.requestedAt,
+  });
+  factory AdminRiderTrip.fromJson(Map<String, dynamic> j) => AdminRiderTrip(
+        id: '${j['id']}',
+        pickup: '${j['pickup'] ?? ''}',
+        destination: '${j['destination'] ?? ''}',
+        status: '${j['status'] ?? ''}',
+        fare: j['finalFare'] == null ? _d(j['estimatedFare']) : _d(j['finalFare']),
+        requestedAt: _dt(j['requestedAt']),
+      );
+}
+
+class AdminRiderDetail {
+  final String id;
+  final String name;
+  final String email;
+  final String? phoneNumber;
+  final bool suspended;
+  final bool isLoyaltyMember;
+  final DateTime createdAt;
+  final List<AdminRiderTrip> recentTrips;
+  AdminRiderDetail({
+    required this.id,
+    required this.name,
+    required this.email,
+    required this.phoneNumber,
+    required this.suspended,
+    required this.isLoyaltyMember,
+    required this.createdAt,
+    required this.recentTrips,
+  });
+  factory AdminRiderDetail.fromJson(Map<String, dynamic> j) {
+    final trips = (j['ridesAsRider'] as List?) ?? const [];
+    return AdminRiderDetail(
+      id: '${j['id']}',
+      name: _name(j),
+      email: '${j['email'] ?? ''}',
+      phoneNumber: j['phoneNumber']?.toString(),
+      suspended: j['suspended'] == true,
+      isLoyaltyMember: j['isLoyaltyMember'] == true,
+      createdAt: _dt(j['createdAt']),
+      recentTrips: trips.whereType<Map<String, dynamic>>().map(AdminRiderTrip.fromJson).toList(),
+    );
+  }
+}
+
 class AdminTrip {
   final String id;
   final String pickup;
@@ -93,6 +158,10 @@ class AdminTrip {
   final String riderName;
   final String? driverName;
   final DateTime requestedAt;
+  // Only ever populated for an Admin caller (see trips.routes.ts) — null for
+  // an unpaid/not-yet-charged trip, not an error.
+  final String? paymentStatus;
+  final String? paymentMethod;
 
   AdminTrip({
     required this.id,
@@ -103,10 +172,13 @@ class AdminTrip {
     required this.riderName,
     required this.driverName,
     required this.requestedAt,
+    this.paymentStatus,
+    this.paymentMethod,
   });
 
   factory AdminTrip.fromJson(Map<String, dynamic> j) {
     final driver = j['driver'] as Map?;
+    final payment = j['payment'] as Map?;
     return AdminTrip(
       id: '${j['id']}',
       pickup: '${j['pickup'] ?? ''}',
@@ -116,8 +188,22 @@ class AdminTrip {
       riderName: _name(j['rider'] as Map?),
       driverName: driver == null ? null : (_name(driver['user'] as Map?).isEmpty ? null : _name(driver['user'] as Map?)),
       requestedAt: _dt(j['requestedAt']),
+      paymentStatus: payment?['status']?.toString(),
+      paymentMethod: payment?['method']?.toString(),
     );
   }
+}
+
+class AnalyticsDay {
+  final String date; // YYYY-MM-DD
+  final double revenue;
+  final int completedTrips;
+  AnalyticsDay({required this.date, required this.revenue, required this.completedTrips});
+  factory AnalyticsDay.fromJson(Map<String, dynamic> j) => AnalyticsDay(
+        date: '${j['date'] ?? ''}',
+        revenue: _d(j['revenue']),
+        completedTrips: _i(j['completedTrips']),
+      );
 }
 
 class AuditEntry {
@@ -263,6 +349,90 @@ class CarPaddyRequest {
   }
 }
 
+class StayHost {
+  final String firstName;
+  final String lastName;
+  final String? email;
+  StayHost({required this.firstName, required this.lastName, this.email});
+  String get name => [firstName, lastName].where((e) => e.trim().isNotEmpty).join(' ').trim();
+  factory StayHost.fromJson(Map<String, dynamic> j) => StayHost(
+        firstName: '${j['firstName'] ?? ''}',
+        lastName: '${j['lastName'] ?? ''}',
+        email: j['email']?.toString(),
+      );
+}
+
+class StayListing {
+  final String id;
+  final String title;
+  final String? description;
+  final String address;
+  final double pricePerNight;
+  final int maxGuests;
+  final String status; // PENDING_APPROVAL | APPROVED | REJECTED
+  final StayHost? host;
+  final int? bookingCount;
+  StayListing({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.address,
+    required this.pricePerNight,
+    required this.maxGuests,
+    required this.status,
+    required this.host,
+    required this.bookingCount,
+  });
+  factory StayListing.fromJson(Map<String, dynamic> j) => StayListing(
+        id: '${j['id']}',
+        title: '${j['title'] ?? ''}',
+        description: j['description']?.toString(),
+        address: '${j['address'] ?? ''}',
+        pricePerNight: _d(j['pricePerNight']),
+        maxGuests: _i(j['maxGuests']),
+        status: '${j['status'] ?? ''}',
+        host: j['host'] is Map<String, dynamic> ? StayHost.fromJson(j['host'] as Map<String, dynamic>) : null,
+        bookingCount: j['bookingCount'] == null ? null : _i(j['bookingCount']),
+      );
+}
+
+class StayBooking {
+  final String id;
+  final DateTime checkIn;
+  final DateTime checkOut;
+  final int guests;
+  final int nights;
+  final double totalPrice;
+  final String status;
+  final String guestName;
+  final String? guestEmail;
+  StayBooking({
+    required this.id,
+    required this.checkIn,
+    required this.checkOut,
+    required this.guests,
+    required this.nights,
+    required this.totalPrice,
+    required this.status,
+    required this.guestName,
+    required this.guestEmail,
+  });
+  factory StayBooking.fromJson(Map<String, dynamic> j) {
+    final guest = j['guest'] as Map?;
+    return StayBooking(
+      id: '${j['id']}',
+      checkIn: _dt(j['checkIn']),
+      checkOut: _dt(j['checkOut']),
+      guests: _i(j['guests']),
+      nights: _i(j['nights']),
+      totalPrice: _d(j['totalPrice']),
+      status: '${j['status'] ?? ''}',
+      guestName: _name(guest),
+      guestEmail: guest?['email']?.toString(),
+    );
+  }
+}
+
 class RentalListing {
   final String id;
   final double dailyRate;
@@ -362,6 +532,171 @@ class SurgeZone {
       );
 }
 
+class PayoutCalculation {
+  final String driverId;
+  final double grossAmount;
+  final double platformFee;
+  final double subscriptionFee;
+  final double netAmount;
+  final int tripsIncluded;
+  final String period;
+  PayoutCalculation({
+    required this.driverId,
+    required this.grossAmount,
+    required this.platformFee,
+    required this.subscriptionFee,
+    required this.netAmount,
+    required this.tripsIncluded,
+    required this.period,
+  });
+  factory PayoutCalculation.fromJson(Map<String, dynamic> j) => PayoutCalculation(
+        driverId: '${j['driverId']}',
+        grossAmount: _d(j['grossAmount']),
+        platformFee: _d(j['platformFee']),
+        subscriptionFee: _d(j['subscriptionFee']),
+        netAmount: _d(j['netAmount']),
+        tripsIncluded: _i(j['tripsIncluded']),
+        period: '${j['period'] ?? ''}',
+      );
+}
+
+class AdminPayout {
+  final String id;
+  final String driverId;
+  final String driverName;
+  final String driverEmail;
+  final double amount;
+  final String currency;
+  final String status; // PENDING | PROCESSING | COMPLETED | FAILED | CANCELLED
+  final String period;
+  final String? transactionId;
+  final String? failureReason;
+  final DateTime? completedAt;
+  final DateTime createdAt;
+  AdminPayout({
+    required this.id,
+    required this.driverId,
+    required this.driverName,
+    required this.driverEmail,
+    required this.amount,
+    required this.currency,
+    required this.status,
+    required this.period,
+    required this.transactionId,
+    required this.failureReason,
+    required this.completedAt,
+    required this.createdAt,
+  });
+  factory AdminPayout.fromJson(Map<String, dynamic> j) {
+    final driver = j['driver'] as Map?;
+    return AdminPayout(
+      id: '${j['id']}',
+      driverId: '${j['driverId']}',
+      driverName: _name(driver),
+      driverEmail: '${driver?['email'] ?? ''}',
+      amount: _d(j['amount']),
+      currency: '${j['currency'] ?? 'USD'}',
+      status: '${j['status'] ?? ''}',
+      period: '${j['period'] ?? ''}',
+      transactionId: j['transactionId']?.toString(),
+      failureReason: j['failureReason']?.toString(),
+      completedAt: j['completedAt'] == null ? null : _dt(j['completedAt']),
+      createdAt: _dt(j['createdAt']),
+    );
+  }
+}
+
+class AdminVehicle {
+  final String id;
+  final String brand;
+  final String model;
+  final String colour;
+  final String plateNumber;
+  final String year;
+  final bool listedForRental;
+  final String ownerName;
+  final String ownerEmail;
+  AdminVehicle({
+    required this.id,
+    required this.brand,
+    required this.model,
+    required this.colour,
+    required this.plateNumber,
+    required this.year,
+    required this.listedForRental,
+    required this.ownerName,
+    required this.ownerEmail,
+  });
+  factory AdminVehicle.fromJson(Map<String, dynamic> j) {
+    final driver = j['driver'] as Map?;
+    final user = driver?['user'] as Map?;
+    return AdminVehicle(
+      id: '${j['id']}',
+      brand: '${j['brand'] ?? ''}',
+      model: '${j['model'] ?? ''}',
+      colour: '${j['colour'] ?? ''}',
+      plateNumber: '${j['plateNumber'] ?? ''}',
+      year: '${j['year'] ?? ''}',
+      listedForRental: j['listedForRental'] == true,
+      ownerName: _name(user),
+      ownerEmail: '${user?['email'] ?? ''}',
+    );
+  }
+}
+
+class LoyaltyTier {
+  final String id;
+  final String name;
+  final int minCompletedTrips;
+  final double discountPercent;
+  final String? perks;
+  LoyaltyTier({
+    required this.id,
+    required this.name,
+    required this.minCompletedTrips,
+    required this.discountPercent,
+    required this.perks,
+  });
+  factory LoyaltyTier.fromJson(Map<String, dynamic> j) => LoyaltyTier(
+        id: '${j['id']}',
+        name: '${j['name'] ?? ''}',
+        minCompletedTrips: _i(j['minCompletedTrips']),
+        discountPercent: _d(j['discountPercent']),
+        perks: j['perks']?.toString(),
+      );
+}
+
+class Promotion {
+  final String id;
+  final String code;
+  final String description;
+  final double discountPercent;
+  final bool active;
+  final DateTime? expiresAt;
+  final int? maxRedemptions;
+  final int redemptionCount;
+  Promotion({
+    required this.id,
+    required this.code,
+    required this.description,
+    required this.discountPercent,
+    required this.active,
+    required this.expiresAt,
+    required this.maxRedemptions,
+    required this.redemptionCount,
+  });
+  factory Promotion.fromJson(Map<String, dynamic> j) => Promotion(
+        id: '${j['id']}',
+        code: '${j['code'] ?? ''}',
+        description: '${j['description'] ?? ''}',
+        discountPercent: _d(j['discountPercent']),
+        active: j['active'] != false,
+        expiresAt: j['expiresAt'] == null ? null : _dt(j['expiresAt']),
+        maxRedemptions: j['maxRedemptions'] == null ? null : _i(j['maxRedemptions']),
+        redemptionCount: _i(j['redemptionCount']),
+      );
+}
+
 class AdminApi {
   static List _list(dynamic data) => (data is Map ? data['data'] : data) as List? ?? const [];
 
@@ -393,9 +728,18 @@ class AdminApi {
     await ApiClient.patch('/api/riders/$id/status', {'suspended': suspended});
   }
 
+  static Future<AdminRiderDetail> rider(String id) async =>
+      AdminRiderDetail.fromJson(await ApiClient.get('/api/riders/$id') as Map<String, dynamic>);
+
   static Future<List<AdminTrip>> trips() async {
     final data = await ApiClient.get('/api/trips?pageSize=100');
     return _list(data).whereType<Map<String, dynamic>>().map(AdminTrip.fromJson).toList();
+  }
+
+  static Future<List<AnalyticsDay>> analytics() async {
+    final data = await ApiClient.get('/api/admin/analytics') as Map<String, dynamic>;
+    final days = (data['days'] as List?) ?? const [];
+    return days.whereType<Map<String, dynamic>>().map(AnalyticsDay.fromJson).toList();
   }
 
   static Future<List<AuditEntry>> audit() async {
@@ -451,6 +795,111 @@ class AdminApi {
 
   static Future<void> setRentalStatus(String id, String status) async {
     await ApiClient.patch('/api/rentals/$id/status', {'status': status});
+  }
+
+  // ---- Short Stays (property listings) ----
+  static Future<List<StayListing>> stays() async {
+    final data = await ApiClient.get('/api/stays?pageSize=100');
+    return _list(data).whereType<Map<String, dynamic>>().map(StayListing.fromJson).toList();
+  }
+
+  static Future<StayListing> stay(String id) async =>
+      StayListing.fromJson(await ApiClient.get('/api/stays/$id') as Map<String, dynamic>);
+
+  static Future<void> setStayStatus(String id, String status) async {
+    await ApiClient.patch('/api/stays/$id/status', {'status': status});
+  }
+
+  static Future<List<StayBooking>> stayBookings(String id) async {
+    final data = await ApiClient.get('/api/stays/$id/bookings');
+    return (data as List).whereType<Map<String, dynamic>>().map(StayBooking.fromJson).toList();
+  }
+
+  // ---- Loyalty tiers & promotions ----
+  static Future<List<LoyaltyTier>> loyaltyTiers() async {
+    final data = await ApiClient.get('/api/loyalty-tiers');
+    return (data as List).whereType<Map<String, dynamic>>().map(LoyaltyTier.fromJson).toList();
+  }
+
+  static Future<LoyaltyTier> createLoyaltyTier({
+    required String name,
+    required int minCompletedTrips,
+    required double discountPercent,
+    String? perks,
+  }) async {
+    final data = await ApiClient.post('/api/loyalty-tiers', {
+      'name': name,
+      'minCompletedTrips': minCompletedTrips,
+      'discountPercent': discountPercent,
+      if (perks != null && perks.isNotEmpty) 'perks': perks,
+    });
+    return LoyaltyTier.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<List<Promotion>> promotions() async {
+    final data = await ApiClient.get('/api/promotions');
+    return (data as List).whereType<Map<String, dynamic>>().map(Promotion.fromJson).toList();
+  }
+
+  static Future<Promotion> createPromotion({
+    required String code,
+    required String description,
+    required double discountPercent,
+    DateTime? expiresAt,
+    int? maxRedemptions,
+  }) async {
+    final data = await ApiClient.post('/api/promotions', {
+      'code': code,
+      'description': description,
+      'discountPercent': discountPercent,
+      if (expiresAt != null) 'expiresAt': expiresAt.toIso8601String(),
+      if (maxRedemptions != null) 'maxRedemptions': maxRedemptions,
+    });
+    return Promotion.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ---- Vehicle inventory (admin, cross-driver) ----
+  static Future<List<AdminVehicle>> vehicles() async {
+    final data = await ApiClient.get('/api/vehicles?pageSize=100');
+    return _list(data).whereType<Map<String, dynamic>>().map(AdminVehicle.fromJson).toList();
+  }
+
+  // ---- Payouts ----
+  static Future<List<AdminPayout>> payouts({String? status}) async {
+    final query = status == null ? '' : '&status=$status';
+    final data = await ApiClient.get('/api/payouts?pageSize=100$query');
+    return _list(data).whereType<Map<String, dynamic>>().map(AdminPayout.fromJson).toList();
+  }
+
+  static Future<PayoutCalculation> calculatePayout(String driverId, String period) async {
+    final data = await ApiClient.post('/api/payouts/calculate', {'driverId': driverId, 'period': period});
+    return PayoutCalculation.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<AdminPayout> createPayout(String driverId, String period, {double? amount}) async {
+    final data = await ApiClient.post('/api/payouts/create', {
+      'driverId': driverId,
+      'period': period,
+      if (amount != null) 'amount': amount,
+    });
+    return AdminPayout.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<AdminPayout> processPayout(String id) async {
+    final data = await ApiClient.post('/api/payouts/$id/process');
+    return AdminPayout.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<AdminPayout> completePayout(String id, {String? transactionId}) async {
+    final data = await ApiClient.post('/api/payouts/$id/complete', {
+      if (transactionId != null && transactionId.isNotEmpty) 'transactionId': transactionId,
+    });
+    return AdminPayout.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<AdminPayout> failPayout(String id, String reason) async {
+    final data = await ApiClient.post('/api/payouts/$id/fail', {'failureReason': reason});
+    return AdminPayout.fromJson(data as Map<String, dynamic>);
   }
 
   // ---- Subscription plans ----

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/views/riders/rider_detail_screen.dart';
 
 class RiderListScreen extends StatefulWidget {
   const RiderListScreen({super.key});
@@ -99,7 +100,13 @@ class _RiderListScreenState extends State<RiderListScreen> {
         separatorBuilder: (_, __) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
           final r = _riders[i];
-          return Container(
+          return InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () async {
+              await Navigator.push(context, MaterialPageRoute(builder: (_) => RiderDetailScreen(rider: r)));
+              _load();
+            },
+            child: Container(
             padding: const EdgeInsets.all(14),
             decoration: AppComponents.cardDecoration(),
             child: Row(
@@ -130,6 +137,7 @@ class _RiderListScreenState extends State<RiderListScreen> {
                   ],
                 ),
               ],
+            ),
             ),
           );
         },

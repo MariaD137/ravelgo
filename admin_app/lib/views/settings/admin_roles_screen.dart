@@ -1,42 +1,56 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 
+/// Honest placeholder: there is no staff/role-management backend in
+/// RavelGo. Every admin endpoint checks a single Cognito group ("Admin") via
+/// requireRole("Admin") - there's no concept of finer-grained roles
+/// (Operations Manager, Support Agent, etc.) or a directory of staff members
+/// to fabricate here. Access is granted/revoked directly in AWS Cognito.
 class AdminRolesScreen extends StatelessWidget {
   const AdminRolesScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final roles = [
-      ("Super Admin", "Full access to all modules", ["Ops Admin"]),
-      ("Operations Manager", "Drivers, trips, pricing, support", ["Kunle Ade", "Bisi Adewale"]),
-      ("Support Agent", "Support tickets, disputes, lost items only", ["Ngozi Adeyemi"]),
-      ("Finance Viewer", "Read-only access to revenue & subscriptions", ["Femi Coker"]),
-    ];
     return Scaffold(
       appBar: AppBar(title: const Text("Admin Roles")),
       body: ListView(
         padding: const EdgeInsets.all(20),
-        children: roles.map((r) {
-          return Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.all(14),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
             decoration: AppComponents.cardDecoration(),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(r.$1, style: const TextStyle(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                Text(r.$2, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: r.$3.map((n) => AppComponents.badge(n)).toList(),
+                Row(
+                  children: const [
+                    Icon(Icons.info_outline, color: AppColors.textSecondary),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text("Role management isn't built yet", style: TextStyle(fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  "RavelGo doesn't have a staff directory or fine-grained roles "
+                  "(e.g. \"Operations Manager\", \"Support Agent\"). Every admin "
+                  "action in this app is gated on a single check: does the signed-in "
+                  "user belong to the \"Admin\" group in AWS Cognito?",
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  "To grant or remove admin access, add or remove the user from the "
+                  "Admin group in the Cognito user pool directly - there's no in-app "
+                  "control for this, and building a fake one here would be misleading "
+                  "about what's actually enforced.",
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
                 ),
               ],
             ),
-          );
-        }).toList(),
+          ),
+        ],
       ),
     );
   }
