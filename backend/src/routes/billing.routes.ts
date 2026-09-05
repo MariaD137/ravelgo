@@ -36,15 +36,27 @@ billingRouter.post("/", async (req, res) => {
     const intent = event.data.object as Stripe.PaymentIntent;
     const succeeded = event.type === "payment_intent.succeeded";
 
-    // Two kinds of PaymentIntent flow through here, told apart by metadata set
-    // when each was created: a wallet top-up (wallet.routes.ts) credits the
-    // rider's balance on success; a trip card charge (payments.routes.ts)
-    // settles that trip's Payment row.
+    // Three kinds of PaymentIntent flow through here, told apart by metadata
+    // set when each was created: a wallet top-up (wallet.routes.ts) credits
+    // the rider's balance on success; a rental booking card payment
+    // (rental-payment.ts) confirms that booking; anything else is a trip card
+    // charge (payments.routes.ts) that settles that trip's Payment row.
     if (intent.metadata?.type === "wallet_topup") {
       if (succeeded) {
         await creditWalletFromTopup(intent.id);
       } else {
         await failWalletTopup(intent.id);
+      }
+    } else if (intent.metadata?.type === "rental_booking") {
+      const booking = await prisma.rentalBooking.findFirst({ where: { providerReference: intent.id } });
+      if (booking) {
+        await prisma.rentalBooking.update({
+          where: { id: booking.id },
+          data: {
+            status: succeeded ? "CONFIRMED" : booking.status,
+            paymentStatus: succeeded ? "SUCCEEDED" : "FAILED",
+          },
+        });
       }
     } else {
       const payment = await prisma.payment.findFirst({ where: { providerReference: intent.id } });

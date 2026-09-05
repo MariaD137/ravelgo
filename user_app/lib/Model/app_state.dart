@@ -17,16 +17,6 @@ class RiderAppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Favorite rental cars (CarListing)
-  final Set<String> favoriteCars = {};
-
-  bool isFavorite(String carId) => favoriteCars.contains(carId);
-
-  void toggleFavorite(String carId) {
-    if (!favoriteCars.add(carId)) favoriteCars.remove(carId);
-    notifyListeners();
-  }
-
   // Payment methods (masked display data only - never store raw card data)
   final List<SavedPaymentMethod> paymentMethods = [];
 

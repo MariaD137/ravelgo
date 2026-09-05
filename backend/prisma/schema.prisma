@@ -49,6 +49,13 @@ enum RentalListingStatus {
   REJECTED
 }
 
+enum RentalBookingStatus {
+  PENDING_PAYMENT
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
 enum PropertyListingStatus {
   PENDING_APPROVAL
   APPROVED
@@ -143,6 +150,7 @@ model User {
   foodOrders        FoodOrder[]      @relation("RiderFoodOrders")
   hostedProperties  PropertyListing[] @relation("HostProperties")
   stayBookings      StayBooking[]     @relation("GuestStayBookings")
+  rentalBookings    RentalBooking[]   @relation("RenterRentalBookings")
 }
 
 model Driver {
@@ -253,6 +261,34 @@ model RentalListing {
   location   String
   status     RentalListingStatus  @default(PENDING_APPROVAL)
   createdAt  DateTime             @default(now())
+
+  bookings   RentalBooking[]
+}
+
+// A customer's reservation of a RentalListing for a date range. Mirrors
+// StayBooking's shape (server-computed price, never trusted from the client)
+// but additionally tracks its own payment state inline (like CourierRequest's
+// fare fields) rather than joining through Payment, which is tied 1:1 to Trip.
+model RentalBooking {
+  id                String               @id @default(uuid())
+  renterId          String
+  renter            User                 @relation("RenterRentalBookings", fields: [renterId], references: [id], onDelete: Cascade)
+  listingId         String
+  listing           RentalListing        @relation(fields: [listingId], references: [id])
+  startDate         DateTime
+  endDate           DateTime
+  // Server-computed from (endDate - startDate) and the listing's dailyRate at
+  // booking time — never trusted from the client.
+  days              Int
+  totalPrice        Float
+  status            RentalBookingStatus  @default(PENDING_PAYMENT)
+  paymentMethod     PaymentMethod?
+  paymentStatus     PaymentStatus        @default(PENDING)
+  providerReference String?              @unique // Stripe PaymentIntent id, for CARD payment
+  createdAt         DateTime             @default(now())
+
+  @@index([renterId])
+  @@index([listingId])
 }
 
 // Short-stay property rentals (book a place for a range of nights). Mirrors
@@ -479,6 +515,7 @@ model Payout {
 enum WalletTransactionType {
   TOPUP // rider added funds via Stripe
   RIDE_PAYMENT // rider paid for a trip from their balance
+  RENTAL_PAYMENT // rider paid for a car rental booking from their balance
   REFUND
 }
 
@@ -517,6 +554,7 @@ model WalletTransaction {
   amountCents       Int // positive = credit (top-up/refund), negative = debit (ride)
   providerReference String?                 @unique // Stripe PaymentIntent id for a TOPUP
   tripId            String? // the trip a RIDE_PAYMENT paid for
+  rentalBookingId   String? // the booking a RENTAL_PAYMENT paid for
   // Cognito sub of the payer, when a TOPUP was funded by someone OTHER than the
   // wallet owner (authorized third-party funding). Null for a self top-up. The
   // ledger is append-only, so this permanently records who put money in.
