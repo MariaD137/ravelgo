@@ -1,15 +1,24 @@
 import { prisma } from "../db/prisma";
 import { stripeClient } from "../billing/stripe";
 import { MAX_MONEY_AMOUNT, toCents } from "../lib/money";
+import { getPaymentSettings, isCashPaymentAllowed } from "../lib/payment-rules";
 import { AlreadyChargedError, chargeWalletForRide } from "./wallet";
 
-export type PaymentMethod = "CARD" | "WALLET";
+export type PaymentMethod = "CARD" | "WALLET" | "CASH";
 
 /** The trip is not in a state where it can be charged (not completed, no/invalid finalFare, no wallet). Maps to 409. */
 export class TripNotChargeableError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "TripNotChargeableError";
+  }
+}
+
+/** A CASH payment was attempted for a fare above the configured cash limit (or cash is disabled). Maps to 400. */
+export class CashLimitExceededError extends Error {
+  constructor(public readonly limit: number) {
+    super(`Cash payments are limited to ${limit} per trip. Please select Card or RavelGo Cash.`);
+    this.name = "CashLimitExceededError";
   }
 }
 
@@ -53,6 +62,32 @@ export async function settleTripPayment(
 
   const existing = await prisma.payment.findUnique({ where: { tripId: trip.id } });
   if (existing) throw new AlreadyChargedError();
+
+  if (method === "CASH") {
+    // Defense in depth: the rider app hides Cash above the limit, but the
+    // server is the only place this is actually enforced — see
+    // lib/payment-rules.ts#isCashPaymentAllowed.
+    const settings = await getPaymentSettings();
+    if (!(await isCashPaymentAllowed(trip.finalFare))) {
+      throw new CashLimitExceededError(settings.cashPaymentLimit);
+    }
+    // Cash changes hands directly between rider and driver — RavelGo never
+    // holds it, so unlike CARD/WALLET this settles immediately as SUCCEEDED
+    // with no provider round trip. It still becomes a real, owed-to-RavelGo
+    // amount from this instant: the driver's cash reconciliation (see
+    // cash.routes.ts) sums exactly these rows as "expected cash".
+    const payment = await prisma.payment.create({
+      data: {
+        tripId: trip.id,
+        userId: trip.riderId,
+        amount: trip.finalFare,
+        method: "CASH",
+        status: "SUCCEEDED",
+        paidAt: new Date(),
+      },
+    });
+    return { payment };
+  }
 
   if (method === "CARD") {
     const intent = await stripeClient.paymentIntents.create({

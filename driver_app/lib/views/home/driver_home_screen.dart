@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:ravelgo_driver_app/config/currency.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
 import 'package:ravelgo_driver_app/services/api_client.dart';
@@ -27,6 +28,7 @@ class DriverHomeScreen extends StatefulWidget {
 
 class _DriverHomeScreenState extends State<DriverHomeScreen> {
   Timer? _poll;
+  Timer? _locationTimer;
   bool _handlingRequest = false; // a request sheet / active trip is on screen
   bool _loadingTrips = false;
 
@@ -37,7 +39,10 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   void initState() {
     super.initState();
     _refreshTrips();
-    if (widget.profile.isOnline) _startPolling();
+    if (widget.profile.isOnline) {
+      _startPolling();
+      _startLocationPing();
+    }
   }
 
   @override
@@ -45,14 +50,17 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     super.didUpdateWidget(old);
     if (widget.profile.isOnline && _poll == null) {
       _startPolling();
+      _startLocationPing();
     } else if (!widget.profile.isOnline && _poll != null) {
       _stopPolling();
+      _stopLocationPing();
     }
   }
 
   @override
   void dispose() {
     _stopPolling();
+    _stopLocationPing();
     super.dispose();
   }
 
@@ -67,6 +75,35 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
   void _stopPolling() {
     _poll?.cancel();
     _poll = null;
+  }
+
+  /// While online (whether or not there's an active trip), periodically
+  /// report this driver's position — this is what makes an idle "available"
+  /// driver show up on the admin Live Map, which otherwise only ever hears
+  /// from a driver mid-trip (see RealtimeService / trip_detail_screen.dart).
+  void _startLocationPing() {
+    _locationTimer?.cancel();
+    _pingLocation();
+    _locationTimer = Timer.periodic(const Duration(seconds: 20), (_) => _pingLocation());
+  }
+
+  void _stopLocationPing() {
+    _locationTimer?.cancel();
+    _locationTimer = null;
+  }
+
+  Future<void> _pingLocation() async {
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
+      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      await DriverApi.pingLocation(pos.latitude, pos.longitude);
+    } catch (_) {
+      // Best-effort: a failed fix/ping just means no update this tick.
+    }
   }
 
   bool _isToday(DateTime d) {

@@ -74,10 +74,12 @@ test("POST /api/trips/:id/charge (CARD) creates a Stripe PaymentIntent, PENDING 
   assert.equal(second.status, 409);
 });
 
-test("POST /api/trips/:id/charge rejects CASH — it is no longer a payment method", async () => {
+// --- CASH: the ₦15,000 cap (product acceptance tests) ---------------------
+
+test("CASH settles instantly for a fare at or below the ₦15,000 cap (₦12,000)", async () => {
   const { rider, driver } = await createRiderAndDriver();
   const trip = await prisma.trip.create({
-    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 14.5, status: "COMPLETED" },
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 12000, finalFare: 12000, status: "COMPLETED" },
   });
 
   const token = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
@@ -86,8 +88,103 @@ test("POST /api/trips/:id/charge rejects CASH — it is no longer a payment meth
     .set("Authorization", `Bearer ${token}`)
     .send({ method: "CASH" });
 
-  assert.equal(res.status, 400); // schema rejects the unknown method
+  assert.equal(res.status, 201);
+  assert.equal(res.body.method, "CASH");
+  assert.equal(res.body.status, "SUCCEEDED");
+  assert.equal(res.body.amount, 12000);
+});
+
+test("CASH settles for a fare exactly at the ₦15,000 cap", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 15000, finalFare: 15000, status: "COMPLETED" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/charge`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ method: "CASH" });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.status, "SUCCEEDED");
+});
+
+test("CASH is rejected server-side for a fare one naira above the cap (₦15,001), even though the client asked for it", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 15001, finalFare: 15001, status: "COMPLETED" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/charge`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ method: "CASH" });
+
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /15,?000|limited to/i);
   assert.equal(await prisma.payment.count(), 0);
+});
+
+test("CASH is rejected for a ₦20,000 fare — the backend is the real enforcement, not just the rider UI", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 20000, finalFare: 20000, status: "COMPLETED" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/charge`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ method: "CASH" });
+
+  assert.equal(res.status, 400);
+  assert.equal(await prisma.payment.count(), 0);
+});
+
+test("a completed CASH trip is exactly what the cash-reconciliation endpoint counts as this driver's expected cash", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 5000, finalFare: 5000, status: "COMPLETED" },
+  });
+  const driverToken = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
+  const charge = await request(app)
+    .post(`/api/trips/${trip.id}/charge`)
+    .set("Authorization", `Bearer ${driverToken}`)
+    .send({ method: "CASH" });
+  assert.equal(charge.status, 201);
+
+  restoreAuth();
+  const adminToken = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+  const recon = await request(app).get("/api/admin/cash-reconciliation").set("Authorization", `Bearer ${adminToken}`);
+  assert.equal(recon.status, 200);
+  const row = recon.body.find((r: { driverId: string }) => r.driverId === driver.id);
+  assert.ok(row, "driver should appear in reconciliation once they have a CASH payment");
+  assert.equal(row.expectedCash, 5000);
+  assert.equal(row.submittedCash, 0);
+  assert.equal(row.outstandingCash, 5000);
+  assert.equal(row.status, "OUTSTANDING");
+});
+
+test("a CARD trip is never counted as physical cash collected", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 5000, finalFare: 5000, status: "COMPLETED" },
+  });
+  mockPaymentIntentCreate();
+  const driverToken = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
+  const charge = await request(app)
+    .post(`/api/trips/${trip.id}/charge`)
+    .set("Authorization", `Bearer ${driverToken}`)
+    .send({ method: "CARD" });
+  assert.equal(charge.status, 201);
+
+  restoreAuth();
+  const adminToken = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+  const recon = await request(app).get("/api/admin/cash-reconciliation").set("Authorization", `Bearer ${adminToken}`);
+  assert.equal(recon.status, 200);
+  assert.equal(recon.body.find((r: { driverId: string }) => r.driverId === driver.id), undefined);
 });
 
 test("POST /api/trips/:id/charge (WALLET) debits the rider's funded balance and settles", async () => {

@@ -244,6 +244,15 @@ class DriverApi {
     return DriverRecord.fromJson(data as Map<String, dynamic>);
   }
 
+  /// Report the driver's current position while online. This is what backs
+  /// the admin Live Map for a driver who is available/idle rather than
+  /// mid-trip — the WebSocket location feed (RealtimeService) only runs while
+  /// a trip screen is open. Best-effort: a failed ping shouldn't interrupt
+  /// the driver's shift, so callers should swallow errors from this.
+  static Future<void> pingLocation(double lat, double lng) async {
+    await ApiClient.post('/api/drivers/me/location', {'lat': lat, 'lng': lng});
+  }
+
   /// Trips assigned to this driver, newest first.
   static Future<List<DriverTrip>> myTrips() async {
     final data = await ApiClient.get('/api/trips/mine?pageSize=50');

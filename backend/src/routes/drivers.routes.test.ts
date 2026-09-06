@@ -4,8 +4,12 @@ import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
 import { mockAuthAs, restoreAuth, resetDb, mockCognitoAddToGroup } from "../test/helpers";
+import { getLatestDriverLocation, resetRealtimeState } from "../realtime/hub";
 
-beforeEach(resetDb);
+beforeEach(() => {
+  resetRealtimeState();
+  return resetDb();
+});
 afterEach(() => {
   restoreAuth();
 });
@@ -174,4 +178,38 @@ test("PATCH /api/drivers/me/availability lets an ACTIVE driver go online, blocks
     .send({ isOnline: true });
   assert.equal(ok.status, 200);
   assert.equal(ok.body.isOnline, true);
+});
+
+test("POST /api/drivers/me/location records the driver's position in the realtime hub (backs the admin Live Map)", async () => {
+  const user = await prisma.user.create({
+    data: { cognitoSub: "drv-loc-1", role: "DRIVER", firstName: "L", lastName: "D", email: "ld@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: user.id, status: "ACTIVE", isOnline: true } });
+  const token = mockAuthAs({ sub: "drv-loc-1", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/drivers/me/location")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ lat: 6.5244, lng: 3.3792 });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.driverId, driver.id);
+  const stored = getLatestDriverLocation(driver.id);
+  assert.equal(stored?.lat, 6.5244);
+  assert.equal(stored?.lng, 3.3792);
+});
+
+test("POST /api/drivers/me/location rejects an out-of-range coordinate", async () => {
+  const user = await prisma.user.create({
+    data: { cognitoSub: "drv-loc-2", role: "DRIVER", firstName: "L", lastName: "D", email: "ld2@example.com" },
+  });
+  await prisma.driver.create({ data: { userId: user.id, status: "ACTIVE" } });
+  const token = mockAuthAs({ sub: "drv-loc-2", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/drivers/me/location")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ lat: 999, lng: 3.3792 });
+
+  assert.equal(res.status, 400);
 });

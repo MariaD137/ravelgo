@@ -121,7 +121,12 @@ export async function resetDb() {
   await prisma.carPaddyRequest.deleteMany();
   await prisma.driverDocument.deleteMany();
   await prisma.trip.deleteMany();
+  // CashRemittance -> Driver is ON DELETE RESTRICT, so remittances must go first.
+  await prisma.cashRemittance.deleteMany();
   await prisma.vehicle.deleteMany();
   await prisma.driver.deleteMany();
   await prisma.user.deleteMany();
+  // Global singleton config, not user-scoped, but reset so one test's cash
+  // limit/enabled-method change can never leak into another.
+  await prisma.appSetting.deleteMany();
 }

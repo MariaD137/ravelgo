@@ -5,6 +5,7 @@ import 'package:ravelgo_admin/views/audit/audit_log_screen.dart';
 import 'package:ravelgo_admin/views/auth/admin_login_screen.dart';
 import 'package:ravelgo_admin/views/carpaddy/car_paddy_requests_screen.dart';
 import 'package:ravelgo_admin/views/couriers/courier_requests_screen.dart';
+import 'package:ravelgo_admin/views/payments/payments_cash_screen.dart';
 import 'package:ravelgo_admin/views/payouts/payouts_screen.dart';
 import 'package:ravelgo_admin/views/pricing/pricing_surge_screen.dart';
 import 'package:ravelgo_admin/views/promotions/loyalty_program_screen.dart';
@@ -15,6 +16,7 @@ import 'package:ravelgo_admin/views/safety/emergency_alerts_screen.dart';
 import 'package:ravelgo_admin/views/safety/fraud_alerts_screen.dart';
 import 'package:ravelgo_admin/views/settings/admin_profile_screen.dart';
 import 'package:ravelgo_admin/views/settings/admin_users_screen.dart';
+import 'package:ravelgo_admin/views/settings/payment_settings_screen.dart';
 import 'package:ravelgo_admin/views/stays/stays_management_screen.dart';
 import 'package:ravelgo_admin/views/subscriptions/driver_subscriptions_screen.dart';
 import 'package:ravelgo_admin/views/vehicles/vehicle_inventory_screen.dart';
@@ -58,6 +60,7 @@ class SideMenuAdmin extends StatelessWidget {
             _item(context, Icons.directions_car_outlined, "Vehicle Inventory", () => const VehicleInventoryScreen()),
             _item(context, Icons.tune_outlined, "Pricing & Surge", () => const PricingSurgeScreen()),
             _item(context, Icons.workspace_premium_outlined, "Driver Subscriptions", () => const DriverSubscriptionsScreen()),
+            _item(context, Icons.payments_outlined, "Payments & Cash", () => const PaymentsCashScreen()),
             _item(context, Icons.account_balance_wallet_outlined, "Payouts", () => const PayoutsScreen()),
             AppComponents.divider(),
             _item(context, Icons.warning_amber_outlined, "Fraud Alerts", () => const FraudAlertsScreen()),
@@ -67,6 +70,7 @@ class SideMenuAdmin extends StatelessWidget {
             _item(context, Icons.bar_chart_outlined, "Reports & Analytics", () => const AnalyticsScreen()),
             _item(context, Icons.receipt_long_outlined, "Audit Log", () => const AuditLogScreen()),
             _item(context, Icons.manage_accounts_outlined, "Admin Users", () => const AdminUsersScreen()),
+            _item(context, Icons.settings_outlined, "Payment Settings", () => const PaymentSettingsScreen()),
             _item(context, Icons.person_outline, "My Profile", () => const AdminProfileScreen()),
             _item(context, Icons.logout, "Log out", () => const AdminLoginScreen(), replace: true, preAction: AuthService.signOut),
           ],

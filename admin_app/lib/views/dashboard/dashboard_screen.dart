@@ -123,6 +123,41 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       child: AppComponents.statCard(
                           "Pending approvals", "${_stats!.pendingApprovals}", Icons.pending_actions_outlined,
                           color: AppColors.warning)),
+                  SizedBox(
+                      width: cardWidth,
+                      child: AppComponents.statCard("Available drivers", "${_stats!.availableDrivers}",
+                          Icons.check_circle_outline,
+                          color: AppColors.success)),
+                  SizedBox(
+                      width: cardWidth,
+                      child: AppComponents.statCard(
+                          "Pending ride requests", "${_stats!.pendingRideRequests}", Icons.hourglass_top_outlined,
+                          color: AppColors.warning)),
+                  SizedBox(
+                      width: cardWidth,
+                      child: AppComponents.statCard(
+                          "Active deliveries", "${_stats!.activeLogisticsDeliveries}", Icons.local_shipping_outlined,
+                          color: AppColors.warning)),
+                  SizedBox(
+                      width: cardWidth,
+                      child: AppComponents.statCard(
+                          "Registered riders", "${_stats!.registeredRiders}", Icons.people_outline)),
+                  SizedBox(
+                      width: cardWidth,
+                      child: AppComponents.statCard("Cash collected today", "₦${_stats!.cashCollectedToday.toStringAsFixed(0)}",
+                          Icons.payments_outlined,
+                          color: AppColors.success)),
+                  SizedBox(
+                      width: cardWidth,
+                      child: AppComponents.statCard("Card revenue today", "₦${_stats!.cardRevenueToday.toStringAsFixed(0)}",
+                          Icons.credit_card_outlined,
+                          color: AppColors.info)),
+                  SizedBox(
+                      width: cardWidth,
+                      child: AppComponents.statCard(
+                          "RavelGo Cash revenue today", "₦${_stats!.walletRevenueToday.toStringAsFixed(0)}",
+                          Icons.account_balance_wallet_outlined,
+                          color: AppColors.warning)),
                 ],
               );
             },

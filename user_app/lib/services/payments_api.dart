@@ -23,4 +23,13 @@ class PaymentsApi {
   static Future<void> payTripWithWallet(String tripId) async {
     await ApiClient.post('/api/trips/$tripId/pay', {'method': 'WALLET'});
   }
+
+  /// Pay a completed trip in cash, handed directly to the driver. Settles
+  /// immediately on the backend — but only below the configured cash limit
+  /// (default ₦15,000): the UI should already hide this option above the
+  /// limit (see SettingsApi.paymentSettings), and the backend rejects it with
+  /// a 400 regardless of what the client sends.
+  static Future<void> payTripWithCash(String tripId) async {
+    await ApiClient.post('/api/trips/$tripId/pay', {'method': 'CASH'});
+  }
 }

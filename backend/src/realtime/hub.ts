@@ -51,6 +51,11 @@ export function getLatestDriverLocation(driverId: string): DriverLocation | unde
   return latestDriverLocation.get(driverId);
 }
 
+/** Every driver location known to this instance — the admin live map's data source. */
+export function getAllDriverLocations(): DriverLocation[] {
+  return [...latestDriverLocation.values()];
+}
+
 export function broadcastDriverLocation(tripId: string, location: DriverLocation) {
   broadcastToTrip(tripId, { type: "location", tripId, ...location });
 }

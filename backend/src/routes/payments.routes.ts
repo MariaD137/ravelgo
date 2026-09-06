@@ -5,7 +5,7 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { sensitiveLimiter } from "../middleware/rate-limit";
 import { AlreadyChargedError, InsufficientFundsError } from "../services/wallet";
-import { settleTripPayment, TripNotChargeableError } from "../services/trip-payment";
+import { CashLimitExceededError, settleTripPayment, TripNotChargeableError } from "../services/trip-payment";
 
 export const paymentsRouter = Router();
 
@@ -13,17 +13,20 @@ export const paymentsRouter = Router();
 function respondToSettleError(res: import("express").Response, err: unknown, next: import("express").NextFunction) {
   if (err instanceof InsufficientFundsError) return res.status(402).json({ error: "Insufficient wallet balance" });
   if (err instanceof AlreadyChargedError) return res.status(409).json({ error: "Trip has already been charged" });
+  if (err instanceof CashLimitExceededError) return res.status(400).json({ error: err.message });
   if (err instanceof TripNotChargeableError) return res.status(409).json({ error: err.message });
   return next(err);
 }
 
-// Cash is intentionally NOT a payment method: with cash the rider hands money
-// straight to the driver, RavelGo never touches it, and the platform can't
-// take its commission or remit the driver's share. Every ride is paid by CARD
-// (Stripe) or from the rider's Stripe-funded RavelGo WALLET, both of which
-// keep the funds under RavelGo's control.
+// RavelGo has exactly three payment methods: CASH, CARD and RavelGo CASH
+// (WALLET). CARD (Stripe) and WALLET (the rider's prepaid RavelGo balance)
+// keep the funds under RavelGo's control end-to-end. CASH changes hands
+// directly between rider and driver and is capped at the configured limit
+// (default ₦15,000, see lib/payment-rules.ts) so RavelGo's exposure on money
+// it never touches stays bounded — settleTripPayment re-checks that cap
+// server-side regardless of what the client asserts.
 const chargeSchema = z.object({
-  method: z.enum(["CARD", "WALLET"]).default("CARD"),
+  method: z.enum(["CARD", "WALLET", "CASH"]).default("CARD"),
 });
 
 // Driver or Admin: charge the rider for a completed trip's final (tax-inclusive)
