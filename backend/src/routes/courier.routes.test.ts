@@ -280,6 +280,45 @@ test("PATCH /api/courier-requests/:id/status accepts PICKED_UP and records picke
   assert.ok(res.body.pickedUpAt);
 });
 
+test("PATCH /api/courier-requests/:id/status rejects a Finance Viewer admin, but a Super Admin's override is audited", async () => {
+  const sender = await createRider("rider-sub-perm");
+  const driver = await createDriver("driver-sub-perm");
+  const req = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      driverId: driver.id,
+      status: "MATCHED",
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+  await prisma.user.create({
+    data: { cognitoSub: "finance-courier", role: "ADMIN", adminRole: "FINANCE_VIEWER", firstName: "F", lastName: "V", email: "fv-courier@example.com" },
+  });
+
+  const financeToken = mockAuthAs({ sub: "finance-courier", groups: ["Admin"] });
+  const denied = await request(app)
+    .patch(`/api/courier-requests/${req.id}/status`)
+    .set("Authorization", `Bearer ${financeToken}`)
+    .send({ status: "IN_TRANSIT" });
+  assert.equal(denied.status, 403);
+
+  restoreAuth();
+  const superToken = mockAuthAs({ sub: "super-courier", groups: ["Admin"] });
+  const overridden = await request(app)
+    .patch(`/api/courier-requests/${req.id}/status`)
+    .set("Authorization", `Bearer ${superToken}`)
+    .send({ status: "IN_TRANSIT" });
+  assert.equal(overridden.status, 200);
+
+  const audit = await prisma.auditLog.findFirst({ where: { action: "COURIER_REQUEST_STATUS_OVERRIDDEN", entityId: req.id } });
+  assert.ok(audit);
+});
+
 test("PATCH /api/courier-requests/:id/status rejects DELIVERED without a delivery photo and signature", async () => {
   const sender = await createRider("rider-sub-8");
   const driver = await createDriver("driver-sub-6");

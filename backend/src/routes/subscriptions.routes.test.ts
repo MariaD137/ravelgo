@@ -50,6 +50,21 @@ test("POST /api/subscription-plans lets an Admin create a plan, then it's listed
   assert.equal(list.status, 200);
   assert.equal(list.body.length, 1);
   assert.equal(list.body[0].name, "Pro");
+
+  const audit = await prisma.auditLog.findFirst({ where: { action: "SUBSCRIPTION_PLAN_CREATED", entityId: create.body.id } });
+  assert.ok(audit);
+});
+
+test("POST /api/subscription-plans rejects a Finance Viewer admin", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "finance-plans", role: "ADMIN", adminRole: "FINANCE_VIEWER", firstName: "F", lastName: "V", email: "fv-plans@example.com" },
+  });
+  const token = mockAuthAs({ sub: "finance-plans", groups: ["Admin"] });
+  const res = await request(app)
+    .post("/api/subscription-plans")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ name: "Pro", description: "Priority matching", priceMonthly: 29 });
+  assert.equal(res.status, 403);
 });
 
 test("POST /api/drivers/me/subscription subscribes the calling driver and flips subscriptionActive", async () => {

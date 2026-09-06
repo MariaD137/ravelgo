@@ -141,6 +141,22 @@ test("PATCH /stays/:id/status lets an admin approve a listing and records an aud
   assert.equal(entry?.action, "STAY_LISTING_REVIEWED");
 });
 
+test("PATCH /stays/:id/status rejects a Finance Viewer admin", async () => {
+  const host = await seedUser("stays-host-2", "host2@example.com");
+  const listing = await seedListing(host.id, { status: "PENDING_APPROVAL" });
+  await prisma.user.create({
+    data: { cognitoSub: "finance-stays", role: "ADMIN", adminRole: "FINANCE_VIEWER", firstName: "F", lastName: "V", email: "fv-stays@example.com" },
+  });
+  const token = mockAuthAs({ sub: "finance-stays", groups: ["Admin"] });
+
+  const res = await request(app)
+    .patch(`/api/stays/${listing.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "APPROVED" });
+
+  assert.equal(res.status, 403);
+});
+
 test("GET /stays exposes host email and booking count to an admin but not to a guest", async () => {
   const host = await seedUser("stays-host-1", "host1@example.com");
   const listing = await seedListing(host.id, { status: "APPROVED" });

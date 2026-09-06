@@ -1163,6 +1163,20 @@ class AdminApi {
     return _list(data).whereType<Map<String, dynamic>>().map(SubscriptionPlan.fromJson).toList();
   }
 
+  /// Super Admin / Operations Manager only — the backend enforces this.
+  static Future<SubscriptionPlan> createSubscriptionPlan({
+    required String name,
+    required String description,
+    required double priceMonthly,
+  }) async {
+    final data = await ApiClient.post('/api/subscription-plans', {
+      'name': name,
+      'description': description,
+      'priceMonthly': priceMonthly,
+    });
+    return SubscriptionPlan.fromJson(data as Map<String, dynamic>);
+  }
+
   // ---- Pricing rules (real backend, admin-only writes) ----
   static Future<List<PricingRule>> pricingRules() async {
     final data = await ApiClient.get('/api/pricing-rules');

@@ -2,6 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { requireAdminPermission } from "../lib/admin-permissions";
+import { recordAudit } from "../lib/audit";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const carPaddyRouter = Router();
@@ -51,14 +53,21 @@ const decisionSchema = z.object({
   status: z.enum(["APPROVED", "REJECTED"]),
 });
 
-// Admin: approve/reject a Car Paddy request
-carPaddyRouter.patch("/car-paddy/:id", requireAuth, requireRole("Admin"), async (req, res) => {
+// Admin (Super Admin / Operations Manager): approve/reject a Car Paddy request
+carPaddyRouter.patch("/car-paddy/:id", requireAuth, requireAdminPermission("listings:write"), async (req, res) => {
   const parsed = decisionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const request = await prisma.carPaddyRequest.update({
     where: { id: req.params.id },
     data: { status: parsed.data.status, reviewedAt: new Date() },
+  });
+  void recordAudit({
+    actorSub: req.user!.sub,
+    action: "CAR_PADDY_REQUEST_REVIEWED",
+    entityType: "CarPaddyRequest",
+    entityId: request.id,
+    metadata: { status: parsed.data.status },
   });
   res.json(request);
 });

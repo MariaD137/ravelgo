@@ -2,6 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { requireAdminPermission } from "../lib/admin-permissions";
+import { recordAudit } from "../lib/audit";
 
 export const subscriptionsRouter = Router();
 
@@ -21,12 +23,19 @@ const createPlanSchema = z.object({
   priceMonthly: z.number().positive(),
 });
 
-// Admin: create a new subscription plan
-subscriptionsRouter.post("/subscription-plans", requireAuth, requireRole("Admin"), async (req, res) => {
+// Admin (Super Admin / Operations Manager): create a new subscription plan
+subscriptionsRouter.post("/subscription-plans", requireAuth, requireAdminPermission("pricing:write"), async (req, res) => {
   const parsed = createPlanSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const plan = await prisma.subscriptionPlan.create({ data: parsed.data });
+  void recordAudit({
+    actorSub: req.user!.sub,
+    action: "SUBSCRIPTION_PLAN_CREATED",
+    entityType: "SubscriptionPlan",
+    entityId: plan.id,
+    metadata: { name: plan.name, priceMonthly: plan.priceMonthly },
+  });
   res.status(201).json(plan);
 });
 

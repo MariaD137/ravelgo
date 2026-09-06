@@ -2,6 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { requireAdminPermission } from "../lib/admin-permissions";
+import { recordAudit } from "../lib/audit";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { sensitiveLimiter } from "../middleware/rate-limit";
 import { InsufficientFundsError } from "../services/wallet";
@@ -243,14 +245,21 @@ rentalsRouter.patch("/rental-bookings/:id/cancel", requireAuth, async (req, res,
 
 const decisionSchema = z.object({ status: z.enum(["APPROVED", "REJECTED"]) });
 
-// Admin: approve/reject a rental listing
-rentalsRouter.patch("/rentals/:id/status", requireAuth, requireRole("Admin"), async (req, res) => {
+// Admin (Super Admin / Operations Manager): approve/reject a rental listing
+rentalsRouter.patch("/rentals/:id/status", requireAuth, requireAdminPermission("listings:write"), async (req, res) => {
   const parsed = decisionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const listing = await prisma.rentalListing.update({
     where: { id: req.params.id },
     data: { status: parsed.data.status },
+  });
+  void recordAudit({
+    actorSub: req.user!.sub,
+    action: "RENTAL_LISTING_REVIEWED",
+    entityType: "RentalListing",
+    entityId: listing.id,
+    metadata: { status: parsed.data.status },
   });
   res.json(listing);
 });

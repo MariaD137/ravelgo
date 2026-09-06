@@ -2,6 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { blockIfAdminLacksPermission } from "../lib/admin-permissions";
+import { recordAudit } from "../lib/audit";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { broadcastTripStatus, getLatestDriverLocation } from "../realtime/hub";
 import { matchDriverToTrip } from "../services/matching";
@@ -198,6 +200,8 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
     if (!driver || existing.driverId !== driver.id) {
       return res.status(403).json({ error: "Not authorized to update this trip" });
     }
+  } else if (await blockIfAdminLacksPermission(req, res, "drivers:write")) {
+    return; // 403 already written
   }
 
   // Enforce the state machine (P0 #9): the backend is authoritative about which
@@ -247,6 +251,15 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
     },
     include: { rider: true, driver: { include: { user: true, vehicles: true } } },
   });
+  if (isAdmin) {
+    void recordAudit({
+      actorSub: req.user!.sub,
+      action: "TRIP_STATUS_OVERRIDDEN",
+      entityType: "Trip",
+      entityId: trip.id,
+      metadata: { status: parsed.data.status, finalFare: parsed.data.finalFare },
+    });
+  }
   broadcastTripStatus(trip.id, trip.status, trip.finalFare);
   res.json(serializeTrip(trip));
 });
