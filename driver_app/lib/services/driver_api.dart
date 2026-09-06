@@ -143,7 +143,7 @@ class CourierRequest {
   final String recipientPhone;
   final double estimatedFare;
   final double? finalFare;
-  final String status; // REQUESTED | MATCHED | IN_TRANSIT | DELIVERED | CANCELLED
+  final String status; // REQUESTED | MATCHED | PICKED_UP | IN_TRANSIT | DELIVERED | CANCELLED
   final DateTime requestedAt;
 
   CourierRequest({
@@ -260,15 +260,15 @@ class DriverApi {
     return DriverTrip.fromJson(data as Map<String, dynamic>);
   }
 
-  /// Upload a document: presign an S3 key, PUT the bytes straight to S3, then
-  /// record the metadata. Returns the created (PENDING) document.
-  static Future<DriverDocument> uploadDocument({
-    required String title,
+  /// Presign an S3 key in the documents bucket and PUT the bytes straight to
+  /// S3. Returns the object key — the caller decides what to do with it (e.g.
+  /// record it against a DriverDocument, or attach it as courier-request
+  /// proof of delivery). No auth header on the PUT itself; the URL is signed.
+  static Future<String> uploadToDocumentsBucket({
     required String fileName,
     required String contentType,
     required List<int> bytes,
   }) async {
-    // 1. Ask the backend for a short-lived presigned PUT URL + object key.
     final presign = await ApiClient.post('/api/uploads/presign', {
       'bucket': 'documents',
       'fileName': fileName,
@@ -277,13 +277,22 @@ class DriverApi {
     final uploadUrl = '${presign['uploadUrl']}';
     final fileKey = '${presign['fileKey']}';
 
-    // 2. PUT the bytes straight to S3 (no auth header — the URL is signed).
     final put = await http.put(Uri.parse(uploadUrl), headers: {'Content-Type': contentType}, body: bytes);
     if (put.statusCode < 200 || put.statusCode >= 300) {
       throw ApiException(put.statusCode, 'File upload failed (${put.statusCode}).');
     }
+    return fileKey;
+  }
 
-    // 3. Record the document against the driver.
+  /// Upload a document: presign an S3 key, PUT the bytes straight to S3, then
+  /// record the metadata. Returns the created (PENDING) document.
+  static Future<DriverDocument> uploadDocument({
+    required String title,
+    required String fileName,
+    required String contentType,
+    required List<int> bytes,
+  }) async {
+    final fileKey = await uploadToDocumentsBucket(fileName: fileName, contentType: contentType, bytes: bytes);
     final doc = await ApiClient.post('/api/documents', {'title': title, 'fileKey': fileKey}) as Map<String, dynamic>;
     return DriverDocument.fromJson(doc);
   }
@@ -438,11 +447,21 @@ class DriverApi {
     return CourierRequest.fromJson(data as Map<String, dynamic>);
   }
 
-  /// Advance an accepted delivery (picked up -> in transit, dropped off -> delivered).
-  static Future<CourierRequest> updateDeliveryStatus(String id, String status, {double? finalFare}) async {
+  /// Advance an accepted delivery (matched -> picked up -> in transit ->
+  /// delivered). Marking DELIVERED requires both [deliveryPhotoKey] and
+  /// [recipientSignatureKey] — the backend rejects the transition without them.
+  static Future<CourierRequest> updateDeliveryStatus(
+    String id,
+    String status, {
+    double? finalFare,
+    String? deliveryPhotoKey,
+    String? recipientSignatureKey,
+  }) async {
     final data = await ApiClient.patch('/api/courier-requests/$id/status', {
       'status': status,
       if (finalFare != null) 'finalFare': finalFare,
+      if (deliveryPhotoKey != null) 'deliveryPhotoKey': deliveryPhotoKey,
+      if (recipientSignatureKey != null) 'recipientSignatureKey': recipientSignatureKey,
     });
     return CourierRequest.fromJson(data as Map<String, dynamic>);
   }

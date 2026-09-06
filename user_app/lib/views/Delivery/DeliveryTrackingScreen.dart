@@ -17,6 +17,17 @@ class DeliveryTrackingScreen extends StatefulWidget {
 }
 
 class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
+  // The real progression a delivery moves through. CANCELLED is a separate,
+  // terminal branch off this line rather than a step within it.
+  static const _steps = ['REQUESTED', 'MATCHED', 'PICKED_UP', 'IN_TRANSIT', 'DELIVERED'];
+  static const _stepLabels = {
+    'REQUESTED': 'Requested',
+    'MATCHED': 'Courier assigned',
+    'PICKED_UP': 'Picked up',
+    'IN_TRANSIT': 'In transit',
+    'DELIVERED': 'Delivered',
+  };
+
   Timer? _poll;
   bool _loading = true;
   String? _error;
@@ -57,37 +68,6 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
     }
   }
 
-  String _statusLabel(String s) {
-    switch (s) {
-      case 'REQUESTED':
-        return 'Looking for a courier…';
-      case 'MATCHED':
-        return 'Courier assigned';
-      case 'IN_TRANSIT':
-        return 'On the way';
-      case 'DELIVERED':
-        return 'Delivered';
-      case 'CANCELLED':
-        return 'Cancelled';
-      default:
-        return s;
-    }
-  }
-
-  Color _statusColor(String s) {
-    switch (s) {
-      case 'DELIVERED':
-        return AppColors.success;
-      case 'CANCELLED':
-        return AppColors.error;
-      case 'IN_TRANSIT':
-      case 'MATCHED':
-        return AppColors.primaryDark;
-      default:
-        return AppColors.warning;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -118,26 +98,7 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
       child: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: _statusColor(r.status).withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
-            child: Row(
-              children: [
-                Icon(
-                  r.status == 'DELIVERED'
-                      ? Icons.check_circle
-                      : r.status == 'CANCELLED'
-                          ? Icons.cancel
-                          : Icons.local_shipping,
-                  color: _statusColor(r.status),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(_statusLabel(r.status), style: TextStyle(fontWeight: FontWeight.w700, color: _statusColor(r.status))),
-                ),
-              ],
-            ),
-          ),
+          if (r.status == 'CANCELLED') _cancelledBanner() else _timeline(r.status),
           const SizedBox(height: 20),
           _row('From', r.pickupAddress),
           _row('To', r.dropoffAddress),
@@ -145,8 +106,115 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
           _row('Package', r.packageDescription.isEmpty ? r.packageSize : r.packageDescription),
           const Divider(height: 24),
           _row('Price', Currency.format(r.finalFare ?? r.estimatedFare, decimals: 0), bold: true),
+          if (r.status == 'DELIVERED' && (r.deliveryPhotoUrl != null || r.recipientSignatureUrl != null)) ...[
+            const Divider(height: 24),
+            const Text('Proof of delivery', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            const SizedBox(height: 12),
+            if (r.deliveryPhotoUrl != null) _proofImage('Delivery photo', r.deliveryPhotoUrl!),
+            if (r.deliveryPhotoUrl != null && r.recipientSignatureUrl != null) const SizedBox(height: 12),
+            if (r.recipientSignatureUrl != null) _proofImage('Recipient signature', r.recipientSignatureUrl!, background: Colors.white),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _cancelledBanner() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: AppColors.error.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(14)),
+      child: const Row(
+        children: [
+          Icon(Icons.cancel, color: AppColors.error),
+          SizedBox(width: 12),
+          Expanded(child: Text('Cancelled', style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.error))),
+        ],
+      ),
+    );
+  }
+
+  /// Vertical step timeline: filled + checked for completed steps, filled for
+  /// the current one, hollow for steps not reached yet.
+  Widget _timeline(String status) {
+    final currentIndex = _steps.indexOf(status);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < _steps.length; i++)
+          _timelineRow(
+            label: _stepLabels[_steps[i]]!,
+            isDone: currentIndex >= 0 && i < currentIndex,
+            isCurrent: i == currentIndex,
+            isLast: i == _steps.length - 1,
+          ),
+      ],
+    );
+  }
+
+  Widget _timelineRow({required String label, required bool isDone, required bool isCurrent, required bool isLast}) {
+    final reached = isDone || isCurrent;
+    final color = reached ? AppColors.primaryDark : AppColors.border;
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            children: [
+              Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isDone ? AppColors.primaryDark : Colors.transparent,
+                  border: Border.all(color: color, width: 2),
+                ),
+                child: isDone
+                    ? const Icon(Icons.check, size: 13, color: Colors.white)
+                    : (isCurrent ? Center(child: Container(width: 8, height: 8, decoration: const BoxDecoration(shape: BoxShape.circle, color: AppColors.primaryDark))) : null),
+              ),
+              if (!isLast) Expanded(child: Container(width: 2, color: reached && !isCurrent ? AppColors.primaryDark : AppColors.border)),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                color: reached ? AppColors.textPrimary : AppColors.textMuted,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _proofImage(String label, String url, {Color? background}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            color: background ?? AppColors.surfaceElevated,
+            child: Image.network(
+              url,
+              height: 180,
+              width: double.infinity,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const SizedBox(
+                height: 180,
+                child: Center(child: Text('Could not load image', style: TextStyle(color: AppColors.textMuted))),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

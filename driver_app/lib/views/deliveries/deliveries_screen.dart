@@ -3,6 +3,7 @@ import 'package:ravelgo_driver_app/config/currency.dart';
 import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
+import 'package:ravelgo_driver_app/views/deliveries/delivery_proof_screen.dart';
 
 /// Package delivery requests: browse unassigned ones to accept, and track
 /// the ones this driver already accepted through to drop-off. Only an ACTIVE
@@ -82,10 +83,10 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
   Future<void> _advance(CourierRequest r, String nextStatus) async {
     setState(() => _busy = true);
     try {
-      await DriverApi.updateDeliveryStatus(r.id, nextStatus, finalFare: nextStatus == 'DELIVERED' ? r.estimatedFare : null);
+      await DriverApi.updateDeliveryStatus(r.id, nextStatus);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(nextStatus == 'DELIVERED' ? 'Marked delivered.' : 'Marked picked up.')),
+        SnackBar(content: Text(nextStatus == 'PICKED_UP' ? 'Marked picked up.' : 'On the way.')),
       );
       await _load();
     } catch (e) {
@@ -97,11 +98,25 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
     }
   }
 
+  /// Completing a delivery requires proof (photo + recipient signature) — the
+  /// backend rejects DELIVERED without both — so this opens the capture
+  /// screen instead of flipping the status directly.
+  Future<void> _completeDelivery(CourierRequest r) async {
+    final updated = await Navigator.of(context).push<CourierRequest>(
+      MaterialPageRoute(builder: (_) => DeliveryProofScreen(request: r)),
+    );
+    if (updated != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Marked delivered.')));
+      await _load();
+    }
+  }
+
   Color _statusColor(String s) {
     switch (s) {
       case 'DELIVERED':
         return AppColors.online;
       case 'IN_TRANSIT':
+      case 'PICKED_UP':
         return AppColors.primaryDark;
       case 'CANCELLED':
         return AppColors.offline;
@@ -214,9 +229,11 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
                     Text(Currency.format(r.finalFare ?? r.estimatedFare), style: const TextStyle(fontWeight: FontWeight.w700)),
                     const Spacer(),
                     if (r.status == 'MATCHED')
-                      AppComponents.primaryButton(text: 'Mark picked up', onPressed: _busy ? null : () => _advance(r, 'IN_TRANSIT')),
+                      AppComponents.primaryButton(text: 'Mark picked up', onPressed: _busy ? null : () => _advance(r, 'PICKED_UP')),
+                    if (r.status == 'PICKED_UP')
+                      AppComponents.primaryButton(text: 'Start delivery', onPressed: _busy ? null : () => _advance(r, 'IN_TRANSIT')),
                     if (r.status == 'IN_TRANSIT')
-                      AppComponents.primaryButton(text: 'Mark delivered', onPressed: _busy ? null : () => _advance(r, 'DELIVERED')),
+                      AppComponents.primaryButton(text: 'Mark delivered', onPressed: _busy ? null : () => _completeDelivery(r)),
                   ],
                 ),
               ],

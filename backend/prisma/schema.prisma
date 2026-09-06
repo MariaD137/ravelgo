@@ -90,6 +90,7 @@ enum TicketStatus {
 enum CourierStatus {
   REQUESTED
   MATCHED
+  PICKED_UP
   IN_TRANSIT
   DELIVERED
   CANCELLED
@@ -381,7 +382,13 @@ model CourierRequest {
   finalFare            Float?
   status               CourierStatus @default(REQUESTED)
   requestedAt          DateTime      @default(now())
+  pickedUpAt           DateTime?
   deliveredAt          DateTime?
+  // Proof of delivery — both required by the API before a request can be
+  // marked DELIVERED. S3 keys (documents bucket), not public URLs; a signed
+  // GET URL is generated per-request when a party fetches this record.
+  deliveryPhotoKey     String?
+  recipientSignatureKey String?
 }
 
 model EmergencyAlert {

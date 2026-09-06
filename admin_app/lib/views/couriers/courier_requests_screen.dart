@@ -67,6 +67,7 @@ class _CourierRequestsScreenState extends State<CourierRequestsScreen> {
       case 'CANCELLED':
         return AppColors.danger;
       case 'IN_TRANSIT':
+      case 'PICKED_UP':
       case 'MATCHED':
         return AppColors.info;
       default:
@@ -137,7 +138,10 @@ class _CourierRequestsScreenState extends State<CourierRequestsScreen> {
                     children: [
                       if (c.status != 'IN_TRANSIT')
                         TextButton(onPressed: _busy ? null : () => _setStatus(c, 'IN_TRANSIT'), child: const Text('In transit')),
-                      TextButton(onPressed: _busy ? null : () => _setStatus(c, 'DELIVERED'), child: const Text('Delivered')),
+                      // No "Delivered" quick action here — the backend now
+                      // requires a delivery photo and the recipient's
+                      // signature to mark a request DELIVERED, which only
+                      // the driver app captures. Admin can still cancel.
                       TextButton(
                           onPressed: _busy ? null : () => _setStatus(c, 'CANCELLED'),
                           child: const Text('Cancel', style: TextStyle(color: AppColors.danger))),
