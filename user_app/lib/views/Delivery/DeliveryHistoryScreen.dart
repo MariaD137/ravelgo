@@ -53,6 +53,7 @@ class _DeliveryHistoryScreenState extends State<DeliveryHistoryScreen> {
       case 'CANCELLED':
         return AppColors.error;
       case 'IN_TRANSIT':
+      case 'PICKED_UP':
       case 'MATCHED':
         return AppColors.primaryDark;
       default:

@@ -252,6 +252,134 @@ test("PATCH /api/courier-requests/:id/status rejects a driver not assigned to th
   assert.equal(res.status, 403);
 });
 
+test("PATCH /api/courier-requests/:id/status accepts PICKED_UP and records pickedUpAt", async () => {
+  const sender = await createRider("rider-sub-7");
+  const driver = await createDriver("driver-sub-5");
+  const req = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      driverId: driver.id,
+      status: "MATCHED",
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-5", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/courier-requests/${req.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "PICKED_UP" });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "PICKED_UP");
+  assert.ok(res.body.pickedUpAt);
+});
+
+test("PATCH /api/courier-requests/:id/status rejects DELIVERED without a delivery photo and signature", async () => {
+  const sender = await createRider("rider-sub-8");
+  const driver = await createDriver("driver-sub-6");
+  const req = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      driverId: driver.id,
+      status: "IN_TRANSIT",
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-6", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/courier-requests/${req.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "DELIVERED" });
+
+  assert.equal(res.status, 400);
+
+  const stillInTransit = await prisma.courierRequest.findUnique({ where: { id: req.id } });
+  assert.equal(stillInTransit?.status, "IN_TRANSIT");
+});
+
+test("PATCH /api/courier-requests/:id/status rejects a proof-of-delivery key that doesn't belong to the caller", async () => {
+  const sender = await createRider("rider-sub-9");
+  const driver = await createDriver("driver-sub-7");
+  const req = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      driverId: driver.id,
+      status: "IN_TRANSIT",
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-7", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/courier-requests/${req.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      status: "DELIVERED",
+      deliveryPhotoKey: "someone-elses-sub/photo.jpg",
+      recipientSignatureKey: "driver-sub-7/sig.png",
+    });
+
+  assert.equal(res.status, 403);
+});
+
+test("PATCH /api/courier-requests/:id/status marks DELIVERED with proof of delivery and returns signed URLs", async () => {
+  const sender = await createRider("rider-sub-10");
+  const driver = await createDriver("driver-sub-8");
+  const req = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      driverId: driver.id,
+      status: "IN_TRANSIT",
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-8", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/courier-requests/${req.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      status: "DELIVERED",
+      deliveryPhotoKey: "driver-sub-8/photo.jpg",
+      recipientSignatureKey: "driver-sub-8/sig.png",
+    });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "DELIVERED");
+  assert.ok(res.body.deliveredAt);
+  assert.ok(res.body.deliveryPhotoUrl);
+  assert.ok(res.body.recipientSignatureUrl);
+
+  restoreAuth();
+  const senderToken = mockAuthAs({ sub: "rider-sub-10", groups: ["Rider"] });
+  const getRes = await request(app).get(`/api/courier-requests/${req.id}`).set("Authorization", `Bearer ${senderToken}`);
+  assert.equal(getRes.status, 200);
+  assert.ok(getRes.body.deliveryPhotoUrl);
+  assert.ok(getRes.body.recipientSignatureUrl);
+});
+
 test("GET /api/courier-requests/:id denies a stranger and allows the sender", async () => {
   const sender = await createRider("rider-sub-5");
   const req = await prisma.courierRequest.create({

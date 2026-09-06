@@ -1,10 +1,33 @@
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Router } from "express";
 import { z } from "zod";
+import { env } from "../config/env";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const courierRouter = Router();
+
+const s3 = new S3Client({ region: env.AWS_REGION });
+
+// Attaches short-lived, signed GET URLs for the proof-of-delivery photo/
+// signature (if present) so a client can display them without the documents
+// bucket ever being public. Keys stay private; only the presigned URL leaks,
+// and only to someone who already has authorized access to this request.
+async function withProofUrls<T extends { deliveryPhotoKey: string | null; recipientSignatureKey: string | null }>(
+  request: T,
+): Promise<T & { deliveryPhotoUrl: string | null; recipientSignatureUrl: string | null }> {
+  const sign = async (key: string | null) => {
+    if (!key || !env.DOCUMENTS_BUCKET) return null;
+    return getSignedUrl(s3, new GetObjectCommand({ Bucket: env.DOCUMENTS_BUCKET, Key: key }), { expiresIn: 900 });
+  };
+  const [deliveryPhotoUrl, recipientSignatureUrl] = await Promise.all([
+    sign(request.deliveryPhotoKey),
+    sign(request.recipientSignatureKey),
+  ]);
+  return { ...request, deliveryPhotoUrl, recipientSignatureUrl };
+}
 
 async function findOwnDriver(cognitoSub: string) {
   return prisma.driver.findFirst({ where: { user: { cognitoSub } } });
@@ -129,8 +152,12 @@ courierRouter.patch("/courier-requests/:id/accept", requireAuth, requireRole("Dr
 });
 
 const updateStatusSchema = z.object({
-  status: z.enum(["IN_TRANSIT", "DELIVERED", "CANCELLED"]),
+  status: z.enum(["PICKED_UP", "IN_TRANSIT", "DELIVERED", "CANCELLED"]),
   finalFare: z.number().positive().optional(),
+  // Required (and only meaningful) when status is DELIVERED — S3 keys from a
+  // presigned upload via POST /uploads/presign (bucket: "documents").
+  deliveryPhotoKey: z.string().min(1).optional(),
+  recipientSignatureKey: z.string().min(1).optional(),
 });
 
 // Driver assigned to it, or Admin: advance courier status
@@ -149,15 +176,37 @@ courierRouter.patch("/courier-requests/:id/status", requireAuth, requireRole("Dr
     }
   }
 
+  const { status, deliveryPhotoKey, recipientSignatureKey } = parsed.data;
+
+  // Marking DELIVERED requires proof of delivery — a photo and the
+  // recipient's signature — not just a status flip.
+  if (status === "DELIVERED" && (!deliveryPhotoKey || !recipientSignatureKey)) {
+    return res.status(400).json({
+      error: "A delivery photo and the recipient's signature are required to mark this request as delivered.",
+    });
+  }
+  // Keys are uploaded by the caller via their own presigned URL (see
+  // /uploads/presign), which always prefixes the key with the caller's own
+  // Cognito sub — this rejects one caller submitting another's uploaded key.
+  const expectedPrefix = `${req.user!.sub}/`;
+  for (const key of [deliveryPhotoKey, recipientSignatureKey]) {
+    if (key && !key.startsWith(expectedPrefix)) {
+      return res.status(403).json({ error: "Uploaded file does not belong to the calling user" });
+    }
+  }
+
   const request = await prisma.courierRequest.update({
     where: { id: req.params.id },
     data: {
-      status: parsed.data.status,
+      status,
       finalFare: parsed.data.finalFare,
-      deliveredAt: parsed.data.status === "DELIVERED" ? new Date() : undefined,
+      pickedUpAt: status === "PICKED_UP" ? new Date() : undefined,
+      deliveredAt: status === "DELIVERED" ? new Date() : undefined,
+      deliveryPhotoKey: status === "DELIVERED" ? deliveryPhotoKey : undefined,
+      recipientSignatureKey: status === "DELIVERED" ? recipientSignatureKey : undefined,
     },
   });
-  res.json(request);
+  res.json(await withProofUrls(request));
 });
 
 // Rider or Driver: view a courier request they're party to
@@ -174,7 +223,7 @@ courierRouter.get("/courier-requests/:id", requireAuth, async (req, res) => {
   if (!isOwner && !groups.includes("Admin")) {
     return res.status(403).json({ error: "Not authorized to view this request" });
   }
-  res.json(request);
+  res.json(await withProofUrls(request));
 });
 
 // Admin: monitor all courier requests

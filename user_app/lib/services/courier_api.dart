@@ -15,8 +15,14 @@ class CourierRequest {
   final String recipientPhone;
   final double estimatedFare;
   final double? finalFare;
-  final String status; // REQUESTED | MATCHED | IN_TRANSIT | DELIVERED | CANCELLED
+  final String status; // REQUESTED | MATCHED | PICKED_UP | IN_TRANSIT | DELIVERED | CANCELLED
   final DateTime requestedAt;
+  final DateTime? pickedUpAt;
+  final DateTime? deliveredAt;
+  // Short-lived, signed GET URLs — present only once a photo/signature has
+  // been captured (i.e. once the request reaches DELIVERED).
+  final String? deliveryPhotoUrl;
+  final String? recipientSignatureUrl;
 
   CourierRequest({
     required this.id,
@@ -30,6 +36,10 @@ class CourierRequest {
     required this.finalFare,
     required this.status,
     required this.requestedAt,
+    this.pickedUpAt,
+    this.deliveredAt,
+    this.deliveryPhotoUrl,
+    this.recipientSignatureUrl,
   });
 
   factory CourierRequest.fromJson(Map<String, dynamic> j) => CourierRequest(
@@ -44,6 +54,11 @@ class CourierRequest {
         finalFare: j['finalFare'] == null ? null : _d(j['finalFare']),
         status: '${j['status'] ?? ''}',
         requestedAt: DateTime.tryParse('${j['requestedAt']}')?.toLocal() ?? DateTime.now(),
+        pickedUpAt: j['pickedUpAt'] == null ? null : DateTime.tryParse('${j['pickedUpAt']}')?.toLocal(),
+        deliveredAt: j['deliveredAt'] == null ? null : DateTime.tryParse('${j['deliveredAt']}')?.toLocal(),
+        deliveryPhotoUrl: (j['deliveryPhotoUrl'] as String?)?.isNotEmpty == true ? j['deliveryPhotoUrl'] as String : null,
+        recipientSignatureUrl:
+            (j['recipientSignatureUrl'] as String?)?.isNotEmpty == true ? j['recipientSignatureUrl'] as String : null,
       );
 }
 
