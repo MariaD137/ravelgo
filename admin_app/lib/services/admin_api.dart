@@ -15,12 +15,40 @@ String _name(Map? m) {
 class DashboardStats {
   final int activeTrips;
   final int onlineDrivers;
+  final int driversOnTrip;
+  final int availableDrivers;
   final int pendingApprovals;
-  DashboardStats({required this.activeTrips, required this.onlineDrivers, required this.pendingApprovals});
+  final int pendingRideRequests;
+  final int activeLogisticsDeliveries;
+  final int registeredRiders;
+  final double cashCollectedToday;
+  final double cardRevenueToday;
+  final double walletRevenueToday;
+  DashboardStats({
+    required this.activeTrips,
+    required this.onlineDrivers,
+    required this.driversOnTrip,
+    required this.availableDrivers,
+    required this.pendingApprovals,
+    required this.pendingRideRequests,
+    required this.activeLogisticsDeliveries,
+    required this.registeredRiders,
+    required this.cashCollectedToday,
+    required this.cardRevenueToday,
+    required this.walletRevenueToday,
+  });
   factory DashboardStats.fromJson(Map<String, dynamic> j) => DashboardStats(
         activeTrips: _i(j['activeTrips']),
         onlineDrivers: _i(j['onlineDrivers']),
+        driversOnTrip: _i(j['driversOnTrip']),
+        availableDrivers: _i(j['availableDrivers']),
         pendingApprovals: _i(j['pendingApprovals']),
+        pendingRideRequests: _i(j['pendingRideRequests']),
+        activeLogisticsDeliveries: _i(j['activeLogisticsDeliveries']),
+        registeredRiders: _i(j['registeredRiders']),
+        cashCollectedToday: _d(j['cashCollectedToday']),
+        cardRevenueToday: _d(j['cardRevenueToday']),
+        walletRevenueToday: _d(j['walletRevenueToday']),
       );
 }
 
@@ -722,6 +750,177 @@ class AdminUserAccount {
       );
 }
 
+class LiveMapDriver {
+  final String driverId;
+  final String name;
+  final double lat;
+  final double lng;
+  final DateTime updatedAt;
+  final String markerStatus; // AVAILABLE | ON_TRIP | LOGISTICS | OFFLINE | INCIDENT
+  final double rating;
+  final String? vehicle;
+  final String? activeTripId;
+  LiveMapDriver({
+    required this.driverId,
+    required this.name,
+    required this.lat,
+    required this.lng,
+    required this.updatedAt,
+    required this.markerStatus,
+    required this.rating,
+    required this.vehicle,
+    required this.activeTripId,
+  });
+  factory LiveMapDriver.fromJson(Map<String, dynamic> j) => LiveMapDriver(
+        driverId: '${j['driverId']}',
+        name: '${j['name'] ?? ''}',
+        lat: _d(j['lat']),
+        lng: _d(j['lng']),
+        updatedAt: _dt(j['updatedAt']),
+        markerStatus: '${j['markerStatus'] ?? 'OFFLINE'}',
+        rating: _d(j['rating']),
+        vehicle: j['vehicle']?.toString(),
+        activeTripId: j['activeTripId']?.toString(),
+      );
+}
+
+class LiveMapTrip {
+  final String id;
+  final String status;
+  final String riderName;
+  final String? driverName;
+  final String pickup;
+  final String destination;
+  final double? pickupLat;
+  final double? pickupLng;
+  final double? dropoffLat;
+  final double? dropoffLng;
+  final double fare;
+  final String? paymentMethod;
+  final String? paymentStatus;
+  LiveMapTrip({
+    required this.id,
+    required this.status,
+    required this.riderName,
+    required this.driverName,
+    required this.pickup,
+    required this.destination,
+    required this.pickupLat,
+    required this.pickupLng,
+    required this.dropoffLat,
+    required this.dropoffLng,
+    required this.fare,
+    required this.paymentMethod,
+    required this.paymentStatus,
+  });
+  factory LiveMapTrip.fromJson(Map<String, dynamic> j) => LiveMapTrip(
+        id: '${j['id']}',
+        status: '${j['status'] ?? ''}',
+        riderName: '${j['riderName'] ?? ''}',
+        driverName: j['driverName']?.toString(),
+        pickup: '${j['pickup'] ?? ''}',
+        destination: '${j['destination'] ?? ''}',
+        pickupLat: j['pickupLat'] == null ? null : _d(j['pickupLat']),
+        pickupLng: j['pickupLng'] == null ? null : _d(j['pickupLng']),
+        dropoffLat: j['dropoffLat'] == null ? null : _d(j['dropoffLat']),
+        dropoffLng: j['dropoffLng'] == null ? null : _d(j['dropoffLng']),
+        fare: _d(j['fare']),
+        paymentMethod: j['paymentMethod']?.toString(),
+        paymentStatus: j['paymentStatus']?.toString(),
+      );
+}
+
+class LiveMapData {
+  final List<LiveMapDriver> drivers;
+  final List<LiveMapTrip> trips;
+  LiveMapData({required this.drivers, required this.trips});
+  factory LiveMapData.fromJson(Map<String, dynamic> j) => LiveMapData(
+        drivers: ((j['drivers'] as List?) ?? const []).whereType<Map<String, dynamic>>().map(LiveMapDriver.fromJson).toList(),
+        trips: ((j['trips'] as List?) ?? const []).whereType<Map<String, dynamic>>().map(LiveMapTrip.fromJson).toList(),
+      );
+}
+
+class PaymentSettings {
+  final double cashPaymentLimit;
+  final bool cashPaymentEnabled;
+  final bool cardPaymentEnabled;
+  final bool walletPaymentEnabled;
+  PaymentSettings({
+    required this.cashPaymentLimit,
+    required this.cashPaymentEnabled,
+    required this.cardPaymentEnabled,
+    required this.walletPaymentEnabled,
+  });
+  factory PaymentSettings.fromJson(Map<String, dynamic> j) => PaymentSettings(
+        cashPaymentLimit: _d(j['cashPaymentLimit']),
+        cashPaymentEnabled: j['cashPaymentEnabled'] != false,
+        cardPaymentEnabled: j['cardPaymentEnabled'] != false,
+        walletPaymentEnabled: j['walletPaymentEnabled'] != false,
+      );
+}
+
+class CashReconciliationRow {
+  final String driverId;
+  final String driverName;
+  final String driverEmail;
+  final double expectedCash;
+  final int cashTripCount;
+  final double submittedCash;
+  final double outstandingCash;
+  final String status; // CLEAR | OUTSTANDING | REVIEW_REQUIRED
+  CashReconciliationRow({
+    required this.driverId,
+    required this.driverName,
+    required this.driverEmail,
+    required this.expectedCash,
+    required this.cashTripCount,
+    required this.submittedCash,
+    required this.outstandingCash,
+    required this.status,
+  });
+  factory CashReconciliationRow.fromJson(Map<String, dynamic> j) => CashReconciliationRow(
+        driverId: '${j['driverId']}',
+        driverName: '${j['driverName'] ?? ''}',
+        driverEmail: '${j['driverEmail'] ?? ''}',
+        expectedCash: _d(j['expectedCash']),
+        cashTripCount: _i(j['cashTripCount']),
+        submittedCash: _d(j['submittedCash']),
+        outstandingCash: _d(j['outstandingCash']),
+        status: '${j['status'] ?? 'CLEAR'}',
+      );
+}
+
+class AdminPayment {
+  final String id;
+  final String tripId;
+  final String riderName;
+  final double amount;
+  final String method; // CARD | CASH | WALLET
+  final String status; // PENDING | SUCCEEDED | FAILED | REFUNDED
+  final DateTime createdAt;
+  final DateTime? paidAt;
+  AdminPayment({
+    required this.id,
+    required this.tripId,
+    required this.riderName,
+    required this.amount,
+    required this.method,
+    required this.status,
+    required this.createdAt,
+    required this.paidAt,
+  });
+  factory AdminPayment.fromJson(Map<String, dynamic> j) => AdminPayment(
+        id: '${j['id']}',
+        tripId: '${j['tripId']}',
+        riderName: _name(j['user'] as Map?),
+        amount: _d(j['amount']),
+        method: '${j['method'] ?? 'CARD'}',
+        status: '${j['status'] ?? ''}',
+        createdAt: _dt(j['createdAt']),
+        paidAt: j['paidAt'] == null ? null : _dt(j['paidAt']),
+      );
+}
+
 class AdminApi {
   static List _list(dynamic data) => (data is Map ? data['data'] : data) as List? ?? const [];
 
@@ -1032,5 +1231,60 @@ class AdminApi {
       if (active != null) 'active': active,
     });
     return SurgeZone.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ---- Live map (real driver locations + active trips) ----
+  static Future<LiveMapData> liveMap() async {
+    final data = await ApiClient.get('/api/admin/live-map');
+    return LiveMapData.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ---- Payment settings (the ₦15,000 cash cap and method toggles) ----
+  static Future<PaymentSettings> paymentSettings() async {
+    final data = await ApiClient.get('/api/settings/payment');
+    return PaymentSettings.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Super Admin only — the backend enforces this regardless of what this
+  /// screen shows. Every change is audited server-side.
+  static Future<PaymentSettings> updatePaymentSettings({
+    double? cashPaymentLimit,
+    bool? cashPaymentEnabled,
+    bool? cardPaymentEnabled,
+    bool? walletPaymentEnabled,
+  }) async {
+    final data = await ApiClient.patch('/api/admin/settings/payment', {
+      if (cashPaymentLimit != null) 'cashPaymentLimit': cashPaymentLimit,
+      if (cashPaymentEnabled != null) 'cashPaymentEnabled': cashPaymentEnabled,
+      if (cardPaymentEnabled != null) 'cardPaymentEnabled': cardPaymentEnabled,
+      if (walletPaymentEnabled != null) 'walletPaymentEnabled': walletPaymentEnabled,
+    });
+    return PaymentSettings.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ---- Cash reconciliation ----
+  static Future<List<CashReconciliationRow>> cashReconciliation() async {
+    final data = await ApiClient.get('/api/admin/cash-reconciliation');
+    return (data as List).whereType<Map<String, dynamic>>().map(CashReconciliationRow.fromJson).toList();
+  }
+
+  /// Record that a driver has physically handed in cash. Finance/Super Admin
+  /// only; always audited server-side.
+  static Future<void> recordCashRemittance({
+    required String driverId,
+    required double amount,
+    String? note,
+  }) async {
+    await ApiClient.post('/api/admin/cash-remittances', {
+      'driverId': driverId,
+      'amount': amount,
+      if (note != null && note.isNotEmpty) 'note': note,
+    });
+  }
+
+  // ---- All payments (for the Payments & Cash overview) ----
+  static Future<List<AdminPayment>> payments() async {
+    final data = await ApiClient.get('/api/payments?pageSize=100');
+    return _list(data).whereType<Map<String, dynamic>>().map(AdminPayment.fromJson).toList();
   }
 }

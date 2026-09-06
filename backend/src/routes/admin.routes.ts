@@ -2,23 +2,164 @@ import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { getAllDriverLocations } from "../realtime/hub";
 
 export const adminRouter = Router();
 
-// Admin: dashboard KPIs
+function fullName(u: { firstName: string; lastName: string } | null | undefined) {
+  if (!u) return "";
+  return `${u.firstName} ${u.lastName}`.trim();
+}
+
+// Active, in-progress trip/delivery statuses — a driver in one of these is
+// "busy" on the map rather than available, and the job itself is drawn as a
+// route. Matches TripStatus / CourierStatus in schema.prisma.
+const ACTIVE_TRIP_STATUSES = ["MATCHED", "IN_PROGRESS"] as const;
+const ACTIVE_COURIER_STATUSES = ["MATCHED", "PICKED_UP", "IN_TRANSIT"] as const;
+
+// Admin: the Live Map's data source. Every driver pin is a driver who has
+// actually reported a coordinate (via the WebSocket location feed while
+// mid-trip, or the REST ping in drivers.routes.ts while merely online/idle) —
+// a driver who has never reported one simply isn't drawn, rather than being
+// given a fabricated position. Marker colour is derived here, server-side,
+// from real state (an open incident beats an active job beats being online):
+//   GREEN available · BLUE on a passenger trip · ORANGE on a logistics job ·
+//   RED open incident · GRAY known-but-currently-offline.
+adminRouter.get("/admin/live-map", requireAuth, requireRole("Admin"), async (_req, res) => {
+  const locations = getAllDriverLocations();
+  const driverIds = locations.map((l) => l.driverId);
+
+  const [drivers, activeTrips, activeCourierRequests, openAlerts] = await Promise.all([
+    prisma.driver.findMany({
+      where: { id: { in: driverIds } },
+      include: { user: true, vehicles: { where: { isPrimary: true }, take: 1 } },
+    }),
+    prisma.trip.findMany({
+      where: { status: { in: [...ACTIVE_TRIP_STATUSES] } },
+      include: { rider: true, driver: { include: { user: true } }, payment: true },
+    }),
+    prisma.courierRequest.findMany({
+      where: { status: { in: [...ACTIVE_COURIER_STATUSES] }, driverId: { in: driverIds } },
+      select: { driverId: true },
+    }),
+    prisma.emergencyAlert.findMany({
+      where: { status: "OPEN" },
+      include: { user: { include: { driverProfile: true } } },
+    }),
+  ]);
+
+  const driverById = new Map(drivers.map((d) => [d.id, d]));
+  const activeTripByDriver = new Map(activeTrips.filter((t) => t.driverId).map((t) => [t.driverId as string, t]));
+  const logisticsDriverIds = new Set(activeCourierRequests.map((c) => c.driverId).filter((id): id is string => !!id));
+  const incidentDriverIds = new Set(
+    openAlerts.map((a) => a.user.driverProfile?.id).filter((id): id is string => !!id),
+  );
+
+  const mapDrivers = locations
+    .map((loc) => {
+      const driver = driverById.get(loc.driverId);
+      if (!driver) return null; // stale/offboarded driver id still cached in the in-memory hub
+      const trip = activeTripByDriver.get(driver.id);
+      const vehicle = driver.vehicles[0];
+
+      let markerStatus: "AVAILABLE" | "ON_TRIP" | "LOGISTICS" | "OFFLINE" | "INCIDENT";
+      if (incidentDriverIds.has(driver.id)) markerStatus = "INCIDENT";
+      else if (trip) markerStatus = "ON_TRIP";
+      else if (logisticsDriverIds.has(driver.id)) markerStatus = "LOGISTICS";
+      else if (driver.isOnline) markerStatus = "AVAILABLE";
+      else markerStatus = "OFFLINE";
+
+      return {
+        driverId: driver.id,
+        name: fullName(driver.user),
+        lat: loc.lat,
+        lng: loc.lng,
+        updatedAt: loc.updatedAt,
+        markerStatus,
+        rating: driver.rating,
+        vehicle: vehicle ? `${vehicle.brand} ${vehicle.model}`.trim() : null,
+        activeTripId: trip?.id ?? null,
+      };
+    })
+    .filter((d): d is NonNullable<typeof d> => d !== null);
+
+  const mapTrips = activeTrips.map((t) => ({
+    id: t.id,
+    status: t.status,
+    riderName: fullName(t.rider),
+    driverName: t.driver ? fullName(t.driver.user) : null,
+    pickup: t.pickup,
+    destination: t.destination,
+    pickupLat: t.pickupLat,
+    pickupLng: t.pickupLng,
+    dropoffLat: t.dropoffLat,
+    dropoffLng: t.dropoffLng,
+    fare: t.finalFare ?? t.estimatedFare,
+    paymentMethod: t.payment?.method ?? null,
+    paymentStatus: t.payment?.status ?? null,
+  }));
+
+  res.json({ drivers: mapDrivers, trips: mapTrips });
+});
+
+const START_OF_TODAY = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+// Admin: dashboard KPIs. Every figure here is a real aggregate query against
+// the same tables the rest of the admin app reads — nothing is simulated.
 adminRouter.get("/admin/dashboard", requireAuth, requireRole("Admin"), async (_req, res) => {
-  const [activeTrips, onlineDrivers, pendingDocs, pendingCarPaddy] = await Promise.all([
+  const todayStart = START_OF_TODAY();
+
+  const [
+    activeTrips,
+    onlineDrivers,
+    driversOnTrip,
+    pendingDocs,
+    pendingCarPaddy,
+    pendingRideRequests,
+    activeLogisticsDeliveries,
+    registeredRiders,
+    todaysPayments,
+  ] = await Promise.all([
     prisma.trip.count({ where: { status: { in: ["MATCHED", "IN_PROGRESS"] } } }),
     // "Online" now means approved AND currently online (see Driver.isOnline).
     prisma.driver.count({ where: { status: "ACTIVE", isOnline: true } }),
+    prisma.driver.count({ where: { status: "ACTIVE", isOnline: true, tripsAsDriver: { some: { status: { in: ["MATCHED", "IN_PROGRESS"] } } } } }),
     prisma.driverDocument.count({ where: { status: "PENDING" } }),
     prisma.carPaddyRequest.count({ where: { status: { in: ["SUBMITTED", "IN_REVIEW"] } } }),
+    prisma.trip.count({ where: { status: "REQUESTED" } }),
+    prisma.courierRequest.count({ where: { status: { in: [...ACTIVE_COURIER_STATUSES] } } }),
+    prisma.user.count({ where: { role: "RIDER" } }),
+    prisma.payment.findMany({
+      where: { status: "SUCCEEDED", paidAt: { gte: todayStart } },
+      select: { amount: true, method: true },
+    }),
   ]);
+
+  let cashToday = 0;
+  let cardToday = 0;
+  let walletToday = 0;
+  for (const p of todaysPayments) {
+    if (p.method === "CASH") cashToday += p.amount;
+    else if (p.method === "CARD") cardToday += p.amount;
+    else if (p.method === "WALLET") walletToday += p.amount;
+  }
 
   res.json({
     activeTrips,
     onlineDrivers,
+    driversOnTrip,
+    availableDrivers: Math.max(0, onlineDrivers - driversOnTrip),
     pendingApprovals: pendingDocs + pendingCarPaddy,
+    pendingRideRequests,
+    activeLogisticsDeliveries,
+    registeredRiders,
+    cashCollectedToday: cashToday,
+    cardRevenueToday: cardToday,
+    walletRevenueToday: walletToday,
   });
 });
 

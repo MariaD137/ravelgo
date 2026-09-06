@@ -7,6 +7,7 @@ import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { recordAudit } from "../lib/audit";
 import { cognitoGroups } from "../services/cognito";
 import { sensitiveLimiter } from "../middleware/rate-limit";
+import { recordDriverLocation } from "../realtime/hub";
 
 export const driversRouter = Router();
 
@@ -156,6 +157,28 @@ driversRouter.patch("/drivers/me/availability", requireAuth, requireRole("Driver
     data: { isOnline: parsed.data.isOnline },
   });
   res.json(updated);
+});
+
+const locationPingSchema = z.object({
+  lat: z.number().finite().gte(-90).lte(90),
+  lng: z.number().finite().gte(-180).lte(180),
+});
+
+// Driver: report my current position while online. This is what backs the
+// admin Live Map (GET /admin/live-map) for drivers who aren't mid-trip — the
+// existing WebSocket location feed (realtime/hub.ts) only fires once a rider
+// has an active trip room to broadcast into, so an idle "available" driver
+// still needs a way to be seen on the map. Same in-memory hub either way —
+// this is a plain REST fallback, not a second source of truth.
+driversRouter.post("/drivers/me/location", requireAuth, requireRole("Driver"), async (req, res) => {
+  const parsed = locationPingSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  const location = recordDriverLocation(driver.id, parsed.data.lat, parsed.data.lng);
+  res.json(location);
 });
 
 // Admin: get a single driver with documents.

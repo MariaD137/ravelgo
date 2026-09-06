@@ -192,11 +192,11 @@ class AppComponents {
     );
   }
 
-  static BoxDecoration cardDecoration() {
+  static BoxDecoration cardDecoration({Color? borderColor}) {
     return BoxDecoration(
       color: AppColors.surface,
       borderRadius: BorderRadius.circular(AppRadius.medium),
-      border: Border.all(color: AppColors.border),
+      border: Border.all(color: borderColor ?? AppColors.border, width: borderColor != null ? 1.5 : 1),
     );
   }
 

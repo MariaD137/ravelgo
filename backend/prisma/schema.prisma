@@ -197,6 +197,7 @@ model Driver {
   rentalListings    RentalListing[]
   courierRequestsHandled CourierRequest[] @relation("CourierDriver")
   subscription      DriverSubscription?
+  cashRemittances   CashRemittance[]
 }
 
 model Vehicle {
@@ -439,6 +440,44 @@ model Payment {
   providerReference  String?
   createdAt          DateTime      @default(now())
   paidAt             DateTime?
+}
+
+// Single-row app-wide configuration. Read/written through lib/payment-rules.ts
+// (never directly), which upserts the fixed "default" row on first read so the
+// table never needs a seed step. Every change is Super-Admin-only and audited
+// (see settings.routes.ts) — this is deliberately a real, server-authoritative
+// setting, not a client-side constant, per the "never trust the frontend for
+// money rules" requirement on the ₦15,000 cash cap.
+model AppSetting {
+  id                   String   @id
+  // NGN. Cash is only offered as a payment option for a trip whose fare is at
+  // or below this amount — see lib/payment-rules.ts#isCashPaymentAllowed.
+  cashPaymentLimit     Float    @default(15000)
+  cashPaymentEnabled   Boolean  @default(true)
+  cardPaymentEnabled   Boolean  @default(true)
+  walletPaymentEnabled Boolean  @default(true)
+  updatedAt            DateTime @updatedAt
+}
+
+// A driver's physical cash hand-in, recorded by a Finance/Super admin after
+// the driver remits cash collected from CASH trips. Deliberately separate
+// from Payment: a Payment row is created the instant a CASH trip is marked
+// paid (it's *owed* to RavelGo from that moment), while a CashRemittance only
+// exists once the driver has actually handed the money over — the gap between
+// the two, per driver, is exactly the "Outstanding" figure on the
+// reconciliation screen.
+model CashRemittance {
+  id         String   @id @default(uuid())
+  driverId   String
+  driver     Driver   @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  amount     Float
+  note       String?
+  // The recording admin's email — a simple, sufficient audit trail without
+  // pulling in a full User relation for what is already itself an audited action.
+  recordedBy String
+  createdAt  DateTime @default(now())
+
+  @@index([driverId])
 }
 
 // A catalog of tiers, not a stored assignment on User — the caller's current

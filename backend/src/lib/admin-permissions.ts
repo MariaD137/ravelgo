@@ -18,13 +18,30 @@ export type AdminPermission =
   | "pricing:write"
   | "drivers:write"
   | "riders:write"
-  | "alerts:write";
+  | "alerts:write"
+  // Payment-rule config (the cash limit, enabling/disabling a method) is
+  // financial-configuration, not day-to-day finance ops — Super Admin only,
+  // matching "Change cash limit" / "Configure commissions" in the product spec.
+  | "settings:write"
+  // Recording a driver's cash hand-in / reviewing reconciliation discrepancies
+  // is exactly Finance's day-to-day job, so FINANCE_VIEWER gets this even
+  // though it otherwise has no write permissions.
+  | "cash:write";
 
 const ADMIN_PERMISSIONS: Record<AdminRole, ReadonlySet<AdminPermission>> = {
-  SUPER_ADMIN: new Set(["manage_admins", "payouts:write", "pricing:write", "drivers:write", "riders:write", "alerts:write"]),
+  SUPER_ADMIN: new Set([
+    "manage_admins",
+    "payouts:write",
+    "pricing:write",
+    "drivers:write",
+    "riders:write",
+    "alerts:write",
+    "settings:write",
+    "cash:write",
+  ]),
   OPERATIONS_MANAGER: new Set(["pricing:write", "drivers:write"]),
   SUPPORT_AGENT: new Set(["riders:write", "alerts:write"]),
-  FINANCE_VIEWER: new Set([]),
+  FINANCE_VIEWER: new Set(["cash:write"]),
 };
 
 /**

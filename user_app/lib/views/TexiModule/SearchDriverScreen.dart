@@ -4,6 +4,7 @@ import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/booking_api.dart';
 import 'package:ravelgo_user_app/services/payments_api.dart';
 import 'package:ravelgo_user_app/services/realtime_service.dart';
+import 'package:ravelgo_user_app/services/settings_api.dart';
 import 'package:ravelgo_user_app/services/stripe_service.dart';
 import 'package:ravelgo_user_app/services/trips_api.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
@@ -42,9 +43,28 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
   bool _paid = false;
   bool _payBusy = false;
 
+  // Server-authoritative cash cap (default ₦15,000) — fetched once the trip
+  // completes so the button row reflects real backend rules, not a guess.
+  // Falls back to the documented default if the call hasn't returned yet or
+  // fails, which can only ever be equal to or narrower than the real limit.
+  PaymentSettings _paymentSettings = PaymentSettings.fallback();
+
+  Future<void> _loadPaymentSettings() async {
+    try {
+      final settings = await SettingsApi.paymentSettings();
+      if (mounted) setState(() => _paymentSettings = settings);
+    } catch (_) {
+      // Keep the conservative fallback — the backend still enforces the real
+      // rule regardless of what this screen shows.
+    }
+  }
+
   /// Pay for the completed trip. CARD confirms a backend PaymentIntent in the
-  /// Stripe PaymentSheet; WALLET settles from the rider's balance. If the driver
-  /// already charged the trip the backend returns 409, which we treat as paid.
+  /// Stripe PaymentSheet; WALLET settles from the rider's balance; CASH
+  /// settles instantly (handed to the driver) but only below the cash limit —
+  /// the backend rejects it above the limit even if this button were somehow
+  /// shown. If the driver already charged the trip the backend returns 409,
+  /// which we treat as paid.
   Future<void> _payTrip(String method) async {
     if (_payBusy) return;
     if (method == 'CARD' && !StripeService.isConfigured) {
@@ -58,6 +78,8 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
       if (method == 'CARD') {
         final clientSecret = await PaymentsApi.payTripWithCard(trip.id);
         await StripeService.presentPaymentSheet(clientSecret: clientSecret);
+      } else if (method == 'CASH') {
+        await PaymentsApi.payTripWithCash(trip.id);
       } else {
         await PaymentsApi.payTripWithWallet(trip.id);
       }
@@ -83,6 +105,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
   }
 
   Widget _paymentSection() {
+    final cashAllowed = _paymentSettings.allowsCash(trip.fare);
     return Column(
       children: [
         Row(
@@ -93,30 +116,58 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
           ],
         ),
         const SizedBox(height: 10),
+        if (!cashAllowed) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: AppColors.warning.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+            child: Text(
+              'Cash payment isn\'t available for fares above ${Currency.format(_paymentSettings.cashPaymentLimit, decimals: 0)}.',
+              style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
         if (_payBusy)
           const Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator())
         else
-          Row(
+          Column(
             children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _payTrip('WALLET'),
-                  icon: const Icon(Icons.account_balance_wallet_outlined),
-                  label: const Text('Pay with wallet'),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () => _payTrip('CARD'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: AppColors.textPrimary,
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _payTrip('WALLET'),
+                      icon: const Icon(Icons.account_balance_wallet_outlined),
+                      label: const Text('Pay with wallet'),
+                    ),
                   ),
-                  icon: const Icon(Icons.credit_card),
-                  label: const Text('Pay by card'),
-                ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _payTrip('CARD'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: AppColors.textPrimary,
+                      ),
+                      icon: const Icon(Icons.credit_card),
+                      label: const Text('Pay by card'),
+                    ),
+                  ),
+                ],
               ),
+              if (cashAllowed) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _payTrip('CASH'),
+                    style: OutlinedButton.styleFrom(foregroundColor: AppColors.success, side: const BorderSide(color: AppColors.success)),
+                    icon: const Icon(Icons.payments_outlined),
+                    label: const Text('Pay with cash'),
+                  ),
+                ),
+              ],
             ],
           ),
         const SizedBox(height: 16),
@@ -213,6 +264,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
   void initState() {
     super.initState();
     _startRealtime();
+    _loadPaymentSettings();
   }
 
   Future<void> _startRealtime() async {
