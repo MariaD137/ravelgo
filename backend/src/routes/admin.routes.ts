@@ -2,7 +2,7 @@ import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
-import { getAllDriverLocations } from "../realtime/hub";
+import { getAllDriverLocations, getRiderLocation, getLatestDriverLocation } from "../realtime/hub";
 
 export const adminRouter = Router();
 
@@ -17,6 +17,17 @@ function fullName(u: { firstName: string; lastName: string } | null | undefined)
 const ACTIVE_TRIP_STATUSES = ["MATCHED", "IN_PROGRESS"] as const;
 const ACTIVE_COURIER_STATUSES = ["MATCHED", "PICKED_UP", "IN_TRANSIT"] as const;
 
+// A location report older than this is no longer "live" for monitoring
+// purposes. Set comfortably above every reporting cadence in the apps (the
+// driver app's idle REST ping is every 20s, its mid-trip WebSocket push is
+// every 5s; the rider app's trip ping is every 15s) so ordinary network
+// jitter never flickers a fresh entity between LIVE and STALE.
+const LIVE_LOCATION_THRESHOLD_MS = 30_000;
+
+function locationFreshness(updatedAt: string): "LIVE" | "STALE" {
+  return Date.now() - new Date(updatedAt).getTime() <= LIVE_LOCATION_THRESHOLD_MS ? "LIVE" : "STALE";
+}
+
 // Admin: the Live Map's data source. Every driver pin is a driver who has
 // actually reported a coordinate (via the WebSocket location feed while
 // mid-trip, or the REST ping in drivers.routes.ts while merely online/idle) —
@@ -28,8 +39,9 @@ const ACTIVE_COURIER_STATUSES = ["MATCHED", "PICKED_UP", "IN_TRANSIT"] as const;
 adminRouter.get("/admin/live-map", requireAuth, requireRole("Admin"), async (_req, res) => {
   const locations = getAllDriverLocations();
   const driverIds = locations.map((l) => l.driverId);
+  const now = new Date();
 
-  const [drivers, activeTrips, activeCourierRequests, openAlerts] = await Promise.all([
+  const [drivers, activeTrips, activeCourierRequests, openAlerts, activeRentalBookings] = await Promise.all([
     prisma.driver.findMany({
       where: { id: { in: driverIds } },
       include: { user: true, vehicles: { where: { isPrimary: true }, take: 1 } },
@@ -38,19 +50,33 @@ adminRouter.get("/admin/live-map", requireAuth, requireRole("Admin"), async (_re
       where: { status: { in: [...ACTIVE_TRIP_STATUSES] } },
       include: { rider: true, driver: { include: { user: true } }, payment: true },
     }),
+    // Every active package, platform-wide — not just those whose courier has
+    // a cached location — so the Packages view is complete even before that
+    // courier's next location ping arrives.
     prisma.courierRequest.findMany({
-      where: { status: { in: [...ACTIVE_COURIER_STATUSES] }, driverId: { in: driverIds } },
-      select: { driverId: true },
+      where: { status: { in: [...ACTIVE_COURIER_STATUSES] } },
+      include: { sender: true, driver: { include: { user: true } } },
     }),
     prisma.emergencyAlert.findMany({
       where: { status: "OPEN" },
       include: { user: { include: { driverProfile: true } } },
     }),
+    // "Live" rentals: a CONFIRMED booking whose date range covers today. No
+    // GPS/telematics source exists anywhere in the rental data model (a
+    // RentalListing is a driver's own vehicle listed for a self-drive
+    // reservation, not a chauffeured or tracked ride) — see mapRentals below,
+    // which deliberately never invents a coordinate for these.
+    prisma.rentalBooking.findMany({
+      where: { status: "CONFIRMED", startDate: { lte: now }, endDate: { gte: now } },
+      include: { renter: true, listing: { include: { vehicle: true, driver: { include: { user: true } } } } },
+    }),
   ]);
 
   const driverById = new Map(drivers.map((d) => [d.id, d]));
   const activeTripByDriver = new Map(activeTrips.filter((t) => t.driverId).map((t) => [t.driverId as string, t]));
-  const logisticsDriverIds = new Set(activeCourierRequests.map((c) => c.driverId).filter((id): id is string => !!id));
+  const logisticsDriverIds = new Set(
+    activeCourierRequests.map((c) => c.driverId).filter((id): id is string => !!id),
+  );
   const incidentDriverIds = new Set(
     openAlerts.map((a) => a.user.driverProfile?.id).filter((id): id is string => !!id),
   );
@@ -69,6 +95,13 @@ adminRouter.get("/admin/live-map", requireAuth, requireRole("Admin"), async (_re
       else if (driver.isOnline) markerStatus = "AVAILABLE";
       else markerStatus = "OFFLINE";
 
+      // A 3-way presence badge for the admin UI, distinct from markerStatus:
+      // a driver can be nominally isOnline yet have gone dark (app killed,
+      // network lost) without ever calling the offline toggle — OFFLINE here
+      // always wins, but among online drivers, presence still tells the
+      // truth about how fresh that pin actually is.
+      const presence: "LIVE" | "STALE" | "OFFLINE" = !driver.isOnline ? "OFFLINE" : locationFreshness(loc.updatedAt);
+
       return {
         driverId: driver.id,
         name: fullName(driver.user),
@@ -76,6 +109,7 @@ adminRouter.get("/admin/live-map", requireAuth, requireRole("Admin"), async (_re
         lng: loc.lng,
         updatedAt: loc.updatedAt,
         markerStatus,
+        presence,
         rating: driver.rating,
         vehicle: vehicle ? `${vehicle.brand} ${vehicle.model}`.trim() : null,
         activeTripId: trip?.id ?? null,
@@ -99,7 +133,72 @@ adminRouter.get("/admin/live-map", requireAuth, requireRole("Admin"), async (_re
     paymentStatus: t.payment?.status ?? null,
   }));
 
-  res.json({ drivers: mapDrivers, trips: mapTrips });
+  // Riders: one entry per active trip. The rider's live position comes ONLY
+  // from POST /trips/:id/rider-location (the rider app's own real GPS
+  // report) — never fabricated. Until that trip has received at least one
+  // report, lat/lng/updatedAt/presence are simply omitted rather than
+  // defaulted to anything.
+  const mapRiders = activeTrips.map((t) => {
+    const loc = getRiderLocation(t.id);
+    return {
+      tripId: t.id,
+      riderName: fullName(t.rider),
+      status: t.status,
+      pickup: t.pickup,
+      destination: t.destination,
+      driverName: t.driver ? fullName(t.driver.user) : null,
+      lat: loc?.lat ?? null,
+      lng: loc?.lng ?? null,
+      updatedAt: loc?.updatedAt ?? null,
+      presence: loc ? locationFreshness(loc.updatedAt) : null,
+    };
+  });
+
+  // Packages: "current courier location" reuses the SAME driver GPS feed as
+  // the Drivers tab (no second tracking system) — a package has no location
+  // of its own, only whichever driver is currently carrying it. No route
+  // line is drawn: CourierRequest stores pickup/dropoff as free-text
+  // addresses only, with no coordinates, and none are fabricated here.
+  const mapPackages = activeCourierRequests.map((c) => {
+    const loc = c.driverId ? getLatestDriverLocation(c.driverId) : undefined;
+    return {
+      id: c.id,
+      senderName: fullName(c.sender),
+      recipientName: c.recipientName,
+      courierName: c.driver ? fullName(c.driver.user) : null,
+      pickupAddress: c.pickupAddress,
+      dropoffAddress: c.dropoffAddress,
+      status: c.status,
+      lat: loc?.lat ?? null,
+      lng: loc?.lng ?? null,
+      updatedAt: loc?.updatedAt ?? null,
+      presence: loc ? locationFreshness(loc.updatedAt) : null,
+    };
+  });
+
+  // Rentals: real lifecycle data (renter, vehicle, dates, status) only.
+  // locationAvailable is always false — see the query comment above for why
+  // no coordinate is ever attached to one of these.
+  const mapRentals = activeRentalBookings.map((b) => ({
+    id: b.id,
+    vehicle: `${b.listing.vehicle.brand} ${b.listing.vehicle.model}`.trim(),
+    plateNumber: b.listing.vehicle.plateNumber,
+    renterName: fullName(b.renter),
+    ownerName: fullName(b.listing.driver.user),
+    startDate: b.startDate,
+    endDate: b.endDate,
+    status: b.status,
+    locationAvailable: false,
+  }));
+
+  res.json({
+    drivers: mapDrivers,
+    trips: mapTrips,
+    riders: mapRiders,
+    packages: mapPackages,
+    rentals: mapRentals,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 const START_OF_TODAY = () => {

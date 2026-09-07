@@ -182,3 +182,17 @@ test("GET /trips/:id/driver-location 404s before any location has been reported"
   const res = await request(baseUrl).get(`/api/trips/${trip.id}/driver-location`).set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 404);
 });
+
+test("a driver's out-of-range location message is rejected, not silently accepted", async () => {
+  await createRiderDriverTrip();
+  const driverToken = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
+  const driverSocket = new WebSocket(`${wsUrl}?token=${driverToken}`);
+  await waitForOpen(driverSocket);
+
+  const errorPromise = waitForMessage(driverSocket);
+  driverSocket.send(JSON.stringify({ type: "location", lat: 999, lng: 3.4 }));
+  const reply = await errorPromise;
+
+  assert.equal(reply.type, "error");
+  driverSocket.close();
+});

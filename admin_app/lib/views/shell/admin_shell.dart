@@ -18,7 +18,7 @@ class AdminShell extends StatefulWidget {
 class _AdminShellState extends State<AdminShell> {
   int _index = 0;
 
-  static const _titles = ["Dashboard", "Live Map", "Drivers", "Trips", "Support"];
+  static const _titles = ["Dashboard", "Live Monitoring", "Drivers", "Trips", "Support"];
 
   @override
   Widget build(BuildContext context) {

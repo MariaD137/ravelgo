@@ -5,12 +5,19 @@ import 'package:ravelgo_admin/config/currency.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/views/couriers/courier_requests_screen.dart';
+import 'package:ravelgo_admin/views/drivers/driver_detail_screen.dart';
+import 'package:ravelgo_admin/views/rentals/rental_listings_screen.dart';
+import 'package:ravelgo_admin/views/trips/trip_admin_detail_screen.dart';
 
-/// The operations Live Map: every pin is a driver who has actually reported a
-/// coordinate to the backend (GET /api/admin/live-map) — a driver who hasn't
-/// simply isn't drawn, rather than being given a fabricated position. Polls
-/// every 8s (there's no push feed for this yet — see docs/realtime-architecture.md)
-/// so it stays close to real-time without needing a new websocket fan-out.
+/// RavelGo's live operations view: switches between Drivers, Riders,
+/// Packages and Rentals, all backed by GET /api/admin/live-map — the single
+/// authoritative aggregation endpoint (no per-tab tracking system). Drivers
+/// keeps the interactive Google Map (real GPS pins); Riders/Packages/Rentals
+/// are real-data lists — a rider or package pin only ever appears once a
+/// real position has actually been reported, and a rental never shows a
+/// location at all (no GPS source exists for RavelGo's self-drive rental
+/// listings — see LiveMapRental's doc comment). Polls every 8s.
 class LiveMapScreen extends StatefulWidget {
   final bool embedded;
   const LiveMapScreen({super.key, this.embedded = false});
@@ -20,6 +27,8 @@ class LiveMapScreen extends StatefulWidget {
 }
 
 const _lagos = CameraPosition(target: LatLng(6.5244, 3.3792), zoom: 11);
+
+enum _MonitorTab { drivers, riders, packages, rentals }
 
 enum _StatusFilter { available, onTrip, logistics, incident, offline }
 
@@ -54,6 +63,40 @@ extension on _StatusFilter {
       };
 }
 
+Color _presenceColor(String? presence) => switch (presence) {
+      'LIVE' => AppColors.success,
+      'STALE' => AppColors.warning,
+      _ => AppColors.textMuted,
+    };
+
+String _presenceLabel(String? presence) => switch (presence) {
+      'LIVE' => 'LIVE',
+      'STALE' => 'STALE',
+      _ => 'OFFLINE',
+    };
+
+Widget _presenceBadge(String? presence) {
+  final color = _presenceColor(presence);
+  return Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Icon(Icons.circle, size: 8, color: color),
+      const SizedBox(width: 4),
+      Text(_presenceLabel(presence), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+    ],
+  );
+}
+
+String _timeAgo(DateTime? t) {
+  if (t == null) return 'No location reported yet';
+  final secs = DateTime.now().difference(t).inSeconds;
+  if (secs < 5) return 'Updated just now';
+  if (secs < 60) return 'Updated $secs sec ago';
+  final mins = secs ~/ 60;
+  if (mins < 60) return 'Updated $mins min ago';
+  return 'Updated ${mins ~/ 60}h ago';
+}
+
 class _LiveMapScreenState extends State<LiveMapScreen> {
   Timer? _poll;
   bool _loading = true;
@@ -61,6 +104,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
   LiveMapData? _data;
   LiveMapDriver? _selectedDriver;
   LiveMapTrip? _selectedTrip;
+  _MonitorTab _tab = _MonitorTab.drivers;
   final Set<_StatusFilter> _activeFilters = _StatusFilter.values.toSet();
   String _search = '';
 
@@ -139,14 +183,77 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     return lines;
   }
 
+  Future<void> _openTrip(String tripId) async {
+    try {
+      final trip = await AdminApi.trip(tripId);
+      if (!mounted) return;
+      Navigator.push(context, MaterialPageRoute(builder: (_) => TripAdminDetailScreen(trip: trip)));
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e is ApiException ? e.message : 'Could not open this trip.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final body = _buildBody();
     if (widget.embedded) return body;
-    return Scaffold(appBar: AppBar(title: const Text('Live Map')), body: body);
+    return Scaffold(appBar: AppBar(title: const Text('Live Monitoring')), body: body);
   }
 
   Widget _buildBody() {
+    return Column(
+      children: [
+        _tabBar(),
+        Expanded(
+          child: switch (_tab) {
+            _MonitorTab.drivers => _driversMap(),
+            _MonitorTab.riders => _ridersList(),
+            _MonitorTab.packages => _packagesList(),
+            _MonitorTab.rentals => _rentalsList(),
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _tabBar() {
+    Widget chip(_MonitorTab tab, String label, int count) {
+      final active = _tab == tab;
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: ChoiceChip(
+          label: Text(count > 0 ? '$label ($count)' : label, style: const TextStyle(fontSize: 12.5)),
+          selected: active,
+          onSelected: (_) => setState(() => _tab = tab),
+          selectedColor: AppColors.primaryContainer,
+          backgroundColor: AppColors.surface,
+        ),
+      );
+    }
+
+    final data = _data;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      color: AppColors.surface,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            chip(_MonitorTab.drivers, 'Drivers', data?.drivers.length ?? 0),
+            chip(_MonitorTab.riders, 'Riders', data?.riders.length ?? 0),
+            chip(_MonitorTab.packages, 'Packages', data?.packages.length ?? 0),
+            chip(_MonitorTab.rentals, 'Rentals', data?.rentals.length ?? 0),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---- Drivers: the interactive map (unchanged behaviour, real GPS pins) ----
+
+  Widget _driversMap() {
     return Stack(
       children: [
         GoogleMap(
@@ -175,7 +282,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
               ]),
             ),
           ),
-        Positioned(top: 12, left: 12, right: 12, child: _topBar()),
+        Positioned(top: 12, left: 12, right: 12, child: _driverTopBar()),
         if (!_loading && _data != null && _visibleDrivers.isEmpty)
           Positioned(
             top: 76,
@@ -197,7 +304,7 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
         child: Text(text, style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
       );
 
-  Widget _topBar() {
+  Widget _driverTopBar() {
     return Column(
       children: [
         Container(
@@ -265,6 +372,14 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
               IconButton(icon: const Icon(Icons.close, size: 18), onPressed: () => setState(() => _selectedDriver = null)),
             ],
           ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              _presenceBadge(d.presence),
+              const SizedBox(width: 8),
+              Text(_timeAgo(d.updatedAt), style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+            ],
+          ),
           const SizedBox(height: 6),
           Text('Vehicle: ${d.vehicle ?? '—'}   ·   ★ ${d.rating.toStringAsFixed(1)}',
               style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
@@ -275,6 +390,14 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
             Text('${trip.pickup} → ${trip.destination}', style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
             Text('Fare: ${Currency.format(trip.fare, decimals: 0)}', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
           ],
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DriverDetailScreen(driverId: d.driverId))),
+              child: const Text('View driver'),
+            ),
+          ),
         ],
       ),
     );
@@ -299,6 +422,198 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
       ),
     );
   }
+
+  // ---- Riders: real active-trip list, real reported position or none ----
+
+  Widget _ridersList() {
+    final riders = _data?.riders ?? const [];
+    if (_loading && _data == null) return const Center(child: CircularProgressIndicator());
+    if (riders.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('No riders are currently on an active trip.', style: TextStyle(color: AppColors.textSecondary)),
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: riders.length,
+        itemBuilder: (context, i) {
+          final r = riders[i];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: InkWell(
+              onTap: () => _openTrip(r.tripId),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: AppComponents.cardDecoration(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: Text(r.riderName.isEmpty ? 'Rider' : r.riderName, style: const TextStyle(fontWeight: FontWeight.w700))),
+                        AppComponents.badge(r.status, color: AppColors.info),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text('${r.pickup} → ${r.destination}', style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+                    if (r.driverName != null) Text('Driver: ${r.driverName}', style: const TextStyle(fontSize: 12.5)),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        _presenceBadge(r.presence),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            r.lat != null && r.lng != null
+                                ? '${r.lat!.toStringAsFixed(5)}, ${r.lng!.toStringAsFixed(5)}  ·  ${_timeAgo(r.updatedAt)}'
+                                : _timeAgo(r.updatedAt),
+                            style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ---- Packages: real active deliveries, courier position = driver GPS ----
+
+  Widget _packagesList() {
+    final packages = _data?.packages ?? const [];
+    if (_loading && _data == null) return const Center(child: CircularProgressIndicator());
+    if (packages.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('No packages are currently in transit.', style: TextStyle(color: AppColors.textSecondary)),
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: packages.length,
+        itemBuilder: (context, i) {
+          final p = packages[i];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: InkWell(
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CourierRequestsScreen())),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: AppComponents.cardDecoration(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('Package ${p.id.length > 8 ? p.id.substring(0, 8) : p.id}',
+                              style: const TextStyle(fontWeight: FontWeight.w700)),
+                        ),
+                        AppComponents.badge(p.status, color: AppColors.warning),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text('${p.pickupAddress} → ${p.dropoffAddress}', style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+                    Text('Sender: ${p.senderName}   ·   Recipient: ${p.recipientName}', style: const TextStyle(fontSize: 12.5)),
+                    if (p.courierName != null) Text('Courier: ${p.courierName}', style: const TextStyle(fontSize: 12.5)),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        _presenceBadge(p.presence),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            p.lat != null && p.lng != null
+                                ? '${p.lat!.toStringAsFixed(5)}, ${p.lng!.toStringAsFixed(5)}  ·  ${_timeAgo(p.updatedAt)}'
+                                : _timeAgo(p.updatedAt),
+                            style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // ---- Rentals: real lifecycle data only — no GPS source exists ----
+
+  Widget _rentalsList() {
+    final rentals = _data?.rentals ?? const [];
+    if (_loading && _data == null) return const Center(child: CircularProgressIndicator());
+    if (rentals.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Text('No rentals are currently active.', style: TextStyle(color: AppColors.textSecondary)),
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: rentals.length,
+        itemBuilder: (context, i) {
+          final r = rentals[i];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: InkWell(
+              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RentalListingsScreen())),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: AppComponents.cardDecoration(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: Text(r.vehicle.isEmpty ? 'Vehicle' : r.vehicle, style: const TextStyle(fontWeight: FontWeight.w700))),
+                        AppComponents.badge(r.status, color: AppColors.success),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(r.plateNumber, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, letterSpacing: 1)),
+                    Text('Renter: ${r.renterName}   ·   Owner: ${r.ownerName}', style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+                    Text(
+                      '${_formatDate(r.startDate)} → ${_formatDate(r.endDate)}',
+                      style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Location tracking unavailable — no GPS source for this vehicle.',
+                      style: TextStyle(fontSize: 11.5, color: AppColors.textMuted, fontStyle: FontStyle.italic),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  String _formatDate(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }
 
 extension<T> on Iterable<T> {
