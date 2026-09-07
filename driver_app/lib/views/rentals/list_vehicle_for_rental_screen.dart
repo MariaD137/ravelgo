@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
+import 'package:ravelgo_driver_app/services/places_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
+import 'package:ravelgo_driver_app/views/places/place_search_screen.dart';
 
 class ListVehicleForRentalScreen extends StatefulWidget {
   const ListVehicleForRentalScreen({super.key});
@@ -20,6 +22,11 @@ class _ListVehicleForRentalScreenState extends State<ListVehicleForRentalScreen>
   String? _formError;
   List<Vehicle> _vehicles = const [];
   String? _vehicleId;
+  // Set only when the driver picks a real address via the Places-backed
+  // search below — never guessed, so a listing created before this existed
+  // (or without picking) simply has no coordinates (see PRD audit: rentals
+  // had zero location/geocoding integration before this).
+  PlaceLocation? _pickedLocation;
 
   @override
   void initState() {
@@ -58,6 +65,23 @@ class _ListVehicleForRentalScreenState extends State<ListVehicleForRentalScreen>
     }
   }
 
+  /// Opens the same real, Places-backed address search the rider app's ride
+  /// booking and "Send a Package" flows use, so a rental listing's location
+  /// resolves to an actual verified address (with coordinates) instead of
+  /// whatever free text a driver happens to type.
+  Future<void> _pickLocation() async {
+    final place = await Navigator.of(context).push<PlaceLocation>(
+      MaterialPageRoute(
+        builder: (_) => const PlaceSearchScreen(title: 'Pickup location', hint: 'Search for a pickup location'),
+      ),
+    );
+    if (place == null || !mounted) return;
+    setState(() {
+      _pickedLocation = place;
+      _locationController.text = place.address;
+    });
+  }
+
   Future<void> _submit() async {
     final rate = double.tryParse(_rateController.text.replaceAll(',', '').trim());
     final location = _locationController.text.trim();
@@ -78,7 +102,13 @@ class _ListVehicleForRentalScreenState extends State<ListVehicleForRentalScreen>
       _submitting = true;
     });
     try {
-      await DriverApi.listForRental(vehicleId: _vehicleId!, dailyRate: rate, location: location);
+      await DriverApi.listForRental(
+        vehicleId: _vehicleId!,
+        dailyRate: rate,
+        location: location,
+        lat: _pickedLocation?.lat,
+        lng: _pickedLocation?.lng,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Listing submitted for admin review.')));
@@ -142,7 +172,14 @@ class _ListVehicleForRentalScreenState extends State<ListVehicleForRentalScreen>
             const SizedBox(height: 16),
             TextField(
               controller: _locationController,
-              decoration: const InputDecoration(labelText: "Available pickup location", border: OutlineInputBorder()),
+              readOnly: true,
+              onTap: _pickLocation,
+              decoration: const InputDecoration(
+                labelText: "Available pickup location",
+                hintText: "Search for a pickup location",
+                suffixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
+              ),
             ),
             const SizedBox(height: 20),
             AppComponents.uploadBox("Upload photos of the vehicle"),

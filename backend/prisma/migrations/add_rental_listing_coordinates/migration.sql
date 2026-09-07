@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "RentalListing" ADD COLUMN "lat" DOUBLE PRECISION;
+ALTER TABLE "RentalListing" ADD COLUMN "lng" DOUBLE PRECISION;

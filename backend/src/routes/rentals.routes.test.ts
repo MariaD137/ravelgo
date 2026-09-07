@@ -67,6 +67,46 @@ test("POST /api/rentals rejects a driver pending admin approval", async () => {
   assert.equal(res.status, 409);
 });
 
+test("POST /api/rentals stores real coordinates from the Places-backed picker when provided", async () => {
+  const { vehicle } = await createDriverWithVehicle("driver-sub-1c");
+  const token = mockAuthAs({ sub: "driver-sub-1c", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/rentals")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ vehicleId: vehicle.id, dailyRate: 99.5, location: "Ikeja, Lagos, Nigeria", lat: 6.6018, lng: 3.3515 });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.lat, 6.6018);
+  assert.equal(res.body.lng, 3.3515);
+});
+
+test("POST /api/rentals still succeeds without coordinates (older client / no picker used)", async () => {
+  const { vehicle } = await createDriverWithVehicle("driver-sub-1d");
+  const token = mockAuthAs({ sub: "driver-sub-1d", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/rentals")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ vehicleId: vehicle.id, dailyRate: 99.5, location: "Lagos" });
+
+  assert.equal(res.status, 201);
+  assert.equal(res.body.lat, null);
+  assert.equal(res.body.lng, null);
+});
+
+test("POST /api/rentals rejects an out-of-range coordinate", async () => {
+  const { vehicle } = await createDriverWithVehicle("driver-sub-1e");
+  const token = mockAuthAs({ sub: "driver-sub-1e", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/rentals")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ vehicleId: vehicle.id, dailyRate: 99.5, location: "Lagos", lat: 999, lng: 3.4 });
+
+  assert.equal(res.status, 400);
+});
+
 test("POST /api/rentals 404s when the vehicle belongs to someone else", async () => {
   const { vehicle } = await createDriverWithVehicle("driver-sub-2");
   await createDriverWithVehicle("driver-sub-3");

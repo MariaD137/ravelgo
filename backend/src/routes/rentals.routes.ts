@@ -31,6 +31,11 @@ const createRentalSchema = z.object({
   vehicleId: z.string().min(1),
   dailyRate: z.number().positive(),
   location: z.string().min(1),
+  // Populated by the app's Places-backed address search. Optional so a
+  // client on an older build (or one that hits this without the picker) can
+  // still list a vehicle — the listing just won't have coordinates yet.
+  lat: z.number().finite().min(-90).max(90).optional(),
+  lng: z.number().finite().min(-180).max(180).optional(),
 });
 
 // Driver: list a vehicle for luxury rental. Gated on the same admin-approved
