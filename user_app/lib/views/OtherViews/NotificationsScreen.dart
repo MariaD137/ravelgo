@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
+import 'package:ravelgo_user_app/services/notification_navigation.dart';
 import 'package:ravelgo_user_app/services/notifications_api.dart';
-import 'package:ravelgo_user_app/services/trips_api.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
-import 'package:ravelgo_user_app/views/Delivery/DeliveryTrackingScreen.dart';
-import 'package:ravelgo_user_app/views/RideView/RideDetailsView.dart';
-import 'package:ravelgo_user_app/views/RideView/RidesView.dart';
 
 /// Notification center — backed by the real GET /api/notifications feed.
 /// Every row here was created by an actual backend event (see
@@ -97,22 +94,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       });
       NotificationsApi.markRead(n.id).catchError((_) {});
     }
-    if (!mounted || n.referenceId == null) return;
-    if (n.referenceType == 'TRIP') {
-      try {
-        final trip = await TripsApi.byId(n.referenceId!);
-        if (!mounted) return;
-        Navigator.push(context, MaterialPageRoute(builder: (_) => RideDetailsScreen(ride: Ride.fromTrip(trip))));
-      } catch (_) {
-        // Trip may no longer be visible to this account, or the fetch
-        // failed — the notification itself is still shown as read.
-      }
-    } else if (n.referenceType == 'COURIER_REQUEST') {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => DeliveryTrackingScreen(deliveryId: n.referenceId!)));
-    }
-    // Other reference types (e.g. RENTAL_BOOKING) have no detail screen in
-    // this app yet — the notification is read but simply doesn't navigate,
-    // rather than opening something that doesn't exist.
+    if (!mounted) return;
+    await openNotificationReference(Navigator.of(context), referenceType: n.referenceType, referenceId: n.referenceId);
   }
 
   String _relativeTime(DateTime dt) {

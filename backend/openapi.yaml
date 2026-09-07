@@ -30,6 +30,7 @@ tags:
   - name: Car Paddy
   - name: Admin
   - name: Courier
+  - name: Notifications
   - name: Emergency Alerts
   - name: Subscriptions
   - name: Payments
@@ -438,11 +439,15 @@ paths:
     get:
       tags: [Trips]
       summary: View a trip (rider/driver party to it, or Admin)
+      description: >-
+        Includes the trip's real `payment` (method/status/amount/paidAt) for
+        the trip's own rider/driver, not just Admin — this is the only
+        trip-fetch that does (GET /trips/mine deliberately omits it).
       parameters:
         - $ref: "#/components/parameters/id"
       responses:
         "200":
-          description: Trip
+          description: Trip, with payment attached for the owner or Admin
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Trip" }
@@ -890,6 +895,98 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/CourierRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: My own notifications, newest first (caller only)
+      description: >-
+        Scoped entirely to the authenticated caller — there is no way to
+        pass another user's id in, so this can never leak another
+        customer's notifications.
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated notifications, plus an unread count
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginatedNotification" }
+  /notifications/{id}/read:
+    patch:
+      tags: [Notifications]
+      summary: Mark one of my own notifications as read
+      description: >-
+        404s (not 403) for a notification that exists but belongs to
+        someone else, so the response can't be used to enumerate other
+        users' notification ids.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Updated notification
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Notification" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Mark all of my own unread notifications as read
+      responses:
+        "200":
+          description: Count of notifications updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  updated: { type: integer }
+  /notifications/device-tokens:
+    post:
+      tags: [Notifications]
+      summary: Register (or re-register) a device token for push delivery
+      description: >-
+        Ownership always comes from the authenticated Cognito identity —
+        there is no field in the request body a client could use to
+        register a token against a different user. A token is unique
+        platform-wide (the OS can hand the same token to a different
+        install later), so re-registering an already-known token simply
+        reassigns it to whoever registers it now, rather than erroring as
+        a duplicate. Sent through AWS Pinpoint (see
+        backend/src/services/push.ts) — no separate "endpoint" resource
+        needs to be pre-created, so this is a pure database write.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeviceTokenInput" }
+      responses:
+        "201":
+          description: Registration result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceTokenRegistration" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    delete:
+      tags: [Notifications]
+      summary: Unregister my own device token (e.g. on logout)
+      description: >-
+        404s (not 403) for a token that exists but belongs to someone
+        else, same reasoning as the notification-read route above.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        "204": { description: Unregistered }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /emergency-alerts:
     post:
@@ -1452,6 +1549,13 @@ components:
         finalFare: { type: number, nullable: true }
         status: { type: string, enum: [REQUESTED, MATCHED, IN_PROGRESS, COMPLETED, CANCELLED, DISPUTED] }
         category: { type: string }
+        distanceKm: { type: number, nullable: true }
+        payment:
+          allOf: [{ $ref: "#/components/schemas/Payment" }]
+          nullable: true
+          description: >-
+            Only present on GET /trips/{id} for the trip's own rider/driver
+            or Admin — never on GET /trips/mine.
 
     DriverDocument:
       type: object
@@ -1488,6 +1592,10 @@ components:
         recipientName: { type: string }
         recipientPhone: { type: string }
         estimatedFare: { type: number }
+        pickupLat: { type: number, nullable: true, description: Resolved by the sender's Places-backed address search; optional. }
+        pickupLng: { type: number, nullable: true }
+        dropoffLat: { type: number, nullable: true }
+        dropoffLng: { type: number, nullable: true }
 
     CourierRequest:
       allOf:
@@ -1499,6 +1607,21 @@ components:
             driverId: { type: string, nullable: true }
             finalFare: { type: number, nullable: true }
             status: { type: string, enum: [REQUESTED, MATCHED, IN_TRANSIT, DELIVERED, CANCELLED] }
+            courierLat:
+              type: number
+              nullable: true
+              description: >-
+                Only on GET /courier-requests/{id} — the assigned courier's
+                current position, reusing the same driver GPS feed as the
+                admin Live Map (never a second tracking system). Null until
+                that driver has reported at least one location.
+            courierLng: { type: number, nullable: true }
+            courierLocationUpdatedAt: { type: string, format: date-time, nullable: true }
+            courierPresence:
+              type: string
+              nullable: true
+              enum: [LIVE, STALE]
+              description: Null when no location has been reported yet.
 
     EmergencyAlert:
       type: object
@@ -1638,6 +1761,68 @@ components:
         page: { type: integer }
         pageSize: { type: integer }
         total: { type: integer }
+
+    Notification:
+      type: object
+      description: >-
+        Created only from a real backend event (a ride/delivery/rental
+        status change, a payment outcome) — never fabricated client-side.
+        See backend/src/lib/notifications.ts for the exact call sites.
+      properties:
+        id: { type: string }
+        userId: { type: string }
+        type:
+          type: string
+          enum:
+            - RIDE_DRIVER_ASSIGNED
+            - RIDE_STARTED
+            - RIDE_COMPLETED
+            - RIDE_CANCELLED
+            - DELIVERY_COURIER_ASSIGNED
+            - DELIVERY_PICKED_UP
+            - DELIVERY_IN_TRANSIT
+            - DELIVERY_DELIVERED
+            - DELIVERY_CANCELLED
+            - RENTAL_CONFIRMED
+            - RENTAL_CANCELLED
+            - PAYMENT_SUCCEEDED
+            - PAYMENT_FAILED
+        title: { type: string }
+        body: { type: string }
+        read: { type: boolean }
+        referenceType: { type: string, nullable: true, enum: [TRIP, COURIER_REQUEST, RENTAL_BOOKING, PAYMENT] }
+        referenceId: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    PaginatedNotification:
+      allOf:
+        - type: object
+          properties:
+            data: { type: array, items: { $ref: "#/components/schemas/Notification" } }
+            page: { type: integer }
+            pageSize: { type: integer }
+            total: { type: integer }
+            unreadCount: { type: integer }
+
+    DeviceTokenInput:
+      type: object
+      required: [token, platform]
+      properties:
+        token: { type: string, description: The real FCM (Android) or APNs (iOS) device token. }
+        platform: { type: string, enum: [IOS, ANDROID] }
+
+    DeviceTokenRegistration:
+      type: object
+      properties:
+        id: { type: string }
+        platform: { type: string, enum: [IOS, ANDROID] }
+        registered:
+          type: boolean
+          description: >-
+            Whether the backend has a Pinpoint application configured at
+            all (PINPOINT_APPLICATION_ID) — false just means the token was
+            recorded but no push will be sent yet.
+
     PaginatedEmergencyAlert:
       type: object
       properties:

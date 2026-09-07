@@ -3,6 +3,7 @@ import * as cdk from "aws-cdk-lib";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as pinpoint from "aws-cdk-lib/aws-pinpoint";
 import type { Construct } from "constructs";
 
 export interface AuthStackProps extends cdk.StackProps {
@@ -15,6 +16,17 @@ export interface AuthStackProps extends cdk.StackProps {
 export class AuthStack extends cdk.Stack {
   public readonly userPool: cognito.UserPool;
   public readonly userPoolClient: cognito.UserPoolClient;
+  // The Pinpoint "Application" device push is sent through (see
+  // backend/src/services/push.ts) and that the Flutter apps' push plugin
+  // registers a device token against on-device.
+  public readonly pinpointApplicationId: string;
+  // A SEPARATE, unauthenticated-only Cognito Identity Pool — deliberately
+  // not linked to `userPool` as an identity provider in any way. Its only
+  // purpose is to hand the Flutter push plugin short-lived, anonymous AWS
+  // credentials scoped to nothing but this Pinpoint app's own device-token
+  // bookkeeping calls; it can never resemble or touch a real RavelGo
+  // session (that stays AuthService + `userPool` end-to-end).
+  public readonly identityPoolId: string;
 
   constructor(scope: Construct, id: string, props?: AuthStackProps) {
     super(scope, id, props);
@@ -119,8 +131,55 @@ export class AuthStack extends cdk.Stack {
 
     this.userPool.addTrigger(cognito.UserPoolOperation.POST_CONFIRMATION, postConfirmation);
 
+    // Device push (see the class-level doc comments on pinpointApplicationId
+    // and identityPoolId above for what these are and why the identity pool
+    // is deliberately isolated from `userPool`).
+    const pinpointApp = new pinpoint.CfnApp(this, "PinpointApp", {
+      name: envName === "production" ? "ravelgo" : `ravelgo-${envName}`,
+    });
+    this.pinpointApplicationId = pinpointApp.ref;
+
+    const identityPool = new cognito.CfnIdentityPool(this, "PushIdentityPool", {
+      identityPoolName: envName === "production" ? "ravelgo-push" : `ravelgo-push-${envName}`,
+      // No Cognito/OIDC/SAML providers attached — every credential this pool
+      // ever hands out is the unauthenticated role below, nothing more.
+      allowUnauthenticatedIdentities: true,
+    });
+    this.identityPoolId = identityPool.ref;
+
+    const unauthenticatedRole = new iam.Role(this, "PushUnauthenticatedRole", {
+      assumedBy: new iam.FederatedPrincipal(
+        "cognito-identity.amazonaws.com",
+        {
+          StringEquals: { "cognito-identity.amazonaws.com:aud": identityPool.ref },
+          "ForAnyValue:StringLike": { "cognito-identity.amazonaws.com:amr": "unauthenticated" },
+        },
+        "sts:AssumeRoleWithWebIdentity",
+      ),
+      description: "Anonymous credentials for the Flutter apps' push-notification plugin only",
+    });
+    // Scoped to exactly the two calls the push plugin's own device-token
+    // housekeeping needs, and only against this one Pinpoint app — never
+    // sts:SendMessages (that stays server-side, see api-stack.ts), never any
+    // other AWS service.
+    unauthenticatedRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ["mobiletargeting:UpdateEndpoint", "mobiletargeting:PutEvents"],
+        resources: [
+          cdk.Stack.of(this).formatArn({ service: "mobiletargeting", resource: `apps/${pinpointApp.ref}/*` }),
+        ],
+      }),
+    );
+
+    new cognito.CfnIdentityPoolRoleAttachment(this, "PushIdentityPoolRoles", {
+      identityPoolId: identityPool.ref,
+      roles: { unauthenticated: unauthenticatedRole.roleArn },
+    });
+
     new cdk.CfnOutput(this, "UserPoolId", { value: this.userPool.userPoolId });
     new cdk.CfnOutput(this, "UserPoolClientId", { value: this.userPoolClient.userPoolClientId });
+    new cdk.CfnOutput(this, "PinpointApplicationId", { value: this.pinpointApplicationId });
+    new cdk.CfnOutput(this, "PushIdentityPoolId", { value: this.identityPoolId });
     new cdk.CfnOutput(this, "EmailSender", {
       value: sesFromEmail
         ? `SES <${sesFromEmail}> (region ${sesRegion}) — ensure the identity is verified and the account is out of the SES sandbox`

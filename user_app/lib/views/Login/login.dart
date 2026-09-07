@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/Login/ForgotPassword.dart';
 import 'package:ravelgo_user_app/views/Signup/CreateAccount.dart';
 import 'package:ravelgo_user_app/views/bottommenu/BottomNavigationView.dart';
 import 'package:ravelgo_user_app/services/auth_service.dart';
+import 'package:ravelgo_user_app/services/push_notification_service.dart';
 import 'package:ravelgo_user_app/services/rider_api.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
@@ -51,6 +53,9 @@ class _LoginState extends State<Login> {
       } catch (_) {
         // Non-fatal: e.g. user not yet in the "Rider" group. Login still proceeds.
       }
+      // Best-effort, and a genuine no-op when push isn't configured for this
+      // build (see PushNotificationService.isConfigured) — never blocks sign-in.
+      unawaited(PushNotificationService.configureAndRegister());
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => BottomNavigationView()),

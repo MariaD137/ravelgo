@@ -66,6 +66,7 @@ const api = new ApiStack(app, stackName("RavelGo-Api"), {
   allowedOrigins: apiAllowedOrigins,
   envName,
   deployService,
+  pinpointApplicationId: auth.pinpointApplicationId,
 });
 
 // Only meaningful once the App Runner service exists — its alarms and log

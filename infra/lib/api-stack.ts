@@ -26,6 +26,14 @@ export interface ApiStackProps extends cdk.StackProps {
   // IN-06's staging deploy possible at all in the same AWS account as
   // production, not just cosmetic.
   envName?: string;
+  // The Pinpoint Application device push is sent through (AuthStack.
+  // pinpointApplicationId — see that stack for why it lives there). Always
+  // passed (the resource always exists), but push only actually delivers
+  // once its GCM/APNS channels are enabled with a real FCM/APNs credential —
+  // see the comment further below for the exact command. Until then this
+  // backend simply never sends a push; every in-app notification still
+  // persists and lists normally either way.
+  pinpointApplicationId: string;
   // First-deploy bootstrap: an App Runner service pointed at an ECR image
   // tag that doesn't exist yet fails to stabilize and rolls the whole stack
   // back. On a brand-new environment there's no image until *after* the ECR
@@ -99,6 +107,25 @@ export class ApiStack extends cdk.Stack {
     props.documentsBucket.grantReadWrite(instanceRole);
     props.assetsBucket.grantReadWrite(instanceRole);
 
+    // Push notifications (AWS Pinpoint): lets the backend send a message
+    // directly to a device's raw token — see services/push.ts, which never
+    // needs a pre-created "endpoint" resource, unlike SNS Mobile Push.
+    // Scoped to exactly this one Pinpoint application, and harmless to grant
+    // even before its GCM/APNS channels are configured with a real
+    // credential — see the pinpointApplicationId comment above for why this
+    // feature stays fully optional and never blocks a deploy.
+    instanceRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ["mobiletargeting:SendMessages"],
+        resources: [
+          cdk.Stack.of(this).formatArn({
+            service: "mobiletargeting",
+            resource: `apps/${props.pinpointApplicationId}/messages`,
+          }),
+        ],
+      }),
+    );
+
     // Server-authoritative driver onboarding (P0 #2): the backend adds a user
     // to the Cognito "Driver" group on its own IAM role — the client never
     // touches group membership. Scope this to AdminAddUserToGroup on THIS pool
@@ -159,6 +186,20 @@ export class ApiStack extends cdk.Stack {
     });
     mapsSecret.grantRead(instanceRole);
 
+    // Push notifications, same "CDK can't know your real credentials, one
+    // manual step, documented" pattern as the Stripe/Maps secrets above —
+    // except this one is optional even in production. The Pinpoint
+    // Application itself always exists (AuthStack.pinpointApplicationId);
+    // what's missing until you do this is a real credential on its GCM/APNS
+    // channels:
+    //   aws pinpoint update-gcm-channel --application-id <id> \
+    //     --gcm-channel-request ApiKey=<FCM server key>,Enabled=true
+    //   aws pinpoint update-apns-channel --application-id <id> \
+    //     --apns-channel-request BundleId=<ios bundle id>,TeamId=<team id>,TokenKey=<APNs .p8 key>,TokenKeyId=<key id>,Enabled=true
+    // Until then, PINPOINT_APPLICATION_ID is still set below (SendMessages
+    // against channels with no credential just fails per-address, the same
+    // "in-app notification unaffected either way" outcome as if it were
+    // unset — see services/push.ts's own error handling).
     if (deployService) {
     const service = new apprunner.CfnService(this, "BackendService", {
       serviceName: resourceName,
@@ -181,6 +222,9 @@ export class ApiStack extends cdk.Stack {
               { name: "DOCUMENTS_BUCKET", value: props.documentsBucket.bucketName },
               { name: "ASSETS_BUCKET", value: props.assetsBucket.bucketName },
               { name: "ALLOWED_ORIGINS", value: props.allowedOrigins.join(",") },
+              // Not a secret — an application ID identifies a resource, it
+              // doesn't authenticate anything.
+              { name: "PINPOINT_APPLICATION_ID", value: props.pinpointApplicationId },
             ],
             runtimeEnvironmentSecrets: [
               { name: "DB_USERNAME", value: `${dbSecretArn}:username::` },

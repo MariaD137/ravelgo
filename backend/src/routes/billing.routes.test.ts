@@ -81,6 +81,11 @@ test("payment_intent.succeeded marks the matching Payment SUCCEEDED", async () =
   const updated = await prisma.payment.findUnique({ where: { id: payment.id } });
   assert.equal(updated?.status, "SUCCEEDED");
   assert.ok(updated?.paidAt);
+
+  const notifications = await prisma.notification.findMany({ where: { userId: payment.userId } });
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].type, "PAYMENT_SUCCEEDED");
+  assert.equal(notifications[0].referenceId, payment.tripId);
 });
 
 test("payment_intent.payment_failed marks the matching Payment FAILED", async () => {
@@ -102,6 +107,10 @@ test("payment_intent.payment_failed marks the matching Payment FAILED", async ()
   const updated = await prisma.payment.findUnique({ where: { id: payment.id } });
   assert.equal(updated?.status, "FAILED");
   assert.equal(updated?.paidAt, null);
+
+  const notifications = await prisma.notification.findMany({ where: { userId: payment.userId } });
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].type, "PAYMENT_FAILED");
 });
 
 test("an event for an unknown PaymentIntent id is accepted but updates nothing", async () => {

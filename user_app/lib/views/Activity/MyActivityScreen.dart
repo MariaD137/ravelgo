@@ -5,6 +5,7 @@ import 'package:ravelgo_user_app/services/courier_api.dart';
 import 'package:ravelgo_user_app/services/rental_api.dart';
 import 'package:ravelgo_user_app/services/trips_api.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
+import 'package:ravelgo_user_app/views/Rentals/RentalBookingDetailScreen.dart';
 
 /// A single row across every service — the actual persisted backend record,
 /// not a fabricated one. Rides, rentals and deliveries each come from their
@@ -20,6 +21,10 @@ class _ActivityEntry {
   final DateTime date;
   final double amount;
   final Map<String, String> details;
+  // Only set for rentals, which have a real dedicated detail screen
+  // (RentalBookingDetailScreen) — rides/deliveries still use the inline
+  // details sheet below.
+  final String? rentalBookingId;
 
   _ActivityEntry({
     required this.type,
@@ -31,6 +36,7 @@ class _ActivityEntry {
     required this.date,
     required this.amount,
     required this.details,
+    this.rentalBookingId,
   });
 }
 
@@ -146,6 +152,7 @@ class _MyActivityScreenState extends State<MyActivityScreen> {
                 'Payment': r.paymentStatus,
                 'Total': Currency.format(r.totalPrice, decimals: 0),
               },
+              rentalBookingId: r.id,
             )),
         ...deliveries.map((d) => _ActivityEntry(
               type: 'Delivery',
@@ -261,7 +268,9 @@ class _MyActivityScreenState extends State<MyActivityScreen> {
           final e = _entries[i];
           return InkWell(
             borderRadius: BorderRadius.circular(12),
-            onTap: () => _showDetails(e),
+            onTap: () => e.rentalBookingId != null
+                ? Navigator.push(context, MaterialPageRoute(builder: (_) => RentalBookingDetailScreen(bookingId: e.rentalBookingId!)))
+                : _showDetails(e),
             child: Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),

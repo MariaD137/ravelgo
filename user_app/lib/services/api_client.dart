@@ -46,8 +46,9 @@ class ApiClient {
         await http.patch(_uri(path), headers: await _headers(), body: body == null ? null : jsonEncode(body)),
       );
 
-  static Future<dynamic> delete(String path) async =>
-      _handle(await http.delete(_uri(path), headers: await _headers()));
+  static Future<dynamic> delete(String path, [Object? body]) async => _handle(
+        await http.delete(_uri(path), headers: await _headers(), body: body == null ? null : jsonEncode(body)),
+      );
 
   static dynamic _handle(http.Response res) {
     dynamic decoded;

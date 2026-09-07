@@ -1,4 +1,5 @@
 import { prisma } from "../db/prisma";
+import { sendPushToUser } from "../services/push";
 
 /**
  * Real notification types this backend actually emits. Kept as a union
@@ -39,8 +40,9 @@ export async function notifyUser(
   body: string,
   reference?: { type: NotificationReferenceType; id: string },
 ): Promise<void> {
+  let notificationId: string | undefined;
   try {
-    await prisma.notification.create({
+    const notification = await prisma.notification.create({
       data: {
         userId,
         type,
@@ -50,7 +52,20 @@ export async function notifyUser(
         referenceId: reference?.id,
       },
     });
+    notificationId = notification.id;
   } catch (err) {
     console.error("Failed to write notification", err);
   }
+
+  // Device push is additive, best-effort fan-out on top of the persisted
+  // row above — it never blocks or fails the real event that triggered it,
+  // and it still runs even if the persisted-row write itself failed (the
+  // customer still gets *a* notification even if history-listing wouldn't
+  // show it). The data payload lets the Customer App navigate on tap the
+  // same way an in-app notification tap does.
+  await sendPushToUser(userId, title, body, {
+    type,
+    ...(notificationId ? { notificationId } : {}),
+    ...(reference ? { referenceType: reference.type, referenceId: reference.id } : {}),
+  });
 }

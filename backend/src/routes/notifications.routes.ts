@@ -1,7 +1,9 @@
 import { Router } from "express";
+import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { env } from "../config/env";
 
 export const notificationsRouter = Router();
 
@@ -63,4 +65,63 @@ notificationsRouter.post("/notifications/read-all", requireAuth, async (req, res
     data: { read: true },
   });
   res.json({ updated: result.count });
+});
+
+const registerDeviceTokenSchema = z.object({
+  token: z.string().min(1).max(4096),
+  platform: z.enum(["IOS", "ANDROID"]),
+});
+
+// Caller: register (or re-register) a device token for push delivery.
+// Ownership always comes from the authenticated Cognito identity — there is
+// no field in the request body a client could use to register a token
+// against a different user. A token is unique platform-wide (the OS can
+// hand the same token to a different install later), so re-registering an
+// already-known token simply reassigns it to whoever registers it now,
+// rather than erroring as a duplicate.
+notificationsRouter.post("/notifications/device-tokens", requireAuth, async (req, res) => {
+  const parsed = registerDeviceTokenSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const user = await findOwnUser(req.user!.sub);
+  if (!user) return res.status(404).json({ error: "User profile not found" });
+
+  const { token, platform } = parsed.data;
+  // Pinpoint sends directly to the raw token (see services/push.ts) — no
+  // separate "endpoint" resource to pre-create, so registering is just this
+  // upsert. Re-registering an already-known token reassigns it to whoever
+  // registers it now rather than erroring.
+  const pushToken = await prisma.pushToken.upsert({
+    where: { token },
+    create: { userId: user.id, token, platform },
+    update: { userId: user.id, platform },
+  });
+  res.status(201).json({
+    id: pushToken.id,
+    platform: pushToken.platform,
+    // Tells the app whether push is actually wired up server-side (a
+    // Pinpoint application configured) without exposing any AWS identifier.
+    registered: env.PINPOINT_APPLICATION_ID != null,
+  });
+});
+
+const unregisterDeviceTokenSchema = z.object({ token: z.string().min(1).max(4096) });
+
+// Caller: unregister my own device token (e.g. on logout). 404s (not 403)
+// for a token that exists but belongs to someone else, same reasoning as
+// the notification-read route above.
+notificationsRouter.delete("/notifications/device-tokens", requireAuth, async (req, res) => {
+  const parsed = unregisterDeviceTokenSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const user = await findOwnUser(req.user!.sub);
+  if (!user) return res.status(404).json({ error: "User profile not found" });
+
+  const existing = await prisma.pushToken.findUnique({ where: { token: parsed.data.token } });
+  if (!existing || existing.userId !== user.id) {
+    return res.status(404).json({ error: "Device token not found" });
+  }
+
+  await prisma.pushToken.delete({ where: { id: existing.id } });
+  res.status(204).send();
 });

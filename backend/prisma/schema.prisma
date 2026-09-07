@@ -175,6 +175,7 @@ model User {
   stayBookings      StayBooking[]     @relation("GuestStayBookings")
   rentalBookings    RentalBooking[]   @relation("RenterRentalBookings")
   notifications     Notification[]
+  pushTokens        PushToken[]
 }
 
 model Driver {
@@ -432,6 +433,29 @@ model Notification {
   // Backs "my notifications, newest first" and the unread-count badge.
   @@index([userId, createdAt])
   @@index([userId, read])
+}
+
+// A device registered to receive push notifications, sent via AWS Pinpoint
+// (see backend/src/services/push.ts) targeting the raw token directly — no
+// separate "endpoint" resource has to be pre-created, unlike SNS Mobile
+// Push. `token` is unique platform-wide, not per-user: the OS can hand the
+// same token to a different app install (e.g. after an uninstall and a
+// different account's install), and re-registration must reassign it to the
+// new owner rather than error — the previous owner's row is simply
+// overwritten. A row existing here is never itself proof push will actually
+// be delivered — see PINPOINT_APPLICATION_ID in env.ts for the "not
+// configured" no-op case, and push.ts's own delivery-status handling for
+// per-token cleanup when Pinpoint reports the token as dead.
+model PushToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  platform  String   // IOS | ANDROID
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model EmergencyAlert {

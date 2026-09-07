@@ -92,6 +92,12 @@ test("CASH settles instantly for a fare at or below the ₦15,000 cap (₦12,000
   assert.equal(res.body.method, "CASH");
   assert.equal(res.body.status, "SUCCEEDED");
   assert.equal(res.body.amount, 12000);
+
+  const notifications = await prisma.notification.findMany({ where: { userId: rider.id } });
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].type, "PAYMENT_SUCCEEDED");
+  assert.equal(notifications[0].referenceType, "TRIP");
+  assert.equal(notifications[0].referenceId, trip.id);
 });
 
 test("CASH settles for a fare exactly at the ₦15,000 cap", async () => {
@@ -208,6 +214,10 @@ test("POST /api/trips/:id/charge (WALLET) debits the rider's funded balance and 
   assert.equal(after?.balanceCents, 550);
   const debit = await prisma.walletTransaction.findFirst({ where: { walletId: wallet.id, type: "RIDE_PAYMENT" } });
   assert.equal(debit?.amountCents, -1450);
+
+  const notifications = await prisma.notification.findMany({ where: { userId: rider.id } });
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].type, "PAYMENT_SUCCEEDED");
 });
 
 test("POST /api/trips/:id/charge (WALLET) rejects when the balance is insufficient, charging nothing", async () => {

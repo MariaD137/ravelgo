@@ -1,4 +1,5 @@
 import 'package:ravelgo_user_app/services/auth_service.dart';
+import 'package:ravelgo_user_app/services/push_notification_service.dart';
 import 'package:ravelgo_user_app/services/rider_api.dart';
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/Model/app_state.dart';
@@ -279,6 +280,10 @@ class _AccountviewState extends State<Accountview> {
                     icon: Icons.logout,
                     label: 'Log out',
                     onTap: () async {
+                      // So a future push never reaches a signed-out session's
+                      // device — best-effort, and a no-op when push isn't
+                      // configured for this build.
+                      await PushNotificationService.unregister();
                       // Clear the persisted Cognito session so a refresh does
                       // not silently sign the user back in.
                       await AuthService.signOut();
