@@ -1,5 +1,8 @@
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Router } from "express";
 import { z } from "zod";
+import { env } from "../config/env";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { requireAdminPermission } from "../lib/admin-permissions";
@@ -8,6 +11,13 @@ import { recordAudit } from "../lib/audit";
 import { cognitoGroups } from "../services/cognito";
 import { sensitiveLimiter } from "../middleware/rate-limit";
 import { recordDriverLocation } from "../realtime/hub";
+
+// Same pattern as courier.routes.ts's withProofUrls: a dedicated S3 client for
+// signing GET URLs to objects in the private documents bucket. Kept
+// per-route-file like the existing S3 clients elsewhere (courier.routes.ts,
+// uploads.routes.ts) rather than introducing a new shared module.
+const s3 = new S3Client({ region: env.AWS_REGION });
+const DOCUMENT_URL_EXPIRY_SECONDS = 300;
 
 export const driversRouter = Router();
 
@@ -193,6 +203,61 @@ driversRouter.get("/drivers/:id", requireAuth, requireRole("Admin"), async (req,
   if (!driver) return res.status(404).json({ error: "Driver not found" });
   res.json(driver);
 });
+
+// Admin: a short-lived signed URL to view one of this driver's uploaded
+// onboarding documents. The document's fileKey is never returned to the
+// client as a usable URL (documents.routes.ts / GET /drivers/:id return the
+// raw key, which only identifies the private S3 object) — a fresh signed URL
+// is generated here on demand, each time the admin actually wants to look at
+// it, and is never persisted (matches the proof-of-delivery pattern in
+// courier.routes.ts's withProofUrls, just as an on-demand endpoint instead of
+// eagerly signing every document on every driver-detail fetch).
+driversRouter.get(
+  "/drivers/:driverId/documents/:documentId/url",
+  requireAuth,
+  requireAdminPermission("drivers:write"),
+  async (req, res) => {
+    const driver = await prisma.driver.findUnique({ where: { id: req.params.driverId } });
+    if (!driver) return res.status(404).json({ error: "Driver could not be found." });
+
+    const doc = await prisma.driverDocument.findUnique({ where: { id: req.params.documentId } });
+    // Same 404 whether the document doesn't exist at all or belongs to a
+    // different driver — this endpoint should never confirm or deny that a
+    // given document ID exists for a driver the caller didn't ask about.
+    if (!doc || doc.driverId !== driver.id) {
+      return res.status(404).json({ error: "Document could not be found." });
+    }
+    if (!doc.fileKey) {
+      return res.status(404).json({ error: "The document record exists, but no file has been uploaded for it." });
+    }
+    if (!env.DOCUMENTS_BUCKET) {
+      return res.status(503).json({ error: "Document storage is not configured." });
+    }
+
+    let url: string;
+    try {
+      url = await getSignedUrl(s3, new GetObjectCommand({ Bucket: env.DOCUMENTS_BUCKET, Key: doc.fileKey }), {
+        expiresIn: DOCUMENT_URL_EXPIRY_SECONDS,
+      });
+    } catch (err) {
+      console.error("Failed to sign driver document URL", err);
+      return res.status(502).json({ error: "Unable to open this document right now. Please try again." });
+    }
+
+    // Awaited for the same reason as the other admin-audit writes in this
+    // codebase: recordAudit never throws, so this can't turn a real failure
+    // into one, and it guarantees the audit row exists before the response.
+    await recordAudit({
+      actorSub: req.user!.sub,
+      action: "DOCUMENT_VIEWED",
+      entityType: "DriverDocument",
+      entityId: doc.id,
+      metadata: { driverId: driver.id },
+    });
+
+    res.json({ url, expiresIn: DOCUMENT_URL_EXPIRY_SECONDS });
+  },
+);
 
 const statusSchema = z.object({
   status: z.enum(["ACTIVE", "PENDING_REVIEW", "SUSPENDED"]),
