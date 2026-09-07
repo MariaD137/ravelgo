@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { requireAdminPermission } from "../lib/admin-permissions";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { recordAudit } from "../lib/audit";
 
@@ -171,8 +172,8 @@ staysRouter.get("/stays/:id/bookings", requireAuth, requireRole("Admin"), async 
 
 const decisionSchema = z.object({ status: z.enum(["APPROVED", "REJECTED"]) });
 
-// Admin: approve/reject a listing before it's visible to guests.
-staysRouter.patch("/stays/:id/status", requireAuth, requireRole("Admin"), async (req, res) => {
+// Admin (Super Admin / Operations Manager): approve/reject a listing before it's visible to guests.
+staysRouter.patch("/stays/:id/status", requireAuth, requireAdminPermission("listings:write"), async (req, res) => {
   const parsed = decisionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 

@@ -101,6 +101,25 @@ class _CreatePayoutScreenState extends State<CreatePayoutScreen> {
       return;
     }
 
+    final amountText = override != null
+        ? Currency.format(override, decimals: 0)
+        : (_calculation != null ? Currency.format(_calculation!.netAmount, decimals: 0) : 'the calculated amount');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create this payout?'),
+        content: Text(
+          '${driver.name.isEmpty ? driver.email : driver.name} · $amountText for ${_periodController.text.trim()}.'
+          '${override != null ? '\n\nThis is a manual override, not the calculated amount.' : ''}',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Create')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
     setState(() => _creating = true);
     try {
       await AdminApi.createPayout(driver.userId, _periodController.text.trim(), amount: override);

@@ -5,6 +5,8 @@ import { z } from "zod";
 import { env } from "../config/env";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { blockIfAdminLacksPermission } from "../lib/admin-permissions";
+import { recordAudit } from "../lib/audit";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const courierRouter = Router();
@@ -174,6 +176,8 @@ courierRouter.patch("/courier-requests/:id/status", requireAuth, requireRole("Dr
     if (!driver || existing.driverId !== driver.id) {
       return res.status(403).json({ error: "Not authorized to update this request" });
     }
+  } else if (await blockIfAdminLacksPermission(req, res, "drivers:write")) {
+    return; // 403 already written
   }
 
   const { status, deliveryPhotoKey, recipientSignatureKey } = parsed.data;
@@ -206,6 +210,15 @@ courierRouter.patch("/courier-requests/:id/status", requireAuth, requireRole("Dr
       recipientSignatureKey: status === "DELIVERED" ? recipientSignatureKey : undefined,
     },
   });
+  if (isAdmin) {
+    await recordAudit({
+      actorSub: req.user!.sub,
+      action: "COURIER_REQUEST_STATUS_OVERRIDDEN",
+      entityType: "CourierRequest",
+      entityId: request.id,
+      metadata: { status },
+    });
+  }
   res.json(await withProofUrls(request));
 });
 

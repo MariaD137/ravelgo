@@ -114,6 +114,34 @@ test("PATCH /api/rentals/:id/status rejects a non-Admin caller", async () => {
   assert.equal(res.status, 403);
 });
 
+test("PATCH /api/rentals/:id/status rejects a Finance Viewer admin and records an audit entry on success", async () => {
+  const { driver, vehicle } = await createDriverWithVehicle("driver-sub-7");
+  const listing = await prisma.rentalListing.create({
+    data: { driverId: driver.id, vehicleId: vehicle.id, dailyRate: 40, location: "Jos" },
+  });
+  await prisma.user.create({
+    data: { cognitoSub: "finance-rentals", role: "ADMIN", adminRole: "FINANCE_VIEWER", firstName: "F", lastName: "V", email: "fv-rentals@example.com" },
+  });
+
+  const financeToken = mockAuthAs({ sub: "finance-rentals", groups: ["Admin"] });
+  const denied = await request(app)
+    .patch(`/api/rentals/${listing.id}/status`)
+    .set("Authorization", `Bearer ${financeToken}`)
+    .send({ status: "APPROVED" });
+  assert.equal(denied.status, 403);
+
+  restoreAuth();
+  const superToken = mockAuthAs({ sub: "super-rentals", groups: ["Admin"] }); // no User row -> SUPER_ADMIN
+  const approved = await request(app)
+    .patch(`/api/rentals/${listing.id}/status`)
+    .set("Authorization", `Bearer ${superToken}`)
+    .send({ status: "APPROVED" });
+  assert.equal(approved.status, 200);
+
+  const audit = await prisma.auditLog.findFirst({ where: { action: "RENTAL_LISTING_REVIEWED", entityId: listing.id } });
+  assert.ok(audit);
+});
+
 async function createRider(cognitoSub: string) {
   return prisma.user.create({
     data: { cognitoSub, role: "RIDER", firstName: "R", lastName: "I", email: `${cognitoSub}@example.com` },

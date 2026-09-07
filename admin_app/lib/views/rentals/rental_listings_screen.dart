@@ -46,6 +46,26 @@ class _RentalListingsScreenState extends State<RentalListingsScreen> {
   }
 
   Future<void> _setStatus(RentalListing r, String status) async {
+    final approve = status == 'APPROVED';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(approve ? 'Approve this listing?' : 'Reject this listing?'),
+        content: Text(approve
+            ? '${r.vehicle.isEmpty ? 'This vehicle' : r.vehicle} will become visible to riders for rental.'
+            : '${r.vehicle.isEmpty ? 'This vehicle' : r.vehicle} will be hidden from riders.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(
+            style: approve ? null : ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(approve ? 'Approve' : 'Reject'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
     setState(() => _busy = true);
     try {
       await AdminApi.setRentalStatus(r.id, status);

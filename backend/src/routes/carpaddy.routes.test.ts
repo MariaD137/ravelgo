@@ -66,3 +66,29 @@ test("PATCH /api/car-paddy/:id lets an Admin approve and stamps reviewedAt", asy
   assert.equal(res.body.status, "APPROVED");
   assert.ok(res.body.reviewedAt);
 });
+
+test("PATCH /api/car-paddy/:id rejects a Support Agent admin and records an audit entry on success", async () => {
+  const driver = await createDriver("driver-sub-4");
+  const req = await prisma.carPaddyRequest.create({ data: { driverId: driver.id, plateNumber: "BBB-2" } });
+  await prisma.user.create({
+    data: { cognitoSub: "support-carpaddy", role: "ADMIN", adminRole: "SUPPORT_AGENT", firstName: "S", lastName: "A", email: "sa-carpaddy@example.com" },
+  });
+
+  const supportToken = mockAuthAs({ sub: "support-carpaddy", groups: ["Admin"] });
+  const denied = await request(app)
+    .patch(`/api/car-paddy/${req.id}`)
+    .set("Authorization", `Bearer ${supportToken}`)
+    .send({ status: "APPROVED" });
+  assert.equal(denied.status, 403);
+
+  restoreAuth();
+  const superToken = mockAuthAs({ sub: "super-carpaddy", groups: ["Admin"] });
+  const approved = await request(app)
+    .patch(`/api/car-paddy/${req.id}`)
+    .set("Authorization", `Bearer ${superToken}`)
+    .send({ status: "APPROVED" });
+  assert.equal(approved.status, 200);
+
+  const audit = await prisma.auditLog.findFirst({ where: { action: "CAR_PADDY_REQUEST_REVIEWED", entityId: req.id } });
+  assert.ok(audit);
+});

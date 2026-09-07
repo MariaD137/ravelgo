@@ -43,10 +43,66 @@ class _DriverSubscriptionsScreenState extends State<DriverSubscriptionsScreen> {
     }
   }
 
+  Future<void> _createPlan() async {
+    final nameController = TextEditingController();
+    final descController = TextEditingController();
+    final priceController = TextEditingController();
+
+    final create = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('New subscription plan'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: nameController, decoration: const InputDecoration(labelText: 'Name')),
+              TextField(controller: descController, decoration: const InputDecoration(labelText: 'Description')),
+              TextField(
+                controller: priceController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Price per month (₦)'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Create')),
+        ],
+      ),
+    );
+    if (create != true || !mounted) return;
+
+    final price = double.tryParse(priceController.text.trim());
+    if (nameController.text.trim().isEmpty || descController.text.trim().isEmpty || price == null || price <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter a name, description and a valid price')));
+      return;
+    }
+
+    try {
+      await AdminApi.createSubscriptionPlan(
+        name: nameController.text.trim(),
+        description: descController.text.trim(),
+        priceMonthly: price,
+      );
+      await _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Plan created')));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e is ApiException ? e.message : e.toString())));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Driver Subscriptions")),
+      appBar: AppBar(
+        title: const Text("Driver Subscriptions"),
+        actions: [IconButton(icon: const Icon(Icons.add), onPressed: _createPlan)],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : (_error != null ? _err() : _list()),

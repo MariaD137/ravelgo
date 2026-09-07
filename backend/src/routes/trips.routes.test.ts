@@ -308,6 +308,40 @@ test("PATCH /api/trips/:id/status lets an Admin override the fare band (dispute 
   assert.equal(res.body.finalFare, 4);
 });
 
+test("PATCH /api/trips/:id/status rejects a Finance Viewer admin, but a Super Admin's override is audited", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-perm", role: "RIDER", firstName: "E", lastName: "F", email: "perm@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-perm", role: "DRIVER", firstName: "O", lastName: "P", email: "operm@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id } });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "X", destination: "Y", estimatedFare: 16, status: "MATCHED" },
+  });
+  await prisma.user.create({
+    data: { cognitoSub: "finance-trips", role: "ADMIN", adminRole: "FINANCE_VIEWER", firstName: "F", lastName: "V", email: "fv-trips@example.com" },
+  });
+
+  const financeToken = mockAuthAs({ sub: "finance-trips", groups: ["Admin"] });
+  const denied = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${financeToken}`)
+    .send({ status: "IN_PROGRESS" });
+  assert.equal(denied.status, 403);
+
+  restoreAuth();
+  const superToken = mockAuthAs({ sub: "super-trips", groups: ["Admin"] });
+  const overridden = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${superToken}`)
+    .send({ status: "IN_PROGRESS" });
+  assert.equal(overridden.status, 200);
+
+  const audit = await prisma.auditLog.findFirst({ where: { action: "TRIP_STATUS_OVERRIDDEN", entityId: trip.id } });
+  assert.ok(audit);
+});
+
 test("GET /api/trips (Admin monitor) rejects a Rider caller", async () => {
   const token = mockAuthAs({ sub: "rider-sub-5", groups: ["Rider"] });
   const res = await request(app).get("/api/trips").set("Authorization", `Bearer ${token}`);

@@ -45,10 +45,14 @@ settingsRouter.patch(
       create: { id: SETTINGS_ID, ...parsed.data },
     });
 
+    // Awaited (unlike most recordAudit call sites) so a caller can never
+    // observe a 200 for this admin action before the audit row actually
+    // exists — recordAudit never throws, so this can't turn a real failure
+    // into one; it only guarantees ordering for the audit-trail guarantee.
     for (const [key, newValue] of Object.entries(parsed.data)) {
       const oldValue = (before as unknown as Record<string, unknown>)[key];
       if (oldValue !== newValue) {
-        void recordAudit({
+        await recordAudit({
           actorSub: req.user!.sub,
           action: "PAYMENT_SETTING_CHANGED",
           entityType: "AppSetting",
