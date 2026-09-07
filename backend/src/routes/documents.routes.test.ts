@@ -88,4 +88,100 @@ test("PATCH /api/documents/:id/review lets an Admin approve a document", async (
 
   assert.equal(res.status, 200);
   assert.equal(res.body.status, "APPROVED");
+  assert.equal(res.body.rejectionReason, null);
+});
+
+test("PATCH /api/documents/:id/review rejects a REJECTED status with no rejectionReason", async () => {
+  const driver = await createDriver("driver-sub-6");
+  const doc = await prisma.driverDocument.create({ data: { driverId: driver.id, title: "Doc", fileKey: "k5" } });
+
+  const token = mockAuthAs({ sub: "admin-sub-2", groups: ["Admin"] });
+  const res = await request(app)
+    .patch(`/api/documents/${doc.id}/review`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "REJECTED" });
+
+  assert.equal(res.status, 400);
+  const stored = await prisma.driverDocument.findUnique({ where: { id: doc.id } });
+  assert.equal(stored?.status, "NOT_UPLOADED");
+});
+
+test("PATCH /api/documents/:id/review rejects a REJECTED status with a blank rejectionReason", async () => {
+  const driver = await createDriver("driver-sub-7");
+  const doc = await prisma.driverDocument.create({ data: { driverId: driver.id, title: "Doc", fileKey: "k6" } });
+
+  const token = mockAuthAs({ sub: "admin-sub-3", groups: ["Admin"] });
+  const res = await request(app)
+    .patch(`/api/documents/${doc.id}/review`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "REJECTED", rejectionReason: "   " });
+
+  assert.equal(res.status, 400);
+});
+
+test("PATCH /api/documents/:id/review persists and returns the rejectionReason", async () => {
+  const driver = await createDriver("driver-sub-8");
+  const doc = await prisma.driverDocument.create({ data: { driverId: driver.id, title: "Doc", fileKey: "k7" } });
+
+  const token = mockAuthAs({ sub: "admin-sub-4", groups: ["Admin"] });
+  const res = await request(app)
+    .patch(`/api/documents/${doc.id}/review`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "REJECTED", rejectionReason: "Photo is blurry, please retake it." });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "REJECTED");
+  assert.equal(res.body.rejectionReason, "Photo is blurry, please retake it.");
+
+  const audit = await prisma.auditLog.findFirst({ where: { entityId: doc.id, action: "DOCUMENT_REJECTED" } });
+  assert.ok(audit, "expected a DOCUMENT_REJECTED audit entry");
+});
+
+test("PATCH /api/documents/:id/review clears a prior rejectionReason on approval", async () => {
+  const driver = await createDriver("driver-sub-10");
+  const doc = await prisma.driverDocument.create({
+    data: { driverId: driver.id, title: "Doc", fileKey: "k8", status: "REJECTED", rejectionReason: "Old reason" },
+  });
+
+  const token = mockAuthAs({ sub: "admin-sub-5", groups: ["Admin"] });
+  const res = await request(app)
+    .patch(`/api/documents/${doc.id}/review`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "APPROVED" });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.rejectionReason, null);
+});
+
+test("PATCH /api/documents/:id/review returns 404 for a document that doesn't exist", async () => {
+  const token = mockAuthAs({ sub: "admin-sub-6", groups: ["Admin"] });
+  const res = await request(app)
+    .patch(`/api/documents/does-not-exist/review`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "APPROVED" });
+
+  assert.equal(res.status, 404);
+});
+
+test("PATCH /api/documents/:id/review rejects an admin whose role lacks drivers:write", async () => {
+  const driver = await createDriver("driver-sub-11");
+  const doc = await prisma.driverDocument.create({ data: { driverId: driver.id, title: "Doc", fileKey: "k9" } });
+  await prisma.user.create({
+    data: {
+      cognitoSub: "finance-docs",
+      role: "ADMIN",
+      adminRole: "FINANCE_VIEWER",
+      firstName: "F",
+      lastName: "V",
+      email: "fv-docs@example.com",
+    },
+  });
+
+  const token = mockAuthAs({ sub: "finance-docs", groups: ["Admin"] });
+  const res = await request(app)
+    .patch(`/api/documents/${doc.id}/review`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "APPROVED" });
+
+  assert.equal(res.status, 403);
 });

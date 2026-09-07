@@ -45,25 +45,45 @@ documentsRouter.post("/documents", requireAuth, requireRole("Driver"), async (re
   res.status(201).json(doc);
 });
 
-const reviewSchema = z.object({
-  status: z.enum(["APPROVED", "REJECTED"]),
-});
+const reviewSchema = z
+  .object({
+    status: z.enum(["APPROVED", "REJECTED"]),
+    // Required (and validated non-empty after trimming) only when rejecting —
+    // enforced below rather than with a discriminated union so the 400 names
+    // the real reason instead of a generic schema-shape error.
+    rejectionReason: z.string().trim().max(1000).optional(),
+  })
+  .refine((data) => data.status !== "REJECTED" || !!data.rejectionReason, {
+    message: "A rejection reason is required.",
+    path: ["rejectionReason"],
+  });
 
-// Admin: approve/reject a document
+// Admin: approve/reject a document. Rejecting without a reason is refused —
+// the driver needs to know what to fix before resubmitting, and a resubmitted
+// document is a brand-new DriverDocument row (see POST /documents above), so
+// this reason never lingers on whatever the driver uploads next.
 documentsRouter.patch("/documents/:id/review", requireAuth, requireAdminPermission("drivers:write"), async (req, res) => {
   const parsed = reviewSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+  const existing = await prisma.driverDocument.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: "Document could not be found." });
+
   const doc = await prisma.driverDocument.update({
     where: { id: req.params.id },
-    data: { status: parsed.data.status },
+    data: {
+      status: parsed.data.status,
+      rejectionReason: parsed.data.status === "REJECTED" ? parsed.data.rejectionReason : null,
+    },
   });
-  void recordAudit({
+  // Awaited so a caller can never observe a 200 before the audit row exists —
+  // recordAudit never throws, so this can't turn a real failure into one.
+  await recordAudit({
     actorSub: req.user!.sub,
-    action: "DOCUMENT_REVIEWED",
+    action: parsed.data.status === "APPROVED" ? "DOCUMENT_APPROVED" : "DOCUMENT_REJECTED",
     entityType: "DriverDocument",
     entityId: doc.id,
-    metadata: { status: parsed.data.status },
+    metadata: { status: parsed.data.status, rejectionReason: parsed.data.rejectionReason },
   });
   res.json(doc);
 });

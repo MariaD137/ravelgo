@@ -255,14 +255,19 @@ model Trip {
 }
 
 model DriverDocument {
-  id         String         @id @default(uuid())
-  driverId   String
-  driver     Driver         @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  title      String
-  status     DocumentStatus @default(NOT_UPLOADED)
-  fileKey    String?
-  expiryDate DateTime?
-  updatedAt  DateTime       @updatedAt
+  id               String         @id @default(uuid())
+  driverId         String
+  driver           Driver         @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  title            String
+  status           DocumentStatus @default(NOT_UPLOADED)
+  fileKey          String?
+  expiryDate       DateTime?
+  // Required whenever status is set to REJECTED (enforced in the route, not
+  // here, since Prisma can't express "required only for one enum value").
+  // Cleared back to null on a subsequent approval so it never lingers on a
+  // document that isn't actually rejected.
+  rejectionReason  String?
+  updatedAt        DateTime       @updatedAt
 }
 
 model CarPaddyRequest {
@@ -640,7 +645,7 @@ model WalletTransaction {
 model AuditLog {
   id         String   @id @default(uuid())
   actorSub   String // Cognito sub of the admin who performed the action
-  action     String // e.g. DRIVER_STATUS_CHANGED, DOCUMENT_REVIEWED, RIDER_SUSPENDED
+  action     String // e.g. DRIVER_STATUS_CHANGED, DOCUMENT_APPROVED, DOCUMENT_REJECTED, RIDER_SUSPENDED
   entityType String // e.g. Driver, DriverDocument, User
   entityId   String?
   metadata   Json?

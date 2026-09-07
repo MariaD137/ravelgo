@@ -56,9 +56,29 @@ class AdminDocument {
   final String id;
   final String title;
   final String status;
-  AdminDocument({required this.id, required this.title, required this.status});
-  factory AdminDocument.fromJson(Map<String, dynamic> j) =>
-      AdminDocument(id: '${j['id']}', title: '${j['title'] ?? ''}', status: '${j['status'] ?? ''}');
+  // The private S3 object key — never a usable URL on its own. A fresh
+  // signed URL is fetched on demand via AdminApi.documentSignedUrl.
+  final String? fileKey;
+  final DateTime? expiryDate;
+  // Only ever populated when status is REJECTED; cleared server-side on
+  // approval.
+  final String? rejectionReason;
+  AdminDocument({
+    required this.id,
+    required this.title,
+    required this.status,
+    this.fileKey,
+    this.expiryDate,
+    this.rejectionReason,
+  });
+  factory AdminDocument.fromJson(Map<String, dynamic> j) => AdminDocument(
+        id: '${j['id']}',
+        title: '${j['title'] ?? ''}',
+        status: '${j['status'] ?? ''}',
+        fileKey: j['fileKey']?.toString(),
+        expiryDate: j['expiryDate'] == null ? null : DateTime.tryParse('${j['expiryDate']}')?.toLocal(),
+        rejectionReason: j['rejectionReason']?.toString(),
+      );
 }
 
 class AdminDriver {
@@ -73,6 +93,9 @@ class AdminDriver {
   final bool isOnline;
   final double rating;
   final int totalTrips;
+  // Never a literal null/undefined string — display "Not provided" when this
+  // is null, rather than inventing a value.
+  final String? phoneNumber;
   final List<AdminDocument> documents;
 
   AdminDriver({
@@ -84,6 +107,7 @@ class AdminDriver {
     required this.isOnline,
     required this.rating,
     required this.totalTrips,
+    required this.phoneNumber,
     required this.documents,
   });
 
@@ -99,6 +123,7 @@ class AdminDriver {
       isOnline: j['isOnline'] == true,
       rating: j['rating'] == null ? 5.0 : _d(j['rating']),
       totalTrips: _i(j['totalTrips']),
+      phoneNumber: user?['phoneNumber']?.toString(),
       documents: docs.whereType<Map<String, dynamic>>().map(AdminDocument.fromJson).toList(),
     );
   }
@@ -939,8 +964,18 @@ class AdminApi {
     await ApiClient.patch('/api/drivers/$id/status', {'status': status});
   }
 
-  static Future<void> reviewDocument(String id, String status) async {
-    await ApiClient.patch('/api/documents/$id/review', {'status': status});
+  static Future<void> reviewDocument(String id, String status, {String? rejectionReason}) async {
+    await ApiClient.patch('/api/documents/$id/review', {
+      'status': status,
+      if (rejectionReason != null && rejectionReason.isNotEmpty) 'rejectionReason': rejectionReason,
+    });
+  }
+
+  /// A short-lived signed URL to view one of a driver's uploaded onboarding
+  /// documents. Fetched fresh each time — never cached or persisted client-side.
+  static Future<String> documentSignedUrl(String driverId, String documentId) async {
+    final data = await ApiClient.get('/api/drivers/$driverId/documents/$documentId/url') as Map<String, dynamic>;
+    return '${data['url']}';
   }
 
   static Future<List<AdminRider>> riders() async {

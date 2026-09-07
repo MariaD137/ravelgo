@@ -59,9 +59,22 @@ class ApiClient {
     }
     if (res.statusCode >= 200 && res.statusCode < 300) return decoded;
 
-    final msg = (decoded is Map && decoded['error'] != null)
-        ? decoded['error'].toString()
-        : 'Request failed (${res.statusCode})';
-    throw ApiException(res.statusCode, msg);
+    throw ApiException(res.statusCode, _extractMessage(decoded, res.statusCode));
+  }
+
+  /// Backend errors come in two shapes: most route handlers reply with
+  /// `{error: "plain string"}`, while the global error-handler middleware
+  /// (and classified Prisma errors) reply with a nested
+  /// `{error: {code, message, details, timestamp}}`. Without this, the
+  /// nested shape fell through to `.toString()` on a raw Map and showed the
+  /// admin a dump like "{code: INTERNAL_SERVER_ERROR, message: ...}" instead
+  /// of the human-readable message.
+  static String _extractMessage(dynamic decoded, int statusCode) {
+    if (decoded is Map) {
+      final error = decoded['error'];
+      if (error is Map && error['message'] != null) return error['message'].toString();
+      if (error is String && error.isNotEmpty) return error;
+    }
+    return 'Request failed ($statusCode)';
   }
 }
