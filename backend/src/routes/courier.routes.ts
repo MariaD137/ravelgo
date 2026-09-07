@@ -11,6 +11,7 @@ import { notifyUser, type NotificationType } from "../lib/notifications";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { getLatestDriverLocation, locationFreshness } from "../realtime/hub";
 import { isValidCoordinate } from "../lib/geo";
+import { serializeCourierRequest } from "../lib/courier-view";
 
 export const courierRouter = Router();
 
@@ -107,7 +108,7 @@ courierRouter.post("/courier-requests", requireAuth, requireRole("Rider"), async
       dropoffLng: dropoff ? dropoffLng : undefined,
     },
   });
-  res.status(201).json(request);
+  res.status(201).json(serializeCourierRequest(request));
 });
 
 // Rider: my own sent delivery requests, most recent first (delivery history).
@@ -117,10 +118,10 @@ courierRouter.get("/courier-requests/sent", requireAuth, requireRole("Rider"), a
 
   const requests = await prisma.courierRequest.findMany({
     where: { senderId: sender.id },
-    include: { driver: { include: { user: true } } },
+    include: { driver: { include: { user: true, vehicles: { where: { isPrimary: true }, take: 1 } } } },
     orderBy: { requestedAt: "desc" },
   });
-  res.json(requests);
+  res.json(requests.map(serializeCourierRequest));
 });
 
 // Driver: view unassigned courier requests to accept. Gated on the same
@@ -143,13 +144,14 @@ courierRouter.get("/courier-requests/available", requireAuth, requireRole("Drive
   const [requests, total] = await Promise.all([
     prisma.courierRequest.findMany({
       where,
+      include: { sender: true },
       orderBy: { requestedAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
     prisma.courierRequest.count({ where }),
   ]);
-  res.json(paginate(requests, total, page, pageSize));
+  res.json(paginate(requests.map(serializeCourierRequest), total, page, pageSize));
 });
 
 // Driver: my own accepted/in-progress courier deliveries.
@@ -165,13 +167,21 @@ courierRouter.get("/courier-requests/mine", requireAuth, requireRole("Driver"), 
   const [requests, total] = await Promise.all([
     prisma.courierRequest.findMany({
       where,
+      include: { sender: true },
       orderBy: { requestedAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
     prisma.courierRequest.count({ where }),
   ]);
-  res.json(paginate(requests, total, page, pageSize));
+  res.json(
+    paginate(
+      requests.map((r) => serializeCourierRequest(withCourierLocation(r))),
+      total,
+      page,
+      pageSize,
+    ),
+  );
 });
 
 // Driver: accept a courier request. Same ACTIVE gate as above.
@@ -191,6 +201,7 @@ courierRouter.patch("/courier-requests/:id/accept", requireAuth, requireRole("Dr
   const request = await prisma.courierRequest.update({
     where: { id: req.params.id },
     data: { driverId: driver.id, status: "MATCHED" },
+    include: { sender: true },
   });
   await notifyUser(
     request.senderId,
@@ -199,7 +210,7 @@ courierRouter.patch("/courier-requests/:id/accept", requireAuth, requireRole("Dr
     "A courier has been assigned to your delivery.",
     { type: "COURIER_REQUEST", id: request.id },
   );
-  res.json(request);
+  res.json(serializeCourierRequest(request));
 });
 
 const updateStatusSchema = z.object({
@@ -280,25 +291,48 @@ courierRouter.patch("/courier-requests/:id/status", requireAuth, requireRole("Dr
       type: "COURIER_REQUEST",
       id: request.id,
     });
+    // An admin override changes the job out from under the driver actually
+    // assigned to it (e.g. an admin cancels a delivery a driver already
+    // picked up) — the driver needs to know too, not just the sender. A
+    // driver-initiated change needs no self-notification. Reuses the same
+    // notification system, no new infra.
+    if (isAdmin && request.driverId) {
+      const assignedDriver = await prisma.driver.findUnique({ where: { id: request.driverId } });
+      if (assignedDriver) {
+        await notifyUser(assignedDriver.userId, notification.type, notification.title, notification.body, {
+          type: "COURIER_REQUEST",
+          id: request.id,
+        });
+      }
+    }
   }
-  res.json(await withProofUrls(request));
+  res.json(serializeCourierRequest(await withProofUrls(request)));
 });
 
-// Rider or Driver: view a courier request they're party to
+// Rider or Driver: view a courier request they're party to. An ACTIVE driver
+// may also view an unassigned (REQUESTED, no driverId) request's detail —
+// the same eligibility /courier-requests/available already grants for the
+// list, just extended to the single-record fetch a detail screen needs
+// before the driver has accepted it.
 courierRouter.get("/courier-requests/:id", requireAuth, async (req, res) => {
   const request = await prisma.courierRequest.findUnique({
     where: { id: req.params.id },
-    include: { sender: true, driver: { include: { user: true } } },
+    include: { sender: true, driver: { include: { user: true, vehicles: { where: { isPrimary: true }, take: 1 } } } },
   });
   if (!request) return res.status(404).json({ error: "Courier request not found" });
 
   const groups = req.user!.groups;
   const isOwner =
     request.sender.cognitoSub === req.user!.sub || request.driver?.user.cognitoSub === req.user!.sub;
-  if (!isOwner && !groups.includes("Admin")) {
+  let isEligibleToBrowse = false;
+  if (!isOwner && !groups.includes("Admin") && groups.includes("Driver") && request.status === "REQUESTED" && !request.driverId) {
+    const driver = await findOwnDriver(req.user!.sub);
+    isEligibleToBrowse = driver?.status === "ACTIVE";
+  }
+  if (!isOwner && !isEligibleToBrowse && !groups.includes("Admin")) {
     return res.status(403).json({ error: "Not authorized to view this request" });
   }
-  res.json(withCourierLocation(await withProofUrls(request)));
+  res.json(serializeCourierRequest(withCourierLocation(await withProofUrls(request))));
 });
 
 // Admin: monitor all courier requests
@@ -309,12 +343,12 @@ courierRouter.get("/courier-requests", requireAuth, requireRole("Admin"), async 
 
   const [requests, total] = await Promise.all([
     prisma.courierRequest.findMany({
-      include: { sender: true, driver: { include: { user: true } } },
+      include: { sender: true, driver: { include: { user: true, vehicles: { where: { isPrimary: true }, take: 1 } } } },
       orderBy: { requestedAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
     prisma.courierRequest.count(),
   ]);
-  res.json(paginate(requests, total, page, pageSize));
+  res.json(paginate(requests.map(serializeCourierRequest), total, page, pageSize));
 });

@@ -133,46 +133,118 @@ class DriverDocument {
       );
 }
 
-/// A package delivery request, from the driver's perspective.
+/// A package delivery request, from the driver's perspective. All fields come
+/// from the backend's safe courier serialization (serializeCourierRequest) —
+/// the driver never sees the customer's email/phone/Cognito sub, only what
+/// this shape exposes.
 class CourierRequest {
   final String id;
+  final String? driverId;
   final String pickupAddress;
   final String dropoffAddress;
   final String packageDescription;
+  final String packageSize; // SMALL | MEDIUM | LARGE
   final String recipientName;
   final String recipientPhone;
   final double estimatedFare;
   final double? finalFare;
   final String status; // REQUESTED | MATCHED | PICKED_UP | IN_TRANSIT | DELIVERED | CANCELLED
   final DateTime requestedAt;
+  final DateTime? pickedUpAt;
+  final DateTime? deliveredAt;
+  final String? senderName;
+  final double? distanceKm;
+  // Resolved by the sender's address search at request time — null for a
+  // request made before this existed, or whose address never resolved.
+  final double? pickupLat;
+  final double? pickupLng;
+  final double? dropoffLat;
+  final double? dropoffLng;
+  // Signed GET URLs — present only once proof of delivery has been captured.
+  final String? deliveryPhotoUrl;
+  final String? recipientSignatureUrl;
+  // This driver's own current position on this job — the same real GPS feed
+  // behind the admin Live Map's Packages view, reported via [DriverApi.
+  // pingLocation]/the trip-room WebSocket. Never a second tracking system,
+  // never fabricated. Only present on the single-request detail fetch.
+  final double? courierLat;
+  final double? courierLng;
+  final DateTime? courierLocationUpdatedAt;
+  final String? courierPresence; // LIVE | STALE | null (no report yet)
 
   CourierRequest({
     required this.id,
+    this.driverId,
     required this.pickupAddress,
     required this.dropoffAddress,
     required this.packageDescription,
+    required this.packageSize,
     required this.recipientName,
     required this.recipientPhone,
     required this.estimatedFare,
     required this.finalFare,
     required this.status,
     required this.requestedAt,
+    this.pickedUpAt,
+    this.deliveredAt,
+    this.senderName,
+    this.distanceKm,
+    this.pickupLat,
+    this.pickupLng,
+    this.dropoffLat,
+    this.dropoffLng,
+    this.deliveryPhotoUrl,
+    this.recipientSignatureUrl,
+    this.courierLat,
+    this.courierLng,
+    this.courierLocationUpdatedAt,
+    this.courierPresence,
   });
 
   static double _d(dynamic v) => v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
+  static double? _dOrNull(dynamic v) => v == null ? null : _d(v);
 
-  factory CourierRequest.fromJson(Map<String, dynamic> j) => CourierRequest(
-        id: '${j['id']}',
-        pickupAddress: '${j['pickupAddress'] ?? ''}',
-        dropoffAddress: '${j['dropoffAddress'] ?? ''}',
-        packageDescription: '${j['packageDescription'] ?? ''}',
-        recipientName: '${j['recipientName'] ?? ''}',
-        recipientPhone: '${j['recipientPhone'] ?? ''}',
-        estimatedFare: _d(j['estimatedFare']),
-        finalFare: j['finalFare'] == null ? null : _d(j['finalFare']),
-        status: '${j['status'] ?? ''}',
-        requestedAt: DateTime.tryParse('${j['requestedAt']}')?.toLocal() ?? DateTime.now(),
-      );
+  factory CourierRequest.fromJson(Map<String, dynamic> j) {
+    String? senderName;
+    final sender = j['sender'];
+    if (sender is Map) {
+      senderName = [sender['firstName'], sender['lastName']]
+          .where((e) => e != null && '$e'.trim().isNotEmpty)
+          .join(' ')
+          .trim();
+      if (senderName.isEmpty) senderName = null;
+    }
+    return CourierRequest(
+      id: '${j['id']}',
+      driverId: j['driverId'] as String?,
+      pickupAddress: '${j['pickupAddress'] ?? ''}',
+      dropoffAddress: '${j['dropoffAddress'] ?? ''}',
+      packageDescription: '${j['packageDescription'] ?? ''}',
+      packageSize: '${j['packageSize'] ?? 'MEDIUM'}',
+      recipientName: '${j['recipientName'] ?? ''}',
+      recipientPhone: '${j['recipientPhone'] ?? ''}',
+      estimatedFare: _d(j['estimatedFare']),
+      finalFare: j['finalFare'] == null ? null : _d(j['finalFare']),
+      status: '${j['status'] ?? ''}',
+      requestedAt: DateTime.tryParse('${j['requestedAt']}')?.toLocal() ?? DateTime.now(),
+      pickedUpAt: j['pickedUpAt'] == null ? null : DateTime.tryParse('${j['pickedUpAt']}')?.toLocal(),
+      deliveredAt: j['deliveredAt'] == null ? null : DateTime.tryParse('${j['deliveredAt']}')?.toLocal(),
+      senderName: senderName,
+      distanceKm: _dOrNull(j['distanceKm']),
+      pickupLat: _dOrNull(j['pickupLat']),
+      pickupLng: _dOrNull(j['pickupLng']),
+      dropoffLat: _dOrNull(j['dropoffLat']),
+      dropoffLng: _dOrNull(j['dropoffLng']),
+      deliveryPhotoUrl: (j['deliveryPhotoUrl'] as String?)?.isNotEmpty == true ? j['deliveryPhotoUrl'] as String : null,
+      recipientSignatureUrl:
+          (j['recipientSignatureUrl'] as String?)?.isNotEmpty == true ? j['recipientSignatureUrl'] as String : null,
+      courierLat: _dOrNull(j['courierLat']),
+      courierLng: _dOrNull(j['courierLng']),
+      courierLocationUpdatedAt:
+          j['courierLocationUpdatedAt'] == null ? null : DateTime.tryParse('${j['courierLocationUpdatedAt']}')?.toLocal(),
+      courierPresence: j['courierPresence']?.toString(),
+    );
+  }
 }
 
 /// A driver's vehicle. This is the single model both the vehicle-management
@@ -438,6 +510,16 @@ class DriverApi {
     final data = await ApiClient.get('/api/payouts/history');
     final list = (data is Map ? (data['data'] ?? data['payouts']) : data) as List? ?? const [];
     return list.whereType<Map<String, dynamic>>().map(Payout.fromJson).toList();
+  }
+
+  /// Full detail of a single delivery request — Package/Pickup/Drop-off/
+  /// Assignment/Earnings sections, plus the courier's live location while
+  /// assigned. Authorized for: the assigned driver, an ACTIVE driver
+  /// previewing a still-unassigned (REQUESTED) request before accepting it,
+  /// or an Admin — enforced backend-side, not just by hiding the button.
+  static Future<CourierRequest> deliveryDetail(String id) async {
+    final data = await ApiClient.get('/api/courier-requests/$id');
+    return CourierRequest.fromJson(data as Map<String, dynamic>);
   }
 
   /// Unassigned delivery requests available to accept. Only an ACTIVE

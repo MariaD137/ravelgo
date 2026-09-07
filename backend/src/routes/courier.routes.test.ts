@@ -509,6 +509,159 @@ test("PATCH /api/courier-requests/:id/status marks DELIVERED with proof of deliv
   assert.ok(getRes.body.recipientSignatureUrl);
 });
 
+test("GET /api/courier-requests/:id never leaks sender/driver email or cognitoSub", async () => {
+  const sender = await createRider("rider-sub-leak");
+  const driver = await createDriver("driver-sub-leak");
+  const req = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      driverId: driver.id,
+      status: "MATCHED",
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-leak", groups: ["Rider"] });
+  const res = await request(app).get(`/api/courier-requests/${req.id}`).set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  const raw = JSON.stringify(res.body);
+  assert.ok(!raw.includes("@example.com"), "response must never include an email address");
+  assert.ok(!raw.includes("rider-sub-leak"), "response must never include the sender's cognitoSub");
+  assert.ok(!raw.includes("driver-sub-leak"), "response must never include the driver's cognitoSub");
+  assert.equal(res.body.sender.firstName, "R");
+  assert.equal(res.body.driver.user.firstName, "D");
+});
+
+test("GET /api/courier-requests/sent never leaks driver email or cognitoSub", async () => {
+  const sender = await createRider("rider-sub-leak2");
+  const driver = await createDriver("driver-sub-leak2");
+  await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      driverId: driver.id,
+      status: "MATCHED",
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-leak2", groups: ["Rider"] });
+  const res = await request(app).get("/api/courier-requests/sent").set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  const raw = JSON.stringify(res.body);
+  assert.ok(!raw.includes("@example.com"));
+  assert.ok(!raw.includes("driver-sub-leak2"));
+});
+
+test("GET /api/courier-requests/available and /mine include the sender's name for the driver's card UI", async () => {
+  const sender = await createRider("rider-sub-avail-name");
+  await createDriver("driver-sub-avail-name");
+  await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-avail-name", groups: ["Driver"] });
+  const available = await request(app).get("/api/courier-requests/available").set("Authorization", `Bearer ${token}`);
+  assert.equal(available.status, 200);
+  assert.equal(available.body.data[0].sender.firstName, "R");
+  assert.ok(!JSON.stringify(available.body).includes("@example.com"));
+
+  const acceptRes = await request(app)
+    .patch(`/api/courier-requests/${available.body.data[0].id}/accept`)
+    .set("Authorization", `Bearer ${token}`);
+  assert.equal(acceptRes.status, 200);
+  assert.equal(acceptRes.body.sender.firstName, "R");
+
+  const mine = await request(app).get("/api/courier-requests/mine").set("Authorization", `Bearer ${token}`);
+  assert.equal(mine.status, 200);
+  assert.equal(mine.body.data[0].sender.firstName, "R");
+});
+
+test("GET /api/courier-requests/:id lets an ACTIVE driver preview an unassigned request, but not a PENDING_REVIEW driver", async () => {
+  const sender = await createRider("rider-sub-preview");
+  await createDriver("driver-sub-preview-active", "ACTIVE");
+  await createDriver("driver-sub-preview-pending", "PENDING_REVIEW");
+  const req = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const activeToken = mockAuthAs({ sub: "driver-sub-preview-active", groups: ["Driver"] });
+  const activeRes = await request(app).get(`/api/courier-requests/${req.id}`).set("Authorization", `Bearer ${activeToken}`);
+  assert.equal(activeRes.status, 200);
+
+  restoreAuth();
+  const pendingToken = mockAuthAs({ sub: "driver-sub-preview-pending", groups: ["Driver"] });
+  const pendingRes = await request(app).get(`/api/courier-requests/${req.id}`).set("Authorization", `Bearer ${pendingToken}`);
+  assert.equal(pendingRes.status, 403);
+
+  // Once matched to another driver, it's no longer "available" to preview.
+  await prisma.courierRequest.update({ where: { id: req.id }, data: { status: "MATCHED", driverId: (await createDriver("driver-sub-preview-taken")).id } });
+  restoreAuth();
+  const afterMatchToken = mockAuthAs({ sub: "driver-sub-preview-active", groups: ["Driver"] });
+  const afterMatchRes = await request(app).get(`/api/courier-requests/${req.id}`).set("Authorization", `Bearer ${afterMatchToken}`);
+  assert.equal(afterMatchRes.status, 403);
+});
+
+test("PATCH /api/courier-requests/:id/status notifies the assigned driver (not just the sender) on an admin override", async () => {
+  const sender = await createRider("rider-sub-notify-driver");
+  const driver = await createDriver("driver-sub-notify-driver");
+  const req = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      driverId: driver.id,
+      status: "MATCHED",
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const superToken = mockAuthAs({ sub: "super-notify-driver", groups: ["Admin"] });
+  const res = await request(app)
+    .patch(`/api/courier-requests/${req.id}/status`)
+    .set("Authorization", `Bearer ${superToken}`)
+    .send({ status: "CANCELLED" });
+  assert.equal(res.status, 200);
+
+  const driverUser = await prisma.user.findUnique({ where: { id: driver.userId } });
+  const driverNotifications = await prisma.notification.findMany({ where: { userId: driverUser!.id } });
+  assert.equal(driverNotifications.length, 1);
+  assert.equal(driverNotifications[0].type, "DELIVERY_CANCELLED");
+
+  const senderNotifications = await prisma.notification.findMany({ where: { userId: sender.id } });
+  assert.equal(senderNotifications.length, 1);
+});
+
 test("GET /api/courier-requests/:id denies a stranger and allows the sender", async () => {
   const sender = await createRider("rider-sub-5");
   const req = await prisma.courierRequest.create({
