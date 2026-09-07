@@ -254,7 +254,11 @@ rentalsRouter.patch("/rentals/:id/status", requireAuth, requireAdminPermission("
     where: { id: req.params.id },
     data: { status: parsed.data.status },
   });
-  void recordAudit({
+  // Awaited (unlike most recordAudit call sites) so a caller can never
+  // observe a 200 for this admin action before the audit row actually
+  // exists — recordAudit never throws, so this can't turn a real failure
+  // into one; it only guarantees ordering for the test/audit-trail guarantee.
+  await recordAudit({
     actorSub: req.user!.sub,
     action: "RENTAL_LISTING_REVIEWED",
     entityType: "RentalListing",

@@ -29,7 +29,7 @@ subscriptionsRouter.post("/subscription-plans", requireAuth, requireAdminPermiss
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const plan = await prisma.subscriptionPlan.create({ data: parsed.data });
-  void recordAudit({
+  await recordAudit({
     actorSub: req.user!.sub,
     action: "SUBSCRIPTION_PLAN_CREATED",
     entityType: "SubscriptionPlan",

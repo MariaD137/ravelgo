@@ -211,7 +211,7 @@ courierRouter.patch("/courier-requests/:id/status", requireAuth, requireRole("Dr
     },
   });
   if (isAdmin) {
-    void recordAudit({
+    await recordAudit({
       actorSub: req.user!.sub,
       action: "COURIER_REQUEST_STATUS_OVERRIDDEN",
       entityType: "CourierRequest",

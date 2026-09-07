@@ -62,7 +62,7 @@ carPaddyRouter.patch("/car-paddy/:id", requireAuth, requireAdminPermission("list
     where: { id: req.params.id },
     data: { status: parsed.data.status, reviewedAt: new Date() },
   });
-  void recordAudit({
+  await recordAudit({
     actorSub: req.user!.sub,
     action: "CAR_PADDY_REQUEST_REVIEWED",
     entityType: "CarPaddyRequest",

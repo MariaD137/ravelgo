@@ -252,7 +252,7 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
     include: { rider: true, driver: { include: { user: true, vehicles: true } } },
   });
   if (isAdmin) {
-    void recordAudit({
+    await recordAudit({
       actorSub: req.user!.sub,
       action: "TRIP_STATUS_OVERRIDDEN",
       entityType: "Trip",
