@@ -8,11 +8,13 @@ import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 /// Rider sign-in.
 ///
-/// AUTH BOUNDARY (MOCKED): there is no authentication backend, so credentials
-/// cannot actually be verified. Input is validated locally (well-formed email,
-/// non-empty password) and rejected with visible errors when invalid; valid
-/// input proceeds to home. `_signIn` is the integration point for the future
-/// auth service.
+/// Backed by real AWS Cognito authentication (see [AuthService.signIn], which
+/// wraps `amazon_cognito_identity_dart_2`) — credentials are verified against
+/// the Cognito user pool, not merely validated locally. Input is still
+/// validated client-side first (well-formed email, non-empty password) so the
+/// user gets an immediate error before a network round trip; a Cognito
+/// rejection (wrong password, unconfirmed account, etc.) surfaces via
+/// [AuthService.friendlyError] in the snackbar below.
 class Login extends StatefulWidget {
   const Login({super.key});
 

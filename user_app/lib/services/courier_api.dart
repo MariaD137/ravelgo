@@ -23,6 +23,21 @@ class CourierRequest {
   // been captured (i.e. once the request reaches DELIVERED).
   final String? deliveryPhotoUrl;
   final String? recipientSignatureUrl;
+  // Resolved by the sender's Places-backed address search at request time —
+  // null for a request made before this existed, or whose address never
+  // resolved. Never fabricated.
+  final double? pickupLat;
+  final double? pickupLng;
+  final double? dropoffLat;
+  final double? dropoffLng;
+  // The courier's CURRENT position — the same real driver GPS feed behind
+  // the admin Live Map's Packages view, only present once the assigned
+  // driver has reported at least one location. Only present on the
+  // single-request detail fetch (GET /courier-requests/:id), not on lists.
+  final double? courierLat;
+  final double? courierLng;
+  final DateTime? courierLocationUpdatedAt;
+  final String? courierPresence; // LIVE | STALE | null (no report yet)
 
   CourierRequest({
     required this.id,
@@ -40,7 +55,17 @@ class CourierRequest {
     this.deliveredAt,
     this.deliveryPhotoUrl,
     this.recipientSignatureUrl,
+    this.pickupLat,
+    this.pickupLng,
+    this.dropoffLat,
+    this.dropoffLng,
+    this.courierLat,
+    this.courierLng,
+    this.courierLocationUpdatedAt,
+    this.courierPresence,
   });
+
+  static double? _dOrNull(dynamic v) => v == null ? null : _d(v);
 
   factory CourierRequest.fromJson(Map<String, dynamic> j) => CourierRequest(
         id: '${j['id']}',
@@ -59,6 +84,15 @@ class CourierRequest {
         deliveryPhotoUrl: (j['deliveryPhotoUrl'] as String?)?.isNotEmpty == true ? j['deliveryPhotoUrl'] as String : null,
         recipientSignatureUrl:
             (j['recipientSignatureUrl'] as String?)?.isNotEmpty == true ? j['recipientSignatureUrl'] as String : null,
+        pickupLat: _dOrNull(j['pickupLat']),
+        pickupLng: _dOrNull(j['pickupLng']),
+        dropoffLat: _dOrNull(j['dropoffLat']),
+        dropoffLng: _dOrNull(j['dropoffLng']),
+        courierLat: _dOrNull(j['courierLat']),
+        courierLng: _dOrNull(j['courierLng']),
+        courierLocationUpdatedAt:
+            j['courierLocationUpdatedAt'] == null ? null : DateTime.tryParse('${j['courierLocationUpdatedAt']}')?.toLocal(),
+        courierPresence: j['courierPresence']?.toString(),
       );
 }
 
@@ -72,6 +106,10 @@ class CourierApi {
     required String packageSize,
     required String recipientName,
     required String recipientPhone,
+    double? pickupLat,
+    double? pickupLng,
+    double? dropoffLat,
+    double? dropoffLng,
   }) async {
     final data = await ApiClient.post('/api/courier-requests', {
       'pickupAddress': pickupAddress,
@@ -80,6 +118,10 @@ class CourierApi {
       'packageSize': packageSize,
       'recipientName': recipientName,
       'recipientPhone': recipientPhone,
+      if (pickupLat != null) 'pickupLat': pickupLat,
+      if (pickupLng != null) 'pickupLng': pickupLng,
+      if (dropoffLat != null) 'dropoffLat': dropoffLat,
+      if (dropoffLng != null) 'dropoffLng': dropoffLng,
     });
     return CourierRequest.fromJson(data as Map<String, dynamic>);
   }

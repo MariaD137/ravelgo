@@ -7,7 +7,10 @@ import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { blockIfAdminLacksPermission } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
+import { notifyUser, type NotificationType } from "../lib/notifications";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { getLatestDriverLocation, locationFreshness } from "../realtime/hub";
+import { isValidCoordinate } from "../lib/geo";
 
 export const courierRouter = Router();
 
@@ -35,6 +38,25 @@ async function findOwnDriver(cognitoSub: string) {
   return prisma.driver.findFirst({ where: { user: { cognitoSub } } });
 }
 
+// Attaches the courier's CURRENT location to a single request, for tracking.
+// Reuses the exact same driver GPS feed as the admin Live Map's Packages view
+// (realtime/hub.ts) — a package has no location of its own, only whichever
+// driver currently has it — so this is never a second tracking system, and
+// never a fabricated position. Omitted (null) until that driver has reported
+// at least one coordinate, or once the request has no assigned driver.
+function withCourierLocation<T extends { driverId: string | null }>(
+  request: T,
+): T & { courierLat: number | null; courierLng: number | null; courierLocationUpdatedAt: string | null; courierPresence: "LIVE" | "STALE" | null } {
+  const loc = request.driverId ? getLatestDriverLocation(request.driverId) : undefined;
+  return {
+    ...request,
+    courierLat: loc?.lat ?? null,
+    courierLng: loc?.lng ?? null,
+    courierLocationUpdatedAt: loc?.updatedAt ?? null,
+    courierPresence: loc ? locationFreshness(loc.updatedAt) : null,
+  };
+}
+
 // Flat rate by package size — the only pricing input a delivery has today
 // (there's no pickup/dropoff geocoding on this model, unlike Trip). Server
 // computes the price from this table; the client only says which size.
@@ -44,6 +66,7 @@ const PACKAGE_PRICES: Record<string, number> = {
   LARGE: 2500,
 };
 
+const coord = z.number().finite();
 const createCourierSchema = z.object({
   pickupAddress: z.string().min(1),
   dropoffAddress: z.string().min(1),
@@ -51,6 +74,13 @@ const createCourierSchema = z.object({
   packageSize: z.enum(["SMALL", "MEDIUM", "LARGE"]).default("MEDIUM"),
   recipientName: z.string().min(1),
   recipientPhone: z.string().min(1),
+  // Resolved by the sender's Places-backed address search — optional so a
+  // client that only ever sends free text (or an older app build) still
+  // works exactly as before; the pin is simply omitted, never guessed.
+  pickupLat: coord.min(-90).max(90).optional(),
+  pickupLng: coord.min(-180).max(180).optional(),
+  dropoffLat: coord.min(-90).max(90).optional(),
+  dropoffLng: coord.min(-180).max(180).optional(),
 });
 
 // Rider: request a courier/package delivery. estimatedFare is always
@@ -62,8 +92,20 @@ courierRouter.post("/courier-requests", requireAuth, requireRole("Rider"), async
   const sender = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
   if (!sender) return res.status(404).json({ error: "Sender not found" });
 
+  const { pickupLat, pickupLng, dropoffLat, dropoffLng, ...rest } = parsed.data;
+  const pickup = pickupLat != null && pickupLng != null && isValidCoordinate({ lat: pickupLat, lng: pickupLng });
+  const dropoff = dropoffLat != null && dropoffLng != null && isValidCoordinate({ lat: dropoffLat, lng: dropoffLng });
+
   const request = await prisma.courierRequest.create({
-    data: { ...parsed.data, senderId: sender.id, estimatedFare: PACKAGE_PRICES[parsed.data.packageSize] },
+    data: {
+      ...rest,
+      senderId: sender.id,
+      estimatedFare: PACKAGE_PRICES[parsed.data.packageSize],
+      pickupLat: pickup ? pickupLat : undefined,
+      pickupLng: pickup ? pickupLng : undefined,
+      dropoffLat: dropoff ? dropoffLat : undefined,
+      dropoffLng: dropoff ? dropoffLng : undefined,
+    },
   });
   res.status(201).json(request);
 });
@@ -150,6 +192,13 @@ courierRouter.patch("/courier-requests/:id/accept", requireAuth, requireRole("Dr
     where: { id: req.params.id },
     data: { driverId: driver.id, status: "MATCHED" },
   });
+  await notifyUser(
+    request.senderId,
+    "DELIVERY_COURIER_ASSIGNED",
+    "Courier assigned",
+    "A courier has been assigned to your delivery.",
+    { type: "COURIER_REQUEST", id: request.id },
+  );
   res.json(request);
 });
 
@@ -219,6 +268,19 @@ courierRouter.patch("/courier-requests/:id/status", requireAuth, requireRole("Dr
       metadata: { status },
     });
   }
+  const statusNotifications: Partial<Record<typeof status, { type: NotificationType; title: string; body: string }>> = {
+    PICKED_UP: { type: "DELIVERY_PICKED_UP", title: "Package picked up", body: "Your package has been picked up by the courier." },
+    IN_TRANSIT: { type: "DELIVERY_IN_TRANSIT", title: "Package in transit", body: "Your package is on its way." },
+    DELIVERED: { type: "DELIVERY_DELIVERED", title: "Package delivered", body: "Your package has been delivered." },
+    CANCELLED: { type: "DELIVERY_CANCELLED", title: "Delivery cancelled", body: "Your delivery request was cancelled." },
+  };
+  const notification = statusNotifications[status];
+  if (notification) {
+    await notifyUser(request.senderId, notification.type, notification.title, notification.body, {
+      type: "COURIER_REQUEST",
+      id: request.id,
+    });
+  }
   res.json(await withProofUrls(request));
 });
 
@@ -236,7 +298,7 @@ courierRouter.get("/courier-requests/:id", requireAuth, async (req, res) => {
   if (!isOwner && !groups.includes("Admin")) {
     return res.status(403).json({ error: "Not authorized to view this request" });
   }
-  res.json(await withProofUrls(request));
+  res.json(withCourierLocation(await withProofUrls(request)));
 });
 
 // Admin: monitor all courier requests

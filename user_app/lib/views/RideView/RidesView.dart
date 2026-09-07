@@ -10,7 +10,8 @@ import 'package:ravelgo_user_app/theme/app_theme.dart';
 class Ride {
   final DateTime dateTime;
   final String title;
-  final String id;
+  final String id; // short display form, e.g. "#a1b2c3" — NOT a real lookup key
+  final String tripId; // the real Trip.id — use this for any API call
   final String pickup;
   final String destination;
   final double fare;
@@ -21,6 +22,7 @@ class Ride {
     required this.dateTime,
     required this.title,
     required this.id,
+    required this.tripId,
     this.pickup = '',
     this.destination = '',
     this.fare = 0,
@@ -32,6 +34,7 @@ class Ride {
         dateTime: t.requestedAt,
         title: t.destination.isNotEmpty ? t.destination : 'Trip',
         id: '#${t.id.substring(0, t.id.length < 6 ? t.id.length : 6)}',
+        tripId: t.id,
         pickup: t.pickup,
         destination: t.destination,
         fare: t.fare,
@@ -43,6 +46,7 @@ class Ride {
         dateTime: dateTime,
         title: title ?? this.title,
         id: id,
+        tripId: tripId,
         pickup: pickup ?? this.pickup,
         destination: destination ?? this.destination,
         fare: fare,

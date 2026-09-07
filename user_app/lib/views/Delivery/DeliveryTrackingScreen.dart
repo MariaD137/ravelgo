@@ -1,13 +1,24 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/courier_api.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
+// Statuses where a courier is actually assigned and could be reporting a
+// location — matches the backend's own ACTIVE_COURIER_STATUSES
+// (admin.routes.ts), so "is a courier expected" means the same thing here as
+// it does on the admin Live Map.
+const _activeCourierStatuses = {'MATCHED', 'PICKED_UP', 'IN_TRANSIT'};
+
 /// Live-ish status for a single delivery request. There's no realtime feed
 /// for courier requests (unlike Trip's WebSocket), so this polls the real
-/// status endpoint — never fabricated progress.
+/// status endpoint — never fabricated progress. The same poll now also
+/// carries the courier's live location (see CourierRequest.courierLat/Lng),
+/// reusing the exact GPS feed behind the admin Live Map's Packages view —
+/// never a second, independent tracking system.
 class DeliveryTrackingScreen extends StatefulWidget {
   final String deliveryId;
   const DeliveryTrackingScreen({super.key, required this.deliveryId});
@@ -100,6 +111,12 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
         children: [
           if (r.status == 'CANCELLED') _cancelledBanner() else _timeline(r.status),
           const SizedBox(height: 20),
+          if (_hasAnyCoordinate(r)) ...[
+            _map(r),
+            const SizedBox(height: 12),
+            _locationFreshnessLabel(r),
+            const SizedBox(height: 20),
+          ],
           _row('From', r.pickupAddress),
           _row('To', r.dropoffAddress),
           _row('Recipient', '${r.recipientName} · ${r.recipientPhone}'),
@@ -116,6 +133,91 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
           ],
         ],
       ),
+    );
+  }
+
+  bool _hasAnyCoordinate(CourierRequest r) =>
+      (r.pickupLat != null && r.pickupLng != null) ||
+      (r.dropoffLat != null && r.dropoffLng != null) ||
+      (r.courierLat != null && r.courierLng != null);
+
+  Widget _map(CourierRequest r) {
+    final markers = <Marker>{};
+    if (r.pickupLat != null && r.pickupLng != null) {
+      markers.add(Marker(
+        markerId: const MarkerId('pickup'),
+        position: LatLng(r.pickupLat!, r.pickupLng!),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        infoWindow: const InfoWindow(title: 'Pickup'),
+      ));
+    }
+    if (r.dropoffLat != null && r.dropoffLng != null) {
+      markers.add(Marker(
+        markerId: const MarkerId('dropoff'),
+        position: LatLng(r.dropoffLat!, r.dropoffLng!),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: const InfoWindow(title: 'Drop-off'),
+      ));
+    }
+    if (r.courierLat != null && r.courierLng != null) {
+      markers.add(Marker(
+        markerId: const MarkerId('courier'),
+        position: LatLng(r.courierLat!, r.courierLng!),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        infoWindow: const InfoWindow(title: 'Courier'),
+      ));
+    }
+    final center = markers.first.position;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: SizedBox(
+        height: 220,
+        child: SafeGoogleMap(
+          initialCameraPosition: CameraPosition(target: center, zoom: 13),
+          markers: markers,
+          myLocationButtonEnabled: false,
+          zoomControlsEnabled: false,
+        ),
+      ),
+    );
+  }
+
+  /// LIVE / STALE / no-report-yet / not-applicable — the same three-state
+  /// freshness model the admin Live Map uses (backend/src/routes/admin.
+  /// routes.ts's locationFreshness), so "live" never means something
+  /// different here than it does for ops. Never shows a stale position as if
+  /// it were current.
+  Widget _locationFreshnessLabel(CourierRequest r) {
+    String text;
+    IconData icon;
+    Color color;
+    if (r.courierPresence == 'LIVE') {
+      final seconds = r.courierLocationUpdatedAt == null
+          ? 0
+          : DateTime.now().difference(r.courierLocationUpdatedAt!).inSeconds.clamp(0, 999);
+      text = 'Courier location updated ${seconds}s ago';
+      icon = Icons.circle;
+      color = AppColors.success;
+    } else if (r.courierPresence == 'STALE') {
+      final minutes = r.courierLocationUpdatedAt == null
+          ? 0
+          : DateTime.now().difference(r.courierLocationUpdatedAt!).inMinutes;
+      text = "Courier location hasn't updated in ${minutes}m";
+      icon = Icons.warning_amber_rounded;
+      color = AppColors.textMuted;
+    } else if (_activeCourierStatuses.contains(r.status)) {
+      text = 'Courier location is temporarily unavailable';
+      icon = Icons.location_off_outlined;
+      color = AppColors.textMuted;
+    } else {
+      return const SizedBox.shrink();
+    }
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 6),
+        Text(text, style: TextStyle(fontSize: 12.5, color: color)),
+      ],
     );
   }
 

@@ -15,6 +15,16 @@ class Trip {
   final double? driverRating;
   final String? vehicleLabel; // e.g. "Silver Toyota Corolla"
   final String? vehiclePlate;
+  final double? distanceKm;
+  // Only present when fetched via TripsApi.byId (GET /api/trips/:id) — the
+  // "mine" list route deliberately stays minimal. Null rather than a guessed
+  // value when the trip hasn't been charged yet.
+  final String? paymentId;
+  final String? paymentMethod; // CARD | CASH | WALLET
+  final String? paymentStatus; // PENDING | SUCCEEDED | FAILED | REFUNDED
+  final String? paymentCurrency;
+  final double? paymentAmount;
+  final DateTime? paidAt;
 
   Trip({
     required this.id,
@@ -30,6 +40,13 @@ class Trip {
     this.driverRating,
     this.vehicleLabel,
     this.vehiclePlate,
+    this.distanceKm,
+    this.paymentId,
+    this.paymentMethod,
+    this.paymentStatus,
+    this.paymentCurrency,
+    this.paymentAmount,
+    this.paidAt,
   });
 
   /// The amount actually owed: the final fare once set, otherwise the estimate.
@@ -38,8 +55,12 @@ class Trip {
   static double _toDouble(dynamic v) =>
       v == null ? 0 : (v is num ? v.toDouble() : double.tryParse('$v') ?? 0);
 
+  static double? _toDoubleOrNull(dynamic v) => v == null ? null : _toDouble(v);
+
   static DateTime _toDate(dynamic v) =>
       v == null ? DateTime.now() : (DateTime.tryParse('$v')?.toLocal() ?? DateTime.now());
+
+  static DateTime? _toDateOrNull(dynamic v) => v == null ? null : _toDate(v);
 
   factory Trip.fromJson(Map<String, dynamic> j) {
     String? driverName;
@@ -67,6 +88,7 @@ class Trip {
         vehiclePlate = v['plateNumber']?.toString();
       }
     }
+    final payment = j['payment'];
     return Trip(
       id: '${j['id']}',
       pickup: '${j['pickup'] ?? ''}',
@@ -81,6 +103,13 @@ class Trip {
       driverRating: driverRating,
       vehicleLabel: vehicleLabel,
       vehiclePlate: vehiclePlate,
+      distanceKm: _toDoubleOrNull(j['distanceKm']),
+      paymentId: payment is Map ? payment['id']?.toString() : null,
+      paymentMethod: payment is Map ? payment['method']?.toString() : null,
+      paymentStatus: payment is Map ? payment['status']?.toString() : null,
+      paymentCurrency: payment is Map ? payment['currency']?.toString() : null,
+      paymentAmount: payment is Map ? _toDoubleOrNull(payment['amount']) : null,
+      paidAt: payment is Map ? _toDateOrNull(payment['paidAt']) : null,
     );
   }
 }
@@ -99,6 +128,15 @@ class TripsApi {
     final data = await ApiClient.get('/api/trips/mine?page=$page&pageSize=$pageSize');
     final list = (data is Map ? data['data'] : data) as List? ?? const [];
     return list.whereType<Map<String, dynamic>>().map(Trip.fromJson).toList();
+  }
+
+  /// Full detail for one trip the caller is party to — the only trip-fetch
+  /// that includes real payment data (method/status/amount/paidAt). Used by
+  /// the e-receipt screen, which needs authoritative payment info that
+  /// [mine] deliberately omits.
+  static Future<Trip> byId(String id) async {
+    final data = await ApiClient.get('/api/trips/$id');
+    return Trip.fromJson(data as Map<String, dynamic>);
   }
 
   /// Report the rider's current position for this trip — only accepted by

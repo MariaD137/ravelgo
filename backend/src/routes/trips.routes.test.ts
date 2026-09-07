@@ -180,6 +180,26 @@ test("GET /api/trips/:id allows the rider who owns it, denies a stranger", async
   assert.equal(strangerRes.status, 403);
 });
 
+test("GET /api/trips/:id includes real payment data for the trip's own rider (not just Admin)", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-receipt-1", role: "RIDER", firstName: "C", lastName: "D", email: "receipt@example.com" },
+  });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, pickup: "X", destination: "Y", estimatedFare: 12, finalFare: 12, status: "COMPLETED" },
+  });
+  await prisma.payment.create({
+    data: { tripId: trip.id, userId: rider.id, amount: 12, method: "CASH", status: "SUCCEEDED", paidAt: new Date() },
+  });
+
+  const token = mockAuthAs({ sub: "rider-receipt-1", groups: ["Rider"] });
+  const res = await request(app).get(`/api/trips/${trip.id}`).set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.payment?.method, "CASH");
+  assert.equal(res.body.payment?.status, "SUCCEEDED");
+  assert.equal(res.body.payment?.amount, 12);
+});
+
 test("PATCH /api/trips/:id/status lets the assigned Driver or an Admin advance trip status", async () => {
   const rider = await prisma.user.create({
     data: { cognitoSub: "rider-sub-4", role: "RIDER", firstName: "E", lastName: "F", email: "e@example.com" },
@@ -212,6 +232,11 @@ test("PATCH /api/trips/:id/status lets the assigned Driver or an Admin advance t
   assert.equal(res.status, 200);
   assert.equal(res.body.status, "COMPLETED");
   assert.ok(res.body.completedAt);
+
+  const notifications = await prisma.notification.findMany({ where: { userId: trip.riderId } });
+  assert.ok(notifications.some((n) => n.type === "RIDE_STARTED"));
+  assert.ok(notifications.some((n) => n.type === "RIDE_COMPLETED"));
+  assert.ok(notifications.every((n) => n.referenceType === "TRIP" && n.referenceId === trip.id));
 });
 
 test("PATCH /api/trips/:id/status rejects a Driver who isn't assigned to the trip", async () => {

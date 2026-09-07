@@ -28,6 +28,20 @@ const latestDriverLocation = new Map<string, DriverLocation>();
 // an unbounded map here would be a real memory leak.
 const latestRiderLocation = new Map<string, RiderLocation>();
 
+// A location report older than this is no longer "live" for monitoring
+// purposes. Set comfortably above every reporting cadence in the apps (the
+// driver app's idle REST ping is every 20s, its mid-trip WebSocket push is
+// every 5s; the rider app's trip ping is every 15s) so ordinary network
+// jitter never flickers a fresh entity between LIVE and STALE. Shared by the
+// admin live map and any other consumer of these locations (e.g. a
+// customer's own delivery tracking screen) so "live" means one thing
+// everywhere it's shown.
+export const LIVE_LOCATION_THRESHOLD_MS = 30_000;
+
+export function locationFreshness(updatedAt: string): "LIVE" | "STALE" {
+  return Date.now() - new Date(updatedAt).getTime() <= LIVE_LOCATION_THRESHOLD_MS ? "LIVE" : "STALE";
+}
+
 export function joinTripRoom(tripId: string, socket: WebSocket) {
   let room = tripRooms.get(tripId);
   if (!room) {

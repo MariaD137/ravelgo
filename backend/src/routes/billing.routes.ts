@@ -4,6 +4,7 @@ import { prisma } from "../db/prisma";
 import { env } from "../config/env";
 import { stripeClient } from "../billing/stripe";
 import { logSecurityEvent } from "../lib/security-log";
+import { notifyUser } from "../lib/notifications";
 import { creditWalletFromTopup, failWalletTopup } from "../services/wallet";
 
 export const billingRouter = Router();
@@ -57,6 +58,15 @@ billingRouter.post("/", async (req, res) => {
             paymentStatus: succeeded ? "SUCCEEDED" : "FAILED",
           },
         });
+        await notifyUser(
+          booking.renterId,
+          succeeded ? "RENTAL_CONFIRMED" : "PAYMENT_FAILED",
+          succeeded ? "Rental confirmed" : "Payment failed",
+          succeeded
+            ? "Your card payment went through and your rental booking is confirmed."
+            : "Your card payment for this rental booking could not be completed.",
+          { type: "RENTAL_BOOKING", id: booking.id },
+        );
       }
     } else {
       const payment = await prisma.payment.findFirst({ where: { providerReference: intent.id } });
@@ -68,6 +78,15 @@ billingRouter.post("/", async (req, res) => {
             paidAt: succeeded ? new Date() : undefined,
           },
         });
+        await notifyUser(
+          payment.userId,
+          succeeded ? "PAYMENT_SUCCEEDED" : "PAYMENT_FAILED",
+          succeeded ? "Payment successful" : "Payment failed",
+          succeeded
+            ? `Your card payment of ${payment.amount} for this ride went through.`
+            : `Your card payment of ${payment.amount} for this ride could not be completed.`,
+          { type: "TRIP", id: payment.tripId },
+        );
       }
     }
 

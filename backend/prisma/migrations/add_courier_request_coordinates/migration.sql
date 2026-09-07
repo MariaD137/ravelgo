@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "CourierRequest" ADD COLUMN "pickupLat" DOUBLE PRECISION;
+ALTER TABLE "CourierRequest" ADD COLUMN "pickupLng" DOUBLE PRECISION;
+ALTER TABLE "CourierRequest" ADD COLUMN "dropoffLat" DOUBLE PRECISION;
+ALTER TABLE "CourierRequest" ADD COLUMN "dropoffLng" DOUBLE PRECISION;

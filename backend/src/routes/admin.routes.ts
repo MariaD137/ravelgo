@@ -2,7 +2,12 @@ import { Router } from "express";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
-import { getAllDriverLocations, getRiderLocation, getLatestDriverLocation } from "../realtime/hub";
+import {
+  getAllDriverLocations,
+  getRiderLocation,
+  getLatestDriverLocation,
+  locationFreshness,
+} from "../realtime/hub";
 
 export const adminRouter = Router();
 
@@ -16,17 +21,6 @@ function fullName(u: { firstName: string; lastName: string } | null | undefined)
 // route. Matches TripStatus / CourierStatus in schema.prisma.
 const ACTIVE_TRIP_STATUSES = ["MATCHED", "IN_PROGRESS"] as const;
 const ACTIVE_COURIER_STATUSES = ["MATCHED", "PICKED_UP", "IN_TRANSIT"] as const;
-
-// A location report older than this is no longer "live" for monitoring
-// purposes. Set comfortably above every reporting cadence in the apps (the
-// driver app's idle REST ping is every 20s, its mid-trip WebSocket push is
-// every 5s; the rider app's trip ping is every 15s) so ordinary network
-// jitter never flickers a fresh entity between LIVE and STALE.
-const LIVE_LOCATION_THRESHOLD_MS = 30_000;
-
-function locationFreshness(updatedAt: string): "LIVE" | "STALE" {
-  return Date.now() - new Date(updatedAt).getTime() <= LIVE_LOCATION_THRESHOLD_MS ? "LIVE" : "STALE";
-}
 
 // Admin: the Live Map's data source. Every driver pin is a driver who has
 // actually reported a coordinate (via the WebSocket location feed while

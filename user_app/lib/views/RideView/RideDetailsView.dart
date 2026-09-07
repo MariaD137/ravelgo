@@ -142,7 +142,7 @@ class RideDetailsScreen extends StatelessWidget {
                     const SizedBox(height: 16),
                     OutlinedButton.icon(
                       onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const EReceiptPage()),
+                        MaterialPageRoute(builder: (_) => EReceiptPage(ride: ride)),
                       ),
                       icon: const Icon(Icons.receipt_long_outlined),
                       label: const Text('View E-Receipt'),
