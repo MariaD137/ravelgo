@@ -288,6 +288,11 @@ model RentalListing {
   vehicle    Vehicle              @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   dailyRate  Float
   location   String
+  // Populated from the same Places-backed search used elsewhere (ride
+  // booking, "Send a Package") once a listing is created through it.
+  // Nullable so listings created before this existed remain valid.
+  lat        Float?
+  lng        Float?
   status     RentalListingStatus  @default(PENDING_APPROVAL)
   createdAt  DateTime             @default(now())
 

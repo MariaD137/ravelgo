@@ -388,16 +388,22 @@ class DriverApi {
     await ApiClient.delete('/api/vehicles/$id');
   }
 
-  /// List one of the driver's vehicles for luxury rental.
+  /// List one of the driver's vehicles for luxury rental. lat/lng come from
+  /// the Places-backed location picker (PlaceSearchScreen) when the driver
+  /// used it; omitted otherwise rather than guessed.
   static Future<void> listForRental({
     required String vehicleId,
     required double dailyRate,
     required String location,
+    double? lat,
+    double? lng,
   }) async {
     await ApiClient.post('/api/rentals', {
       'vehicleId': vehicleId,
       'dailyRate': dailyRate,
       'location': location,
+      if (lat != null) 'lat': lat,
+      if (lng != null) 'lng': lng,
     });
   }
 
