@@ -5,7 +5,7 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { blockIfAdminLacksPermission } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
-import { broadcastTripStatus, getLatestDriverLocation } from "../realtime/hub";
+import { broadcastTripStatus, clearRiderLocation, getLatestDriverLocation, recordRiderLocation } from "../realtime/hub";
 import { matchDriverToTrip } from "../services/matching";
 import { quoteFare } from "../services/pricing";
 import { MAX_FINAL_FARE_MULTIPLIER, MIN_FINAL_FARE_MULTIPLIER, moneyAmountSchema } from "../lib/money";
@@ -15,6 +15,13 @@ import { driverMayTransition, isValidTransition, riderMayCancel } from "../servi
 import { serializeTrip } from "../lib/trip-view";
 
 export const tripsRouter = Router();
+
+// A rider's live position is only meaningful, and only ever accepted, once a
+// driver is assigned (MATCHED) through the ride itself (IN_PROGRESS) — before
+// that there's nothing for ops to monitor, matching the admin Live Map's own
+// ACTIVE_TRIP_STATUSES filter (admin.routes.ts).
+const RIDER_TRACKABLE_STATUSES = ["MATCHED", "IN_PROGRESS"] as const;
+const TERMINAL_TRIP_STATUSES = ["COMPLETED", "CANCELLED", "DISPUTED"] as const;
 
 // The rider supplies pickup + dropoff COORDINATES (and display strings) — never
 // the distance or the fare. The server computes the great-circle distance from
@@ -260,6 +267,9 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
       metadata: { status: parsed.data.status, finalFare: parsed.data.finalFare },
     });
   }
+  if (TERMINAL_TRIP_STATUSES.includes(trip.status as (typeof TERMINAL_TRIP_STATUSES)[number])) {
+    clearRiderLocation(trip.id);
+  }
   broadcastTripStatus(trip.id, trip.status, trip.finalFare);
   res.json(serializeTrip(trip));
 });
@@ -293,6 +303,7 @@ tripsRouter.post("/trips/:id/cancel", requireAuth, requireRole("Rider"), async (
     data: { status: "CANCELLED" },
     include: { rider: true, driver: { include: { user: true, vehicles: true } } },
   });
+  clearRiderLocation(trip.id);
   broadcastTripStatus(trip.id, trip.status, trip.finalFare);
   res.json(serializeTrip(trip));
 });
@@ -318,6 +329,34 @@ tripsRouter.get("/trips/:id/driver-location", requireAuth, async (req, res) => {
   if (!trip.driverId) return res.status(404).json({ error: "No driver assigned yet" });
   const location = getLatestDriverLocation(trip.driverId);
   if (!location) return res.status(404).json({ error: "No location reported yet" });
+  res.json(location);
+});
+
+const riderLocationSchema = z.object({
+  lat: z.number().finite().gte(-90).lte(90),
+  lng: z.number().finite().gte(-180).lte(180),
+});
+
+// Rider (owner only): report my current position for this trip. Mirrors
+// POST /drivers/me/location's REST-ping pattern exactly, just scoped to one
+// trip instead of "while online" — this is what backs the admin Live Map's
+// Riders view. Only accepted while a driver is assigned or the ride is under
+// way (never before matching, never after — see TERMINAL_TRIP_STATUSES
+// above, which clears the cached position once the trip ends).
+tripsRouter.post("/trips/:id/rider-location", requireAuth, requireRole("Rider"), async (req, res) => {
+  const parsed = riderLocationSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const trip = await prisma.trip.findUnique({ where: { id: req.params.id }, include: { rider: true } });
+  if (!trip) return res.status(404).json({ error: "Trip not found" });
+  if (trip.rider.cognitoSub !== req.user!.sub) {
+    return res.status(403).json({ error: "Not authorized to report location for this trip" });
+  }
+  if (!RIDER_TRACKABLE_STATUSES.includes(trip.status as (typeof RIDER_TRACKABLE_STATUSES)[number])) {
+    return res.status(409).json({ error: "This trip isn't currently trackable." });
+  }
+
+  const location = recordRiderLocation(trip.id, parsed.data.lat, parsed.data.lng);
   res.json(location);
 });
 

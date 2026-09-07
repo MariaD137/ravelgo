@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/booking_api.dart';
 import 'package:ravelgo_user_app/services/payments_api.dart';
@@ -30,6 +32,12 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
   late String _status = trip.status;
   bool _live = false;
   DateTime? _lastLocationAt;
+
+  // Reports the rider's own position back to the backend — only while a
+  // driver is assigned or the ride is under way (see _syncLocationPing).
+  // Before that (REQUESTED) or after (COMPLETED/CANCELLED/DISPUTED) there is
+  // nothing for ops to monitor, and the backend refuses the ping anyway.
+  Timer? _locationTimer;
 
   // Post-trip rating.
   int _rating = 0;
@@ -199,6 +207,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
       await BookingApi.cancelTrip(trip.id);
       if (!mounted) return;
       setState(() => _status = 'CANCELLED');
+      _syncLocationPing();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
@@ -265,6 +274,37 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
     super.initState();
     _startRealtime();
     _loadPaymentSettings();
+    _syncLocationPing();
+  }
+
+  /// Start/stop the rider location ping to match the current trip status —
+  /// called on entry and every time _status changes (trip:status message,
+  /// or the local optimistic update in _cancelTrip).
+  void _syncLocationPing() {
+    final trackable = _status == 'MATCHED' || _status == 'IN_PROGRESS';
+    if (trackable && _locationTimer == null) {
+      _pingLocation();
+      _locationTimer = Timer.periodic(const Duration(seconds: 15), (_) => _pingLocation());
+    } else if (!trackable && _locationTimer != null) {
+      _locationTimer?.cancel();
+      _locationTimer = null;
+    }
+  }
+
+  Future<void> _pingLocation() async {
+    try {
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
+      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      await TripsApi.pingLocation(trip.id, pos.latitude, pos.longitude);
+    } catch (_) {
+      // Best-effort: a failed fix/ping just means no update this tick — the
+      // admin Live Map shows this rider as STALE rather than the app ever
+      // blocking on a missed location.
+    }
   }
 
   Future<void> _startRealtime() async {
@@ -285,7 +325,10 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
         setState(() => _live = true);
         break;
       case 'trip:status':
-        if ('${m['tripId']}' == trip.id) setState(() => _status = '${m['status']}');
+        if ('${m['tripId']}' == trip.id) {
+          setState(() => _status = '${m['status']}');
+          _syncLocationPing();
+        }
         break;
       case 'location':
         if ('${m['tripId']}' == trip.id) setState(() => _lastLocationAt = DateTime.now());
@@ -296,6 +339,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
   @override
   void dispose() {
     _rt.dispose();
+    _locationTimer?.cancel();
     super.dispose();
   }
 

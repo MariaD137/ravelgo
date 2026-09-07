@@ -4,7 +4,7 @@ import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
 import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
-import { recordDriverLocation, resetRealtimeState } from "../realtime/hub";
+import { recordDriverLocation, recordRiderLocation, resetRealtimeState } from "../realtime/hub";
 
 beforeEach(() => {
   resetRealtimeState();
@@ -181,4 +181,140 @@ test("GET /api/admin/live-map rejects a non-Admin caller", async () => {
   const token = mockAuthAs({ sub: "rider-map", groups: ["Rider"] });
   const res = await request(app).get("/api/admin/live-map").set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 403);
+});
+
+test("GET /api/admin/live-map marks a driver's presence LIVE when online with a fresh ping, OFFLINE when not online", async () => {
+  const onlineUser = await prisma.user.create({
+    data: { cognitoSub: "map-presence-1", role: "DRIVER", firstName: "P", lastName: "1", email: "p1@example.com" },
+  });
+  const onlineDriver = await prisma.driver.create({ data: { userId: onlineUser.id, status: "ACTIVE", isOnline: true } });
+  recordDriverLocation(onlineDriver.id, 6.5, 3.4);
+
+  const offlineUser = await prisma.user.create({
+    data: { cognitoSub: "map-presence-2", role: "DRIVER", firstName: "P", lastName: "2", email: "p2@example.com" },
+  });
+  const offlineDriver = await prisma.driver.create({ data: { userId: offlineUser.id, status: "ACTIVE", isOnline: false } });
+  recordDriverLocation(offlineDriver.id, 6.5, 3.4);
+
+  const token = mockAuthAs({ sub: "admin-presence", groups: ["Admin"] });
+  const res = await request(app).get("/api/admin/live-map").set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  const drivers = res.body.drivers as { driverId: string; presence: string }[];
+  assert.equal(drivers.find((d) => d.driverId === onlineDriver.id)?.presence, "LIVE");
+  assert.equal(drivers.find((d) => d.driverId === offlineDriver.id)?.presence, "OFFLINE");
+});
+
+test("GET /api/admin/live-map's riders array reflects real reported positions only, never a fabricated one", async () => {
+  const riderUser = await prisma.user.create({
+    data: { cognitoSub: "map-rider-real", role: "RIDER", firstName: "R", lastName: "L", email: "rl@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "map-driver-real", role: "DRIVER", firstName: "D", lastName: "R", email: "dr@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE", isOnline: true } });
+  const trip = await prisma.trip.create({
+    data: {
+      riderId: riderUser.id,
+      driverId: driver.id,
+      pickup: "Ikeja",
+      destination: "Lekki",
+      estimatedFare: 20,
+      status: "MATCHED",
+    },
+  });
+
+  // Not yet reported: fields are omitted/null, never defaulted to anything.
+  const tokenA = mockAuthAs({ sub: "admin-rider-map-1", groups: ["Admin"] });
+  const before = await request(app).get("/api/admin/live-map").set("Authorization", `Bearer ${tokenA}`);
+  const riderBefore = (before.body.riders as { tripId: string; lat: number | null; presence: string | null }[]).find(
+    (r) => r.tripId === trip.id,
+  );
+  assert.equal(riderBefore?.lat, null);
+  assert.equal(riderBefore?.presence, null);
+  restoreAuth();
+
+  // Reported: the real value comes back, with a LIVE presence.
+  recordRiderLocation(trip.id, 6.44, 3.42);
+  const tokenB = mockAuthAs({ sub: "admin-rider-map-2", groups: ["Admin"] });
+  const after = await request(app).get("/api/admin/live-map").set("Authorization", `Bearer ${tokenB}`);
+  const riderAfter = (after.body.riders as { tripId: string; lat: number | null; presence: string | null }[]).find(
+    (r) => r.tripId === trip.id,
+  );
+  assert.equal(riderAfter?.lat, 6.44);
+  assert.equal(riderAfter?.presence, "LIVE");
+});
+
+test("GET /api/admin/live-map's packages array reuses the assigned courier's real driver GPS, never a separate fake location", async () => {
+  const senderUser = await prisma.user.create({
+    data: { cognitoSub: "map-pkg-sender", role: "RIDER", firstName: "S", lastName: "E", email: "se@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "map-pkg-driver", role: "DRIVER", firstName: "C", lastName: "O", email: "co@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE", isOnline: true } });
+  recordDriverLocation(driver.id, 6.6, 3.5);
+
+  const courier = await prisma.courierRequest.create({
+    data: {
+      senderId: senderUser.id,
+      driverId: driver.id,
+      pickupAddress: "Yaba",
+      dropoffAddress: "Ikoyi",
+      packageDescription: "Documents",
+      recipientName: "Recipient Name",
+      recipientPhone: "+2348000000000",
+      estimatedFare: 10,
+      status: "IN_TRANSIT",
+    },
+  });
+
+  const token = mockAuthAs({ sub: "admin-pkg-map", groups: ["Admin"] });
+  const res = await request(app).get("/api/admin/live-map").set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  const pkg = (res.body.packages as { id: string; lat: number | null; presence: string | null }[]).find(
+    (p) => p.id === courier.id,
+  );
+  assert.equal(pkg?.lat, 6.6);
+  assert.equal(pkg?.presence, "LIVE");
+});
+
+test("GET /api/admin/live-map's rentals array shows real lifecycle data with no fabricated location", async () => {
+  const ownerUser = await prisma.user.create({
+    data: { cognitoSub: "map-rental-owner", role: "DRIVER", firstName: "O", lastName: "W", email: "ow@example.com" },
+  });
+  const ownerDriver = await prisma.driver.create({ data: { userId: ownerUser.id, status: "ACTIVE" } });
+  const vehicle = await prisma.vehicle.create({
+    data: { driverId: ownerDriver.id, brand: "Toyota", model: "RAV4", colour: "Black", plateNumber: "RAV-001", year: "2022" },
+  });
+  const listing = await prisma.rentalListing.create({
+    data: { driverId: ownerDriver.id, vehicleId: vehicle.id, dailyRate: 50, location: "Lagos", status: "APPROVED" },
+  });
+  const renterUser = await prisma.user.create({
+    data: { cognitoSub: "map-rental-renter", role: "RIDER", firstName: "R", lastName: "N", email: "rn@example.com" },
+  });
+  const start = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const end = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const booking = await prisma.rentalBooking.create({
+    data: {
+      renterId: renterUser.id,
+      listingId: listing.id,
+      startDate: start,
+      endDate: end,
+      days: 2,
+      totalPrice: 100,
+      status: "CONFIRMED",
+    },
+  });
+
+  const token = mockAuthAs({ sub: "admin-rental-map", groups: ["Admin"] });
+  const res = await request(app).get("/api/admin/live-map").set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  const rental = (res.body.rentals as { id: string; locationAvailable: boolean; vehicle: string }[]).find(
+    (r) => r.id === booking.id,
+  );
+  assert.equal(rental?.locationAvailable, false);
+  assert.equal(rental?.vehicle, "Toyota RAV4");
 });

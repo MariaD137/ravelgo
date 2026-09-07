@@ -782,6 +782,7 @@ class LiveMapDriver {
   final double lng;
   final DateTime updatedAt;
   final String markerStatus; // AVAILABLE | ON_TRIP | LOGISTICS | OFFLINE | INCIDENT
+  final String presence; // LIVE | STALE | OFFLINE — freshness, distinct from markerStatus
   final double rating;
   final String? vehicle;
   final String? activeTripId;
@@ -792,6 +793,7 @@ class LiveMapDriver {
     required this.lng,
     required this.updatedAt,
     required this.markerStatus,
+    required this.presence,
     required this.rating,
     required this.vehicle,
     required this.activeTripId,
@@ -803,6 +805,7 @@ class LiveMapDriver {
         lng: _d(j['lng']),
         updatedAt: _dt(j['updatedAt']),
         markerStatus: '${j['markerStatus'] ?? 'OFFLINE'}',
+        presence: '${j['presence'] ?? 'OFFLINE'}',
         rating: _d(j['rating']),
         vehicle: j['vehicle']?.toString(),
         activeTripId: j['activeTripId']?.toString(),
@@ -855,13 +858,149 @@ class LiveMapTrip {
       );
 }
 
+/// One active trip's rider, for the Live Monitoring "Riders" tab. lat/lng/
+/// presence are only ever non-null once the rider app has actually reported
+/// a real position for this trip (POST /trips/:id/rider-location) — never
+/// defaulted or fabricated.
+class LiveMapRider {
+  final String tripId;
+  final String riderName;
+  final String status;
+  final String pickup;
+  final String destination;
+  final String? driverName;
+  final double? lat;
+  final double? lng;
+  final DateTime? updatedAt;
+  final String? presence; // LIVE | STALE, or null if never reported
+  LiveMapRider({
+    required this.tripId,
+    required this.riderName,
+    required this.status,
+    required this.pickup,
+    required this.destination,
+    required this.driverName,
+    required this.lat,
+    required this.lng,
+    required this.updatedAt,
+    required this.presence,
+  });
+  factory LiveMapRider.fromJson(Map<String, dynamic> j) => LiveMapRider(
+        tripId: '${j['tripId']}',
+        riderName: '${j['riderName'] ?? ''}',
+        status: '${j['status'] ?? ''}',
+        pickup: '${j['pickup'] ?? ''}',
+        destination: '${j['destination'] ?? ''}',
+        driverName: j['driverName']?.toString(),
+        lat: j['lat'] == null ? null : _d(j['lat']),
+        lng: j['lng'] == null ? null : _d(j['lng']),
+        updatedAt: j['updatedAt'] == null ? null : _dt(j['updatedAt']),
+        presence: j['presence']?.toString(),
+      );
+}
+
+/// One active delivery, for the Live Monitoring "Packages" tab. The courier's
+/// position is the SAME driver GPS feed as the Drivers tab (a package has no
+/// location of its own) — lat/lng/presence are null until that driver has
+/// reported at least one position.
+class LiveMapPackage {
+  final String id;
+  final String senderName;
+  final String recipientName;
+  final String? courierName;
+  final String pickupAddress;
+  final String dropoffAddress;
+  final String status;
+  final double? lat;
+  final double? lng;
+  final DateTime? updatedAt;
+  final String? presence;
+  LiveMapPackage({
+    required this.id,
+    required this.senderName,
+    required this.recipientName,
+    required this.courierName,
+    required this.pickupAddress,
+    required this.dropoffAddress,
+    required this.status,
+    required this.lat,
+    required this.lng,
+    required this.updatedAt,
+    required this.presence,
+  });
+  factory LiveMapPackage.fromJson(Map<String, dynamic> j) => LiveMapPackage(
+        id: '${j['id']}',
+        senderName: '${j['senderName'] ?? ''}',
+        recipientName: '${j['recipientName'] ?? ''}',
+        courierName: j['courierName']?.toString(),
+        pickupAddress: '${j['pickupAddress'] ?? ''}',
+        dropoffAddress: '${j['dropoffAddress'] ?? ''}',
+        status: '${j['status'] ?? ''}',
+        lat: j['lat'] == null ? null : _d(j['lat']),
+        lng: j['lng'] == null ? null : _d(j['lng']),
+        updatedAt: j['updatedAt'] == null ? null : _dt(j['updatedAt']),
+        presence: j['presence']?.toString(),
+      );
+}
+
+/// One currently-active rental booking, for the Live Monitoring "Rentals"
+/// tab. locationAvailable is always false today — RavelGo's rental listings
+/// are a driver's own vehicle offered for a self-drive reservation, with no
+/// GPS/telematics source anywhere in the data model. Real lifecycle data
+/// only; never a fabricated coordinate.
+class LiveMapRental {
+  final String id;
+  final String vehicle;
+  final String plateNumber;
+  final String renterName;
+  final String ownerName;
+  final DateTime startDate;
+  final DateTime endDate;
+  final String status;
+  final bool locationAvailable;
+  LiveMapRental({
+    required this.id,
+    required this.vehicle,
+    required this.plateNumber,
+    required this.renterName,
+    required this.ownerName,
+    required this.startDate,
+    required this.endDate,
+    required this.status,
+    required this.locationAvailable,
+  });
+  factory LiveMapRental.fromJson(Map<String, dynamic> j) => LiveMapRental(
+        id: '${j['id']}',
+        vehicle: '${j['vehicle'] ?? ''}',
+        plateNumber: '${j['plateNumber'] ?? ''}',
+        renterName: '${j['renterName'] ?? ''}',
+        ownerName: '${j['ownerName'] ?? ''}',
+        startDate: _dt(j['startDate']),
+        endDate: _dt(j['endDate']),
+        status: '${j['status'] ?? ''}',
+        locationAvailable: j['locationAvailable'] == true,
+      );
+}
+
 class LiveMapData {
   final List<LiveMapDriver> drivers;
   final List<LiveMapTrip> trips;
-  LiveMapData({required this.drivers, required this.trips});
+  final List<LiveMapRider> riders;
+  final List<LiveMapPackage> packages;
+  final List<LiveMapRental> rentals;
+  LiveMapData({
+    required this.drivers,
+    required this.trips,
+    required this.riders,
+    required this.packages,
+    required this.rentals,
+  });
   factory LiveMapData.fromJson(Map<String, dynamic> j) => LiveMapData(
         drivers: ((j['drivers'] as List?) ?? const []).whereType<Map<String, dynamic>>().map(LiveMapDriver.fromJson).toList(),
         trips: ((j['trips'] as List?) ?? const []).whereType<Map<String, dynamic>>().map(LiveMapTrip.fromJson).toList(),
+        riders: ((j['riders'] as List?) ?? const []).whereType<Map<String, dynamic>>().map(LiveMapRider.fromJson).toList(),
+        packages: ((j['packages'] as List?) ?? const []).whereType<Map<String, dynamic>>().map(LiveMapPackage.fromJson).toList(),
+        rentals: ((j['rentals'] as List?) ?? const []).whereType<Map<String, dynamic>>().map(LiveMapRental.fromJson).toList(),
       );
 }
 
@@ -994,6 +1133,9 @@ class AdminApi {
     final data = await ApiClient.get('/api/trips?pageSize=100');
     return _list(data).whereType<Map<String, dynamic>>().map(AdminTrip.fromJson).toList();
   }
+
+  static Future<AdminTrip> trip(String id) async =>
+      AdminTrip.fromJson(await ApiClient.get('/api/trips/$id') as Map<String, dynamic>);
 
   static Future<List<AnalyticsDay>> analytics() async {
     final data = await ApiClient.get('/api/admin/analytics') as Map<String, dynamic>;

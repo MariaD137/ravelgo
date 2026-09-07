@@ -6,8 +6,10 @@ import { prisma } from "../db/prisma";
 import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
 import { estimateDurationMinutes, haversineKm } from "../lib/geo";
 import { computeFare } from "../services/pricing";
+import { getRiderLocation, resetRealtimeState } from "../realtime/hub";
 
 beforeEach(async () => {
+  resetRealtimeState();
   await resetDb();
   await prisma.surgeZone.deleteMany();
   await prisma.pricingRule.deleteMany();
@@ -561,4 +563,88 @@ test("POST /api/trips/:id/cancel denies a rider who does not own the trip", asyn
   const token = mockAuthAs({ sub: "rider-not-owner", groups: ["Rider"] });
   const res = await request(app).post(`/api/trips/${trip.id}/cancel`).set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 403);
+});
+
+test("POST /api/trips/:id/rider-location lets the owning rider report a position while MATCHED", async () => {
+  const trip = await seedAssignedTrip("rider-loc1", "driver-loc1", "MATCHED");
+  const token = mockAuthAs({ sub: "rider-loc1", groups: ["Rider"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/rider-location`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ lat: 6.5244, lng: 3.3792 });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.tripId, trip.id);
+  const stored = getRiderLocation(trip.id);
+  assert.equal(stored?.lat, 6.5244);
+  assert.equal(stored?.lng, 3.3792);
+});
+
+test("POST /api/trips/:id/rider-location works while IN_PROGRESS too", async () => {
+  const trip = await seedAssignedTrip("rider-loc2", "driver-loc2", "IN_PROGRESS");
+  const token = mockAuthAs({ sub: "rider-loc2", groups: ["Rider"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/rider-location`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ lat: 6.6, lng: 3.5 });
+  assert.equal(res.status, 200);
+});
+
+test("POST /api/trips/:id/rider-location is refused before a driver is matched (REQUESTED)", async () => {
+  const trip = await seedAssignedTrip("rider-loc3", "driver-loc3", "REQUESTED");
+  const token = mockAuthAs({ sub: "rider-loc3", groups: ["Rider"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/rider-location`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ lat: 6.5, lng: 3.4 });
+  assert.equal(res.status, 409);
+});
+
+test("POST /api/trips/:id/rider-location is refused after the trip completes", async () => {
+  const trip = await seedAssignedTrip("rider-loc4", "driver-loc4", "COMPLETED");
+  const token = mockAuthAs({ sub: "rider-loc4", groups: ["Rider"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/rider-location`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ lat: 6.5, lng: 3.4 });
+  assert.equal(res.status, 409);
+});
+
+test("POST /api/trips/:id/rider-location denies a rider who does not own the trip", async () => {
+  const trip = await seedAssignedTrip("rider-loc5", "driver-loc5", "MATCHED");
+  const token = mockAuthAs({ sub: "rider-not-owner-loc", groups: ["Rider"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/rider-location`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ lat: 6.5, lng: 3.4 });
+  assert.equal(res.status, 403);
+});
+
+test("POST /api/trips/:id/rider-location rejects out-of-range coordinates", async () => {
+  const trip = await seedAssignedTrip("rider-loc6", "driver-loc6", "MATCHED");
+  const token = mockAuthAs({ sub: "rider-loc6", groups: ["Rider"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/rider-location`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ lat: 999, lng: 3.4 });
+  assert.equal(res.status, 400);
+});
+
+test("PATCH /api/trips/:id/status clears the cached rider location once a trip completes", async () => {
+  const trip = await seedAssignedTrip("rider-loc7", "driver-loc7", "IN_PROGRESS");
+  const riderToken = mockAuthAs({ sub: "rider-loc7", groups: ["Rider"] });
+  await request(app)
+    .post(`/api/trips/${trip.id}/rider-location`)
+    .set("Authorization", `Bearer ${riderToken}`)
+    .send({ lat: 6.5, lng: 3.4 });
+  assert.ok(getRiderLocation(trip.id));
+  restoreAuth();
+
+  const driverToken = mockAuthAs({ sub: "driver-loc7", groups: ["Driver"] });
+  const res = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${driverToken}`)
+    .send({ status: "COMPLETED", finalFare: 16 });
+  assert.equal(res.status, 200);
+  assert.equal(getRiderLocation(trip.id), undefined);
 });

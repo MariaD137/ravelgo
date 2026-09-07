@@ -100,4 +100,12 @@ class TripsApi {
     final list = (data is Map ? data['data'] : data) as List? ?? const [];
     return list.whereType<Map<String, dynamic>>().map(Trip.fromJson).toList();
   }
+
+  /// Report the rider's current position for this trip — only accepted by
+  /// the backend while a driver is assigned or the ride is under way. Backs
+  /// the admin Live Map's Riders view; mirrors the driver app's own
+  /// location-ping pattern (DriverApi.pingLocation).
+  static Future<void> pingLocation(String tripId, double lat, double lng) async {
+    await ApiClient.post('/api/trips/$tripId/rider-location', {'lat': lat, 'lng': lng});
+  }
 }

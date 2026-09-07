@@ -2,6 +2,7 @@ import type { IncomingMessage, Server as HttpServer } from "node:http";
 import { WebSocketServer, type WebSocket } from "ws";
 import { verifier } from "../middleware/auth";
 import { prisma } from "../db/prisma";
+import { isValidCoordinate } from "../lib/geo";
 import { broadcastDriverLocation, joinTripRoom, leaveAllRooms, recordDriverLocation } from "./hub";
 
 interface ConnectionUser {
@@ -40,6 +41,9 @@ async function handleSubscribe(socket: WebSocket, user: ConnectionUser, tripId: 
 async function handleLocation(socket: WebSocket, user: ConnectionUser, lat: unknown, lng: unknown) {
   if (typeof lat !== "number" || typeof lng !== "number") {
     return send(socket, { type: "error", message: "location requires numeric lat/lng" });
+  }
+  if (!isValidCoordinate({ lat, lng })) {
+    return send(socket, { type: "error", message: "lat/lng out of range" });
   }
   const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: user.sub } } });
   if (!driver) {
