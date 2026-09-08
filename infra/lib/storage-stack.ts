@@ -2,6 +2,7 @@ import * as cdk from "aws-cdk-lib";
 import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
 import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
 import * as s3 from "aws-cdk-lib/aws-s3";
+import * as wafv2 from "aws-cdk-lib/aws-wafv2";
 import type { Construct } from "constructs";
 
 export class StorageStack extends cdk.Stack {
@@ -23,12 +24,66 @@ export class StorageStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    // IN-1: baseline WAF in front of the CDN — this distribution serves both
+    // public assets (vehicle/rental photos) and the three built Flutter web
+    // apps, so it's a real public entry point, not just a passive cache. WAF
+    // requires a CLOUDFRONT-scope WebACL to be created in us-east-1
+    // specifically (a CloudFront requirement, independent of which region
+    // this stack itself deploys to — bin/infra.ts's default region already
+    // is us-east-1). Same two managed rule groups + rate limit as the API's
+    // own WAF (ApiStack) — see that stack for why each one is here.
+    const cdnWebAcl = new wafv2.CfnWebACL(this, "AssetsWebAcl", {
+      scope: "CLOUDFRONT",
+      defaultAction: { allow: {} },
+      visibilityConfig: {
+        sampledRequestsEnabled: true,
+        cloudWatchMetricsEnabled: true,
+        metricName: "ravelgo-cdn-waf",
+      },
+      rules: [
+        {
+          name: "AWS-AWSManagedRulesCommonRuleSet",
+          priority: 1,
+          overrideAction: { none: {} },
+          statement: { managedRuleGroupStatement: { vendorName: "AWS", name: "AWSManagedRulesCommonRuleSet" } },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: "ravelgo-cdn-common",
+          },
+        },
+        {
+          name: "AWS-AWSManagedRulesSQLiRuleSet",
+          priority: 2,
+          overrideAction: { none: {} },
+          statement: { managedRuleGroupStatement: { vendorName: "AWS", name: "AWSManagedRulesSQLiRuleSet" } },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: "ravelgo-cdn-sqli",
+          },
+        },
+        {
+          name: "RateLimit",
+          priority: 3,
+          action: { block: {} },
+          statement: { rateBasedStatement: { limit: 2000, aggregateKeyType: "IP" } },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: "ravelgo-cdn-ratelimit",
+          },
+        },
+      ],
+    });
+
     this.assetsDistribution = new cloudfront.Distribution(this, "AssetsDistribution", {
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(this.assetsBucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
       },
+      webAclId: cdnWebAcl.attrArn,
     });
 
     // Driver documents / Car Paddy uploads / support-ticket attachments:

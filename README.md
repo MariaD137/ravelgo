@@ -12,18 +12,18 @@ Requirement Document.
 | Backend | [`backend/`](./backend) | Node.js/Express API shared by all three apps |
 | Infrastructure | [`infra/`](./infra) | AWS CDK — provisions everything the backend runs on |
 
-See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for the full path from a fresh AWS
-account to a live, auto-deploying backend, and
+See [`docs/DEPLOY-RUNBOOK.md`](./docs/DEPLOY-RUNBOOK.md) for the full path
+from a fresh AWS account to a live, auto-deploying backend, and
 [`docs/admin-bootstrap.md`](./docs/admin-bootstrap.md) for how to create the
 first Admin user once Cognito is deployed.
 
 ## Status
 
-The three Flutter apps are UI-complete MVPs (mock data, no live API calls
-yet). The backend, infrastructure, and CI/CD pipeline described in
-`DEPLOYMENT.md` exist and are validated (synth/build/boot tested), but wiring
-the Flutter apps' screens to call the real API instead of their local mock
-data is the next step — see `DEPLOYMENT.md` for details.
+The three Flutter apps call the real backend API (no mock data) and the
+backend, infrastructure, and CI/CD pipeline are deployed to a live AWS
+staging environment — see [`docs/DEPLOY-RUNBOOK.md`](./docs/DEPLOY-RUNBOOK.md)
+for the deploy/migrate/seed process. Older planning and audit documents that
+predate this state have been moved to [`docs/archive/`](./docs/archive).
 
 ## Getting started
 
