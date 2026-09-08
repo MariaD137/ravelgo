@@ -125,8 +125,18 @@ export async function createPayout(calculation: PayoutCalculation): Promise<Payo
 }
 
 /**
- * Process a pending payout (mark as PROCESSING, send to Stripe, etc).
- * In production, integrate with Stripe Connect for ACH transfers.
+ * Mark a pending payout as PROCESSING — i.e. an admin/ops has started an
+ * actual transfer to the driver's bank account, outside this system (there
+ * is no real Stripe Connect / ACH integration wired up yet: see PY-1).
+ *
+ * This deliberately does NOT set transactionId. It used to fabricate one
+ * (`stripe_payout_${Date.now()}`) that looked like a real payment-provider
+ * reference but was never sent to, or verified by, any payment provider —
+ * a payout could reach COMPLETED carrying a permanent, convincing-looking
+ * transactionId for a transfer that, as far as this system can actually
+ * prove, never happened. completePayout() below already accepts a real
+ * transactionId from its caller; that is the only place one should ever be
+ * recorded, and only once a real transfer reference exists to record.
  */
 export async function processPayout(payoutId: string): Promise<Payout> {
   const payout = await prisma.payout.findUnique({
@@ -141,15 +151,9 @@ export async function processPayout(payoutId: string): Promise<Payout> {
   if (!payout) throw new Error("Payout not found");
   if (payout.status !== "PENDING") throw new Error("Payout must be PENDING to process");
 
-  // TODO: Integrate with Stripe Connect or other payment provider
-  // For now, simulate successful processing
   const processed = await prisma.payout.update({
     where: { id: payoutId },
-    data: {
-      status: "PROCESSING",
-      // In production, set transactionId from Stripe response
-      transactionId: `stripe_payout_${Date.now()}`,
-    },
+    data: { status: "PROCESSING" },
   });
 
   return processed;

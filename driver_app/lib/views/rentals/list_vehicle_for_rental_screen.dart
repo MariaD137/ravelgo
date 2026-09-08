@@ -4,6 +4,7 @@ import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/services/places_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/places/place_search_screen.dart';
+import 'package:ravelgo_driver_app/views/vehicles/add_vehicle_screen.dart';
 
 class ListVehicleForRentalScreen extends StatefulWidget {
   const ListVehicleForRentalScreen({super.key});
@@ -182,7 +183,7 @@ class _ListVehicleForRentalScreenState extends State<ListVehicleForRentalScreen>
               ),
             ),
             const SizedBox(height: 20),
-            AppComponents.uploadBox("Upload photos of the vehicle"),
+            _vehiclePhotoPreview(),
             const SizedBox(height: 10),
             AppComponents.uploadBox("Upload proof of ownership / insurance"),
             if (_formError != null) ...[
@@ -193,6 +194,60 @@ class _ListVehicleForRentalScreenState extends State<ListVehicleForRentalScreen>
             AppComponents.primaryButton(
               text: _submitting ? "Submitting…" : "Submit for review",
               onPressed: (_submitting || _vehicles.isEmpty) ? null : _submit,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Shows the selected vehicle's own real photo (captured on its vehicle
+  /// profile — see AddVehicleScreen) rather than a second, disconnected
+  /// upload control here: a rental listing has no photo of its own, only
+  /// whichever vehicle it's for.
+  Widget _vehiclePhotoPreview() {
+    Vehicle? selected;
+    for (final v in _vehicles) {
+      if (v.id == _vehicleId) {
+        selected = v;
+        break;
+      }
+    }
+    if (selected?.photoUrl != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.network(
+          selected!.photoUrl!,
+          height: 160,
+          width: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+        ),
+      );
+    }
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: selected == null
+          ? null
+          : () async {
+              final saved = await Navigator.of(context)
+                  .push<bool>(MaterialPageRoute(builder: (_) => AddVehicleScreen(existing: selected)));
+              if (saved == true) _loadVehicles();
+            },
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: AppColors.surfaceElevated, borderRadius: BorderRadius.circular(12)),
+        child: Row(
+          children: [
+            const Icon(Icons.add_a_photo_outlined, color: AppColors.textSecondary),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                selected == null
+                    ? "Pick a vehicle above to show its photo here."
+                    : "This vehicle has no photo yet — tap to add one.",
+                style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+              ),
             ),
           ],
         ),

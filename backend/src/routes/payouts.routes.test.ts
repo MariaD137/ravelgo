@@ -155,6 +155,41 @@ test("a Finance Viewer admin can list payouts but cannot process one", async () 
   assert.equal(create.status, 403);
 });
 
+test("POST /payouts/:id/process moves PENDING to PROCESSING without fabricating a transactionId", async () => {
+  const { user } = await createDriver("driver-sub-process-1");
+  const payout = await prisma.payout.create({
+    data: { driverId: user.id, amount: 5000, period: "2026-02", status: "PENDING" },
+  });
+
+  const token = mockAuthAs({ sub: "super-payout-1", groups: ["Admin"] });
+  const res = await request(app).post(`/api/payouts/${payout.id}/process`).set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "PROCESSING");
+  // Previously this endpoint stamped a fabricated `stripe_payout_<timestamp>`
+  // value here — a fake reference that was never sent to, or verified by,
+  // any real payment provider. It must stay unset until a real transfer
+  // reference exists (see POST /payouts/:id/complete below).
+  assert.equal(res.body.transactionId, null);
+});
+
+test("POST /payouts/:id/complete records the real transactionId the caller supplies", async () => {
+  const { user } = await createDriver("driver-sub-process-2");
+  const payout = await prisma.payout.create({
+    data: { driverId: user.id, amount: 5000, period: "2026-02", status: "PROCESSING" },
+  });
+
+  const token = mockAuthAs({ sub: "super-payout-2", groups: ["Admin"] });
+  const res = await request(app)
+    .post(`/api/payouts/${payout.id}/complete`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ transactionId: "real-bank-transfer-ref-12345" });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "COMPLETED");
+  assert.equal(res.body.transactionId, "real-bank-transfer-ref-12345");
+});
+
 test("GET /payouts (Admin) filters by a validated status enum, rejecting garbage", async () => {
   const token = mockAuthAs({ sub: "admin-sub-3", groups: ["Admin"] });
   const res = await request(app)

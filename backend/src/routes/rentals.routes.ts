@@ -8,6 +8,7 @@ import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { sensitiveLimiter } from "../middleware/rate-limit";
 import { InsufficientFundsError } from "../services/wallet";
 import { RentalBookingNotChargeableError, cancelRentalBooking, chargeRentalBooking } from "../services/rental-payment";
+import { serializeRentalListing, serializeVehicle } from "../lib/vehicle-view";
 
 export const rentalsRouter = Router();
 
@@ -19,6 +20,15 @@ async function findOwnDriver(cognitoSub: string) {
 
 async function findOwnUser(cognitoSub: string) {
   return prisma.user.findUnique({ where: { cognitoSub } });
+}
+
+// A booking's nested listing.vehicle never carries a driver.user relation at
+// this call depth, so there's no PII to strip here — just run photoKey
+// through the same public-URL builder every other vehicle response uses.
+function withVehiclePhotoUrl<T extends { listing: { vehicle: Parameters<typeof serializeVehicle>[0] } & Record<string, unknown> }>(
+  booking: T,
+) {
+  return { ...booking, listing: { ...booking.listing, vehicle: serializeVehicle(booking.listing.vehicle) } };
 }
 
 function respondToChargeError(res: import("express").Response, err: unknown, next: import("express").NextFunction) {
@@ -61,7 +71,7 @@ rentalsRouter.post("/rentals", requireAuth, requireRole("Driver"), async (req, r
   });
   await prisma.vehicle.update({ where: { id: vehicle.id }, data: { listedForRental: true } });
 
-  res.status(201).json(listing);
+  res.status(201).json(serializeRentalListing(listing));
 });
 
 // Driver: view my own rental listings
@@ -74,7 +84,7 @@ rentalsRouter.get("/rentals/mine", requireAuth, requireRole("Driver"), async (re
     include: { vehicle: true },
     orderBy: { createdAt: "desc" },
   });
-  res.json(listings);
+  res.json(listings.map(serializeRentalListing));
 });
 
 // Riders/public: browse approved rental listings
@@ -97,7 +107,7 @@ rentalsRouter.get("/rentals", requireAuth, async (req, res) => {
     }),
     prisma.rentalListing.count({ where }),
   ]);
-  res.json(paginate(listings, total, page, pageSize));
+  res.json(paginate(listings.map(serializeRentalListing), total, page, pageSize));
 });
 
 // Rental listing detail (comes after "/rentals/mine" above so that literal
@@ -108,7 +118,7 @@ rentalsRouter.get("/rentals/:id", requireAuth, async (req, res) => {
     include: { vehicle: true, driver: { include: { user: true } } },
   });
   if (!listing) return res.status(404).json({ error: "Listing not found" });
-  res.json(listing);
+  res.json(serializeRentalListing(listing));
 });
 
 const bookRentalSchema = z.object({
@@ -184,7 +194,7 @@ rentalsRouter.get("/rental-bookings/mine", requireAuth, async (req, res) => {
     include: { listing: { include: { vehicle: true } } },
     orderBy: { createdAt: "desc" },
   });
-  res.json(bookings);
+  res.json(bookings.map(withVehiclePhotoUrl));
 });
 
 // Customer (who owns the booking): pay for it. CARD returns a Stripe
@@ -227,7 +237,7 @@ rentalsRouter.get("/rental-bookings/:id", requireAuth, async (req, res) => {
       return res.status(403).json({ error: "Not authorized to view this booking" });
     }
   }
-  res.json(booking);
+  res.json(withVehiclePhotoUrl(booking));
 });
 
 // Customer (who owns the booking): cancel it. A booking that was already

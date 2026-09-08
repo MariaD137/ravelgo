@@ -138,7 +138,14 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10)),
-                    child: const Icon(Icons.directions_car, color: AppColors.textSecondary),
+                    clipBehavior: Clip.antiAlias,
+                    child: v.photoUrl != null
+                        ? Image.network(
+                            v.photoUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(Icons.directions_car, color: AppColors.textSecondary),
+                          )
+                        : const Icon(Icons.directions_car, color: AppColors.textSecondary),
                   ),
                   const SizedBox(width: 12),
                   Expanded(

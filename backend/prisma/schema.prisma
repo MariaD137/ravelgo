@@ -213,6 +213,10 @@ model Vehicle {
   year             String
   isPrimary        Boolean  @default(false)
   listedForRental  Boolean  @default(false)
+  // S3 key in the public "assets" bucket (served via CloudFront) — never a
+  // raw URL, so the CDN domain can change without touching stored data.
+  // Nullable: not every vehicle has a photo yet.
+  photoKey         String?
   createdAt        DateTime @default(now())
 
   rentalListings   RentalListing[]

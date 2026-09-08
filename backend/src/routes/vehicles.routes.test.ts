@@ -62,6 +62,63 @@ test("POST /api/vehicles adds a vehicle owned by the calling driver", async () =
   assert.equal(res.body.plateNumber, "ABC-123");
 });
 
+test("POST /api/vehicles rejects a photoKey that doesn't belong to the caller", async () => {
+  await createDriver("driver-sub-photo-1");
+  const token = mockAuthAs({ sub: "driver-sub-photo-1", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/vehicles")
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      brand: "Toyota",
+      model: "Camry",
+      colour: "Silver",
+      plateNumber: "PHT-100",
+      year: "2022",
+      photoKey: "someone-elses-sub/photo.jpg",
+    });
+
+  assert.equal(res.status, 403);
+});
+
+test("POST /api/vehicles accepts a photoKey the caller owns and never returns the raw key", async () => {
+  await createDriver("driver-sub-photo-2");
+  const token = mockAuthAs({ sub: "driver-sub-photo-2", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/vehicles")
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      brand: "Toyota",
+      model: "Camry",
+      colour: "Silver",
+      plateNumber: "PHT-200",
+      year: "2022",
+      photoKey: "driver-sub-photo-2/photo.jpg",
+    });
+
+  assert.equal(res.status, 201);
+  assert.ok(!("photoKey" in res.body), "raw S3 key must never be returned to the client");
+  assert.ok("photoUrl" in res.body);
+});
+
+test("PATCH /api/vehicles/:id rejects a photoKey that doesn't belong to the caller", async () => {
+  const driver = await createDriver("driver-sub-photo-3");
+  const vehicle = await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Kia", model: "Rio", colour: "Blue", plateNumber: "PHT-300", year: "2020" },
+  });
+  const token = mockAuthAs({ sub: "driver-sub-photo-3", groups: ["Driver"] });
+
+  const res = await request(app)
+    .patch(`/api/vehicles/${vehicle.id}`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ photoKey: "someone-elses-sub/photo.jpg" });
+
+  assert.equal(res.status, 403);
+  const unchanged = await prisma.vehicle.findUnique({ where: { id: vehicle.id } });
+  assert.equal(unchanged?.photoKey, null);
+});
+
 test("GET /api/vehicles/me only returns the calling driver's own vehicles", async () => {
   const driverA = await createDriver("driver-sub-2");
   const driverB = await createDriver("driver-sub-3");

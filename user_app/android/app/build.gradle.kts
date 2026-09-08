@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     id("com.android.application")
@@ -21,10 +22,11 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        // amplify_push_notifications and its AWS Amplify dependencies use
+        // Java 8+ APIs directly (not just Kotlin) - AGP requires this to be
+        // explicitly opted into rather than assumed. Real build requirement,
+        // not something flutter analyze/flutter test ever exercises.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -48,6 +50,21 @@ android {
     }
 }
 
+// Kotlin 2.3's Android plugin made the old `android { kotlinOptions { jvmTarget
+// = "11" } }` string-based DSL a hard error - this is its replacement, kept
+// as its own top-level block per the migration Kotlin's compiler error itself
+// points to (https://kotl.in/u1r8ln).
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_11)
+    }
+}
+
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Required by isCoreLibraryDesugaringEnabled above.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }

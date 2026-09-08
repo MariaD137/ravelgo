@@ -18,6 +18,12 @@ const rawEnvSchema = z.object({
   AWS_REGION: z.string().default("us-east-1"),
   DOCUMENTS_BUCKET: z.string().optional(),
   ASSETS_BUCKET: z.string().optional(),
+  // The assets bucket's CloudFront domain (infra/lib/storage-stack.ts's
+  // AssetsDistribution) — lets the backend build a public URL for something
+  // uploaded there (e.g. a vehicle photo) without ever signing a GET. Optional
+  // so dev/test boots without it; a stored photoKey with no domain configured
+  // just means photoUrl comes back null rather than a broken link.
+  ASSETS_CDN_DOMAIN: z.string().optional(),
   // Comma-separated list of allowed origins for CORS, e.g.
   // "https://app.ravelgo.com,https://admin.ravelgo.com". Empty in
   // development so local Flutter/web dev builds on arbitrary ports aren't
@@ -58,6 +64,7 @@ export interface Env {
   AWS_REGION: string;
   DOCUMENTS_BUCKET?: string;
   ASSETS_BUCKET?: string;
+  ASSETS_CDN_DOMAIN?: string;
   ALLOWED_ORIGINS: string[];
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
@@ -122,6 +129,7 @@ function loadEnv(): Env {
     AWS_REGION: data.AWS_REGION,
     DOCUMENTS_BUCKET: data.DOCUMENTS_BUCKET,
     ASSETS_BUCKET: data.ASSETS_BUCKET,
+    ASSETS_CDN_DOMAIN: data.ASSETS_CDN_DOMAIN,
     ALLOWED_ORIGINS: allowedOrigins,
     STRIPE_SECRET_KEY: data.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: data.STRIPE_WEBHOOK_SECRET,
