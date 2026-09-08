@@ -4,7 +4,7 @@ import { prisma } from "../db/prisma";
 import { env } from "../config/env";
 import { stripeClient } from "../billing/stripe";
 import { logSecurityEvent } from "../lib/security-log";
-import { notifyUser } from "../lib/notifications";
+import { notifyAllAdmins, notifyUser } from "../lib/notifications";
 import { creditWalletFromTopup, failWalletTopup } from "../services/wallet";
 
 export const billingRouter = Router();
@@ -67,6 +67,14 @@ billingRouter.post("/", async (req, res) => {
             : "Your card payment for this rental booking could not be completed.",
           { type: "RENTAL_BOOKING", id: booking.id },
         );
+        if (!succeeded) {
+          await notifyAllAdmins(
+            "ADMIN_PAYMENT_FAILED",
+            "Rental payment failed",
+            `A card payment for rental booking ${booking.id} failed.`,
+            { type: "RENTAL_BOOKING", id: booking.id },
+          );
+        }
       }
     } else {
       const payment = await prisma.payment.findFirst({ where: { providerReference: intent.id } });
@@ -87,6 +95,14 @@ billingRouter.post("/", async (req, res) => {
             : `Your card payment of ${payment.amount} for this ride could not be completed.`,
           { type: "TRIP", id: payment.tripId },
         );
+        if (!succeeded) {
+          await notifyAllAdmins(
+            "ADMIN_PAYMENT_FAILED",
+            "Ride payment failed",
+            `A card payment of ${payment.amount} for trip ${payment.tripId} failed.`,
+            { type: "TRIP", id: payment.tripId },
+          );
+        }
       }
     }
 

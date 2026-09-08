@@ -3,6 +3,7 @@ import 'package:ravelgo_admin/config/currency.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/views/rentals/rental_listing_detail_screen.dart';
 
 /// Luxury rental listings awaiting review (GET /api/rentals, admin sees all).
 class RentalListingsScreen extends StatefulWidget {
@@ -127,7 +128,14 @@ class _RentalListingsScreenState extends State<RentalListingsScreen> {
         itemBuilder: (context, i) {
           final r = _items[i];
           final decided = r.status == 'APPROVED' || r.status == 'REJECTED';
-          return Container(
+          return InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () async {
+              final changed = await Navigator.push<bool>(
+                  context, MaterialPageRoute(builder: (_) => RentalListingDetailScreen(listing: r)));
+              if (changed == true) _load();
+            },
+            child: Container(
             padding: const EdgeInsets.all(14),
             decoration: AppComponents.cardDecoration(),
             child: Column(
@@ -155,6 +163,7 @@ class _RentalListingsScreenState extends State<RentalListingsScreen> {
                     ],
                   ),
               ],
+            ),
             ),
           );
         },

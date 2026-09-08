@@ -6,7 +6,7 @@ import { blockIfAdminLacksPermission } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { broadcastTripStatus, clearRiderLocation, getLatestDriverLocation, recordRiderLocation } from "../realtime/hub";
-import { notifyUser } from "../lib/notifications";
+import { notifyAllAdmins, notifyUser } from "../lib/notifications";
 import { matchDriverToTrip } from "../services/matching";
 import { quoteFare } from "../services/pricing";
 import { MAX_FINAL_FARE_MULTIPLIER, MIN_FINAL_FARE_MULTIPLIER, moneyAmountSchema } from "../lib/money";
@@ -299,6 +299,13 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
       type: "TRIP",
       id: trip.id,
     });
+  } else if (trip.status === "DISPUTED") {
+    await notifyAllAdmins(
+      "ADMIN_TRIP_DISPUTED",
+      "Trip disputed",
+      `Trip ${trip.id} was marked as disputed and needs review.`,
+      { type: "TRIP", id: trip.id },
+    );
   }
   res.json(serializeTrip(trip));
 });
