@@ -223,6 +223,63 @@ async function main() {
     console.log("Seeded short-stay listings: 3");
   }
 
+  // Luxury car rental demo data — two vehicles for the demo driver, listed
+  // and pre-approved so "Rent a car" has something real to browse instead of
+  // an honest-but-empty "No vehicles available" state. Created the same way
+  // POST /rentals does (Vehicle.listedForRental flipped alongside the
+  // RentalListing), not a client-side fabrication.
+  if ((await prisma.rentalListing.count()) === 0) {
+    const rentalVehicle1 = await prisma.vehicle.upsert({
+      where: { plateNumber: "LND-773-RN" },
+      update: {},
+      create: {
+        driverId: driver.id,
+        brand: "Toyota",
+        model: "Land Cruiser Prado",
+        colour: "White",
+        plateNumber: "LND-773-RN",
+        year: "2022",
+        listedForRental: true,
+      },
+    });
+    const rentalVehicle2 = await prisma.vehicle.upsert({
+      where: { plateNumber: "LND-118-EK" },
+      update: {},
+      create: {
+        driverId: driver.id,
+        brand: "Mercedes-Benz",
+        model: "C300",
+        colour: "Black",
+        plateNumber: "LND-118-EK",
+        year: "2023",
+        listedForRental: true,
+      },
+    });
+    await prisma.rentalListing.createMany({
+      data: [
+        {
+          driverId: driver.id,
+          vehicleId: rentalVehicle1.id,
+          dailyRate: 65000,
+          location: "Lekki Phase 1, Lagos",
+          lat: 6.4432,
+          lng: 3.4726,
+          status: "APPROVED",
+        },
+        {
+          driverId: driver.id,
+          vehicleId: rentalVehicle2.id,
+          dailyRate: 90000,
+          location: "Ikoyi, Lagos",
+          lat: 6.4541,
+          lng: 3.4316,
+          status: "APPROVED",
+        },
+      ],
+    });
+    console.log("Seeded rental listings: 2");
+  }
+
   console.log("Seed complete:", { rider: rider.email, driver: driverUser.email, vehicle: vehicle.plateNumber });
 }
 
