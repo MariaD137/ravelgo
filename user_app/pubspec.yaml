@@ -36,7 +36,7 @@ dependencies:
   google_maps_flutter: ^2.10.0
   flutter_dotenv: ^6.0.0
   image_picker: ^1.0.0
-  share_plus: ^12.0.1
+  share_plus: ^13.3.0
   dotted_border: ^3.1.0
   amazon_cognito_identity_dart_2: ^3.6.3
   http: ^1.2.0
@@ -47,6 +47,22 @@ dependencies:
   # ships in the app. Native setup (Android minSdk 21, iOS deployment target) is
   # required for a build; see the Stripe SDK docs.
   flutter_stripe: ^11.1.0
+  # Device push notifications — AWS-native end to end. The backend sends
+  # through Amazon Pinpoint (backend/src/services/push.ts); these packages
+  # are used ONLY to obtain the real FCM/APNs device token and to observe
+  # notification taps, via AWS Amplify's Push Notifications category rather
+  # than Google's Firebase SDK. Configured from .env (AWS_REGION,
+  # PINPOINT_APPLICATION_ID, PUSH_IDENTITY_POOL_ID — see
+  # push_notification_service.dart) against an unauthenticated-only Cognito
+  # Identity Pool created solely for this (infra/lib/auth-stack.ts's
+  # PushIdentityPool) — completely separate from the real RavelGo sign-in,
+  # which stays AuthService/amazon_cognito_identity_dart_2 end to end; this
+  # plugin's own Amplify Auth instance is never used to sign in or manage a
+  # session. Every method in push_notification_service.dart no-ops safely
+  # when those .env values are unset.
+  amplify_flutter: ^2.15.0
+  amplify_auth_cognito: ^2.15.0
+  amplify_push_notifications_pinpoint: ^2.15.0
 
 dev_dependencies:
   flutter_test:

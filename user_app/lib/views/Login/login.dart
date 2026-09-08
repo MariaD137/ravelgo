@@ -1,18 +1,22 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/Login/ForgotPassword.dart';
 import 'package:ravelgo_user_app/views/Signup/CreateAccount.dart';
 import 'package:ravelgo_user_app/views/bottommenu/BottomNavigationView.dart';
 import 'package:ravelgo_user_app/services/auth_service.dart';
+import 'package:ravelgo_user_app/services/push_notification_service.dart';
 import 'package:ravelgo_user_app/services/rider_api.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 /// Rider sign-in.
 ///
-/// AUTH BOUNDARY (MOCKED): there is no authentication backend, so credentials
-/// cannot actually be verified. Input is validated locally (well-formed email,
-/// non-empty password) and rejected with visible errors when invalid; valid
-/// input proceeds to home. `_signIn` is the integration point for the future
-/// auth service.
+/// Backed by real AWS Cognito authentication (see [AuthService.signIn], which
+/// wraps `amazon_cognito_identity_dart_2`) — credentials are verified against
+/// the Cognito user pool, not merely validated locally. Input is still
+/// validated client-side first (well-formed email, non-empty password) so the
+/// user gets an immediate error before a network round trip; a Cognito
+/// rejection (wrong password, unconfirmed account, etc.) surfaces via
+/// [AuthService.friendlyError] in the snackbar below.
 class Login extends StatefulWidget {
   const Login({super.key});
 
@@ -49,6 +53,9 @@ class _LoginState extends State<Login> {
       } catch (_) {
         // Non-fatal: e.g. user not yet in the "Rider" group. Login still proceeds.
       }
+      // Best-effort, and a genuine no-op when push isn't configured for this
+      // build (see PushNotificationService.isConfigured) — never blocks sign-in.
+      unawaited(PushNotificationService.configureAndRegister());
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => BottomNavigationView()),

@@ -106,6 +106,8 @@ export async function resetDb() {
   await prisma.walletTransaction.deleteMany();
   await prisma.walletAccount.deleteMany();
   await prisma.payment.deleteMany();
+  await prisma.notification.deleteMany();
+  await prisma.pushToken.deleteMany();
   await prisma.emergencyAlert.deleteMany();
   await prisma.courierRequest.deleteMany();
   await prisma.driverSubscription.deleteMany();

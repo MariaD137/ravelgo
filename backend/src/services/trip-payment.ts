@@ -2,6 +2,7 @@ import { prisma } from "../db/prisma";
 import { stripeClient } from "../billing/stripe";
 import { MAX_MONEY_AMOUNT, toCents } from "../lib/money";
 import { getPaymentSettings, isCashPaymentAllowed } from "../lib/payment-rules";
+import { notifyUser } from "../lib/notifications";
 import { AlreadyChargedError, chargeWalletForRide } from "./wallet";
 
 export type PaymentMethod = "CARD" | "WALLET" | "CASH";
@@ -86,6 +87,13 @@ export async function settleTripPayment(
         paidAt: new Date(),
       },
     });
+    await notifyUser(
+      trip.riderId,
+      "PAYMENT_SUCCEEDED",
+      "Payment successful",
+      `Your cash payment of ${trip.finalFare} for this ride was recorded.`,
+      { type: "TRIP", id: trip.id },
+    );
     return { payment };
   }
 
@@ -119,5 +127,12 @@ export async function settleTripPayment(
     riderId: trip.riderId,
     fareAmount: trip.finalFare,
   });
+  await notifyUser(
+    trip.riderId,
+    "PAYMENT_SUCCEEDED",
+    "Payment successful",
+    `${trip.finalFare} was paid from your RavelGo Cash balance for this ride.`,
+    { type: "TRIP", id: trip.id },
+  );
   return { payment };
 }

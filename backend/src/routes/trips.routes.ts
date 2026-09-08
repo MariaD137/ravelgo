@@ -6,6 +6,7 @@ import { blockIfAdminLacksPermission } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { broadcastTripStatus, clearRiderLocation, getLatestDriverLocation, recordRiderLocation } from "../realtime/hub";
+import { notifyUser } from "../lib/notifications";
 import { matchDriverToTrip } from "../services/matching";
 import { quoteFare } from "../services/pricing";
 import { MAX_FINAL_FARE_MULTIPLIER, MIN_FINAL_FARE_MULTIPLIER, moneyAmountSchema } from "../lib/money";
@@ -89,6 +90,15 @@ tripsRouter.post("/trips", sensitiveLimiter, requireAuth, requireRole("Rider"), 
   });
 
   const matched = await matchDriverToTrip(trip.id);
+  if (matched?.driverId) {
+    await notifyUser(
+      trip.riderId,
+      "RIDE_DRIVER_ASSIGNED",
+      "Driver assigned",
+      "A driver has been assigned to your ride.",
+      { type: "TRIP", id: trip.id },
+    );
+  }
   res.status(201).json(serializeTrip(matched ?? trip));
 });
 
@@ -183,9 +193,12 @@ tripsRouter.get("/trips/:id", requireAuth, async (req, res) => {
     return res.status(403).json({ error: "Not authorized to view this trip" });
   }
   const body = serializeTrip(trip);
-  // Payment state is only attached for Admin — serializeTrip is shared with
-  // the rider/driver-facing "mine" list below and must stay minimal for them.
-  res.json(isAdmin && trip.payment ? { ...body, payment: trip.payment } : body);
+  // Payment state is attached for Admin and for the trip's own rider/driver —
+  // isOwner is already verified above. serializeTrip stays minimal for the
+  // "mine" list (payments.routes.ts, an authoritative payment history, is
+  // the right place for THAT; this single-trip detail route is what the
+  // e-receipt screen fetches, and needs real method/status/amount/paidAt).
+  res.json(isOwner || isAdmin ? { ...body, payment: trip.payment ?? null } : body);
 });
 
 const updateStatusSchema = z.object({
@@ -271,6 +284,22 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
     clearRiderLocation(trip.id);
   }
   broadcastTripStatus(trip.id, trip.status, trip.finalFare);
+  if (trip.status === "IN_PROGRESS") {
+    await notifyUser(trip.riderId, "RIDE_STARTED", "Ride started", "Your ride is now under way.", {
+      type: "TRIP",
+      id: trip.id,
+    });
+  } else if (trip.status === "COMPLETED") {
+    await notifyUser(trip.riderId, "RIDE_COMPLETED", "Ride completed", "Your ride has been completed.", {
+      type: "TRIP",
+      id: trip.id,
+    });
+  } else if (trip.status === "CANCELLED") {
+    await notifyUser(trip.riderId, "RIDE_CANCELLED", "Ride cancelled", "Your ride was cancelled.", {
+      type: "TRIP",
+      id: trip.id,
+    });
+  }
   res.json(serializeTrip(trip));
 });
 
@@ -305,6 +334,10 @@ tripsRouter.post("/trips/:id/cancel", requireAuth, requireRole("Rider"), async (
   });
   clearRiderLocation(trip.id);
   broadcastTripStatus(trip.id, trip.status, trip.finalFare);
+  await notifyUser(trip.riderId, "RIDE_CANCELLED", "Ride cancelled", "Your ride was cancelled.", {
+    type: "TRIP",
+    id: trip.id,
+  });
   res.json(serializeTrip(trip));
 });
 

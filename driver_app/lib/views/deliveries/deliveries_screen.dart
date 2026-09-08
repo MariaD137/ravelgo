@@ -3,12 +3,16 @@ import 'package:ravelgo_driver_app/config/currency.dart';
 import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
+import 'package:ravelgo_driver_app/views/deliveries/delivery_detail_screen.dart';
 import 'package:ravelgo_driver_app/views/deliveries/delivery_proof_screen.dart';
 
-/// Package delivery requests: browse unassigned ones to accept, and track
-/// the ones this driver already accepted through to drop-off. Only an ACTIVE
+/// Package delivery requests: browse unassigned ones to accept, and track the
+/// ones this driver already accepted through to drop-off. Only an ACTIVE
 /// (admin-approved) driver can browse or accept — the backend enforces the
-/// same approval gate used for ride matching.
+/// same approval gate used for ride matching. Four tabs mirror the real
+/// backend lifecycle (CourierStatus): Available (REQUESTED, unassigned),
+/// Assigned (MATCHED to this driver), Active (PICKED_UP/IN_TRANSIT),
+/// Completed (DELIVERED/CANCELLED) — never an invented grouping.
 class DeliveriesScreen extends StatefulWidget {
   const DeliveriesScreen({super.key});
 
@@ -17,7 +21,7 @@ class DeliveriesScreen extends StatefulWidget {
 }
 
 class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 2, vsync: this);
+  late final TabController _tabs = TabController(length: 4, vsync: this);
 
   bool _loading = true;
   bool _busy = false;
@@ -36,6 +40,10 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
     _tabs.dispose();
     super.dispose();
   }
+
+  List<CourierRequest> get _assigned => _mine.where((r) => r.status == 'MATCHED').toList();
+  List<CourierRequest> get _active => _mine.where((r) => r.status == 'PICKED_UP' || r.status == 'IN_TRANSIT').toList();
+  List<CourierRequest> get _completed => _mine.where((r) => r.status == 'DELIVERED' || r.status == 'CANCELLED').toList();
 
   Future<void> _load() async {
     setState(() {
@@ -57,7 +65,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
             ? 'Your account isn\'t approved for deliveries yet. You can go online for deliveries once an admin approves you.'
             : (e is ApiException && e.statusCode == 403
                 ? 'Your account isn\'t set up as a driver yet.'
-                : e.toString());
+                : 'Could not load deliveries — check your connection.');
         _loading = false;
       });
     }
@@ -73,8 +81,13 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
       if (mounted) _tabs.animateTo(1);
     } catch (e) {
       if (!mounted) return;
-      final msg = e is ApiException ? e.message : e.toString();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      final isConflict = e is ApiException && e.statusCode == 409;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(isConflict
+            ? 'This delivery was just accepted by another driver.'
+            : (e is ApiException ? e.message : e.toString())),
+      ));
+      if (isConflict) await _load();
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -111,6 +124,13 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
     }
   }
 
+  Future<void> _openDetail(CourierRequest r) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => DeliveryDetailScreen(deliveryId: r.id, initial: r)),
+    );
+    if (mounted) await _load();
+  }
+
   Color _statusColor(String s) {
     switch (s) {
       case 'DELIVERED':
@@ -132,11 +152,25 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
     return Scaffold(
       appBar: AppBar(
         title: const Text('Deliveries'),
-        bottom: TabBar(controller: _tabs, tabs: const [Tab(text: 'Available'), Tab(text: 'My deliveries')]),
+        bottom: TabBar(
+          controller: _tabs,
+          isScrollable: true,
+          tabs: const [Tab(text: 'Available'), Tab(text: 'Assigned'), Tab(text: 'Active'), Tab(text: 'Completed')],
+        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : (_error != null ? _errorView() : TabBarView(controller: _tabs, children: [_availableList(), _mineList()])),
+          : (_error != null
+              ? _errorView()
+              : TabBarView(
+                  controller: _tabs,
+                  children: [
+                    _availableList(),
+                    _jobList(_assigned, emptyText: 'No deliveries assigned to you yet.'),
+                    _jobList(_active, emptyText: 'No deliveries in progress.'),
+                    _jobList(_completed, emptyText: 'No completed deliveries yet.'),
+                  ],
+                )),
     );
   }
 
@@ -156,7 +190,16 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
 
   Widget _availableList() {
     if (_available.isEmpty) {
-      return const Center(child: Text('No delivery requests waiting right now.', style: TextStyle(color: AppColors.textSecondary)));
+      return RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 120),
+            Center(child: Text('No delivery requests waiting right now.', style: TextStyle(color: AppColors.textSecondary))),
+          ],
+        ),
+      );
     }
     return RefreshIndicator(
       onRefresh: _load,
@@ -167,25 +210,31 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
         separatorBuilder: (_, __) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
           final r = _available[i];
-          return Container(
-            padding: const EdgeInsets.all(14),
-            decoration: AppComponents.cardDecoration(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(r.packageDescription, style: const TextStyle(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 6),
-                Text('From: ${r.pickupAddress}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                Text('To: ${r.dropoffAddress}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Text(Currency.format(r.estimatedFare), style: const TextStyle(fontWeight: FontWeight.w700)),
-                    const Spacer(),
-                    AppComponents.primaryButton(text: 'Accept', onPressed: _busy ? null : () => _accept(r)),
-                  ],
-                ),
-              ],
+          return InkWell(
+            borderRadius: BorderRadius.circular(AppRadius.medium),
+            onTap: () => _openDetail(r),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: AppComponents.cardDecoration(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(r.packageDescription, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 6),
+                  Text('From: ${r.pickupAddress}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  Text('To: ${r.dropoffAddress}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  if (r.distanceKm != null)
+                    Text('${r.distanceKm!.toStringAsFixed(1)} km', style: const TextStyle(fontSize: 12.5, color: AppColors.textMuted)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Text(Currency.format(r.estimatedFare, decimals: 0), style: const TextStyle(fontWeight: FontWeight.w700)),
+                      const Spacer(),
+                      AppComponents.primaryButton(text: 'Accept', onPressed: _busy ? null : () => _accept(r)),
+                    ],
+                  ),
+                ],
+              ),
             ),
           );
         },
@@ -193,50 +242,68 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
     );
   }
 
-  Widget _mineList() {
-    if (_mine.isEmpty) {
-      return const Center(child: Text('You haven\'t accepted any deliveries yet.', style: TextStyle(color: AppColors.textSecondary)));
+  Widget _jobList(List<CourierRequest> jobs, {required String emptyText}) {
+    if (jobs.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            const SizedBox(height: 120),
+            Center(child: Text(emptyText, style: const TextStyle(color: AppColors.textSecondary))),
+          ],
+        ),
+      );
     }
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
         physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: _mine.length,
+        itemCount: jobs.length,
         separatorBuilder: (_, __) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
-          final r = _mine[i];
-          return Container(
-            padding: const EdgeInsets.all(14),
-            decoration: AppComponents.cardDecoration(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(child: Text(r.packageDescription, style: const TextStyle(fontWeight: FontWeight.w700))),
-                    AppComponents.badge(_label(r.status), color: _statusColor(r.status)),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text('From: ${r.pickupAddress}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                Text('To: ${r.dropoffAddress}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                Text('Recipient: ${r.recipientName} · ${r.recipientPhone}',
-                    style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Text(Currency.format(r.finalFare ?? r.estimatedFare), style: const TextStyle(fontWeight: FontWeight.w700)),
-                    const Spacer(),
-                    if (r.status == 'MATCHED')
-                      AppComponents.primaryButton(text: 'Mark picked up', onPressed: _busy ? null : () => _advance(r, 'PICKED_UP')),
-                    if (r.status == 'PICKED_UP')
-                      AppComponents.primaryButton(text: 'Start delivery', onPressed: _busy ? null : () => _advance(r, 'IN_TRANSIT')),
-                    if (r.status == 'IN_TRANSIT')
-                      AppComponents.primaryButton(text: 'Mark delivered', onPressed: _busy ? null : () => _completeDelivery(r)),
-                  ],
-                ),
-              ],
+          final r = jobs[i];
+          return InkWell(
+            borderRadius: BorderRadius.circular(AppRadius.medium),
+            onTap: () => _openDetail(r),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: AppComponents.cardDecoration(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: Text(r.packageDescription, style: const TextStyle(fontWeight: FontWeight.w700))),
+                      AppComponents.badge(_label(r.status), color: _statusColor(r.status)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text('From: ${r.pickupAddress}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  Text('To: ${r.dropoffAddress}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  // The customer's name is only shown once matched to THIS
+                  // driver — privacy-appropriate, same rule the backend
+                  // itself enforces on who can even fetch this record.
+                  if (r.senderName != null)
+                    Text('Customer: ${r.senderName}', style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  Text('Recipient: ${r.recipientName} · ${r.recipientPhone}',
+                      style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Text(Currency.format(r.finalFare ?? r.estimatedFare, decimals: 0), style: const TextStyle(fontWeight: FontWeight.w700)),
+                      const Spacer(),
+                      if (r.status == 'MATCHED')
+                        AppComponents.primaryButton(text: 'Mark picked up', onPressed: _busy ? null : () => _advance(r, 'PICKED_UP')),
+                      if (r.status == 'PICKED_UP')
+                        AppComponents.primaryButton(text: 'Start delivery', onPressed: _busy ? null : () => _advance(r, 'IN_TRANSIT')),
+                      if (r.status == 'IN_TRANSIT')
+                        AppComponents.primaryButton(text: 'Mark delivered', onPressed: _busy ? null : () => _completeDelivery(r)),
+                    ],
+                  ),
+                ],
+              ),
             ),
           );
         },

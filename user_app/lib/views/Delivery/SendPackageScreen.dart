@@ -31,16 +31,30 @@ class _SendPackageScreenState extends State<SendPackageScreen> {
   final _descriptionController = TextEditingController();
   String _packageSize = 'MEDIUM';
   bool _sending = false;
+  // Coordinates resolved alongside the address text below — only set when the
+  // sender actually picks a real place from search, never guessed. These are
+  // what let the delivery-tracking map later show real pickup/dropoff pins
+  // (see PRD audit: CourierRequest had no coordinates at all before this).
+  PlaceLocation? _pickupLocation;
+  PlaceLocation? _dropoffLocation;
 
   /// Opens the same real, Places-backed address search used by the ride
   /// booking flow, so pickup/drop-off here resolve to actual verified
   /// addresses instead of whatever free text a rider happens to type.
-  Future<void> _pickAddress(TextEditingController controller, {required String title, required String hint}) async {
+  Future<void> _pickAddress(
+    TextEditingController controller, {
+    required String title,
+    required String hint,
+    required void Function(PlaceLocation) onPicked,
+  }) async {
     final place = await Navigator.of(context).push<PlaceLocation>(
       MaterialPageRoute(builder: (_) => PlaceSearchScreen(title: title, hint: hint)),
     );
     if (place == null || !mounted) return;
-    setState(() => controller.text = place.address);
+    setState(() {
+      controller.text = place.address;
+      onPicked(place);
+    });
   }
 
   @override
@@ -91,6 +105,10 @@ class _SendPackageScreenState extends State<SendPackageScreen> {
         packageSize: _packageSize,
         recipientName: _recipientNameController.text.trim(),
         recipientPhone: _recipientPhoneController.text.trim(),
+        pickupLat: _pickupLocation?.lat,
+        pickupLng: _pickupLocation?.lng,
+        dropoffLat: _dropoffLocation?.lat,
+        dropoffLng: _dropoffLocation?.lng,
       );
       if (!mounted) return;
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => DeliveryTrackingScreen(deliveryId: request.id)));
@@ -117,7 +135,12 @@ class _SendPackageScreenState extends State<SendPackageScreen> {
             TextFormField(
               controller: _pickupController,
               readOnly: true,
-              onTap: () => _pickAddress(_pickupController, title: 'Pickup address', hint: 'Search for a pickup address'),
+              onTap: () => _pickAddress(
+                _pickupController,
+                title: 'Pickup address',
+                hint: 'Search for a pickup address',
+                onPicked: (place) => _pickupLocation = place,
+              ),
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.trip_origin),
                 suffixIcon: Icon(Icons.search),
@@ -131,7 +154,12 @@ class _SendPackageScreenState extends State<SendPackageScreen> {
             TextFormField(
               controller: _dropoffController,
               readOnly: true,
-              onTap: () => _pickAddress(_dropoffController, title: 'Drop-off address', hint: 'Search for a drop-off address'),
+              onTap: () => _pickAddress(
+                _dropoffController,
+                title: 'Drop-off address',
+                hint: 'Search for a drop-off address',
+                onPicked: (place) => _dropoffLocation = place,
+              ),
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.location_on_outlined),
                 suffixIcon: Icon(Icons.search),

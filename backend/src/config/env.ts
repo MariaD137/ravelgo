@@ -38,6 +38,15 @@ const rawEnvSchema = z.object({
   // referrer. Optional so dev/test boots without it (the proxy returns a clear
   // 503 when it's unset rather than calling Google with an empty key).
   GOOGLE_MAPS_SERVER_KEY: z.string().optional(),
+  // AWS Pinpoint "Application"/project ID that backs device push (see
+  // services/push.ts) — one Pinpoint app covers both the GCM (Android) and
+  // APNS (iOS) channels, each enabled with a real FCM server key / APNs
+  // certificate out-of-band (see infra/lib/api-stack.ts's comment; CDK can't
+  // carry those credentials). Optional everywhere, including production:
+  // push is a real but non-critical feature, so an unconfigured deploy
+  // simply never sends a push (the in-app notification still persists and
+  // lists normally) rather than failing to boot.
+  PINPOINT_APPLICATION_ID: z.string().optional(),
 });
 
 export interface Env {
@@ -53,6 +62,7 @@ export interface Env {
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
   GOOGLE_MAPS_SERVER_KEY?: string;
+  PINPOINT_APPLICATION_ID?: string;
 }
 
 function loadEnv(): Env {
@@ -116,6 +126,7 @@ function loadEnv(): Env {
     STRIPE_SECRET_KEY: data.STRIPE_SECRET_KEY,
     STRIPE_WEBHOOK_SECRET: data.STRIPE_WEBHOOK_SECRET,
     GOOGLE_MAPS_SERVER_KEY: data.GOOGLE_MAPS_SERVER_KEY,
+    PINPOINT_APPLICATION_ID: data.PINPOINT_APPLICATION_ID,
   };
 }
 

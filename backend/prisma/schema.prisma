@@ -174,6 +174,8 @@ model User {
   hostedProperties  PropertyListing[] @relation("HostProperties")
   stayBookings      StayBooking[]     @relation("GuestStayBookings")
   rentalBookings    RentalBooking[]   @relation("RenterRentalBookings")
+  notifications     Notification[]
+  pushTokens        PushToken[]
 }
 
 model Driver {
@@ -400,6 +402,60 @@ model CourierRequest {
   // GET URL is generated per-request when a party fetches this record.
   deliveryPhotoKey     String?
   recipientSignatureKey String?
+  // Coordinates resolved by the sender's Places-backed address search at
+  // request time (see SendPackageScreen.dart) — nullable so a request made
+  // before this existed (or whose text address never resolved) simply has no
+  // pin, rather than a fabricated one. Mirrors Trip's identical pattern.
+  pickupLat            Float?
+  pickupLng            Float?
+  dropoffLat           Float?
+  dropoffLng           Float?
+}
+
+// A real, persisted, backend-originated notification — created only from an
+// actual event (trip/delivery/rental status change, payment outcome), never
+// fabricated client-side. `referenceType`/`referenceId` (e.g. "TRIP"/tripId)
+// let the app navigate straight to the object the notification is about;
+// both are optional since not every notification (e.g. an account/security
+// notice) points at a specific record.
+model Notification {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type          String
+  title         String
+  body          String
+  read          Boolean  @default(false)
+  referenceType String?
+  referenceId   String?
+  createdAt     DateTime @default(now())
+
+  // Backs "my notifications, newest first" and the unread-count badge.
+  @@index([userId, createdAt])
+  @@index([userId, read])
+}
+
+// A device registered to receive push notifications, sent via AWS Pinpoint
+// (see backend/src/services/push.ts) targeting the raw token directly — no
+// separate "endpoint" resource has to be pre-created, unlike SNS Mobile
+// Push. `token` is unique platform-wide, not per-user: the OS can hand the
+// same token to a different app install (e.g. after an uninstall and a
+// different account's install), and re-registration must reassign it to the
+// new owner rather than error — the previous owner's row is simply
+// overwritten. A row existing here is never itself proof push will actually
+// be delivered — see PINPOINT_APPLICATION_ID in env.ts for the "not
+// configured" no-op case, and push.ts's own delivery-status handling for
+// per-token cleanup when Pinpoint reports the token as dead.
+model PushToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  platform  String   // IOS | ANDROID
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model EmergencyAlert {

@@ -281,6 +281,12 @@ test("POST /api/rental-bookings/:id/pay with WALLET debits the renter's balance 
 
   const wallet = await prisma.walletAccount.findUnique({ where: { userId: rider.id } });
   assert.equal(wallet?.balanceCents, 100000 - 20000);
+
+  const notifications = await prisma.notification.findMany({ where: { userId: rider.id } });
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].type, "RENTAL_CONFIRMED");
+  assert.equal(notifications[0].referenceType, "RENTAL_BOOKING");
+  assert.equal(notifications[0].referenceId, book.body.id);
 });
 
 test("POST /api/rental-bookings/:id/pay with WALLET rejects insufficient balance", async () => {
@@ -396,11 +402,14 @@ test("PATCH /api/rental-bookings/:id/cancel refunds a WALLET payment back to the
 
   const wallet = await prisma.walletAccount.findUnique({ where: { userId: rider.id } });
   assert.equal(wallet?.balanceCents, 100000); // fully refunded
+
+  const notifications = await prisma.notification.findMany({ where: { userId: rider.id }, orderBy: { createdAt: "asc" } });
+  assert.deepEqual(notifications.map((n) => n.type), ["RENTAL_CONFIRMED", "RENTAL_CANCELLED"]);
 });
 
 test("a CARD rental booking is only CONFIRMED once the signed webhook confirms the charge", async () => {
   const listing = await createApprovedListing("driver-sub-16", 100);
-  await createRider("rider-sub-14");
+  const rider = await createRider("rider-sub-14");
   const token = mockAuthAs({ sub: "rider-sub-14", groups: ["Rider"] });
   const intentId = mockPaymentIntentCreate("pi_rental_1");
 
@@ -425,11 +434,15 @@ test("a CARD rental booking is only CONFIRMED once the signed webhook confirms t
   const confirmed = await prisma.rentalBooking.findUnique({ where: { id: book.body.id } });
   assert.equal(confirmed?.status, "CONFIRMED");
   assert.equal(confirmed?.paymentStatus, "SUCCEEDED");
+
+  const notifications = await prisma.notification.findMany({ where: { userId: rider.id } });
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].type, "RENTAL_CONFIRMED");
 });
 
 test("a failed CARD rental booking webhook marks the payment FAILED and leaves the booking unconfirmed", async () => {
   const listing = await createApprovedListing("driver-sub-17", 100);
-  await createRider("rider-sub-15");
+  const rider = await createRider("rider-sub-15");
   const token = mockAuthAs({ sub: "rider-sub-15", groups: ["Rider"] });
   const intentId = mockPaymentIntentCreate("pi_rental_2");
 
@@ -452,4 +465,8 @@ test("a failed CARD rental booking webhook marks the payment FAILED and leaves t
   const failed = await prisma.rentalBooking.findUnique({ where: { id: book.body.id } });
   assert.equal(failed?.status, "PENDING_PAYMENT");
   assert.equal(failed?.paymentStatus, "FAILED");
+
+  const notifications = await prisma.notification.findMany({ where: { userId: rider.id } });
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].type, "PAYMENT_FAILED");
 });

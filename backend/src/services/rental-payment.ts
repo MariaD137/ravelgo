@@ -1,6 +1,7 @@
 import { prisma } from "../db/prisma";
 import { stripeClient } from "../billing/stripe";
 import { MAX_MONEY_AMOUNT, toCents } from "../lib/money";
+import { notifyUser } from "../lib/notifications";
 import { InsufficientFundsError } from "./wallet";
 
 export type RentalPaymentMethod = "CARD" | "WALLET";
@@ -89,6 +90,13 @@ export async function chargeRentalBooking(
     });
   });
 
+  await notifyUser(
+    booking.renterId,
+    "RENTAL_CONFIRMED",
+    "Rental confirmed",
+    "Your RavelGo Cash payment went through and your rental booking is confirmed.",
+    { type: "RENTAL_BOOKING", id: booking.id },
+  );
   return { booking: updated };
 }
 
@@ -122,11 +130,27 @@ export async function cancelRentalBooking(booking: ChargeableRentalBooking & { p
         ]);
       }
     }
-    return prisma.rentalBooking.update({
+    const cancelled = await prisma.rentalBooking.update({
       where: { id: booking.id },
       data: { status: "CANCELLED", paymentStatus: "REFUNDED" },
     });
+    await notifyUser(
+      booking.renterId,
+      "RENTAL_CANCELLED",
+      "Rental cancelled",
+      "Your rental booking was cancelled and your payment was refunded.",
+      { type: "RENTAL_BOOKING", id: booking.id },
+    );
+    return cancelled;
   }
 
-  return prisma.rentalBooking.update({ where: { id: booking.id }, data: { status: "CANCELLED" } });
+  const cancelled = await prisma.rentalBooking.update({ where: { id: booking.id }, data: { status: "CANCELLED" } });
+  await notifyUser(
+    booking.renterId,
+    "RENTAL_CANCELLED",
+    "Rental cancelled",
+    "Your rental booking was cancelled.",
+    { type: "RENTAL_BOOKING", id: booking.id },
+  );
+  return cancelled;
 }
