@@ -61,16 +61,57 @@ class AppRadius {
 /// Type scale. Colors are intentionally omitted here (callers set color
 /// per-context via AppColors) except where a role always means one thing.
 class AppTypography {
-  static const display = TextStyle(fontSize: 32, fontWeight: FontWeight.w700, height: 1.2, letterSpacing: -0.5);
-  static const headline = TextStyle(fontSize: 24, fontWeight: FontWeight.w700, height: 1.25);
-  static const title = TextStyle(fontSize: 18, fontWeight: FontWeight.w700, height: 1.3);
-  static const cardTitle = TextStyle(fontSize: 16, fontWeight: FontWeight.w600, height: 1.3);
-  static const body = TextStyle(fontSize: 15, fontWeight: FontWeight.w400, height: 1.45);
-  static const bodySmall = TextStyle(fontSize: 13, fontWeight: FontWeight.w400, height: 1.4);
-  static const label = TextStyle(fontSize: 13, fontWeight: FontWeight.w600, height: 1.3);
-  static const caption = TextStyle(fontSize: 12, fontWeight: FontWeight.w400, height: 1.3);
-  static const button = TextStyle(fontSize: 16, fontWeight: FontWeight.w600, height: 1.2);
-  static const navigation = TextStyle(fontSize: 11, fontWeight: FontWeight.w500, height: 1.2);
+  static const display = TextStyle(
+    fontSize: 32,
+    fontWeight: FontWeight.w700,
+    height: 1.2,
+    letterSpacing: -0.5,
+  );
+  static const headline = TextStyle(
+    fontSize: 24,
+    fontWeight: FontWeight.w700,
+    height: 1.25,
+  );
+  static const title = TextStyle(
+    fontSize: 18,
+    fontWeight: FontWeight.w700,
+    height: 1.3,
+  );
+  static const cardTitle = TextStyle(
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    height: 1.3,
+  );
+  static const body = TextStyle(
+    fontSize: 15,
+    fontWeight: FontWeight.w400,
+    height: 1.45,
+  );
+  static const bodySmall = TextStyle(
+    fontSize: 13,
+    fontWeight: FontWeight.w400,
+    height: 1.4,
+  );
+  static const label = TextStyle(
+    fontSize: 13,
+    fontWeight: FontWeight.w600,
+    height: 1.3,
+  );
+  static const caption = TextStyle(
+    fontSize: 12,
+    fontWeight: FontWeight.w400,
+    height: 1.3,
+  );
+  static const button = TextStyle(
+    fontSize: 16,
+    fontWeight: FontWeight.w600,
+    height: 1.2,
+  );
+  static const navigation = TextStyle(
+    fontSize: 11,
+    fontWeight: FontWeight.w500,
+    height: 1.2,
+  );
 }
 
 ThemeData buildAppTheme() {
@@ -86,24 +127,30 @@ ThemeData buildAppTheme() {
       surface: AppColors.surface,
       error: AppColors.error,
     ),
-    textTheme: const TextTheme(
-      displayLarge: AppTypography.display,
-      headlineLarge: AppTypography.headline,
-      titleLarge: AppTypography.title,
-      titleMedium: AppTypography.cardTitle,
-      bodyLarge: AppTypography.body,
-      bodyMedium: AppTypography.bodySmall,
-      labelLarge: AppTypography.button,
-      labelSmall: AppTypography.caption,
-    ).apply(
-      bodyColor: AppColors.textPrimary,
-      displayColor: AppColors.textPrimary,
-    ),
+    textTheme:
+        const TextTheme(
+          displayLarge: AppTypography.display,
+          headlineLarge: AppTypography.headline,
+          titleLarge: AppTypography.title,
+          titleMedium: AppTypography.cardTitle,
+          bodyLarge: AppTypography.body,
+          bodyMedium: AppTypography.bodySmall,
+          labelLarge: AppTypography.button,
+          labelSmall: AppTypography.caption,
+        ).apply(
+          bodyColor: AppColors.textPrimary,
+          displayColor: AppColors.textPrimary,
+        ),
     appBarTheme: const AppBarTheme(
       backgroundColor: AppColors.background,
       foregroundColor: AppColors.textPrimary,
       elevation: 0,
-      titleTextStyle: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, height: 1.3, color: AppColors.textPrimary),
+      titleTextStyle: TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        height: 1.3,
+        color: AppColors.textPrimary,
+      ),
     ),
     cardTheme: CardThemeData(
       color: AppColors.surface,
@@ -113,7 +160,11 @@ ThemeData buildAppTheme() {
         side: const BorderSide(color: AppColors.border, width: 1),
       ),
     ),
-    dividerTheme: const DividerThemeData(color: AppColors.divider, thickness: 1, space: 1),
+    dividerTheme: const DividerThemeData(
+      color: AppColors.divider,
+      thickness: 1,
+      space: 1,
+    ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: AppColors.primary,
@@ -122,7 +173,9 @@ ThemeData buildAppTheme() {
         disabledForegroundColor: AppColors.textMuted,
         elevation: 0,
         textStyle: AppTypography.button,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.medium)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.medium),
+        ),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
@@ -130,7 +183,9 @@ ThemeData buildAppTheme() {
         foregroundColor: AppColors.textPrimary,
         side: const BorderSide(color: AppColors.primary),
         textStyle: AppTypography.button,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.medium)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.medium),
+        ),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
@@ -162,13 +217,21 @@ ThemeData buildAppTheme() {
     iconTheme: const IconThemeData(color: AppColors.textSecondary),
     dialogTheme: DialogThemeData(
       backgroundColor: AppColors.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.large)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppRadius.large),
+      ),
     ),
     switchTheme: SwitchThemeData(
-      thumbColor: WidgetStateProperty.resolveWith((states) =>
-          states.contains(WidgetState.selected) ? AppColors.primary : AppColors.surface),
-      trackColor: WidgetStateProperty.resolveWith((states) =>
-          states.contains(WidgetState.selected) ? AppColors.textSecondary : AppColors.disabled),
+      thumbColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? AppColors.primary
+            : AppColors.surface,
+      ),
+      trackColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.selected)
+            ? AppColors.textSecondary
+            : AppColors.disabled,
+      ),
       trackOutlineColor: WidgetStateProperty.all(AppColors.border),
     ),
   );
@@ -177,7 +240,10 @@ ThemeData buildAppTheme() {
 class AppComponents {
   static Widget header(BuildContext context, String title, {Widget? trailing}) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.base, vertical: AppSpacing.md),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.base,
+        vertical: AppSpacing.md,
+      ),
       child: Row(
         children: [
           GestureDetector(
@@ -185,7 +251,12 @@ class AppComponents {
             child: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
           ),
           const SizedBox(width: AppSpacing.md),
-          Expanded(child: Text(title, style: AppTypography.title.copyWith(color: AppColors.textPrimary))),
+          Expanded(
+            child: Text(
+              title,
+              style: AppTypography.title.copyWith(color: AppColors.textPrimary),
+            ),
+          ),
           if (trailing != null) trailing,
         ],
       ),
@@ -196,7 +267,10 @@ class AppComponents {
     return BoxDecoration(
       color: AppColors.surface,
       borderRadius: BorderRadius.circular(AppRadius.medium),
-      border: Border.all(color: borderColor ?? AppColors.border, width: borderColor != null ? 1.5 : 1),
+      border: Border.all(
+        color: borderColor ?? AppColors.border,
+        width: borderColor != null ? 1.5 : 1,
+      ),
     );
   }
 
@@ -209,10 +283,20 @@ class AppComponents {
 
   static Widget sectionTitle(String text, {Widget? trailing}) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpacing.xs, AppSpacing.sm, AppSpacing.xs, AppSpacing.md),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.xs,
+        AppSpacing.sm,
+        AppSpacing.xs,
+        AppSpacing.md,
+      ),
       child: Row(
         children: [
-          Expanded(child: Text(text, style: AppTypography.title.copyWith(color: AppColors.textPrimary))),
+          Expanded(
+            child: Text(
+              text,
+              style: AppTypography.title.copyWith(color: AppColors.textPrimary),
+            ),
+          ),
           if (trailing != null) trailing,
         ],
       ),
@@ -229,7 +313,10 @@ class AppComponents {
     return InkWell(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md, vertical: AppSpacing.base),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: AppSpacing.base,
+        ),
         child: Row(
           children: [
             if (leading != null) ...[
@@ -240,22 +327,42 @@ class AppComponents {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: AppTypography.cardTitle.copyWith(color: AppColors.textPrimary)),
+                  Text(
+                    title,
+                    style: AppTypography.cardTitle.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
                   if (subtitle != null) ...[
                     const SizedBox(height: AppSpacing.xs),
-                    Text(subtitle, style: AppTypography.caption.copyWith(color: AppColors.textSecondary)),
+                    Text(
+                      subtitle,
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
                   ],
                 ],
               ),
             ),
-            if (trailing != null) trailing else const Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
+            if (trailing != null)
+              trailing
+            else
+              const Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: AppColors.textMuted,
+              ),
           ],
         ),
       ),
     );
   }
 
-  static Widget primaryButton({required String text, required VoidCallback? onPressed}) {
+  static Widget primaryButton({
+    required String text,
+    required VoidCallback? onPressed,
+  }) {
     return SizedBox(
       width: double.infinity,
       height: 50,
@@ -263,7 +370,11 @@ class AppComponents {
     );
   }
 
-  static Widget outlineButton({required String text, required VoidCallback? onPressed, Color? color}) {
+  static Widget outlineButton({
+    required String text,
+    required VoidCallback? onPressed,
+    Color? color,
+  }) {
     return SizedBox(
       width: double.infinity,
       height: 46,
@@ -272,7 +383,9 @@ class AppComponents {
         style: OutlinedButton.styleFrom(
           foregroundColor: color ?? AppColors.textPrimary,
           side: BorderSide(color: color ?? AppColors.border),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.medium)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppRadius.medium),
+          ),
         ),
         child: Text(text, style: AppTypography.button),
       ),
@@ -282,31 +395,78 @@ class AppComponents {
   static Widget badge(String text, {Color? color}) {
     final c = color ?? AppColors.primary;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm, vertical: AppSpacing.xs),
-      decoration: BoxDecoration(color: c.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(AppRadius.pill)),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+      ),
       child: Text(text, style: AppTypography.label.copyWith(color: c)),
     );
   }
 
-  static Widget statCard(String label, String value, IconData icon, {Color? color}) {
-    return Container(
+  static Widget statCard(
+    String label,
+    String value,
+    IconData icon, {
+    Color? color,
+    VoidCallback? onTap,
+  }) {
+    final card = Container(
       padding: const EdgeInsets.all(AppSpacing.base),
       decoration: cardDecoration(),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(AppSpacing.sm),
-            decoration: BoxDecoration(color: AppColors.surfaceElevated, borderRadius: BorderRadius.circular(AppRadius.small)),
-            child: Icon(icon, color: color ?? AppColors.textSecondary, size: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(AppSpacing.sm),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceElevated,
+                  borderRadius: BorderRadius.circular(AppRadius.small),
+                ),
+                child: Icon(
+                  icon,
+                  color: color ?? AppColors.textSecondary,
+                  size: 20,
+                ),
+              ),
+              if (onTap != null)
+                const Icon(
+                  Icons.chevron_right,
+                  size: 18,
+                  color: AppColors.textMuted,
+                ),
+            ],
           ),
           const SizedBox(height: AppSpacing.md),
-          Text(value, style: AppTypography.headline.copyWith(fontSize: 20, color: AppColors.textPrimary)),
+          Text(
+            value,
+            style: AppTypography.headline.copyWith(
+              fontSize: 20,
+              color: AppColors.textPrimary,
+            ),
+          ),
           const SizedBox(height: AppSpacing.xs / 2),
-          Text(label, style: AppTypography.caption.copyWith(color: AppColors.textSecondary)),
+          Text(
+            label,
+            style: AppTypography.caption.copyWith(
+              color: AppColors.textSecondary,
+            ),
+          ),
         ],
       ),
+    );
+    if (onTap == null) return card;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppRadius.medium),
+      child: card,
     );
   }
 
@@ -323,11 +483,24 @@ class AppComponents {
           Container(
             width: 56,
             height: 56,
-            decoration: BoxDecoration(color: AppColors.surfaceElevated, borderRadius: BorderRadius.circular(AppRadius.small)),
-            child: const Icon(Icons.description_outlined, color: AppColors.textSecondary),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceElevated,
+              borderRadius: BorderRadius.circular(AppRadius.small),
+            ),
+            child: const Icon(
+              Icons.description_outlined,
+              color: AppColors.textSecondary,
+            ),
           ),
           const SizedBox(width: AppSpacing.md),
-          Expanded(child: Text(label, style: AppTypography.bodySmall.copyWith(color: AppColors.textSecondary))),
+          Expanded(
+            child: Text(
+              label,
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
         ],
       ),
     );

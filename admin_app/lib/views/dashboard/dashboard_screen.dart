@@ -3,6 +3,12 @@ import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/utils/date_utils.dart';
+import 'package:ravelgo_admin/views/couriers/courier_requests_screen.dart';
+import 'package:ravelgo_admin/views/drivers/driver_list_screen.dart';
+import 'package:ravelgo_admin/views/payments/payments_cash_screen.dart';
+import 'package:ravelgo_admin/views/riders/rider_list_screen.dart';
+import 'package:ravelgo_admin/views/trips/trip_admin_detail_screen.dart';
+import 'package:ravelgo_admin/views/trips/trip_monitoring_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final bool embedded;
@@ -35,12 +41,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _error = null;
     });
     try {
-      final results = await Future.wait([AdminApi.dashboard(), AdminApi.trips()]);
+      final results = await Future.wait([
+        AdminApi.dashboard(),
+        AdminApi.trips(),
+      ]);
       final stats = results[0] as DashboardStats;
       final trips = results[1] as List<AdminTrip>;
 
       final now = DateTime.now();
-      final monday = DateTime(now.year, now.month, now.day).subtract(Duration(days: now.weekday - 1));
+      final monday = DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(Duration(days: now.weekday - 1));
       final week = List<double>.filled(7, 0);
       double revenue = 0;
       for (final t in trips) {
@@ -73,21 +86,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? const Center(child: CircularProgressIndicator())
         : (_error != null ? _errorView() : _content());
     if (widget.embedded) return body;
-    return Scaffold(appBar: AppBar(title: const Text("Dashboard")), body: body);
+    return Scaffold(
+      appBar: AppBar(title: const Text("Dashboard")),
+      body: body,
+    );
   }
 
   Widget _errorView() => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
-              TextButton(onPressed: _load, child: const Text('Try again')),
-            ],
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _error!,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppColors.danger),
+          ),
+          TextButton(onPressed: _load, child: const Text('Try again')),
+        ],
+      ),
+    ),
+  );
+
+  void _openTrips(Set<String> statusFilter) => Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => TripMonitoringScreen(initialStatusFilter: statusFilter),
+    ),
+  );
+
+  void _openDrivers({String? statusFilter, bool onlineOnly = false}) =>
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => DriverListScreen(
+            initialStatusFilter: statusFilter,
+            initialOnlineOnly: onlineOnly,
           ),
         ),
       );
+
+  void _openDeliveries(Set<String> statusFilter) => Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => CourierRequestsScreen(initialStatusFilter: statusFilter),
+    ),
+  );
+
+  void _openRiders() => Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const RiderListScreen()),
+  );
+
+  void _openPayments() => Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const PaymentsCashScreen()),
+  );
 
   Widget _content() {
     final maxVal = _week.fold<double>(0, (a, b) => b > a ? b : a);
@@ -106,58 +161,117 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 runSpacing: spacing,
                 children: [
                   SizedBox(
-                      width: cardWidth,
-                      child: AppComponents.statCard(
-                          "Active rides now", "${_stats!.activeTrips}", Icons.directions_car_filled_outlined)),
+                    width: cardWidth,
+                    child: AppComponents.statCard(
+                      "Active rides now",
+                      "${_stats!.activeTrips}",
+                      Icons.directions_car_filled_outlined,
+                      onTap: () => _openTrips(const {'MATCHED', 'IN_PROGRESS'}),
+                    ),
+                  ),
                   SizedBox(
-                      width: cardWidth,
-                      child: AppComponents.statCard("Online drivers", "${_stats!.onlineDrivers}", Icons.badge_outlined,
-                          color: AppColors.success)),
+                    width: cardWidth,
+                    child: AppComponents.statCard(
+                      "Online drivers",
+                      "${_stats!.onlineDrivers}",
+                      Icons.badge_outlined,
+                      color: AppColors.success,
+                      onTap: () => _openDrivers(onlineOnly: true),
+                    ),
+                  ),
                   SizedBox(
-                      width: cardWidth,
-                      child: AppComponents.statCard("Revenue (completed)", "₦${_revenue.toStringAsFixed(0)}",
-                          Icons.payments_outlined,
-                          color: AppColors.info)),
+                    width: cardWidth,
+                    child: AppComponents.statCard(
+                      "Revenue (completed)",
+                      "₦${_revenue.toStringAsFixed(0)}",
+                      Icons.payments_outlined,
+                      color: AppColors.info,
+                      onTap: _openPayments,
+                    ),
+                  ),
                   SizedBox(
-                      width: cardWidth,
-                      child: AppComponents.statCard(
-                          "Pending approvals", "${_stats!.pendingApprovals}", Icons.pending_actions_outlined,
-                          color: AppColors.warning)),
+                    width: cardWidth,
+                    child: AppComponents.statCard(
+                      "Pending approvals",
+                      "${_stats!.pendingApprovals}",
+                      Icons.pending_actions_outlined,
+                      color: AppColors.warning,
+                      onTap: () => _openDrivers(statusFilter: 'PENDING_REVIEW'),
+                    ),
+                  ),
                   SizedBox(
-                      width: cardWidth,
-                      child: AppComponents.statCard("Available drivers", "${_stats!.availableDrivers}",
-                          Icons.check_circle_outline,
-                          color: AppColors.success)),
+                    width: cardWidth,
+                    child: AppComponents.statCard(
+                      "Available drivers",
+                      "${_stats!.availableDrivers}",
+                      Icons.check_circle_outline,
+                      color: AppColors.success,
+                      onTap: () => _openDrivers(onlineOnly: true),
+                    ),
+                  ),
                   SizedBox(
-                      width: cardWidth,
-                      child: AppComponents.statCard(
-                          "Pending ride requests", "${_stats!.pendingRideRequests}", Icons.hourglass_top_outlined,
-                          color: AppColors.warning)),
+                    width: cardWidth,
+                    child: AppComponents.statCard(
+                      "Pending ride requests",
+                      "${_stats!.pendingRideRequests}",
+                      Icons.hourglass_top_outlined,
+                      color: AppColors.warning,
+                      onTap: () => _openTrips(const {'REQUESTED'}),
+                    ),
+                  ),
                   SizedBox(
-                      width: cardWidth,
-                      child: AppComponents.statCard(
-                          "Active deliveries", "${_stats!.activeLogisticsDeliveries}", Icons.local_shipping_outlined,
-                          color: AppColors.warning)),
+                    width: cardWidth,
+                    child: AppComponents.statCard(
+                      "Active deliveries",
+                      "${_stats!.activeLogisticsDeliveries}",
+                      Icons.local_shipping_outlined,
+                      color: AppColors.warning,
+                      onTap: () => _openDeliveries(const {
+                        'MATCHED',
+                        'PICKED_UP',
+                        'IN_TRANSIT',
+                      }),
+                    ),
+                  ),
                   SizedBox(
-                      width: cardWidth,
-                      child: AppComponents.statCard(
-                          "Registered riders", "${_stats!.registeredRiders}", Icons.people_outline)),
+                    width: cardWidth,
+                    child: AppComponents.statCard(
+                      "Registered riders",
+                      "${_stats!.registeredRiders}",
+                      Icons.people_outline,
+                      onTap: _openRiders,
+                    ),
+                  ),
                   SizedBox(
-                      width: cardWidth,
-                      child: AppComponents.statCard("Cash collected today", "₦${_stats!.cashCollectedToday.toStringAsFixed(0)}",
-                          Icons.payments_outlined,
-                          color: AppColors.success)),
+                    width: cardWidth,
+                    child: AppComponents.statCard(
+                      "Cash collected today",
+                      "₦${_stats!.cashCollectedToday.toStringAsFixed(0)}",
+                      Icons.payments_outlined,
+                      color: AppColors.success,
+                      onTap: _openPayments,
+                    ),
+                  ),
                   SizedBox(
-                      width: cardWidth,
-                      child: AppComponents.statCard("Card revenue today", "₦${_stats!.cardRevenueToday.toStringAsFixed(0)}",
-                          Icons.credit_card_outlined,
-                          color: AppColors.info)),
+                    width: cardWidth,
+                    child: AppComponents.statCard(
+                      "Card revenue today",
+                      "₦${_stats!.cardRevenueToday.toStringAsFixed(0)}",
+                      Icons.credit_card_outlined,
+                      color: AppColors.info,
+                      onTap: _openPayments,
+                    ),
+                  ),
                   SizedBox(
-                      width: cardWidth,
-                      child: AppComponents.statCard(
-                          "RavelGo Cash revenue today", "₦${_stats!.walletRevenueToday.toStringAsFixed(0)}",
-                          Icons.account_balance_wallet_outlined,
-                          color: AppColors.warning)),
+                    width: cardWidth,
+                    child: AppComponents.statCard(
+                      "RavelGo Cash revenue today",
+                      "₦${_stats!.walletRevenueToday.toStringAsFixed(0)}",
+                      Icons.account_balance_wallet_outlined,
+                      color: AppColors.warning,
+                      onTap: _openPayments,
+                    ),
+                  ),
                 ],
               );
             },
@@ -169,13 +283,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("Trips this week", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                const Text(
+                  "Trips this week",
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                ),
                 const SizedBox(height: 16),
                 IntrinsicHeight(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: List.generate(_week.length, (i) {
-                      final h = maxVal <= 0 ? 0.0 : _chartBarMaxHeight * (_week[i] / maxVal);
+                      final h = maxVal <= 0
+                          ? 0.0
+                          : _chartBarMaxHeight * (_week[i] / maxVal);
                       return Expanded(
                         child: Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -186,12 +305,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                               Container(
                                 height: h,
                                 decoration: BoxDecoration(
-                                  color: AppColors.primary.withValues(alpha: h > 0 ? 0.9 : 0.15),
+                                  color: AppColors.primary.withValues(
+                                    alpha: h > 0 ? 0.9 : 0.15,
+                                  ),
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                               ),
                               const SizedBox(height: 6),
-                              Text(_days[i], style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                              Text(
+                                _days[i],
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -207,35 +334,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (_trips.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
-              child: Text("No trips yet.", style: TextStyle(color: AppColors.textSecondary)),
+              child: Text(
+                "No trips yet.",
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
             )
           else
-            ..._trips.take(6).map((t) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: AppComponents.cardDecoration(),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text("${t.riderName.isEmpty ? 'Rider' : t.riderName}  →  ${t.driverName ?? 'Unassigned'}",
-                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
-                              const SizedBox(height: 4),
-                              Text("${t.pickup} to ${t.destination} · ${formatFriendlyDate(t.requestedAt)}",
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary)),
-                            ],
-                          ),
+            ..._trips
+                .take(6)
+                .map(
+                  (t) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => TripAdminDetailScreen(trip: t),
                         ),
-                        Text("₦${t.fare.toStringAsFixed(0)}", style: const TextStyle(fontWeight: FontWeight.w700)),
-                      ],
+                      ),
+                      child: Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: AppComponents.cardDecoration(),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    "${t.riderName.isEmpty ? 'Rider' : t.riderName}  →  ${t.driverName ?? 'Unassigned'}",
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13.5,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    "${t.pickup} to ${t.destination} · ${formatFriendlyDate(t.requestedAt)}",
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 11.5,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              "₦${t.fare.toStringAsFixed(0)}",
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                )),
+                ),
         ],
       ),
     );
