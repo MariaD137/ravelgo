@@ -5,7 +5,13 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { blockIfAdminLacksPermission } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
-import { broadcastTripStatus, clearRiderLocation, getLatestDriverLocation, recordRiderLocation } from "../realtime/hub";
+import {
+  broadcastTripStatus,
+  clearRiderLocation,
+  getLatestDriverLocation,
+  locationFreshness,
+  recordRiderLocation,
+} from "../realtime/hub";
 import { notifyAllAdmins, notifyUser } from "../lib/notifications";
 import { matchDriverToTrip } from "../services/matching";
 import { quoteFare } from "../services/pricing";
@@ -294,6 +300,32 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
       type: "TRIP",
       id: trip.id,
     });
+    // EI-1: the driver side of this event was previously silent — only the
+    // rider was ever told a trip they were both on had completed. The driver
+    // app has no other UI moment that surfaces the exact fare they earned,
+    // so this doubles as their receipt for the trip, not just a courtesy ping.
+    if (trip.driver) {
+      const fare = trip.finalFare ?? trip.estimatedFare;
+      await notifyUser(
+        trip.driver.user.id,
+        "RIDE_COMPLETED",
+        "Trip completed",
+        `You earned ${fare} for this trip.`,
+        { type: "TRIP", id: trip.id },
+      );
+    }
+    // EI-1: give admins a truthful, queryable record that this trip actually
+    // reached COMPLETED — not just the override case below, which only fires
+    // when an admin themself changed the status. actorSub is whoever actually
+    // called this endpoint (the driver, in the normal path), so the log shows
+    // who completed it, not just that it happened.
+    await recordAudit({
+      actorSub: req.user!.sub,
+      action: "TRIP_COMPLETED",
+      entityType: "Trip",
+      entityId: trip.id,
+      metadata: { finalFare: trip.finalFare, driverId: trip.driverId, riderId: trip.riderId },
+    });
   } else if (trip.status === "CANCELLED") {
     await notifyUser(trip.riderId, "RIDE_CANCELLED", "Ride cancelled", "Your ride was cancelled.", {
       type: "TRIP",
@@ -369,7 +401,12 @@ tripsRouter.get("/trips/:id/driver-location", requireAuth, async (req, res) => {
   if (!trip.driverId) return res.status(404).json({ error: "No driver assigned yet" });
   const location = getLatestDriverLocation(trip.driverId);
   if (!location) return res.status(404).json({ error: "No location reported yet" });
-  res.json(location);
+  // EI-2: the same LIVE/STALE freshness model the admin Live Map and the
+  // customer delivery-tracking screen already use (locationFreshness), so a
+  // rider watching their driver on the map sees "live" mean the same thing
+  // it means everywhere else this is shown — never a stale fix presented as
+  // current.
+  res.json({ ...location, presence: locationFreshness(location.updatedAt) });
 });
 
 const riderLocationSchema = z.object({

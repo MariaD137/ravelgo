@@ -4,7 +4,9 @@ import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/utils/date_utils.dart';
 
-/// Append-only log of privileged admin actions (GET /api/admin/audit).
+/// Append-only log of privileged admin actions AND significant system events
+/// an admin should be able to trace (e.g. a trip reaching COMPLETED) — see
+/// backend/src/lib/audit.ts. GET /api/admin/audit.
 class AuditLogScreen extends StatefulWidget {
   const AuditLogScreen({super.key});
 
@@ -50,6 +52,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
     if (action.startsWith('DRIVER')) return Icons.badge_outlined;
     if (action.startsWith('DOCUMENT')) return Icons.description_outlined;
     if (action.startsWith('RIDER')) return Icons.person_outline;
+    if (action.startsWith('TRIP')) return Icons.directions_car_outlined;
     return Icons.history;
   }
 
@@ -84,7 +87,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Text('No admin actions recorded yet.\nDriver approvals, document reviews and rider suspensions appear here.',
+          child: Text('No activity recorded yet.\nDriver approvals, document reviews, rider suspensions and completed trips appear here.',
               textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary)),
         ),
       );

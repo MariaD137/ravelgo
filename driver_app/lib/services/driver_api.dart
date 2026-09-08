@@ -352,6 +352,14 @@ class DriverApi {
     return list.whereType<Map<String, dynamic>>().map(DriverTrip.fromJson).toList();
   }
 
+  /// Full detail for one trip this driver is party to (GET /api/trips/:id) —
+  /// used to open a trip from a tapped notification, the same way
+  /// TripsApi.byId backs the customer app's own notification navigation.
+  static Future<DriverTrip> tripById(String id) async {
+    final data = await ApiClient.get('/api/trips/$id');
+    return DriverTrip.fromJson(data as Map<String, dynamic>);
+  }
+
   /// Advance a trip's status (start a matched trip, complete an in-progress one).
   static Future<DriverTrip> updateTripStatus(String tripId, String status, {double? finalFare}) async {
     final data = await ApiClient.patch('/api/trips/$tripId/status', {

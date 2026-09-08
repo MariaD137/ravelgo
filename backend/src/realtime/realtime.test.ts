@@ -170,6 +170,10 @@ test("a driver's location message broadcasts to a subscribed rider, and the HTTP
     .set("Authorization", `Bearer ${riderToken}`);
   assert.equal(fallback.status, 200);
   assert.equal(fallback.body.lat, 6.5);
+  // EI-2: the customer app's ride map reads this to decide whether the
+  // driver marker is trustworthy right now — same LIVE/STALE model as the
+  // admin Live Map and the delivery-tracking screen.
+  assert.equal(fallback.body.presence, "LIVE");
 
   riderSocket.close();
   driverSocket.close();

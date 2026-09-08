@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
 import 'package:ravelgo_driver_app/services/auth_service.dart';
+import 'package:ravelgo_driver_app/services/push_notification_service.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/account/profile_screen.dart';
 import 'package:ravelgo_driver_app/views/assistance/driver_assistance_screen.dart';
@@ -101,6 +102,9 @@ class AccountScreen extends StatelessWidget {
                   title: "Log out",
                   leading: Icons.logout,
                   onTap: () async {
+                    // So a future push never reaches this device once
+                    // signed out.
+                    await PushNotificationService.unregister();
                     // Clear the persisted Cognito session so a refresh does
                     // not silently sign the driver back in.
                     await AuthService.signOut();
