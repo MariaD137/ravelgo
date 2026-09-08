@@ -687,3 +687,102 @@ test("GET /api/courier-requests/:id denies a stranger and allows the sender", as
     .set("Authorization", `Bearer ${strangerToken}`);
   assert.equal(strangerRes.status, 403);
 });
+
+test("POST /api/courier-requests/:id/cancel lets the sender cancel a REQUESTED delivery", async () => {
+  const sender = await createRider("rider-sub-cancel-1");
+  const req = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-cancel-1", groups: ["Rider"] });
+  const res = await request(app).post(`/api/courier-requests/${req.id}/cancel`).set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "CANCELLED");
+
+  const senderNotifications = await prisma.notification.findMany({ where: { userId: sender.id } });
+  assert.equal(senderNotifications.length, 1);
+  assert.equal(senderNotifications[0]!.type, "DELIVERY_CANCELLED");
+});
+
+test("POST /api/courier-requests/:id/cancel also notifies the already-matched driver", async () => {
+  const sender = await createRider("rider-sub-cancel-2");
+  const driver = await createDriver("driver-sub-cancel-1");
+  const req = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      driverId: driver.id,
+      status: "MATCHED",
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-cancel-2", groups: ["Rider"] });
+  const res = await request(app).post(`/api/courier-requests/${req.id}/cancel`).set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "CANCELLED");
+
+  const driverNotifications = await prisma.notification.findMany({ where: { userId: driver.userId } });
+  assert.equal(driverNotifications.length, 1);
+  assert.equal(driverNotifications[0]!.type, "DELIVERY_CANCELLED");
+});
+
+test("POST /api/courier-requests/:id/cancel rejects once the package has been picked up", async () => {
+  const sender = await createRider("rider-sub-cancel-3");
+  const driver = await createDriver("driver-sub-cancel-2");
+  const req = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      driverId: driver.id,
+      status: "PICKED_UP",
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-cancel-3", groups: ["Rider"] });
+  const res = await request(app).post(`/api/courier-requests/${req.id}/cancel`).set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 409);
+  const updated = await prisma.courierRequest.findUnique({ where: { id: req.id } });
+  assert.equal(updated?.status, "PICKED_UP");
+});
+
+test("POST /api/courier-requests/:id/cancel rejects a caller who isn't the sender", async () => {
+  const sender = await createRider("rider-sub-cancel-4");
+  await createRider("rider-sub-cancel-5");
+  const req = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "rider-sub-cancel-5", groups: ["Rider"] });
+  const res = await request(app).post(`/api/courier-requests/${req.id}/cancel`).set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 403);
+});
