@@ -39,6 +39,14 @@ async function findOwnDriver(cognitoSub: string) {
   return prisma.driver.findFirst({ where: { user: { cognitoSub } } });
 }
 
+// A sender may cancel their own delivery request only before a driver has
+// physically picked the package up — mirrors riderMayCancel() in
+// services/trip-status.ts for the same reason (Trip and CourierRequest have
+// parallel REQUESTED -> MATCHED -> ... -> CANCELLED state machines).
+function courierMayCancel(status: string): boolean {
+  return status === "REQUESTED" || status === "MATCHED";
+}
+
 // Attaches the courier's CURRENT location to a single request, for tracking.
 // Reuses the exact same driver GPS feed as the admin Live Map's Packages view
 // (realtime/hub.ts) — a package has no location of its own, only whichever
@@ -307,6 +315,55 @@ courierRouter.patch("/courier-requests/:id/status", requireAuth, requireRole("Dr
     }
   }
   res.json(serializeCourierRequest(await withProofUrls(request)));
+});
+
+// Rider: cancel a delivery request they sent, before a driver has picked the
+// package up. Previously there was no cancel path for the sender at all —
+// only Driver/Admin could change status via the route above — so a customer
+// who no longer wanted a still-REQUESTED delivery had no way to stop it.
+courierRouter.post("/courier-requests/:id/cancel", requireAuth, requireRole("Rider"), async (req, res) => {
+  const existing = await prisma.courierRequest.findUnique({
+    where: { id: req.params.id },
+    include: { sender: true },
+  });
+  if (!existing) return res.status(404).json({ error: "Courier request not found" });
+  if (existing.sender.cognitoSub !== req.user!.sub) {
+    return res.status(403).json({ error: "Not authorized to cancel this request" });
+  }
+  if (!courierMayCancel(existing.status)) {
+    return res.status(409).json({
+      error: {
+        code: "COURIER_REQUEST_NOT_CANCELLABLE",
+        message: `A ${existing.status} delivery request can no longer be cancelled`,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
+
+  const request = await prisma.courierRequest.update({
+    where: { id: existing.id },
+    data: { status: "CANCELLED" },
+  });
+  // Notify the sender too (same as trips.routes.ts's rider-initiated trip
+  // cancel), so this shows up in their real notification/activity feed like
+  // every other status change, not just ones someone else triggered.
+  await notifyUser(request.senderId, "DELIVERY_CANCELLED", "Delivery cancelled", "Your delivery request was cancelled.", {
+    type: "COURIER_REQUEST",
+    id: request.id,
+  });
+  // A driver may already be matched to this request when the sender
+  // cancels it — they need to know it's off, the same as an admin override
+  // above notifies them.
+  if (request.driverId) {
+    const assignedDriver = await prisma.driver.findUnique({ where: { id: request.driverId } });
+    if (assignedDriver) {
+      await notifyUser(assignedDriver.userId, "DELIVERY_CANCELLED", "Delivery cancelled", "The sender cancelled this delivery request.", {
+        type: "COURIER_REQUEST",
+        id: request.id,
+      });
+    }
+  }
+  res.json(serializeCourierRequest(request));
 });
 
 // Rider or Driver: view a courier request they're party to. An ACTIVE driver

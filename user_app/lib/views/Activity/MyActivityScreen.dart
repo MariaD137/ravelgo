@@ -7,6 +7,12 @@ import 'package:ravelgo_user_app/services/trips_api.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:ravelgo_user_app/views/Rentals/RentalBookingDetailScreen.dart';
 
+/// Mirrors courierMayCancel() in backend/src/routes/courier.routes.ts — a
+/// delivery is only cancellable before a driver has physically picked the
+/// package up.
+bool _isCancellableDeliveryStatus(String status) =>
+    status == 'REQUESTED' || status == 'MATCHED';
+
 /// A single row across every service — the actual persisted backend record,
 /// not a fabricated one. Rides, rentals and deliveries each come from their
 /// own real endpoint; there is no unified backend model, so this normalizes
@@ -25,6 +31,11 @@ class _ActivityEntry {
   // (RentalBookingDetailScreen) — rides/deliveries still use the inline
   // details sheet below.
   final String? rentalBookingId;
+  // Only set for deliveries — the CourierRequest's own id, needed to call
+  // CourierApi.cancel(). Rides already have a working cancel path on
+  // SearchDriverScreen (while actively searching/matched); this screen does
+  // not duplicate that one.
+  final String? courierRequestId;
 
   _ActivityEntry({
     required this.type,
@@ -37,6 +48,7 @@ class _ActivityEntry {
     required this.amount,
     required this.details,
     this.rentalBookingId,
+    this.courierRequestId,
   });
 }
 
@@ -116,62 +128,77 @@ class _MyActivityScreenState extends State<MyActivityScreen> {
       final deliveries = results[2] as List<CourierRequest>;
 
       final entries = <_ActivityEntry>[
-        ...trips.map((t) => _ActivityEntry(
-              type: 'Ride',
-              icon: Icons.directions_car_filled,
-              title: '${t.pickup} → ${t.destination}',
-              subtitle: t.driverName ?? 'Ride',
-              status: t.status,
-              statusColor: _rideColor(t.status),
-              date: t.requestedAt,
-              amount: t.fare,
-              details: {
-                'Pickup': t.pickup,
-                'Destination': t.destination,
-                'Status': t.status,
-                'Driver': t.driverName ?? '—',
-                'Fare': Currency.format(t.fare, decimals: 0),
-                'Requested': t.requestedAt.toString().split('.').first,
-              },
-            )),
-        ...rentals.map((r) => _ActivityEntry(
-              type: 'Car Rental',
-              icon: Icons.directions_car,
-              title: r.listing?.vehicle?.label.isNotEmpty == true ? r.listing!.vehicle!.label : 'Vehicle rental',
-              subtitle: '${r.startDate.split('T').first} → ${r.endDate.split('T').first}',
-              status: r.status,
-              statusColor: _rentalColor(r.status),
-              date: DateTime.tryParse(r.startDate) ?? DateTime.now(),
-              amount: r.totalPrice,
-              details: {
-                'Vehicle': r.listing?.vehicle?.label ?? '—',
-                'Pick-up': r.startDate.split('T').first,
-                'Return': r.endDate.split('T').first,
-                'Days': '${r.days}',
-                'Status': r.status,
-                'Payment': r.paymentStatus,
-                'Total': Currency.format(r.totalPrice, decimals: 0),
-              },
-              rentalBookingId: r.id,
-            )),
-        ...deliveries.map((d) => _ActivityEntry(
-              type: 'Delivery',
-              icon: Icons.local_shipping_outlined,
-              title: '${d.pickupAddress} → ${d.dropoffAddress}',
-              subtitle: d.packageDescription.isEmpty ? d.packageSize : d.packageDescription,
-              status: d.status,
-              statusColor: _deliveryColor(d.status),
-              date: d.requestedAt,
-              amount: d.finalFare ?? d.estimatedFare,
-              details: {
-                'Pickup': d.pickupAddress,
-                'Drop-off': d.dropoffAddress,
-                'Recipient': '${d.recipientName} · ${d.recipientPhone}',
-                'Status': d.status,
-                'Price': Currency.format(d.finalFare ?? d.estimatedFare, decimals: 0),
-                'Requested': d.requestedAt.toString().split('.').first,
-              },
-            )),
+        ...trips.map(
+          (t) => _ActivityEntry(
+            type: 'Ride',
+            icon: Icons.directions_car_filled,
+            title: '${t.pickup} → ${t.destination}',
+            subtitle: t.driverName ?? 'Ride',
+            status: t.status,
+            statusColor: _rideColor(t.status),
+            date: t.requestedAt,
+            amount: t.fare,
+            details: {
+              'Pickup': t.pickup,
+              'Destination': t.destination,
+              'Status': t.status,
+              'Driver': t.driverName ?? '—',
+              'Fare': Currency.format(t.fare, decimals: 0),
+              'Requested': t.requestedAt.toString().split('.').first,
+            },
+          ),
+        ),
+        ...rentals.map(
+          (r) => _ActivityEntry(
+            type: 'Car Rental',
+            icon: Icons.directions_car,
+            title: r.listing?.vehicle?.label.isNotEmpty == true
+                ? r.listing!.vehicle!.label
+                : 'Vehicle rental',
+            subtitle:
+                '${r.startDate.split('T').first} → ${r.endDate.split('T').first}',
+            status: r.status,
+            statusColor: _rentalColor(r.status),
+            date: DateTime.tryParse(r.startDate) ?? DateTime.now(),
+            amount: r.totalPrice,
+            details: {
+              'Vehicle': r.listing?.vehicle?.label ?? '—',
+              'Pick-up': r.startDate.split('T').first,
+              'Return': r.endDate.split('T').first,
+              'Days': '${r.days}',
+              'Status': r.status,
+              'Payment': r.paymentStatus,
+              'Total': Currency.format(r.totalPrice, decimals: 0),
+            },
+            rentalBookingId: r.id,
+          ),
+        ),
+        ...deliveries.map(
+          (d) => _ActivityEntry(
+            type: 'Delivery',
+            icon: Icons.local_shipping_outlined,
+            title: '${d.pickupAddress} → ${d.dropoffAddress}',
+            subtitle: d.packageDescription.isEmpty
+                ? d.packageSize
+                : d.packageDescription,
+            status: d.status,
+            statusColor: _deliveryColor(d.status),
+            date: d.requestedAt,
+            amount: d.finalFare ?? d.estimatedFare,
+            details: {
+              'Pickup': d.pickupAddress,
+              'Drop-off': d.dropoffAddress,
+              'Recipient': '${d.recipientName} · ${d.recipientPhone}',
+              'Status': d.status,
+              'Price': Currency.format(
+                d.finalFare ?? d.estimatedFare,
+                decimals: 0,
+              ),
+              'Requested': d.requestedAt.toString().split('.').first,
+            },
+            courierRequestId: d.id,
+          ),
+        ),
       ]..sort((a, b) => b.date.compareTo(a.date));
 
       if (!mounted) return;
@@ -189,36 +216,101 @@ class _MyActivityScreenState extends State<MyActivityScreen> {
   }
 
   void _showDetails(_ActivityEntry entry) {
+    final canCancel =
+        entry.courierRequestId != null &&
+        _isCancellableDeliveryStatus(entry.status);
+    bool cancelling = false;
+    String? cancelError;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(entry.icon, color: AppColors.primaryDark),
-                const SizedBox(width: 8),
-                Text(entry.type, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
-              ],
-            ),
-            const SizedBox(height: 16),
-            for (final e in entry.details.entries)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(width: 100, child: Text(e.key, style: const TextStyle(color: AppColors.textMuted))),
-                    Expanded(child: Text(e.value, style: const TextStyle(fontWeight: FontWeight.w500))),
-                  ],
-                ),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setState) => Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(entry.icon, color: AppColors.primaryDark),
+                  const SizedBox(width: 8),
+                  Text(
+                    entry.type,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                    ),
+                  ),
+                ],
               ),
-            const SizedBox(height: 12),
-          ],
+              const SizedBox(height: 16),
+              for (final e in entry.details.entries)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 100,
+                        child: Text(
+                          e.key,
+                          style: const TextStyle(color: AppColors.textMuted),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          e.value,
+                          style: const TextStyle(fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (cancelError != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  cancelError!,
+                  style: const TextStyle(color: AppColors.error, fontSize: 13),
+                ),
+              ],
+              if (canCancel) ...[
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.error,
+                    ),
+                    onPressed: cancelling
+                        ? null
+                        : () async {
+                            setState(() {
+                              cancelling = true;
+                              cancelError = null;
+                            });
+                            try {
+                              await CourierApi.cancel(entry.courierRequestId!);
+                              if (sheetContext.mounted) {
+                                Navigator.pop(sheetContext);
+                              }
+                              _load();
+                            } catch (e) {
+                              setState(() {
+                                cancelling = false;
+                                cancelError = e is ApiException
+                                    ? e.message
+                                    : e.toString();
+                              });
+                            }
+                          },
+                    child: Text(cancelling ? 'Cancelling…' : 'Cancel delivery'),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+            ],
+          ),
         ),
       ),
     );
@@ -241,7 +333,11 @@ class _MyActivityScreenState extends State<MyActivityScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.error)),
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppColors.error),
+              ),
               TextButton(onPressed: _load, child: const Text('Try again')),
             ],
           ),
@@ -252,8 +348,11 @@ class _MyActivityScreenState extends State<MyActivityScreen> {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Text('No activity yet. Book a ride, rent a car, or send a package to see it here.',
-              textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary)),
+          child: Text(
+            'No activity yet. Book a ride, rent a car, or send a package to see it here.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.textSecondary),
+          ),
         ),
       );
     }
@@ -269,14 +368,28 @@ class _MyActivityScreenState extends State<MyActivityScreen> {
           return InkWell(
             borderRadius: BorderRadius.circular(12),
             onTap: () => e.rentalBookingId != null
-                ? Navigator.push(context, MaterialPageRoute(builder: (_) => RentalBookingDetailScreen(bookingId: e.rentalBookingId!)))
+                ? Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => RentalBookingDetailScreen(
+                        bookingId: e.rentalBookingId!,
+                      ),
+                    ),
+                  )
                 : _showDetails(e),
             child: Container(
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border),
+              ),
               child: Row(
                 children: [
-                  CircleAvatar(backgroundColor: AppColors.surfaceElevated, child: Icon(e.icon, color: AppColors.primaryDark, size: 20)),
+                  CircleAvatar(
+                    backgroundColor: AppColors.surfaceElevated,
+                    child: Icon(e.icon, color: AppColors.primaryDark, size: 20),
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -284,12 +397,30 @@ class _MyActivityScreenState extends State<MyActivityScreen> {
                       children: [
                         Row(
                           children: [
-                            Text(e.type, style: const TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w600)),
+                            Text(
+                              e.type,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: AppColors.textMuted,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ],
                         ),
-                        Text(e.title, style: const TextStyle(fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        Text(
+                          e.title,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                         const SizedBox(height: 2),
-                        Text('${e.date}'.split(' ').first, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                        Text(
+                          '${e.date}'.split(' ').first,
+                          style: const TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -297,9 +428,19 @@ class _MyActivityScreenState extends State<MyActivityScreen> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(Currency.format(e.amount, decimals: 0), style: const TextStyle(fontWeight: FontWeight.w700)),
+                      Text(
+                        Currency.format(e.amount, decimals: 0),
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
                       const SizedBox(height: 4),
-                      Text(e.status, style: TextStyle(color: e.statusColor, fontSize: 11, fontWeight: FontWeight.w600)),
+                      Text(
+                        e.status,
+                        style: TextStyle(
+                          color: e.statusColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ],
                   ),
                 ],

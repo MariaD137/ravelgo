@@ -15,7 +15,8 @@ class CourierRequest {
   final String recipientPhone;
   final double estimatedFare;
   final double? finalFare;
-  final String status; // REQUESTED | MATCHED | PICKED_UP | IN_TRANSIT | DELIVERED | CANCELLED
+  final String
+  status; // REQUESTED | MATCHED | PICKED_UP | IN_TRANSIT | DELIVERED | CANCELLED
   final DateTime requestedAt;
   final DateTime? pickedUpAt;
   final DateTime? deliveredAt;
@@ -68,32 +69,42 @@ class CourierRequest {
   static double? _dOrNull(dynamic v) => v == null ? null : _d(v);
 
   factory CourierRequest.fromJson(Map<String, dynamic> j) => CourierRequest(
-        id: '${j['id']}',
-        pickupAddress: '${j['pickupAddress'] ?? ''}',
-        dropoffAddress: '${j['dropoffAddress'] ?? ''}',
-        packageDescription: '${j['packageDescription'] ?? ''}',
-        packageSize: '${j['packageSize'] ?? 'MEDIUM'}',
-        recipientName: '${j['recipientName'] ?? ''}',
-        recipientPhone: '${j['recipientPhone'] ?? ''}',
-        estimatedFare: _d(j['estimatedFare']),
-        finalFare: j['finalFare'] == null ? null : _d(j['finalFare']),
-        status: '${j['status'] ?? ''}',
-        requestedAt: DateTime.tryParse('${j['requestedAt']}')?.toLocal() ?? DateTime.now(),
-        pickedUpAt: j['pickedUpAt'] == null ? null : DateTime.tryParse('${j['pickedUpAt']}')?.toLocal(),
-        deliveredAt: j['deliveredAt'] == null ? null : DateTime.tryParse('${j['deliveredAt']}')?.toLocal(),
-        deliveryPhotoUrl: (j['deliveryPhotoUrl'] as String?)?.isNotEmpty == true ? j['deliveryPhotoUrl'] as String : null,
-        recipientSignatureUrl:
-            (j['recipientSignatureUrl'] as String?)?.isNotEmpty == true ? j['recipientSignatureUrl'] as String : null,
-        pickupLat: _dOrNull(j['pickupLat']),
-        pickupLng: _dOrNull(j['pickupLng']),
-        dropoffLat: _dOrNull(j['dropoffLat']),
-        dropoffLng: _dOrNull(j['dropoffLng']),
-        courierLat: _dOrNull(j['courierLat']),
-        courierLng: _dOrNull(j['courierLng']),
-        courierLocationUpdatedAt:
-            j['courierLocationUpdatedAt'] == null ? null : DateTime.tryParse('${j['courierLocationUpdatedAt']}')?.toLocal(),
-        courierPresence: j['courierPresence']?.toString(),
-      );
+    id: '${j['id']}',
+    pickupAddress: '${j['pickupAddress'] ?? ''}',
+    dropoffAddress: '${j['dropoffAddress'] ?? ''}',
+    packageDescription: '${j['packageDescription'] ?? ''}',
+    packageSize: '${j['packageSize'] ?? 'MEDIUM'}',
+    recipientName: '${j['recipientName'] ?? ''}',
+    recipientPhone: '${j['recipientPhone'] ?? ''}',
+    estimatedFare: _d(j['estimatedFare']),
+    finalFare: j['finalFare'] == null ? null : _d(j['finalFare']),
+    status: '${j['status'] ?? ''}',
+    requestedAt:
+        DateTime.tryParse('${j['requestedAt']}')?.toLocal() ?? DateTime.now(),
+    pickedUpAt: j['pickedUpAt'] == null
+        ? null
+        : DateTime.tryParse('${j['pickedUpAt']}')?.toLocal(),
+    deliveredAt: j['deliveredAt'] == null
+        ? null
+        : DateTime.tryParse('${j['deliveredAt']}')?.toLocal(),
+    deliveryPhotoUrl: (j['deliveryPhotoUrl'] as String?)?.isNotEmpty == true
+        ? j['deliveryPhotoUrl'] as String
+        : null,
+    recipientSignatureUrl:
+        (j['recipientSignatureUrl'] as String?)?.isNotEmpty == true
+        ? j['recipientSignatureUrl'] as String
+        : null,
+    pickupLat: _dOrNull(j['pickupLat']),
+    pickupLng: _dOrNull(j['pickupLng']),
+    dropoffLat: _dOrNull(j['dropoffLat']),
+    dropoffLng: _dOrNull(j['dropoffLng']),
+    courierLat: _dOrNull(j['courierLat']),
+    courierLng: _dOrNull(j['courierLng']),
+    courierLocationUpdatedAt: j['courierLocationUpdatedAt'] == null
+        ? null
+        : DateTime.tryParse('${j['courierLocationUpdatedAt']}')?.toLocal(),
+    courierPresence: j['courierPresence']?.toString(),
+  );
 }
 
 /// Package delivery, proxied through the RavelGo backend. Backed by the same
@@ -135,6 +146,16 @@ class CourierApi {
   /// All delivery requests this customer has sent (delivery history).
   static Future<List<CourierRequest>> sent() async {
     final data = await ApiClient.get('/api/courier-requests/sent');
-    return ((data as List?) ?? const []).map((e) => CourierRequest.fromJson(e as Map<String, dynamic>)).toList();
+    return ((data as List?) ?? const [])
+        .map((e) => CourierRequest.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Cancel a delivery request this customer sent — only possible while the
+  /// backend still considers it cancellable (REQUESTED or MATCHED, i.e.
+  /// before a driver has physically picked the package up).
+  static Future<CourierRequest> cancel(String id) async {
+    final data = await ApiClient.post('/api/courier-requests/$id/cancel');
+    return CourierRequest.fromJson(data as Map<String, dynamic>);
   }
 }
