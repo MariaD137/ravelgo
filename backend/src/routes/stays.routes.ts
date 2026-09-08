@@ -181,7 +181,11 @@ staysRouter.patch("/stays/:id/status", requireAuth, requireAdminPermission("list
     where: { id: req.params.id },
     data: { status: parsed.data.status },
   });
-  void recordAudit({
+  // Awaited (unlike most recordAudit call sites) so a caller — or a test
+  // reading the audit trail straight back — can never observe this response
+  // before the audit row actually exists. recordAudit never throws, so this
+  // can't turn a real failure into one.
+  await recordAudit({
     actorSub: req.user!.sub,
     action: "STAY_LISTING_REVIEWED",
     entityType: "PropertyListing",
