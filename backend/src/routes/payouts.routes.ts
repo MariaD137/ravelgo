@@ -213,17 +213,25 @@ payoutsRouter.post("/payouts/:id/process", sensitiveLimiter, requireAuth, requir
   }
 });
 
-// Admin: mark payout as completed
-payoutsRouter.post("/payouts/:id/complete", requireAuth, requireAdminPermission("payouts:write"), async (req, res, next) => {
-  try {
-    const schema = z.object({ transactionId: z.string().optional() });
-    const { transactionId } = validate<typeof schema._output>(schema, req.body, "Request body");
-    const payout = await completePayout(req.params.id, transactionId);
-    res.json(payout);
-  } catch (err) {
-    next(err);
-  }
-});
+// Admin: mark payout as completed. transactionId is required (SE-4) — the
+// real bank/wire reference for the transfer the admin just made outside this
+// system, never a fabricated placeholder. See completePayout() for why.
+payoutsRouter.post(
+  "/payouts/:id/complete",
+  sensitiveLimiter,
+  requireAuth,
+  requireAdminPermission("payouts:write"),
+  async (req, res, next) => {
+    try {
+      const schema = z.object({ transactionId: z.string().trim().min(4, "A real transaction reference is required") });
+      const { transactionId } = validate<typeof schema._output>(schema, req.body, "Request body");
+      const payout = await completePayout(req.params.id, transactionId);
+      res.json(payout);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // Admin: mark payout as failed
 payoutsRouter.post("/payouts/:id/fail", requireAuth, requireAdminPermission("payouts:write"), async (req, res, next) => {

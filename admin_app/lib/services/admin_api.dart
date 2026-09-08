@@ -1322,10 +1322,11 @@ class AdminApi {
     return AdminPayout.fromJson(data as Map<String, dynamic>);
   }
 
-  static Future<AdminPayout> completePayout(String id, {String? transactionId}) async {
-    final data = await ApiClient.post('/api/payouts/$id/complete', {
-      if (transactionId != null && transactionId.isNotEmpty) 'transactionId': transactionId,
-    });
+  // transactionId is required: the backend refuses to mark a payout COMPLETED
+  // without a real transfer reference (SE-4) — see payouts_screen.dart's
+  // _complete() for why this can't be left blank.
+  static Future<AdminPayout> completePayout(String id, {required String transactionId}) async {
+    final data = await ApiClient.post('/api/payouts/$id/complete', {'transactionId': transactionId});
     return AdminPayout.fromJson(data as Map<String, dynamic>);
   }
 

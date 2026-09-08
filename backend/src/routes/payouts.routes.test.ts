@@ -190,6 +190,59 @@ test("POST /payouts/:id/complete records the real transactionId the caller suppl
   assert.equal(res.body.transactionId, "real-bank-transfer-ref-12345");
 });
 
+// SE-4: a payout must never reach COMPLETED without a real transaction
+// reference — this used to be optional, letting an admin complete a payout
+// with no proof a transfer ever happened.
+test("POST /payouts/:id/complete rejects a missing or blank transactionId", async () => {
+  const { user } = await createDriver("driver-sub-process-3");
+  const payout = await prisma.payout.create({
+    data: { driverId: user.id, amount: 5000, period: "2026-03", status: "PROCESSING" },
+  });
+  const token = mockAuthAs({ sub: "super-payout-3", groups: ["Admin"] });
+
+  const missing = await request(app)
+    .post(`/api/payouts/${payout.id}/complete`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({});
+  assert.equal(missing.status, 400);
+
+  const blank = await request(app)
+    .post(`/api/payouts/${payout.id}/complete`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ transactionId: "   " });
+  assert.equal(blank.status, 400);
+
+  const stillProcessing = await prisma.payout.findUnique({ where: { id: payout.id } });
+  assert.equal(stillProcessing?.status, "PROCESSING");
+  assert.equal(stillProcessing?.transactionId, null);
+});
+
+// SE-4: the same real transaction reference must never be attributable to
+// two different payouts.
+test("POST /payouts/:id/complete rejects a transactionId already used by another payout", async () => {
+  const { user: userA } = await createDriver("driver-sub-process-4a");
+  const { user: userB } = await createDriver("driver-sub-process-4b");
+  const payoutA = await prisma.payout.create({
+    data: { driverId: userA.id, amount: 5000, period: "2026-04", status: "PROCESSING" },
+  });
+  const payoutB = await prisma.payout.create({
+    data: { driverId: userB.id, amount: 7000, period: "2026-04", status: "PROCESSING" },
+  });
+  const token = mockAuthAs({ sub: "super-payout-4", groups: ["Admin"] });
+
+  const first = await request(app)
+    .post(`/api/payouts/${payoutA.id}/complete`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ transactionId: "shared-ref-999" });
+  assert.equal(first.status, 200);
+
+  const second = await request(app)
+    .post(`/api/payouts/${payoutB.id}/complete`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ transactionId: "shared-ref-999" });
+  assert.equal(second.status, 409);
+});
+
 test("GET /payouts (Admin) filters by a validated status enum, rejecting garbage", async () => {
   const token = mockAuthAs({ sub: "admin-sub-3", groups: ["Admin"] });
   const res = await request(app)

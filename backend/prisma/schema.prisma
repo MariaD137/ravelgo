@@ -637,7 +637,11 @@ model Payout {
   currency        String      @default("USD")
   status          PayoutStatus @default(PENDING)
   period          String      // e.g., "2024-07" for weekly/monthly payout period
-  transactionId   String?     // Stripe or payment provider transaction ID
+  // The real payment-provider (or bank wire) transaction reference — set only
+  // by completePayout(), and only once, on the transition to COMPLETED (SE-4).
+  // Unique so the same reference can never be recorded against two payouts,
+  // whether by a mistaken paste or a compromised admin session reusing one.
+  transactionId   String?     @unique
   failureReason   String?
   completedAt     DateTime?
   createdAt       DateTime    @default(now())

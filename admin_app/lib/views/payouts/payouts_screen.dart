@@ -73,28 +73,36 @@ class _PayoutsScreenState extends State<PayoutsScreen> {
     final controller = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Mark payout completed?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('${p.driverName.isEmpty ? p.driverEmail : p.driverName} · ${Currency.format(p.amount, decimals: 0)}'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              decoration: const InputDecoration(labelText: 'Transaction ID (optional)', border: OutlineInputBorder()),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Mark payout completed?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('${p.driverName.isEmpty ? p.driverEmail : p.driverName} · ${Currency.format(p.amount, decimals: 0)}'),
+              const SizedBox(height: 8),
+              const Text(
+                'Enter the real bank/wire transfer reference for the transfer you just made outside RavelGo. This cannot be left blank or made up — it is the only record that the transfer actually happened.',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                decoration: const InputDecoration(labelText: 'Transaction ID (required)', border: OutlineInputBorder()),
+                onChanged: (_) => setDialogState(() {}),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
+              onPressed: controller.text.trim().length < 4 ? null : () => Navigator.pop(context, true),
+              child: const Text('Mark completed'),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Mark completed'),
-          ),
-        ],
       ),
     );
     if (confirmed != true) return;
