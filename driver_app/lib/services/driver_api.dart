@@ -48,6 +48,12 @@ class DriverTrip {
   final double? distanceKm;
   final double? riderRating;
   final String? pickupNote;
+  // Resolved by the rider's Places-backed address search at request time —
+  // null for a trip whose address never resolved. Never fabricated.
+  final double? pickupLat;
+  final double? pickupLng;
+  final double? dropoffLat;
+  final double? dropoffLng;
 
   DriverTrip({
     required this.id,
@@ -61,6 +67,10 @@ class DriverTrip {
     this.distanceKm,
     this.riderRating,
     this.pickupNote,
+    this.pickupLat,
+    this.pickupLng,
+    this.dropoffLat,
+    this.dropoffLng,
   });
 
   double get fare => finalFare ?? estimatedFare;
@@ -89,6 +99,10 @@ class DriverTrip {
       distanceKm: j['distanceKm'] == null ? null : _d(j['distanceKm']),
       riderRating: j['riderRating'] == null ? null : _d(j['riderRating']),
       pickupNote: (j['pickupNote'] == null || '${j['pickupNote']}'.isEmpty) ? null : '${j['pickupNote']}',
+      pickupLat: j['pickupLat'] == null ? null : _d(j['pickupLat']),
+      pickupLng: j['pickupLng'] == null ? null : _d(j['pickupLng']),
+      dropoffLat: j['dropoffLat'] == null ? null : _d(j['dropoffLat']),
+      dropoffLng: j['dropoffLng'] == null ? null : _d(j['dropoffLng']),
     );
   }
 }
@@ -259,6 +273,10 @@ class Vehicle {
   final String year;
   final bool isPrimary;
   final bool listedForRental;
+  // A signed-nothing, publicly viewable CDN URL (the backend serves this
+  // from the assets bucket) — never a raw S3 key, and null until a photo has
+  // actually been uploaded for this vehicle.
+  final String? photoUrl;
 
   Vehicle({
     required this.id,
@@ -269,6 +287,7 @@ class Vehicle {
     required this.year,
     required this.isPrimary,
     required this.listedForRental,
+    this.photoUrl,
   });
 
   String get label => '$brand $model'.trim();
@@ -282,6 +301,7 @@ class Vehicle {
         year: '${j['year'] ?? ''}',
         isPrimary: j['isPrimary'] == true,
         listedForRental: j['listedForRental'] == true,
+        photoUrl: (j['photoUrl'] as String?)?.isNotEmpty == true ? j['photoUrl'] as String : null,
       );
 }
 
@@ -341,19 +361,26 @@ class DriverApi {
     return DriverTrip.fromJson(data as Map<String, dynamic>);
   }
 
-  /// Presign an S3 key in the documents bucket and PUT the bytes straight to
-  /// S3. Returns the object key — the caller decides what to do with it (e.g.
-  /// record it against a DriverDocument, or attach it as courier-request
-  /// proof of delivery). No auth header on the PUT itself; the URL is signed.
+  /// Presign an S3 key (documents bucket by default; pass bucket: 'assets'
+  /// for something meant to be publicly viewable, like a vehicle photo) and
+  /// PUT the bytes straight to S3. Returns the object key — the caller
+  /// decides what to do with it (e.g. record it against a DriverDocument,
+  /// a Vehicle's photo, or courier-request proof of delivery). No auth
+  /// header on the PUT itself; the URL is signed. fileSize is sent so the
+  /// backend can reject an oversized upload before ever signing a URL for
+  /// it, and the presigned URL then locks in that exact byte count — S3
+  /// itself rejects a PUT whose Content-Length doesn't match.
   static Future<String> uploadToDocumentsBucket({
     required String fileName,
     required String contentType,
     required List<int> bytes,
+    String bucket = 'documents',
   }) async {
     final presign = await ApiClient.post('/api/uploads/presign', {
-      'bucket': 'documents',
+      'bucket': bucket,
       'fileName': fileName,
       'contentType': contentType,
+      'fileSize': bytes.length,
     }) as Map<String, dynamic>;
     final uploadUrl = '${presign['uploadUrl']}';
     final fileKey = '${presign['fileKey']}';
@@ -413,7 +440,9 @@ class DriverApi {
     return list.whereType<Map<String, dynamic>>().map(Vehicle.fromJson).toList();
   }
 
-  /// Add a vehicle owned by the calling driver.
+  /// Add a vehicle owned by the calling driver. photoKey (if given) must be
+  /// an S3 key this same caller was just presigned for (uploadToDocumentsBucket
+  /// with bucket: 'assets') — the backend rejects one that isn't theirs.
   static Future<Vehicle> addVehicle({
     required String brand,
     required String model,
@@ -421,6 +450,7 @@ class DriverApi {
     required String plateNumber,
     required String year,
     bool isPrimary = false,
+    String? photoKey,
   }) async {
     final data = await ApiClient.post('/api/vehicles', {
       'brand': brand,
@@ -429,6 +459,7 @@ class DriverApi {
       'plateNumber': plateNumber,
       'year': year,
       'isPrimary': isPrimary,
+      if (photoKey != null) 'photoKey': photoKey,
     });
     return Vehicle.fromJson(data as Map<String, dynamic>);
   }
@@ -442,6 +473,7 @@ class DriverApi {
     required String plateNumber,
     required String year,
     bool isPrimary = false,
+    String? photoKey,
   }) async {
     final data = await ApiClient.patch('/api/vehicles/$id', {
       'brand': brand,
@@ -450,6 +482,7 @@ class DriverApi {
       'plateNumber': plateNumber,
       'year': year,
       'isPrimary': isPrimary,
+      if (photoKey != null) 'photoKey': photoKey,
     });
     return Vehicle.fromJson(data as Map<String, dynamic>);
   }

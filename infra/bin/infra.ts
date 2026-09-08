@@ -61,6 +61,7 @@ const api = new ApiStack(app, stackName("RavelGo-Api"), {
   dbSecurityGroup: data.dbSecurityGroup,
   documentsBucket: storage.documentsBucket,
   assetsBucket: storage.assetsBucket,
+  assetsCdnDomain: storage.assetsDistribution.distributionDomainName,
   cognitoUserPoolId: auth.userPool.userPoolId,
   cognitoUserPoolClientId: auth.userPoolClient.userPoolClientId,
   allowedOrigins: apiAllowedOrigins,

@@ -19,7 +19,7 @@ test("POST /api/uploads/presign returns a signed URL scoped to the caller", asyn
   const res = await request(app)
     .post("/api/uploads/presign")
     .set("Authorization", `Bearer ${token}`)
-    .send({ bucket: "documents", fileName: "license.pdf", contentType: "application/pdf" });
+    .send({ bucket: "documents", fileName: "license.pdf", contentType: "application/pdf", fileSize: 1024 });
 
   assert.equal(res.status, 200);
   assert.match(res.body.uploadUrl, /^https:\/\//);
@@ -33,7 +33,7 @@ test("POST /api/uploads/presign rejects an invalid bucket", async () => {
   const res = await request(app)
     .post("/api/uploads/presign")
     .set("Authorization", `Bearer ${token}`)
-    .send({ bucket: "not-a-real-bucket", fileName: "x.pdf", contentType: "application/pdf" });
+    .send({ bucket: "not-a-real-bucket", fileName: "x.pdf", contentType: "application/pdf", fileSize: 1024 });
 
   assert.equal(res.status, 400);
 });
@@ -45,7 +45,7 @@ test("POST /api/uploads/presign rejects a content type that could execute in a b
     const res = await request(app)
       .post("/api/uploads/presign")
       .set("Authorization", `Bearer ${token}`)
-      .send({ bucket: "assets", fileName: "x", contentType });
+      .send({ bucket: "assets", fileName: "x", contentType, fileSize: 1024 });
     assert.equal(res.status, 400, `expected ${contentType} to be rejected`);
   }
 });
@@ -56,7 +56,7 @@ test("POST /api/uploads/presign rejects a PDF for the publicly-served assets buc
   const res = await request(app)
     .post("/api/uploads/presign")
     .set("Authorization", `Bearer ${token}`)
-    .send({ bucket: "assets", fileName: "x.pdf", contentType: "application/pdf" });
+    .send({ bucket: "assets", fileName: "x.pdf", contentType: "application/pdf", fileSize: 1024 });
 
   assert.equal(res.status, 400);
 });
@@ -67,7 +67,40 @@ test("POST /api/uploads/presign rejects a fileName containing a path separator",
   const res = await request(app)
     .post("/api/uploads/presign")
     .set("Authorization", `Bearer ${token}`)
-    .send({ bucket: "documents", fileName: "../../etc/passwd", contentType: "application/pdf" });
+    .send({ bucket: "documents", fileName: "../../etc/passwd", contentType: "application/pdf", fileSize: 1024 });
+
+  assert.equal(res.status, 400);
+});
+
+test("POST /api/uploads/presign rejects a fileSize over the bucket's real limit", async () => {
+  const token = mockAuthAs({ sub: "user-sub-6", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/uploads/presign")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ bucket: "documents", fileName: "huge.pdf", contentType: "application/pdf", fileSize: 20 * 1024 * 1024 });
+
+  assert.equal(res.status, 400);
+});
+
+test("POST /api/uploads/presign rejects a fileSize over the assets bucket's (smaller) limit", async () => {
+  const token = mockAuthAs({ sub: "user-sub-7", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/uploads/presign")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ bucket: "assets", fileName: "huge.jpg", contentType: "image/jpeg", fileSize: 9 * 1024 * 1024 });
+
+  assert.equal(res.status, 400);
+});
+
+test("POST /api/uploads/presign rejects a missing fileSize", async () => {
+  const token = mockAuthAs({ sub: "user-sub-8", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/uploads/presign")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ bucket: "documents", fileName: "x.pdf", contentType: "application/pdf" });
 
   assert.equal(res.status, 400);
 });

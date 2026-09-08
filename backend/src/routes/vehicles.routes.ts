@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { serializeVehicle } from "../lib/vehicle-view";
 
 export const vehiclesRouter = Router();
 
@@ -31,7 +32,17 @@ vehiclesRouter.get("/vehicles", requireAuth, requireRole("Admin"), async (req, r
     }),
     prisma.vehicle.count(),
   ]);
-  res.json(paginate(vehicles, total, page, pageSize));
+  // Admin-only view: keeps the raw driver.user include (email is genuinely
+  // useful here) but still runs photoKey through the same URL builder as
+  // everywhere else rather than leaking the raw S3 key.
+  res.json(
+    paginate(
+      vehicles.map((v) => ({ ...v, photoKey: undefined, photoUrl: serializeVehicle(v).photoUrl })),
+      total,
+      page,
+      pageSize,
+    ),
+  );
 });
 
 // Driver: list my own vehicles
@@ -40,8 +51,16 @@ vehiclesRouter.get("/vehicles/me", requireAuth, requireRole("Driver"), async (re
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
   const vehicles = await prisma.vehicle.findMany({ where: { driverId: driver.id } });
-  res.json(vehicles);
+  res.json(vehicles.map(serializeVehicle));
 });
+
+// S3 keys uploaded via POST /uploads/presign always carry the caller's own
+// Cognito sub as a prefix — this rejects one caller submitting a key that
+// was actually presigned for (and uploaded by) someone else. Same pattern
+// courier.routes.ts uses for proof-of-delivery keys.
+function ownsUploadKey(sub: string, key: string): boolean {
+  return key.startsWith(`${sub}/`);
+}
 
 const createVehicleSchema = z.object({
   brand: z.string().min(1),
@@ -50,12 +69,18 @@ const createVehicleSchema = z.object({
   plateNumber: z.string().min(1),
   year: z.string().min(4),
   isPrimary: z.boolean().default(false),
+  // S3 key from POST /uploads/presign (bucket: "assets"). Optional — a
+  // vehicle can be added first and photographed later via PATCH.
+  photoKey: z.string().min(1).optional(),
 });
 
 // Driver: add a vehicle
 vehiclesRouter.post("/vehicles", requireAuth, requireRole("Driver"), async (req, res) => {
   const parsed = createVehicleSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (parsed.data.photoKey && !ownsUploadKey(req.user!.sub, parsed.data.photoKey)) {
+    return res.status(403).json({ error: "Uploaded file does not belong to the calling user" });
+  }
 
   const driver = await findOwnDriver(req.user!.sub);
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
@@ -63,7 +88,7 @@ vehiclesRouter.post("/vehicles", requireAuth, requireRole("Driver"), async (req,
   const vehicle = await prisma.vehicle.create({
     data: { ...parsed.data, driverId: driver.id },
   });
-  res.status(201).json(vehicle);
+  res.status(201).json(serializeVehicle(vehicle));
 });
 
 const updateVehicleSchema = createVehicleSchema.partial();
@@ -72,6 +97,9 @@ const updateVehicleSchema = createVehicleSchema.partial();
 vehiclesRouter.patch("/vehicles/:id", requireAuth, requireRole("Driver"), async (req, res) => {
   const parsed = updateVehicleSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (parsed.data.photoKey && !ownsUploadKey(req.user!.sub, parsed.data.photoKey)) {
+    return res.status(403).json({ error: "Uploaded file does not belong to the calling user" });
+  }
 
   const driver = await findOwnDriver(req.user!.sub);
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
@@ -85,7 +113,7 @@ vehiclesRouter.patch("/vehicles/:id", requireAuth, requireRole("Driver"), async 
     where: { id: req.params.id },
     data: parsed.data,
   });
-  res.json(updated);
+  res.json(serializeVehicle(updated));
 });
 
 // Driver: delete one of my own vehicles. Blocked while it's listed for
