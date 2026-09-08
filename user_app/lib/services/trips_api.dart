@@ -16,6 +16,10 @@ class Trip {
   final String? vehicleLabel; // e.g. "Silver Toyota Corolla"
   final String? vehiclePlate;
   final double? distanceKm;
+  final double? pickupLat;
+  final double? pickupLng;
+  final double? dropoffLat;
+  final double? dropoffLng;
   // Only present when fetched via TripsApi.byId (GET /api/trips/:id) — the
   // "mine" list route deliberately stays minimal. Null rather than a guessed
   // value when the trip hasn't been charged yet.
@@ -41,6 +45,10 @@ class Trip {
     this.vehicleLabel,
     this.vehiclePlate,
     this.distanceKm,
+    this.pickupLat,
+    this.pickupLng,
+    this.dropoffLat,
+    this.dropoffLng,
     this.paymentId,
     this.paymentMethod,
     this.paymentStatus,
@@ -104,6 +112,10 @@ class Trip {
       vehicleLabel: vehicleLabel,
       vehiclePlate: vehiclePlate,
       distanceKm: _toDoubleOrNull(j['distanceKm']),
+      pickupLat: _toDoubleOrNull(j['pickupLat']),
+      pickupLng: _toDoubleOrNull(j['pickupLng']),
+      dropoffLat: _toDoubleOrNull(j['dropoffLat']),
+      dropoffLng: _toDoubleOrNull(j['dropoffLng']),
       paymentId: payment is Map ? payment['id']?.toString() : null,
       paymentMethod: payment is Map ? payment['method']?.toString() : null,
       paymentStatus: payment is Map ? payment['status']?.toString() : null,
@@ -112,6 +124,27 @@ class Trip {
       paidAt: payment is Map ? _toDateOrNull(payment['paidAt']) : null,
     );
   }
+}
+
+/// The assigned driver's last reported position for a trip
+/// (GET /api/trips/:id/driver-location) — same LIVE/STALE freshness model as
+/// the admin Live Map and the customer delivery-tracking screen
+/// (backend/src/realtime/hub.ts's locationFreshness), so "live" never means
+/// something different here.
+class DriverLocationUpdate {
+  final double lat;
+  final double lng;
+  final String presence; // "LIVE" | "STALE"
+  final DateTime updatedAt;
+
+  DriverLocationUpdate({required this.lat, required this.lng, required this.presence, required this.updatedAt});
+
+  factory DriverLocationUpdate.fromJson(Map<String, dynamic> j) => DriverLocationUpdate(
+        lat: (j['lat'] as num).toDouble(),
+        lng: (j['lng'] as num).toDouble(),
+        presence: '${j['presence'] ?? 'STALE'}',
+        updatedAt: DateTime.tryParse('${j['updatedAt']}')?.toLocal() ?? DateTime.now(),
+      );
 }
 
 class TripsApi {
@@ -145,5 +178,18 @@ class TripsApi {
   /// location-ping pattern (DriverApi.pingLocation).
   static Future<void> pingLocation(String tripId, double lat, double lng) async {
     await ApiClient.post('/api/trips/$tripId/rider-location', {'lat': lat, 'lng': lng});
+  }
+
+  /// The assigned driver's last known position for this trip, or null before
+  /// the driver has reported one yet (backend 404s in that case — not an
+  /// error, just nothing to show on the map yet).
+  static Future<DriverLocationUpdate?> driverLocation(String tripId) async {
+    try {
+      final data = await ApiClient.get('/api/trips/$tripId/driver-location');
+      return DriverLocationUpdate.fromJson(data as Map<String, dynamic>);
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
   }
 }

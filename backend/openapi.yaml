@@ -496,6 +496,13 @@ paths:
                   lat: { type: number }
                   lng: { type: number }
                   updatedAt: { type: string, format: date-time }
+                  presence:
+                    type: string
+                    enum: [LIVE, STALE]
+                    description: >-
+                      Same freshness model the admin Live Map and the
+                      customer delivery-tracking screen use (EI-2) — never
+                      recomputed independently by a client.
         "403": { $ref: "#/components/responses/Forbidden" }
         "404":
           description: Trip not found, no driver assigned yet, or no location reported yet

@@ -237,6 +237,16 @@ test("PATCH /api/trips/:id/status lets the assigned Driver or an Admin advance t
   assert.ok(notifications.some((n) => n.type === "RIDE_STARTED"));
   assert.ok(notifications.some((n) => n.type === "RIDE_COMPLETED"));
   assert.ok(notifications.every((n) => n.referenceType === "TRIP" && n.referenceId === trip.id));
+
+  // EI-1: the same completion event must also reach the driver (push) and
+  // leave a truthful, actor-attributed record an admin can see (audit log)
+  // — previously only the rider was ever told.
+  const driverNotifications = await prisma.notification.findMany({ where: { userId: driverUser.id } });
+  assert.ok(driverNotifications.some((n) => n.type === "RIDE_COMPLETED" && n.referenceId === trip.id));
+
+  const auditEntries = await prisma.auditLog.findMany({ where: { entityId: trip.id, action: "TRIP_COMPLETED" } });
+  assert.equal(auditEntries.length, 1);
+  assert.equal(auditEntries[0].actorSub, "driver-sub-2");
 });
 
 test("PATCH /api/trips/:id/status rejects a Driver who isn't assigned to the trip", async () => {

@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/booking_api.dart';
 import 'package:ravelgo_user_app/services/payments_api.dart';
@@ -32,6 +34,19 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
   late String _status = trip.status;
   bool _live = false;
   DateTime? _lastLocationAt;
+
+  // EI-2: the driver's live position while MATCHED/IN_PROGRESS, polled the
+  // same way DeliveryTrackingScreen polls a courier's — a WebSocket push
+  // (case 'location' in _onMessage) updates this immediately when connected,
+  // and the poll is the fallback for a client not holding one (mirrors the
+  // backend's own driver-location route doc comment). Presence is the exact
+  // LIVE/STALE value the backend computes (locationFreshness), never
+  // recomputed client-side, so it can never disagree with the admin Live Map.
+  Timer? _driverLocationPoll;
+  double? _driverLat;
+  double? _driverLng;
+  String? _driverPresence;
+  DateTime? _driverLocationUpdatedAt;
 
   // Reports the rider's own position back to the backend — only while a
   // driver is assigned or the ride is under way (see _syncLocationPing).
@@ -208,6 +223,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
       if (!mounted) return;
       setState(() => _status = 'CANCELLED');
       _syncLocationPing();
+      _syncDriverLocationPoll();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
@@ -275,6 +291,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
     _startRealtime();
     _loadPaymentSettings();
     _syncLocationPing();
+    _syncDriverLocationPoll();
   }
 
   /// Start/stop the rider location ping to match the current trip status —
@@ -288,6 +305,38 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
     } else if (!trackable && _locationTimer != null) {
       _locationTimer?.cancel();
       _locationTimer = null;
+    }
+  }
+
+  /// Start/stop polling the driver's position for the map, same lifecycle as
+  /// the rider-location ping above. A WebSocket 'location' push (see
+  /// _onMessage) updates the map immediately when connected; this poll is
+  /// what keeps it current for a client not holding one, exactly as the
+  /// backend route's own doc comment describes it.
+  void _syncDriverLocationPoll() {
+    final trackable = _status == 'MATCHED' || _status == 'IN_PROGRESS';
+    if (trackable && _driverLocationPoll == null) {
+      _pollDriverLocation();
+      _driverLocationPoll = Timer.periodic(const Duration(seconds: 10), (_) => _pollDriverLocation());
+    } else if (!trackable && _driverLocationPoll != null) {
+      _driverLocationPoll?.cancel();
+      _driverLocationPoll = null;
+    }
+  }
+
+  Future<void> _pollDriverLocation() async {
+    try {
+      final loc = await TripsApi.driverLocation(trip.id);
+      if (!mounted || loc == null) return;
+      setState(() {
+        _driverLat = loc.lat;
+        _driverLng = loc.lng;
+        _driverPresence = loc.presence;
+        _driverLocationUpdatedAt = loc.updatedAt;
+      });
+    } catch (_) {
+      // Best-effort — a missed poll just means the map keeps its last known
+      // position until the next tick or WebSocket push.
     }
   }
 
@@ -328,10 +377,25 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
         if ('${m['tripId']}' == trip.id) {
           setState(() => _status = '${m['status']}');
           _syncLocationPing();
+          _syncDriverLocationPoll();
         }
         break;
       case 'location':
-        if ('${m['tripId']}' == trip.id) setState(() => _lastLocationAt = DateTime.now());
+        if ('${m['tripId']}' == trip.id) {
+          final lat = m['lat'];
+          final lng = m['lng'];
+          setState(() {
+            _lastLocationAt = DateTime.now();
+            // A push arriving right now is definitionally fresh — no need to
+            // wait for the next poll tick to reflect it as LIVE.
+            if (lat is num && lng is num) {
+              _driverLat = lat.toDouble();
+              _driverLng = lng.toDouble();
+              _driverPresence = 'LIVE';
+              _driverLocationUpdatedAt = DateTime.now();
+            }
+          });
+        }
         break;
     }
   }
@@ -340,6 +404,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
   void dispose() {
     _rt.dispose();
     _locationTimer?.cancel();
+    _driverLocationPoll?.cancel();
     super.dispose();
   }
 
@@ -348,12 +413,10 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // The map is intentionally not shown here — it was purely a
-          // decorative backdrop (no markers, no camera tied to driver
-          // location). Live trip updates arrive over the WebSocket
-          // (RealtimeService) but only drive a text status/timestamp, never
-          // the map.
-          Positioned.fill(child: Container(color: AppColors.background)),
+          // EI-2: a real map, not a decorative backdrop — pickup/dropoff pins
+          // plus the driver's live position once one is available, same
+          // approach as DeliveryTrackingScreen's map for a delivery.
+          Positioned.fill(child: _map()),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -533,8 +596,88 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
         if (_matched || _inProgress) ...[
           const SizedBox(height: 16),
           _buildDriverCard(),
+          _locationFreshnessLabel(),
         ],
       ],
+    );
+  }
+
+  /// Pickup/dropoff pins, plus the driver's live position once reported.
+  /// Falls back to a plain background (never a fake decorative image) if a
+  /// trip somehow has no coordinates at all.
+  Widget _map() {
+    final markers = <Marker>{};
+    if (trip.pickupLat != null && trip.pickupLng != null) {
+      markers.add(Marker(
+        markerId: const MarkerId('pickup'),
+        position: LatLng(trip.pickupLat!, trip.pickupLng!),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        infoWindow: const InfoWindow(title: 'Pickup'),
+      ));
+    }
+    if (trip.dropoffLat != null && trip.dropoffLng != null) {
+      markers.add(Marker(
+        markerId: const MarkerId('dropoff'),
+        position: LatLng(trip.dropoffLat!, trip.dropoffLng!),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: const InfoWindow(title: 'Destination'),
+      ));
+    }
+    if (_driverLat != null && _driverLng != null) {
+      markers.add(Marker(
+        markerId: const MarkerId('driver'),
+        position: LatLng(_driverLat!, _driverLng!),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        infoWindow: const InfoWindow(title: 'Driver'),
+      ));
+    }
+    if (markers.isEmpty) return Container(color: AppColors.background);
+
+    final center = (_driverLat != null && _driverLng != null) ? LatLng(_driverLat!, _driverLng!) : markers.first.position;
+    return SafeGoogleMap(
+      initialCameraPosition: CameraPosition(target: center, zoom: 14),
+      markers: markers,
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+    );
+  }
+
+  /// LIVE / STALE / no-report-yet — the exact same three-state freshness
+  /// model DeliveryTrackingScreen shows for a courier (and the admin Live
+  /// Map behind both), reusing the backend's own presence value rather than
+  /// recomputing it here.
+  Widget _locationFreshnessLabel() {
+    String text;
+    IconData icon;
+    Color color;
+    if (_driverPresence == 'LIVE') {
+      final seconds = _driverLocationUpdatedAt == null
+          ? 0
+          : DateTime.now().difference(_driverLocationUpdatedAt!).inSeconds.clamp(0, 999);
+      text = 'Driver location updated ${seconds}s ago';
+      icon = Icons.circle;
+      color = AppColors.success;
+    } else if (_driverPresence == 'STALE') {
+      final minutes = _driverLocationUpdatedAt == null
+          ? 0
+          : DateTime.now().difference(_driverLocationUpdatedAt!).inMinutes;
+      text = "Driver location hasn't updated in ${minutes}m";
+      icon = Icons.warning_amber_rounded;
+      color = AppColors.textMuted;
+    } else {
+      text = 'Driver location is temporarily unavailable';
+      icon = Icons.location_off_outlined;
+      color = AppColors.textMuted;
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(text, style: TextStyle(fontSize: 12.5, color: color)),
+        ],
+      ),
     );
   }
 
