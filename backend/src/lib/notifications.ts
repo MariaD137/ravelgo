@@ -19,9 +19,17 @@ export type NotificationType =
   | "RENTAL_CONFIRMED"
   | "RENTAL_CANCELLED"
   | "PAYMENT_SUCCEEDED"
-  | "PAYMENT_FAILED";
+  | "PAYMENT_FAILED"
+  | "ADMIN_PAYMENT_FAILED"
+  | "ADMIN_SAFETY_ALERT_RAISED"
+  | "ADMIN_TRIP_DISPUTED";
 
-export type NotificationReferenceType = "TRIP" | "COURIER_REQUEST" | "RENTAL_BOOKING" | "PAYMENT";
+export type NotificationReferenceType =
+  | "TRIP"
+  | "COURIER_REQUEST"
+  | "RENTAL_BOOKING"
+  | "PAYMENT"
+  | "EMERGENCY_ALERT";
 
 /**
  * Create a real, persisted in-app notification for one user. This is the
@@ -68,4 +76,22 @@ export async function notifyUser(
     ...(notificationId ? { notificationId } : {}),
     ...(reference ? { referenceType: reference.type, referenceId: reference.id } : {}),
   });
+}
+
+/**
+ * Fan out a real event to every Admin-role user (AA-2), reusing notifyUser()
+ * per recipient so each admin gets the same persisted row + best-effort
+ * device push a rider/driver would. There is no "admin broadcast" table —
+ * this is simply notifyUser() called once per current Role.ADMIN row, so a
+ * newly created admin starts receiving future events with zero extra setup
+ * and a deactivated one (if ever added) would stop automatically.
+ */
+export async function notifyAllAdmins(
+  type: NotificationType,
+  title: string,
+  body: string,
+  reference?: { type: NotificationReferenceType; id: string },
+): Promise<void> {
+  const admins = await prisma.user.findMany({ where: { role: "ADMIN" }, select: { id: true } });
+  await Promise.all(admins.map((admin) => notifyUser(admin.id, type, title, body, reference)));
 }

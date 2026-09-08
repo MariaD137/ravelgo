@@ -1478,4 +1478,73 @@ class AdminApi {
     final data = await ApiClient.get('/api/payments?pageSize=100');
     return _list(data).whereType<Map<String, dynamic>>().map(AdminPayment.fromJson).toList();
   }
+
+  // ---- Notifications (AA-2) ----
+  // GET/PATCH/POST /api/notifications* are role-agnostic — every row is
+  // already scoped to the authenticated caller server-side, so an Admin
+  // caller here sees exactly the rows notifyAllAdmins() (backend
+  // lib/notifications.ts) wrote for them, no separate admin endpoint needed.
+  static Future<AdminNotificationPage> notifications({int page = 1, int pageSize = 30}) async {
+    final data = await ApiClient.get('/api/notifications?page=$page&pageSize=$pageSize') as Map<String, dynamic>;
+    final list = (data['data'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(AdminNotification.fromJson)
+        .toList();
+    return AdminNotificationPage(
+      items: list,
+      unreadCount: (data['unreadCount'] as num?)?.toInt() ?? 0,
+      total: (data['total'] as num?)?.toInt() ?? list.length,
+    );
+  }
+
+  static Future<void> markNotificationRead(String id) async {
+    await ApiClient.patch('/api/notifications/$id/read');
+  }
+
+  static Future<void> markAllNotificationsRead() async {
+    await ApiClient.post('/api/notifications/read-all');
+  }
+}
+
+/// A real, backend-persisted notification (see backend `Notification` model
+/// and `notifications.routes.ts`), same shape the Customer App's
+/// NotificationsApi consumes — never fabricated client-side.
+class AdminNotification {
+  final String id;
+  final String type;
+  final String title;
+  final String body;
+  final bool read;
+  final String? referenceType; // e.g. "TRIP", "COURIER_REQUEST", "RENTAL_BOOKING", "EMERGENCY_ALERT"
+  final String? referenceId;
+  final DateTime createdAt;
+
+  AdminNotification({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.body,
+    required this.read,
+    required this.createdAt,
+    this.referenceType,
+    this.referenceId,
+  });
+
+  factory AdminNotification.fromJson(Map<String, dynamic> j) => AdminNotification(
+        id: '${j['id']}',
+        type: '${j['type'] ?? ''}',
+        title: '${j['title'] ?? ''}',
+        body: '${j['body'] ?? ''}',
+        read: j['read'] == true,
+        referenceType: j['referenceType']?.toString(),
+        referenceId: j['referenceId']?.toString(),
+        createdAt: _dt(j['createdAt']),
+      );
+}
+
+class AdminNotificationPage {
+  final List<AdminNotification> items;
+  final int unreadCount;
+  final int total;
+  AdminNotificationPage({required this.items, required this.unreadCount, required this.total});
 }

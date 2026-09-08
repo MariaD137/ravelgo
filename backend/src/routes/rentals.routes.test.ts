@@ -257,6 +257,74 @@ test("POST /api/rentals/:id/book rejects overlapping dates on the same vehicle (
   assert.equal(nonOverlapping.status, 201);
 });
 
+test("AA-4: the RentalBooking table itself rejects an overlapping insert, independent of the application-layer check", async () => {
+  // Bypasses routes/rentals.routes.ts's own transaction/overlap check
+  // entirely by inserting directly via Prisma, proving the database
+  // constraint (migrations/add_rental_booking_exclusion_constraint) is what
+  // actually makes a double-booking impossible, not just the application
+  // code above (which two concurrent transactions could both pass before
+  // either commits).
+  const listing = await createApprovedListing("driver-sub-10", 100);
+  const renter = await createRider("rider-sub-6");
+
+  await prisma.rentalBooking.create({
+    data: {
+      renterId: renter.id,
+      listingId: listing.id,
+      startDate: new Date("2027-03-01T00:00:00.000Z"),
+      endDate: new Date("2027-03-05T00:00:00.000Z"),
+      days: 4,
+      totalPrice: 400,
+      status: "CONFIRMED",
+    },
+  });
+
+  await assert.rejects(
+    prisma.rentalBooking.create({
+      data: {
+        renterId: renter.id,
+        listingId: listing.id,
+        startDate: new Date("2027-03-03T00:00:00.000Z"),
+        endDate: new Date("2027-03-07T00:00:00.000Z"),
+        days: 4,
+        totalPrice: 400,
+        status: "PENDING_PAYMENT",
+      },
+    }),
+    (err: unknown) => err instanceof Error && /overlapping_active_bookings|exclusion/i.test(String(err)),
+  );
+
+  // A non-overlapping range for the same listing is unaffected.
+  const nonOverlapping = await prisma.rentalBooking.create({
+    data: {
+      renterId: renter.id,
+      listingId: listing.id,
+      startDate: new Date("2027-03-05T00:00:00.000Z"),
+      endDate: new Date("2027-03-08T00:00:00.000Z"),
+      days: 3,
+      totalPrice: 300,
+      status: "PENDING_PAYMENT",
+    },
+  });
+  assert.ok(nonOverlapping.id);
+
+  // The constraint only guards active holds — once that booking is
+  // CANCELLED, its dates are free again.
+  await prisma.rentalBooking.update({ where: { id: nonOverlapping.id }, data: { status: "CANCELLED" } });
+  const afterCancel = await prisma.rentalBooking.create({
+    data: {
+      renterId: renter.id,
+      listingId: listing.id,
+      startDate: new Date("2027-03-05T00:00:00.000Z"),
+      endDate: new Date("2027-03-08T00:00:00.000Z"),
+      days: 3,
+      totalPrice: 300,
+      status: "CONFIRMED",
+    },
+  });
+  assert.ok(afterCancel.id);
+});
+
 test("POST /api/rental-bookings/:id/pay with WALLET debits the renter's balance and confirms the booking", async () => {
   const listing = await createApprovedListing("driver-sub-10", 100);
   const rider = await createRider("rider-sub-6");

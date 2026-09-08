@@ -3,6 +3,7 @@ import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/utils/date_utils.dart';
+import 'package:ravelgo_admin/views/couriers/courier_request_detail_screen.dart';
 
 /// Courier delivery requests (GET /api/courier-requests, admin).
 class CourierRequestsScreen extends StatefulWidget {
@@ -111,7 +112,14 @@ class _CourierRequestsScreenState extends State<CourierRequestsScreen> {
         itemBuilder: (context, i) {
           final c = _items[i];
           final done = c.status == 'DELIVERED' || c.status == 'CANCELLED';
-          return Container(
+          return InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: () async {
+              final changed = await Navigator.push<bool>(
+                  context, MaterialPageRoute(builder: (_) => CourierRequestDetailScreen(request: c)));
+              if (changed == true) _load();
+            },
+            child: Container(
             padding: const EdgeInsets.all(14),
             decoration: AppComponents.cardDecoration(),
             child: Column(
@@ -148,6 +156,7 @@ class _CourierRequestsScreenState extends State<CourierRequestsScreen> {
                     ],
                   ),
               ],
+            ),
             ),
           );
         },

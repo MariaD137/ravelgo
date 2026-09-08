@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { requireAdminPermission } from "../lib/admin-permissions";
+import { notifyAllAdmins } from "../lib/notifications";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const alertsRouter = Router();
@@ -24,6 +25,12 @@ alertsRouter.post("/emergency-alerts", requireAuth, async (req, res) => {
   const alert = await prisma.emergencyAlert.create({
     data: { ...parsed.data, userId: user.id },
   });
+  await notifyAllAdmins(
+    "ADMIN_SAFETY_ALERT_RAISED",
+    alert.type === "SOS" ? "SOS alert raised" : "Fraud alert raised",
+    alert.message || `A ${alert.type === "SOS" ? "safety" : "fraud"} alert was just raised.`,
+    { type: "EMERGENCY_ALERT", id: alert.id },
+  );
   res.status(201).json(alert);
 });
 
