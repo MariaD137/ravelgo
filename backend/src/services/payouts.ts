@@ -161,15 +161,22 @@ export async function processPayout(payoutId: string): Promise<Payout> {
 
 /**
  * Mark a payout as completed (successful transfer to driver's bank).
- * Called from webhook handler when Stripe confirms delivery.
+ *
+ * `transactionId` is required (SE-4): there is no live Stripe Connect/ACH
+ * integration yet (see PY-1), so this is called by an admin confirming a
+ * transfer they made outside this system, and the real bank/wire reference
+ * is the only thing that makes that confirmation checkable later. A payout
+ * can only ever reach COMPLETED carrying a real, unique transaction
+ * reference — never a fabricated one (see processPayout above) and never
+ * none at all.
  */
-export async function completePayout(payoutId: string, transactionId?: string): Promise<Payout> {
+export async function completePayout(payoutId: string, transactionId: string): Promise<Payout> {
   return prisma.payout.update({
     where: { id: payoutId },
     data: {
       status: "COMPLETED",
       completedAt: new Date(),
-      transactionId: transactionId || undefined,
+      transactionId,
     },
   });
 }
