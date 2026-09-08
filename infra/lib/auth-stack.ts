@@ -82,6 +82,17 @@ export class AuthStack extends cdk.Stack {
         requireSymbols: false,
       },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
+      // IN-2: OPTIONAL (not REQUIRED) so this rolls out without breaking any
+      // existing session or sign-in flow — nobody is forced into MFA they
+      // haven't enrolled in. TOTP only (an authenticator app); SMS is left
+      // off since it would need a verified Pinpoint origination number this
+      // stack doesn't provision. Enrollment/challenge is driven by the
+      // Cognito API a user pool client already exposes (AssociateSoftwareToken
+      // / VerifySoftwareToken / the SOFTWARE_TOKEN_MFA challenge) — enabling it
+      // here doesn't by itself add enrollment UI to any of the three Flutter
+      // apps.
+      mfa: cognito.Mfa.OPTIONAL,
+      mfaSecondFactor: { otp: true, sms: false },
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 

@@ -6,6 +6,7 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as rds from "aws-cdk-lib/aws-rds";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import * as wafv2 from "aws-cdk-lib/aws-wafv2";
 import type { Construct } from "constructs";
 
 export interface ApiStackProps extends cdk.StackProps {
@@ -263,6 +264,67 @@ export class ApiStack extends cdk.Stack {
       },
     });
     this.service = service;
+
+    // IN-1: baseline WAF in front of the API. REGIONAL scope (not
+    // CLOUDFRONT — that's StorageStack's job for the CDN in front of the web
+    // apps) — App Runner is one of the resource types AWS WAF can attach to
+    // directly, same as an ALB. Two AWS-managed rule groups cover the classes
+    // of exploit an MVP backend most plausibly meets (generic web exploits,
+    // SQL injection); the rate-based rule is a blunt but real backstop
+    // against a single source hammering the API, independent of and in
+    // addition to the app's own per-route rate limiters (middleware/rate-limit.ts),
+    // which only throttle specific expensive endpoints, not every request.
+    const webAcl = new wafv2.CfnWebACL(this, "ApiWebAcl", {
+      scope: "REGIONAL",
+      defaultAction: { allow: {} },
+      visibilityConfig: {
+        sampledRequestsEnabled: true,
+        cloudWatchMetricsEnabled: true,
+        metricName: `${resourceName}-waf`,
+      },
+      rules: [
+        {
+          name: "AWS-AWSManagedRulesCommonRuleSet",
+          priority: 1,
+          overrideAction: { none: {} },
+          statement: { managedRuleGroupStatement: { vendorName: "AWS", name: "AWSManagedRulesCommonRuleSet" } },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: `${resourceName}-common`,
+          },
+        },
+        {
+          name: "AWS-AWSManagedRulesSQLiRuleSet",
+          priority: 2,
+          overrideAction: { none: {} },
+          statement: { managedRuleGroupStatement: { vendorName: "AWS", name: "AWSManagedRulesSQLiRuleSet" } },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: `${resourceName}-sqli`,
+          },
+        },
+        {
+          // Per-IP request ceiling over WAF's 5-minute evaluation window.
+          // 2000 comfortably covers a real user/app polling normally; a
+          // single source blowing past it is blocked until its rate drops.
+          name: "RateLimit",
+          priority: 3,
+          action: { block: {} },
+          statement: { rateBasedStatement: { limit: 2000, aggregateKeyType: "IP" } },
+          visibilityConfig: {
+            sampledRequestsEnabled: true,
+            cloudWatchMetricsEnabled: true,
+            metricName: `${resourceName}-ratelimit`,
+          },
+        },
+      ],
+    });
+    new wafv2.CfnWebACLAssociation(this, "ApiWebAclAssociation", {
+      resourceArn: service.attrServiceArn,
+      webAclArn: webAcl.attrArn,
+    });
 
     new cdk.CfnOutput(this, "ServiceUrl", { value: `https://${service.attrServiceUrl}` });
     }
