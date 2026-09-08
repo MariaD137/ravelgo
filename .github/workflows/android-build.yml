@@ -1,24 +1,40 @@
-name: Android Build (rider)
+name: Android Build (rider + driver)
 
-# Builds an installable debug APK of the rider app so it can be tested on a
-# real Android phone without a local Flutter setup. Runs on every push to the
-# working branch that touches the rider app, and can be started by hand from
-# the Actions tab (Run workflow). Download the APK from the run's Artifacts.
+# Builds an installable debug APK of the rider app (user_app) and the driver
+# app (driver_app) so they can be tested on a real Android phone without a
+# local Flutter setup. Runs on every push to main that touches either app,
+# and can be started by hand from the Actions tab (Run workflow). Download
+# the APK from the run's Artifacts.
+#
+# .env is generated from repository secrets (Settings -> Secrets and
+# variables -> Actions), never hardcoded here and never typed into Claude —
+# same rule as the CloudShell deploy scripts' own secrets step. Add these
+# once to get a real, working (not just installable) build:
+#   GOOGLE_MAPS_API_KEY, COGNITO_USER_POOL_ID, COGNITO_CLIENT_ID
+#   (user_app only) STRIPE_PUBLISHABLE_KEY, PINPOINT_APPLICATION_ID, PUSH_IDENTITY_POOL_ID
+# Until they're set, the app still builds and installs, but can't sign in
+# (empty Cognito config) — same safe-degradation behavior the app already
+# has for a missing/placeholder .env.
 on:
   workflow_dispatch:
   push:
     branches:
-      - claude/screenshots-ui-1plari
+      - main
     paths:
       - "user_app/**"
+      - "driver_app/**"
       - ".github/workflows/android-build.yml"
 
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [user_app, driver_app]
     defaults:
       run:
-        working-directory: user_app
+        working-directory: ${{ matrix.app }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,25 +50,48 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Create .env (config the app reads at startup)
-        run: cp .env.example .env
+      - name: Create .env (real staging config, from repo secrets)
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
+          COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
+          STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
+          PINPOINT_APPLICATION_ID: ${{ secrets.PINPOINT_APPLICATION_ID }}
+          PUSH_IDENTITY_POOL_ID: ${{ secrets.PUSH_IDENTITY_POOL_ID }}
+        run: |
+          {
+            echo "GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY"
+            echo "API_BASE_URL=https://gpgg9ykamj.us-east-1.awsapprunner.com"
+            echo "COGNITO_USER_POOL_ID=$COGNITO_USER_POOL_ID"
+            echo "COGNITO_CLIENT_ID=$COGNITO_CLIENT_ID"
+            echo "AWS_REGION=us-east-1"
+            echo "CURRENCY_SYMBOL=₦"
+            echo "CURRENCY_CODE=NGN"
+          } > .env
+          if [ "${{ matrix.app }}" = "user_app" ]; then
+            {
+              echo "STRIPE_PUBLISHABLE_KEY=$STRIPE_PUBLISHABLE_KEY"
+              echo "PINPOINT_APPLICATION_ID=$PINPOINT_APPLICATION_ID"
+              echo "PUSH_IDENTITY_POOL_ID=$PUSH_IDENTITY_POOL_ID"
+            } >> .env
+          fi
 
       - name: Install dependencies
         run: flutter pub get
 
-      # The rider app's Android toolchain (Gradle 8.12 / AGP 8.9.1 / Kotlin
-      # 2.1.0) is the self-consistent set Flutter generated for this project
-      # and builds a working debug APK, but it sits just below the minimums
-      # the current Flutter stable bundles. Skip that advisory version check
-      # (Flutter's own recommended flag) rather than force a toolchain bump
-      # that would require migrating the generated Gradle scripts to the K2
-      # script compiler.
+      # The generated Android toolchain (Gradle 8.12 / AGP 8.9.1 / Kotlin
+      # 2.1.0) is the self-consistent set Flutter generated for these
+      # projects and builds a working debug APK, but it sits just below the
+      # minimums the current Flutter stable bundles. Skip that advisory
+      # version check (Flutter's own recommended flag) rather than force a
+      # toolchain bump that would require migrating the generated Gradle
+      # scripts to the K2 script compiler.
       - name: Build debug APK
         run: flutter build apk --debug --android-skip-build-dependency-validation
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ravelgo-rider-apk
-          path: user_app/build/app/outputs/flutter-apk/app-debug.apk
+          name: ravelgo-${{ matrix.app == 'user_app' && 'rider' || 'driver' }}-apk
+          path: ${{ matrix.app }}/build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
