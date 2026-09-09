@@ -167,6 +167,20 @@ ThemeData buildAppTheme() {
       backgroundColor: AppColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.large)),
     ),
+    // Material 3's DatePickerDialog doesn't read dialogTheme above — it uses
+    // colorScheme.surfaceContainerHigh by default, which ColorScheme.fromSeed
+    // leaves untouched (only primary/surface/error are overridden above) and
+    // renders as a pale pink tint for this app's black seed color. Pinned
+    // explicitly so every showDatePicker() call in the app (RentalDetailScreen,
+    // StayDetailScreen, and any future one) gets the same white dialog as
+    // everything else, not a one-off per call site.
+    datePickerTheme: DatePickerThemeData(
+      backgroundColor: AppColors.surface,
+      surfaceTintColor: Colors.transparent,
+      headerBackgroundColor: AppColors.surface,
+      headerForegroundColor: AppColors.textPrimary,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.large)),
+    ),
     switchTheme: SwitchThemeData(
       thumbColor: WidgetStateProperty.resolveWith((states) =>
           states.contains(WidgetState.selected) ? AppColors.primary : AppColors.surface),
