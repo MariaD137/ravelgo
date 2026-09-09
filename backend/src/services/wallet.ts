@@ -99,3 +99,40 @@ export async function chargeWalletForRide(params: {
     });
   });
 }
+
+/** Same guarantees as chargeWalletForRide, for a courier delivery. */
+export async function chargeWalletForDelivery(params: {
+  walletId: string;
+  amountCents: number;
+  courierRequestId: string;
+  senderId: string;
+  /** The fare recorded on the Payment row (display/receipt). */
+  fareAmount: number;
+}) {
+  const { walletId, amountCents, courierRequestId, senderId, fareAmount } = params;
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.payment.findUnique({ where: { courierRequestId } });
+    if (existing) throw new AlreadyChargedError();
+
+    const updated = await tx.walletAccount.updateMany({
+      where: { id: walletId, balanceCents: { gte: amountCents } },
+      data: { balanceCents: { decrement: amountCents } },
+    });
+    if (updated.count === 0) throw new InsufficientFundsError();
+
+    await tx.walletTransaction.create({
+      data: { walletId, type: "DELIVERY_PAYMENT", status: "COMPLETED", amountCents: -amountCents, courierRequestId },
+    });
+
+    return tx.payment.create({
+      data: {
+        courierRequestId,
+        userId: senderId,
+        amount: fareAmount,
+        method: "WALLET",
+        status: "SUCCEEDED",
+        paidAt: new Date(),
+      },
+    });
+  });
+}

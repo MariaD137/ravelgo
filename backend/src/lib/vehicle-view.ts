@@ -31,6 +31,7 @@ interface VehicleRel {
   year: string;
   isPrimary: boolean;
   listedForRental: boolean;
+  vehicleClass?: string | null;
   photoKey?: string | null;
   createdAt: Date;
 }
@@ -64,6 +65,7 @@ export function serializeVehicle(vehicle: VehicleRel) {
     year: vehicle.year,
     isPrimary: vehicle.isPrimary,
     listedForRental: vehicle.listedForRental,
+    vehicleClass: vehicle.vehicleClass ?? null,
     photoUrl: photoUrlFor(vehicle.photoKey),
     createdAt: vehicle.createdAt,
   };

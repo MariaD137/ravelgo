@@ -4,6 +4,7 @@ import { MAX_MONEY_AMOUNT, toCents } from "../lib/money";
 import { getPaymentSettings, isCashPaymentAllowed } from "../lib/payment-rules";
 import { notifyUser } from "../lib/notifications";
 import { AlreadyChargedError, chargeWalletForRide } from "./wallet";
+import { recordRideCommission } from "./ledger";
 
 export type PaymentMethod = "CARD" | "WALLET" | "CASH";
 
@@ -27,8 +28,20 @@ export class CashLimitExceededError extends Error {
 export interface ChargeableTrip {
   id: string;
   riderId: string;
+  driverId: string | null;
+  rideCategoryKey: string | null;
   status: string;
   finalFare: number | null;
+  // Locked in earlier in the trip lifecycle (trips.routes.ts) — 100%
+  // driver-compensation, bundled into the single charge below but never
+  // commissioned (see recordRideCommission's fareAmount parameter).
+  waitingCharge?: number | null;
+  cancellationFee?: number | null;
+}
+
+/** The fare plus any locked-in waiting/cancellation charge — the actual amount charged. */
+function chargeableTotal(trip: ChargeableTrip): number {
+  return (trip.finalFare ?? 0) + (trip.waitingCharge ?? 0) + (trip.cancellationFee ?? 0);
 }
 
 /**
@@ -64,12 +77,19 @@ export async function settleTripPayment(
   const existing = await prisma.payment.findUnique({ where: { tripId: trip.id } });
   if (existing) throw new AlreadyChargedError();
 
+  // The rider is charged the fare PLUS any waiting/cancellation charge locked
+  // in earlier in the trip (trips.routes.ts) — one combined charge, exactly
+  // like a real receipt line-items into a single total. Commission is still
+  // computed on the fare alone (recordRideCommission's explicit fareAmount
+  // below): waiting/cancellation are 100% driver-compensation.
+  const chargeAmount = chargeableTotal(trip);
+
   if (method === "CASH") {
     // Defense in depth: the rider app hides Cash above the limit, but the
     // server is the only place this is actually enforced — see
     // lib/payment-rules.ts#isCashPaymentAllowed.
     const settings = await getPaymentSettings();
-    if (!(await isCashPaymentAllowed(trip.finalFare))) {
+    if (!(await isCashPaymentAllowed(chargeAmount))) {
       throw new CashLimitExceededError(settings.cashPaymentLimit);
     }
     // Cash changes hands directly between rider and driver — RavelGo never
@@ -81,17 +101,20 @@ export async function settleTripPayment(
       data: {
         tripId: trip.id,
         userId: trip.riderId,
-        amount: trip.finalFare,
+        amount: chargeAmount,
         method: "CASH",
         status: "SUCCEEDED",
         paidAt: new Date(),
       },
     });
+    // Cash settles immediately — the commission is owed to RavelGo from this
+    // instant, same as the CashRemittance reconciliation already assumes.
+    await recordRideCommission(trip, payment, trip.finalFare ?? 0);
     await notifyUser(
       trip.riderId,
       "PAYMENT_SUCCEEDED",
       "Payment successful",
-      `Your cash payment of ${trip.finalFare} for this ride was recorded.`,
+      `Your cash payment of ${chargeAmount} for this ride was recorded.`,
       { type: "TRIP", id: trip.id },
     );
     return { payment };
@@ -99,7 +122,7 @@ export async function settleTripPayment(
 
   if (method === "CARD") {
     const intent = await stripeClient.paymentIntents.create({
-      amount: toCents(trip.finalFare),
+      amount: toCents(chargeAmount),
       currency: "usd",
       metadata: { tripId: trip.id },
     });
@@ -107,7 +130,7 @@ export async function settleTripPayment(
       data: {
         tripId: trip.id,
         userId: trip.riderId,
-        amount: trip.finalFare,
+        amount: chargeAmount,
         method: "CARD",
         status: "PENDING",
         providerReference: intent.id,
@@ -122,16 +145,18 @@ export async function settleTripPayment(
 
   const payment = await chargeWalletForRide({
     walletId: wallet.id,
-    amountCents: toCents(trip.finalFare),
+    amountCents: toCents(chargeAmount),
     tripId: trip.id,
     riderId: trip.riderId,
-    fareAmount: trip.finalFare,
+    fareAmount: chargeAmount,
   });
+  // WALLET settles immediately too — RavelGo already holds these funds.
+  await recordRideCommission(trip, payment, trip.finalFare ?? 0);
   await notifyUser(
     trip.riderId,
     "PAYMENT_SUCCEEDED",
     "Payment successful",
-    `${trip.finalFare} was paid from your RavelGo Cash balance for this ride.`,
+    `${chargeAmount} was paid from your RavelGo Cash balance for this ride.`,
     { type: "TRIP", id: trip.id },
   );
   return { payment };

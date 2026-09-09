@@ -140,116 +140,183 @@ enum PayoutStatus {
   CANCELLED
 }
 
+// A ride category's eligible vehicle class (Swift/Ease/Luxe/Elite -> the
+// class of car that may serve it). Separate from DeliveryVehicleClass since
+// the two verticals price and match completely independently.
+enum RideVehicleClass {
+  ECONOMY
+  COMFORT
+  PREMIUM
+  LUXURY
+}
+
+// A delivery's vehicle class (Bike/Car/SUV/Van) — replaces the old flat
+// SMALL/MEDIUM/LARGE-package-only pricing with the vehicle-based rate card
+// the pricing spec calls for. packageSize is kept alongside this as a
+// surcharge input (weight/size), not the primary price driver anymore.
+enum DeliveryVehicleClass {
+  BIKE
+  CAR
+  SUV
+  VAN
+}
+
+// What a settled/reversed FinancialTransaction actually represents. RIDE_FARE
+// and DELIVERY_FARE are the primary commissioned events; CANCELLATION_FEE and
+// WAITING_CHARGE are driver-compensation charges (not commissioned — see
+// services/commission.ts); REFUND reverses a prior RIDE_FARE/DELIVERY_FARE row.
+enum FinancialTransactionType {
+  RIDE_FARE
+  DELIVERY_FARE
+  CANCELLATION_FEE
+  WAITING_CHARGE
+  REFUND
+}
+
+enum FinancialTransactionStatus {
+  SETTLED
+  REVERSED
+}
+
 model User {
-  id                String   @id @default(uuid())
-  cognitoSub        String   @unique
-  role              Role     @default(RIDER)
-  firstName         String
-  lastName          String
-  email             String   @unique
-  phoneNumber       String?
-  isLoyaltyMember   Boolean  @default(false)
-  suspended         Boolean  @default(false)
+  id              String     @id @default(uuid())
+  cognitoSub      String     @unique
+  role            Role       @default(RIDER)
+  firstName       String
+  lastName        String
+  email           String     @unique
+  phoneNumber     String?
+  isLoyaltyMember Boolean    @default(false)
+  suspended       Boolean    @default(false)
   // Only meaningful when role == ADMIN. Null means "no preset assigned" —
   // see the AdminRole doc comment above for why that means full access.
-  adminRole         AdminRole?
+  adminRole       AdminRole?
   // Soft-delete marker (P0 #12). Financial relations below are RESTRICT, so a
   // user with payout/wallet/trip history cannot be hard-deleted — deactivate by
   // stamping deletedAt instead, which preserves the ledger and every FK.
-  deletedAt         DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  deletedAt       DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
 
-  driverProfile     Driver?
-  ridesAsRider      Trip[]   @relation("RiderTrips")
-  supportTickets    SupportTicket[]
-  courierRequestsSent CourierRequest[] @relation("CourierSender")
-  emergencyAlerts   EmergencyAlert[]
-  payments          Payment[]
+  driverProfile        Driver?
+  ridesAsRider         Trip[]                @relation("RiderTrips")
+  supportTickets       SupportTicket[]
+  courierRequestsSent  CourierRequest[]      @relation("CourierSender")
+  emergencyAlerts      EmergencyAlert[]
+  payments             Payment[]
   promotionRedemptions PromotionRedemption[]
-  bankAccount       DriverBankAccount?
-  payouts           Payout[]
-  wallet            WalletAccount?
-  foodOrders        FoodOrder[]      @relation("RiderFoodOrders")
-  hostedProperties  PropertyListing[] @relation("HostProperties")
-  stayBookings      StayBooking[]     @relation("GuestStayBookings")
-  rentalBookings    RentalBooking[]   @relation("RenterRentalBookings")
-  notifications     Notification[]
-  pushTokens        PushToken[]
+  bankAccount          DriverBankAccount?
+  payouts              Payout[]
+  wallet               WalletAccount?
+  foodOrders           FoodOrder[]           @relation("RiderFoodOrders")
+  hostedProperties     PropertyListing[]     @relation("HostProperties")
+  stayBookings         StayBooking[]         @relation("GuestStayBookings")
+  rentalBookings       RentalBooking[]       @relation("RenterRentalBookings")
+  notifications        Notification[]
+  pushTokens           PushToken[]
 }
 
 model Driver {
-  id                String       @id @default(uuid())
-  userId            String       @unique
-  user              User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status            DriverStatus @default(PENDING_REVIEW)
-  isOnline          Boolean      @default(false)
-  rating            Float        @default(5.0)
-  totalTrips        Int          @default(0)
-  preferredLanguage String       @default("English")
-  quietModePreferred Boolean     @default(false)
-  subscriptionActive Boolean     @default(false)
-  createdAt         DateTime     @default(now())
-  updatedAt         DateTime     @updatedAt
+  id                 String       @id @default(uuid())
+  userId             String       @unique
+  user               User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status             DriverStatus @default(PENDING_REVIEW)
+  isOnline           Boolean      @default(false)
+  rating             Float        @default(5.0)
+  totalTrips         Int          @default(0)
+  preferredLanguage  String       @default("English")
+  quietModePreferred Boolean      @default(false)
+  subscriptionActive Boolean      @default(false)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
-  vehicles          Vehicle[]
-  documents         DriverDocument[]
-  tripsAsDriver     Trip[]       @relation("DriverTrips")
-  carPaddyRequests  CarPaddyRequest[]
-  rentalListings    RentalListing[]
-  courierRequestsHandled CourierRequest[] @relation("CourierDriver")
-  subscription      DriverSubscription?
-  cashRemittances   CashRemittance[]
+  vehicles               Vehicle[]
+  documents              DriverDocument[]
+  tripsAsDriver          Trip[]              @relation("DriverTrips")
+  carPaddyRequests       CarPaddyRequest[]
+  rentalListings         RentalListing[]
+  courierRequestsHandled CourierRequest[]    @relation("CourierDriver")
+  subscription           DriverSubscription?
+  cashRemittances        CashRemittance[]
 }
 
 model Vehicle {
-  id               String   @id @default(uuid())
-  driverId         String
-  driver           Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  brand            String
-  model            String
-  colour           String
-  plateNumber      String   @unique
-  year             String
-  isPrimary        Boolean  @default(false)
-  listedForRental  Boolean  @default(false)
+  id              String            @id @default(uuid())
+  driverId        String
+  driver          Driver            @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  brand           String
+  model           String
+  colour          String
+  plateNumber     String            @unique
+  year            String
+  isPrimary       Boolean           @default(false)
+  listedForRental Boolean           @default(false)
   // S3 key in the public "assets" bucket (served via CloudFront) — never a
   // raw URL, so the CDN domain can change without touching stored data.
   // Nullable: not every vehicle has a photo yet.
-  photoKey         String?
-  createdAt        DateTime @default(now())
+  photoKey        String?
+  // Which ride categories this vehicle is eligible to serve (see
+  // RideCategory.eligibleVehicleClasses). Self-declared by the driver when
+  // adding/editing the vehicle, admin-correctable. Nullable: a vehicle added
+  // before this existed, or never classified, simply isn't eligible for any
+  // category that restricts itself to specific classes.
+  vehicleClass    RideVehicleClass?
+  createdAt       DateTime          @default(now())
 
-  rentalListings   RentalListing[]
+  rentalListings RentalListing[]
 }
 
 model Trip {
-  id            String     @id @default(uuid())
-  riderId       String
-  rider         User       @relation("RiderTrips", fields: [riderId], references: [id])
-  driverId      String?
+  id              String     @id @default(uuid())
+  riderId         String
+  rider           User       @relation("RiderTrips", fields: [riderId], references: [id])
+  driverId        String?
   // Restrict (P0 #12): a completed trip must keep its link to the driver who
   // was paid out for it — deleting the driver is blocked, not silently nulled.
-  driver        Driver?    @relation("DriverTrips", fields: [driverId], references: [id], onDelete: Restrict)
-  pickup        String
-  destination   String
+  driver          Driver?    @relation("DriverTrips", fields: [driverId], references: [id], onDelete: Restrict)
+  pickup          String
+  destination     String
   // Coordinates the fare is computed from. The server derives distance from
   // these (services never trust a client-supplied distance) — see lib/geo.ts.
   // Nullable so pre-coordinate rows remain valid.
-  pickupLat     Float?
-  pickupLng     Float?
-  dropoffLat    Float?
-  dropoffLng    Float?
-  distanceKm    Float?     // server-computed great-circle distance, for audit/receipts
-  estimatedFare Float
-  finalFare     Float?
-  status        TripStatus @default(REQUESTED)
-  category      String     @default("Personal")
-  pickupNote    String?
-  riderRating   Float?     // 1–5 rating the rider gave the driver for this trip
-  requestedAt   DateTime   @default(now())
-  completedAt   DateTime?
+  pickupLat       Float?
+  pickupLng       Float?
+  dropoffLat      Float?
+  dropoffLng      Float?
+  distanceKm      Float? // server-computed great-circle distance, for audit/receipts
+  estimatedFare   Float
+  finalFare       Float?
+  status          TripStatus @default(REQUESTED)
+  category        String     @default("Personal")
+  // The ride tier the rider chose (RideCategory.key, e.g. "SWIFT") — separate
+  // from the free-text `category` field above (an unrelated rider-purpose
+  // label, e.g. "Personal"/"Business"). Nullable so a trip requested before
+  // categories existed remains valid.
+  rideCategoryKey String?
+  pickupNote      String?
+  riderRating     Float? // 1–5 rating the rider gave the driver for this trip
+  requestedAt     DateTime   @default(now())
+  completedAt     DateTime?
+  // Set once, by the driver, when they physically reach the pickup point —
+  // POST /trips/:id/arrived. Anchors the free-waiting-period clock; null
+  // until the driver reports arrival.
+  arrivedAt       DateTime?
 
-  payment       Payment?
+  // The commission actually applied to this trip, locked in at payment
+  // settlement (services/ledger.ts#recordRideCommission) — never
+  // recomputed from whatever CommissionConfig/RideCategory says later
+  // (P&C spec #14: commission is immutable after settlement). Null until
+  // the trip's payment actually settles.
+  commissionRate     Float?
+  platformCommission Float?
+  driverEarnings     Float?
+  // Locked in at the same moment, from PricingPolicy, for driver transparency
+  // and the trip receipt breakdown. Both go 100% to the driver — see
+  // services/commission.ts for why waiting/cancellation aren't commissioned.
+  waitingCharge      Float?
+  cancellationFee    Float?
+
+  payment         Payment?
   emergencyAlerts EmergencyAlert[]
 
   // Trip is the busiest table in the product; these back the payout query
@@ -261,48 +328,48 @@ model Trip {
 }
 
 model DriverDocument {
-  id               String         @id @default(uuid())
-  driverId         String
-  driver           Driver         @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  title            String
-  status           DocumentStatus @default(NOT_UPLOADED)
-  fileKey          String?
-  expiryDate       DateTime?
+  id              String         @id @default(uuid())
+  driverId        String
+  driver          Driver         @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  title           String
+  status          DocumentStatus @default(NOT_UPLOADED)
+  fileKey         String?
+  expiryDate      DateTime?
   // Required whenever status is set to REJECTED (enforced in the route, not
   // here, since Prisma can't express "required only for one enum value").
   // Cleared back to null on a subsequent approval so it never lingers on a
   // document that isn't actually rejected.
-  rejectionReason  String?
-  updatedAt        DateTime       @updatedAt
+  rejectionReason String?
+  updatedAt       DateTime       @updatedAt
 }
 
 model CarPaddyRequest {
-  id           String         @id @default(uuid())
-  driverId     String
-  driver       Driver         @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  plateNumber  String
-  status       CarPaddyStatus @default(SUBMITTED)
-  submittedAt  DateTime       @default(now())
-  reviewedAt   DateTime?
+  id          String         @id @default(uuid())
+  driverId    String
+  driver      Driver         @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  plateNumber String
+  status      CarPaddyStatus @default(SUBMITTED)
+  submittedAt DateTime       @default(now())
+  reviewedAt  DateTime?
 }
 
 model RentalListing {
-  id         String               @id @default(uuid())
-  driverId   String
-  driver     Driver               @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  vehicleId  String
-  vehicle    Vehicle              @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  dailyRate  Float
-  location   String
+  id        String              @id @default(uuid())
+  driverId  String
+  driver    Driver              @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  vehicleId String
+  vehicle   Vehicle             @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  dailyRate Float
+  location  String
   // Populated from the same Places-backed search used elsewhere (ride
   // booking, "Send a Package") once a listing is created through it.
   // Nullable so listings created before this existed remain valid.
-  lat        Float?
-  lng        Float?
-  status     RentalListingStatus  @default(PENDING_APPROVAL)
-  createdAt  DateTime             @default(now())
+  lat       Float?
+  lng       Float?
+  status    RentalListingStatus @default(PENDING_APPROVAL)
+  createdAt DateTime            @default(now())
 
-  bookings   RentalBooking[]
+  bookings RentalBooking[]
 }
 
 // A customer's reservation of a RentalListing for a date range. Mirrors
@@ -310,22 +377,22 @@ model RentalListing {
 // but additionally tracks its own payment state inline (like CourierRequest's
 // fare fields) rather than joining through Payment, which is tied 1:1 to Trip.
 model RentalBooking {
-  id                String               @id @default(uuid())
+  id                String              @id @default(uuid())
   renterId          String
-  renter            User                 @relation("RenterRentalBookings", fields: [renterId], references: [id], onDelete: Cascade)
+  renter            User                @relation("RenterRentalBookings", fields: [renterId], references: [id], onDelete: Cascade)
   listingId         String
-  listing           RentalListing        @relation(fields: [listingId], references: [id])
+  listing           RentalListing       @relation(fields: [listingId], references: [id])
   startDate         DateTime
   endDate           DateTime
   // Server-computed from (endDate - startDate) and the listing's dailyRate at
   // booking time — never trusted from the client.
   days              Int
   totalPrice        Float
-  status            RentalBookingStatus  @default(PENDING_PAYMENT)
+  status            RentalBookingStatus @default(PENDING_PAYMENT)
   paymentMethod     PaymentMethod?
-  paymentStatus     PaymentStatus        @default(PENDING)
-  providerReference String?              @unique // Stripe PaymentIntent id, for CARD payment
-  createdAt         DateTime             @default(now())
+  paymentStatus     PaymentStatus       @default(PENDING)
+  providerReference String?             @unique // Stripe PaymentIntent id, for CARD payment
+  createdAt         DateTime            @default(now())
 
   @@index([renterId])
   @@index([listingId])
@@ -335,38 +402,38 @@ model RentalBooking {
 // RentalListing's list-then-admin-approve shape, but hosting isn't tied to a
 // Driver profile — any authenticated user can list or book a stay.
 model PropertyListing {
-  id            String                 @id @default(uuid())
+  id            String                @id @default(uuid())
   hostId        String
-  host          User                   @relation("HostProperties", fields: [hostId], references: [id], onDelete: Cascade)
+  host          User                  @relation("HostProperties", fields: [hostId], references: [id], onDelete: Cascade)
   title         String
   description   String?
   address       String
   imageUrl      String?
   pricePerNight Float
-  maxGuests     Int                    @default(2)
-  status        PropertyListingStatus  @default(PENDING_APPROVAL)
-  createdAt     DateTime               @default(now())
+  maxGuests     Int                   @default(2)
+  status        PropertyListingStatus @default(PENDING_APPROVAL)
+  createdAt     DateTime              @default(now())
 
-  bookings      StayBooking[]
+  bookings StayBooking[]
 
   @@index([hostId])
 }
 
 model StayBooking {
-  id          String            @id @default(uuid())
-  guestId     String
-  guest       User              @relation("GuestStayBookings", fields: [guestId], references: [id], onDelete: Cascade)
-  propertyId  String
-  property    PropertyListing   @relation(fields: [propertyId], references: [id])
-  checkIn     DateTime
-  checkOut    DateTime
-  guests      Int
+  id         String            @id @default(uuid())
+  guestId    String
+  guest      User              @relation("GuestStayBookings", fields: [guestId], references: [id], onDelete: Cascade)
+  propertyId String
+  property   PropertyListing   @relation(fields: [propertyId], references: [id])
+  checkIn    DateTime
+  checkOut   DateTime
+  guests     Int
   // Server-computed from (checkOut - checkIn) and the listing's
   // pricePerNight at booking time — never trusted from the client.
-  nights      Int
-  totalPrice  Float
-  status      StayBookingStatus @default(CONFIRMED)
-  createdAt   DateTime          @default(now())
+  nights     Int
+  totalPrice Float
+  status     StayBookingStatus @default(CONFIRMED)
+  createdAt  DateTime          @default(now())
 
   @@index([guestId])
   @@index([propertyId])
@@ -383,37 +450,52 @@ model SupportTicket {
 }
 
 model CourierRequest {
-  id                  String        @id @default(uuid())
-  senderId             String
-  sender               User          @relation("CourierSender", fields: [senderId], references: [id])
-  driverId             String?
-  driver               Driver?       @relation("CourierDriver", fields: [driverId], references: [id])
-  pickupAddress        String
-  dropoffAddress       String
-  packageDescription   String
-  packageSize          PackageSize   @default(MEDIUM)
-  recipientName        String
-  recipientPhone       String
-  // Server-computed from packageSize at request time — never trusted from the client.
-  estimatedFare        Float
-  finalFare            Float?
-  status               CourierStatus @default(REQUESTED)
-  requestedAt          DateTime      @default(now())
-  pickedUpAt           DateTime?
-  deliveredAt          DateTime?
+  id                    String                @id @default(uuid())
+  senderId              String
+  sender                User                  @relation("CourierSender", fields: [senderId], references: [id])
+  driverId              String?
+  driver                Driver?               @relation("CourierDriver", fields: [driverId], references: [id])
+  pickupAddress         String
+  dropoffAddress        String
+  packageDescription    String
+  packageSize           PackageSize           @default(MEDIUM)
+  recipientName         String
+  recipientPhone        String
+  // The delivery vehicle class this request was priced against (see
+  // services/delivery-pricing.ts). Nullable: a request made before this
+  // existed, or one with no resolved coordinates, still prices off the
+  // legacy flat packageSize table as a fallback.
+  deliveryVehicleClass  DeliveryVehicleClass?
+  // Server-computed at request time — from deliveryVehicleClass + distance
+  // when coordinates are present, else the legacy packageSize flat table —
+  // never trusted from the client.
+  estimatedFare         Float
+  finalFare             Float?
+  status                CourierStatus         @default(REQUESTED)
+  requestedAt           DateTime              @default(now())
+  pickedUpAt            DateTime?
+  deliveredAt           DateTime?
+  // Locked in at payment settlement, same immutability guarantee as
+  // Trip's equivalent fields — see services/ledger.ts#recordDeliveryCommission.
+  commissionRate        Float?
+  platformCommission    Float?
+  driverEarnings        Float?
+  cancellationFee       Float?
   // Proof of delivery — both required by the API before a request can be
   // marked DELIVERED. S3 keys (documents bucket), not public URLs; a signed
   // GET URL is generated per-request when a party fetches this record.
-  deliveryPhotoKey     String?
+  deliveryPhotoKey      String?
   recipientSignatureKey String?
   // Coordinates resolved by the sender's Places-backed address search at
   // request time (see SendPackageScreen.dart) — nullable so a request made
   // before this existed (or whose text address never resolved) simply has no
   // pin, rather than a fabricated one. Mirrors Trip's identical pattern.
-  pickupLat            Float?
-  pickupLng            Float?
-  dropoffLat           Float?
-  dropoffLng           Float?
+  pickupLat             Float?
+  pickupLng             Float?
+  dropoffLat            Float?
+  dropoffLng            Float?
+
+  payment Payment?
 }
 
 // A real, persisted, backend-originated notification — created only from an
@@ -455,7 +537,7 @@ model PushToken {
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   token     String   @unique
-  platform  String   // IOS | ANDROID
+  platform  String // IOS | ANDROID
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -497,19 +579,27 @@ model DriverSubscription {
   currentPeriodEnd DateTime
 }
 
+// A settled (or in-flight) charge against either a Trip or a CourierRequest —
+// exactly one of tripId/courierRequestId is set, never both, never neither
+// (enforced in the settlement services, not expressible as a DB constraint).
+// Originally 1:1 with Trip only; generalized so deliveries get the exact same
+// CARD/WALLET/CASH settlement, webhook, receipt, and cash-reconciliation
+// machinery as rides instead of a second, duplicate payment system.
 model Payment {
-  id                 String        @id @default(uuid())
-  tripId             String        @unique
-  trip               Trip          @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  userId             String
-  user               User          @relation(fields: [userId], references: [id])
-  amount             Float
-  currency           String        @default("USD")
-  method             PaymentMethod @default(CARD)
-  status             PaymentStatus @default(PENDING)
-  providerReference  String?
-  createdAt          DateTime      @default(now())
-  paidAt             DateTime?
+  id                String          @id @default(uuid())
+  tripId            String?         @unique
+  trip              Trip?           @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  courierRequestId  String?         @unique
+  courierRequest    CourierRequest? @relation(fields: [courierRequestId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User            @relation(fields: [userId], references: [id])
+  amount            Float
+  currency          String          @default("USD")
+  method            PaymentMethod   @default(CARD)
+  status            PaymentStatus   @default(PENDING)
+  providerReference String?
+  createdAt         DateTime        @default(now())
+  paidAt            DateTime?
 }
 
 // Single-row app-wide configuration. Read/written through lib/payment-rules.ts
@@ -563,17 +653,17 @@ model LoyaltyTier {
 }
 
 model Promotion {
-  id               String    @id @default(uuid())
-  code             String    @unique
-  description      String
-  discountPercent  Float
-  active           Boolean   @default(true)
-  expiresAt        DateTime?
-  maxRedemptions   Int?
-  redemptionCount  Int       @default(0)
-  createdAt        DateTime  @default(now())
+  id              String    @id @default(uuid())
+  code            String    @unique
+  description     String
+  discountPercent Float
+  active          Boolean   @default(true)
+  expiresAt       DateTime?
+  maxRedemptions  Int?
+  redemptionCount Int       @default(0)
+  createdAt       DateTime  @default(now())
 
-  redemptions      PromotionRedemption[]
+  redemptions PromotionRedemption[]
 }
 
 model PromotionRedemption {
@@ -592,13 +682,13 @@ model PromotionRedemption {
 // the schema, since "at most one active row" isn't expressible as a
 // constraint here.
 model PricingRule {
-  id         String   @id @default(uuid())
-  name       String   @unique
-  baseFare   Float
-  perKm      Float
-  perMinute  Float
-  active     Boolean  @default(true)
-  createdAt  DateTime @default(now())
+  id        String   @id @default(uuid())
+  name      String   @unique
+  baseFare  Float
+  perKm     Float
+  perMinute Float
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
 }
 
 model SurgeZone {
@@ -612,40 +702,156 @@ model SurgeZone {
   createdAt  DateTime  @default(now())
 }
 
+// A ride tier (Swift/Ease/Luxe/Elite, or whatever Admin configures) — its own
+// full rate card, not a multiplier on PricingRule, so tiers can be priced
+// completely independently. `key` is the stable identifier stored on
+// Trip.rideCategoryKey and never changes even if `name` is edited.
+model RideCategory {
+  id                     String             @id @default(uuid())
+  key                    String             @unique
+  name                   String
+  description            String
+  benefit                String?
+  baseFare               Float
+  perKm                  Float
+  perMinute              Float
+  minimumFare            Float              @default(0)
+  // Overrides CommissionConfig's RIDE default for this specific category.
+  // Null = use the service-wide default.
+  commissionRate         Float?
+  active                 Boolean            @default(true)
+  sortOrder              Int                @default(0)
+  // Which vehicle classes may serve this category. Empty = no restriction
+  // (any vehicle is eligible) — the safe default so a freshly-created
+  // category isn't accidentally unmatchable before Admin configures it.
+  eligibleVehicleClasses RideVehicleClass[]
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+
+  @@index([active, sortOrder])
+}
+
+// A delivery vehicle class's rate card (initial fee + per-km) — the
+// admin-configurable replacement for the old hardcoded PACKAGE_PRICES table.
+model DeliveryVehicleRate {
+  id             String               @id @default(uuid())
+  vehicleClass   DeliveryVehicleClass @unique
+  name           String
+  initialFee     Float
+  perKm          Float
+  // Overrides CommissionConfig's DELIVERY default. Null = use the service default.
+  commissionRate Float?
+  active         Boolean              @default(true)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+}
+
+// RavelGo's cut of each completed transaction, by service — the DB-driven
+// replacement for the old hardcoded PLATFORM_COMMISSION_RATE constant
+// (lib/money.ts). One row per service ("RIDE", "DELIVERY", future verticals),
+// upserted with a default on first read (see services/commission.ts) so
+// there's no separate seed step, matching AppSetting's own pattern. A
+// RideCategory/DeliveryVehicleRate's own commissionRate, when set, overrides
+// the row here for that specific category/vehicle class.
+model CommissionConfig {
+  id        String   @id @default(uuid())
+  service   String   @unique
+  rate      Float
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}
+
+// Single-row (like AppSetting) configuration for cancellation fees, waiting
+// charges, and the surge band — everything the pricing spec calls "must be
+// configurable" that isn't a per-category rate. Upserted with defaults on
+// first read; every change is Admin-audited (see admin.pricing.routes.ts).
+model PricingPolicy {
+  id                           String   @id
+  rideCancellationGraceSec     Int      @default(120)
+  rideCancellationFee          Float    @default(1500)
+  rideWaitingFreeSec           Int      @default(120)
+  rideWaitingPerMinute         Float    @default(50)
+  rideWaitingMaxFee            Float    @default(250)
+  deliveryCancellationGraceSec Int      @default(120)
+  deliveryCancellationFee      Float    @default(1000)
+  additionalStopFee            Float    @default(500)
+  surgeMinMultiplier           Float    @default(1.0)
+  surgeMaxMultiplier           Float    @default(1.3)
+  // Additive surcharge by CourierRequest.packageSize, e.g. {"SMALL":0,"MEDIUM":300,"LARGE":800}.
+  packageSizeSurcharge         Json     @default("{}")
+  updatedAt                    DateTime @updatedAt
+}
+
+// The commission/earnings ledger — the auditable financial record the
+// pricing spec requires ("Do NOT simply subtract 20% from a displayed driver
+// balance"). One row per commissioned or reversed money event. Written only
+// by services/ledger.ts, at the moment a Payment actually settles (never at
+// trip/delivery COMPLETED — the trip isn't paid yet at that point) or at
+// refund time. Every value here is frozen at write time and never
+// recalculated from current config (spec #14: immutable after settlement).
+model FinancialTransaction {
+  id               String                     @id @default(uuid())
+  type             FinancialTransactionType
+  tripId           String?
+  courierRequestId String?
+  paymentId        String?
+  customerId       String
+  driverId         String?
+  grossAmount      Float
+  commissionRate   Float
+  commissionAmount Float
+  driverEarnings   Float
+  currency         String                     @default("USD")
+  paymentMethod    PaymentMethod?
+  status           FinancialTransactionStatus @default(SETTLED)
+  // For a REFUND row, the id of the RIDE_FARE/DELIVERY_FARE row it reverses.
+  reversalOfId     String?
+  metadata         Json?
+  createdAt        DateTime                   @default(now())
+  completedAt      DateTime?
+
+  @@index([driverId])
+  @@index([customerId])
+  @@index([tripId])
+  @@index([courierRequestId])
+  @@index([type, status])
+  @@index([createdAt])
+}
+
 model DriverBankAccount {
-  id              String   @id @default(uuid())
-  driverId        String   @unique
-  driver          User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  id                String   @id @default(uuid())
+  driverId          String   @unique
+  driver            User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
   accountHolderName String
-  bankName        String
-  accountNumber   String
-  routingNumber   String
-  accountType     String   @default("CHECKING") // CHECKING, SAVINGS
-  isVerified      Boolean  @default(false)
+  bankName          String
+  accountNumber     String
+  routingNumber     String
+  accountType       String   @default("CHECKING") // CHECKING, SAVINGS
+  isVerified        Boolean  @default(false)
   verificationToken String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 model Payout {
-  id              String      @id @default(uuid())
-  driverId        String
+  id            String       @id @default(uuid())
+  driverId      String
   // Restrict (P0 #12): payout history is a financial record — never destroyed
   // by deleting the user it belongs to.
-  driver          User        @relation(fields: [driverId], references: [id], onDelete: Restrict)
-  amount          Float
-  currency        String      @default("USD")
-  status          PayoutStatus @default(PENDING)
-  period          String      // e.g., "2024-07" for weekly/monthly payout period
+  driver        User         @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  amount        Float
+  currency      String       @default("USD")
+  status        PayoutStatus @default(PENDING)
+  period        String // e.g., "2024-07" for weekly/monthly payout period
   // The real payment-provider (or bank wire) transaction reference — set only
   // by completePayout(), and only once, on the transition to COMPLETED (SE-4).
   // Unique so the same reference can never be recorded against two payouts,
   // whether by a mistaken paste or a compromised admin session reusing one.
-  transactionId   String?     @unique
-  failureReason   String?
-  completedAt     DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  transactionId String?      @unique
+  failureReason String?
+  completedAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
   // Business invariant (P0 #6): one driver gets at most one payout per period.
   // The DB enforces it so a re-run of generatePayoutsForPeriod, a concurrent
@@ -660,6 +866,7 @@ enum WalletTransactionType {
   TOPUP // rider added funds via Stripe
   RIDE_PAYMENT // rider paid for a trip from their balance
   RENTAL_PAYMENT // rider paid for a car rental booking from their balance
+  DELIVERY_PAYMENT // sender paid for a courier delivery from their balance
   REFUND
 }
 
@@ -699,6 +906,7 @@ model WalletTransaction {
   providerReference String?                 @unique // Stripe PaymentIntent id for a TOPUP
   tripId            String? // the trip a RIDE_PAYMENT paid for
   rentalBookingId   String? // the booking a RENTAL_PAYMENT paid for
+  courierRequestId  String? // the delivery a DELIVERY_PAYMENT paid for
   // Cognito sub of the payer, when a TOPUP was funded by someone OTHER than the
   // wallet owner (authorized third-party funding). Null for a self top-up. The
   // ledger is append-only, so this permanently records who put money in.
@@ -738,15 +946,15 @@ enum FoodOrderStatus {
 }
 
 model Restaurant {
-  id        String     @id @default(uuid())
+  id        String   @id @default(uuid())
   name      String
   cuisine   String
   imageUrl  String?
   address   String
-  isOpen    Boolean    @default(true)
+  isOpen    Boolean  @default(true)
   rating    Float?
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   menuItems MenuItem[]
   orders    FoodOrder[]
@@ -763,7 +971,7 @@ model MenuItem {
   available    Boolean    @default(true)
   createdAt    DateTime   @default(now())
 
-  orderItems   FoodOrderItem[]
+  orderItems FoodOrderItem[]
 
   @@index([restaurantId])
 }
@@ -782,7 +990,7 @@ model FoodOrder {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
-  items           FoodOrderItem[]
+  items FoodOrderItem[]
 
   @@index([riderId])
   @@index([restaurantId])

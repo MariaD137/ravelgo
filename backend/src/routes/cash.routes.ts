@@ -18,33 +18,36 @@ const ROUNDING_TOLERANCE = 0.01;
  * Admin (any preset — reads stay open, matching every other admin list
  * endpoint): per-driver physical-cash reconciliation.
  *
- * "Expected cash" is the sum of every CASH trip payment recorded for the
- * driver (real Payment rows created the instant a CASH trip is marked paid —
- * see services/trip-payment.ts) — never a client-asserted figure. "Submitted"
- * is the sum of CashRemittance rows an admin has recorded for that driver.
+ * "Expected cash" is what the driver actually OWES RavelGo for CASH
+ * trips/deliveries — i.e. the commission RavelGo would otherwise have
+ * deducted from a bank payout, sourced from the ledger's real, settled
+ * commissionAmount (services/ledger.ts), never a client-asserted figure and
+ * never the full fare (a driver keeps the rest of a cash fare themselves —
+ * see services/payouts.ts, which correspondingly excludes CASH earnings from
+ * the bank-payout gross so commission is never charged twice). "Submitted" is
+ * the sum of CashRemittance rows an admin has recorded for that driver.
  * Outstanding = expected - submitted; a negative outstanding (driver
  * submitted MORE than the system expected) is flagged REVIEW_REQUIRED rather
  * than silently netted, since it usually means a remittance was recorded
- * against the wrong driver or a Payment is missing.
+ * against the wrong driver or a ledger entry is missing.
  */
 cashRouter.get("/admin/cash-reconciliation", requireAuth, requireRole("Admin"), async (_req, res) => {
-  const [cashPayments, remittances] = await Promise.all([
-    prisma.payment.findMany({
-      where: { method: "CASH", status: "SUCCEEDED" },
-      include: { trip: { select: { driverId: true } } },
+  const [cashLedgerRows, remittances] = await Promise.all([
+    prisma.financialTransaction.findMany({
+      where: { paymentMethod: "CASH", type: { in: ["RIDE_FARE", "DELIVERY_FARE"] }, status: "SETTLED" },
       take: 5000,
     }),
     prisma.cashRemittance.findMany({ take: 5000 }),
   ]);
 
   const expectedByDriver = new Map<string, { total: number; count: number }>();
-  for (const p of cashPayments) {
-    const driverId = p.trip.driverId;
+  for (const row of cashLedgerRows) {
+    const driverId = row.driverId;
     if (!driverId) continue;
-    const row = expectedByDriver.get(driverId) ?? { total: 0, count: 0 };
-    row.total += p.amount;
-    row.count += 1;
-    expectedByDriver.set(driverId, row);
+    const entry = expectedByDriver.get(driverId) ?? { total: 0, count: 0 };
+    entry.total += row.commissionAmount;
+    entry.count += 1;
+    expectedByDriver.set(driverId, entry);
   }
 
   const submittedByDriver = new Map<string, number>();

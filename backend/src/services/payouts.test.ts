@@ -36,8 +36,33 @@ async function seedPaidDriver(tag: string) {
       completedAt: new Date("2026-05-15T10:00:00Z"),
     },
   });
-  await prisma.payment.create({
+  const payment = await prisma.payment.create({
     data: { tripId: trip.id, userId: rider.id, amount: 100, method: "CARD", status: "SUCCEEDED", paidAt: new Date() },
+  });
+  // calculatePayoutForPeriod now sources gross/commission/driver-earnings
+  // from the FinancialTransaction ledger (services/ledger.ts), not raw
+  // Payment rows directly — this is what recordRideCommission() would have
+  // written had the trip gone through the real settlement flow.
+  await prisma.financialTransaction.create({
+    data: {
+      type: "RIDE_FARE",
+      tripId: trip.id,
+      paymentId: payment.id,
+      customerId: rider.id,
+      driverId: driver.id,
+      grossAmount: 100,
+      commissionRate: 0.2,
+      commissionAmount: 20,
+      driverEarnings: 80,
+      paymentMethod: "CARD",
+      status: "SETTLED",
+      // Backdated to land inside PERIOD ("2026-05") — createdAt is what
+      // calculatePayoutForPeriod actually buckets by (when the payment
+      // settled), not trip.completedAt, so this has to match that, not
+      // whatever "now" happens to be when the test runs.
+      createdAt: new Date("2026-05-15T10:00:00Z"),
+      completedAt: new Date("2026-05-15T10:00:00Z"),
+    },
   });
   return user; // Payout.driverId is User.id
 }
@@ -80,8 +105,13 @@ test("distinct drivers and distinct periods each get their own payout", async ()
   const may = await generatePayoutsForPeriod(PERIOD);
   assert.equal(may.length, 2); // two drivers, one period each
 
-  // A different period is independent — same drivers can be paid again for it.
+  // A different period is independent — same drivers can be paid again for
+  // it. calculatePayoutForPeriod buckets by when the ledger entry actually
+  // settled (FinancialTransaction.createdAt), not trip.completedAt — moving
+  // both keeps the fixture consistent with a trip whose payment settled
+  // later, in June.
   await prisma.trip.updateMany({ data: { completedAt: new Date("2026-06-10T10:00:00Z") } });
+  await prisma.financialTransaction.updateMany({ data: { createdAt: new Date("2026-06-10T10:00:00Z") } });
   const june = await generatePayoutsForPeriod("2026-06");
   assert.equal(june.length, 2);
 
