@@ -11,6 +11,7 @@ import { recordAudit } from "../lib/audit";
 import { cognitoGroups } from "../services/cognito";
 import { sensitiveLimiter } from "../middleware/rate-limit";
 import { recordDriverLocation } from "../realtime/hub";
+import { matchPendingTrips } from "../services/matching";
 
 // Same pattern as courier.routes.ts's withProofUrls: a dedicated S3 client for
 // signing GET URLs to objects in the private documents bucket. Kept
@@ -166,6 +167,20 @@ driversRouter.patch("/drivers/me/availability", requireAuth, requireRole("Driver
     where: { id: driver.id },
     data: { isOnline: parsed.data.isOnline },
   });
+  // A recent rider request that found nobody online at the time stays
+  // REQUESTED forever otherwise (matching only ever runs once, synchronously,
+  // at request time — see services/matching.ts). This is the moment that
+  // changes, so it's the right place to retry, not a blind poll. Awaited
+  // (like recordAudit elsewhere) so a caller can never observe isOnline:
+  // true before a match that should already exist actually does; a failure
+  // here must never turn a successful toggle into an error response.
+  if (parsed.data.isOnline) {
+    try {
+      await matchPendingTrips();
+    } catch (err) {
+      console.error("Failed to retry matching pending trips", err);
+    }
+  }
   res.json(updated);
 });
 

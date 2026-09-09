@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_driver_app/config/currency.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
 import 'package:ravelgo_driver_app/services/api_client.dart';
@@ -209,7 +210,20 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         children: [
           Stack(
             children: [
-              Image.asset('assets/fake_map.png', width: double.infinity, height: 320, fit: BoxFit.cover),
+              // A real map showing this device's actual GPS position via the
+              // native "my location" layer — the same GoogleMap the active-trip
+              // screen uses, not a decorative static image. No fabricated
+              // nearby-driver markers: nothing on this map is invented.
+              SizedBox(
+                width: double.infinity,
+                height: 320,
+                child: GoogleMap(
+                  initialCameraPosition: const CameraPosition(target: LatLng(6.5244, 3.3792), zoom: 12),
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: false,
+                  zoomControlsEnabled: false,
+                ),
+              ),
               Positioned(
                 top: 16,
                 left: 16,

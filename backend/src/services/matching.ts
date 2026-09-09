@@ -1,4 +1,6 @@
 import { prisma } from "../db/prisma";
+import { broadcastTripStatus } from "../realtime/hub";
+import { notifyUser } from "../lib/notifications";
 
 /**
  * Synchronous, best-effort matching: find one ACTIVE driver with no trip
@@ -39,4 +41,48 @@ export async function matchDriverToTrip(tripId: string) {
     data: { driverId: driver.id, status: "MATCHED" },
     include: { rider: true, driver: { include: { user: true, vehicles: true } } },
   });
+}
+
+// A REQUESTED trip is only ever matched once, synchronously, at creation
+// time (POST /trips above) — there is no retry. So a rider whose request
+// found nobody online stayed stuck on REQUESTED forever, even once a driver
+// went online moments later, despite SearchDriverScreen's own copy in
+// user_app claiming "we'll keep trying." Bounded to recent requests so
+// coming online doesn't reach back and assign someone a ride from an hour
+// ago that the rider has long since given up on and left the screen for.
+export const PENDING_TRIP_RETRY_WINDOW_MINUTES = 10;
+
+/**
+ * Called when a driver goes online (PATCH /drivers/me/availability) — the
+ * moment a new match becomes possible. Sweeps recent REQUESTED trips oldest
+ * first and retries matchDriverToTrip on each; most of the time this finds
+ * either zero or one (the trip this driver themselves can now take), but it
+ * isn't bounded to just one so it also recovers any other trip a
+ * previously-online driver could have picked up but didn't (e.g. they went
+ * online in between two requests). Fire-and-forget from the caller — a
+ * driver's own "go online" action must never block on this.
+ */
+export async function matchPendingTrips(): Promise<void> {
+  const cutoff = new Date(Date.now() - PENDING_TRIP_RETRY_WINDOW_MINUTES * 60_000);
+  const pending = await prisma.trip.findMany({
+    where: { status: "REQUESTED", requestedAt: { gte: cutoff } },
+    orderBy: { requestedAt: "asc" },
+    select: { id: true },
+  });
+  for (const { id } of pending) {
+    const matched = await matchDriverToTrip(id);
+    if (!matched) continue;
+    // Same fan-out as the initial synchronous match in POST /trips, plus a
+    // WebSocket broadcast — unlike the initial match, the rider's screen is
+    // already open and subscribed by now, and won't reload the HTTP response
+    // that would otherwise be the only place it learns of a driver.
+    broadcastTripStatus(matched.id, matched.status, matched.finalFare);
+    await notifyUser(
+      matched.riderId,
+      "RIDE_DRIVER_ASSIGNED",
+      "Driver assigned",
+      "A driver has been assigned to your ride.",
+      { type: "TRIP", id: matched.id },
+    );
+  }
 }

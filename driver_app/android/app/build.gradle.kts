@@ -22,6 +22,11 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        // amplify_push_notifications and its AWS Amplify dependencies use
+        // Java 8+ APIs directly (not just Kotlin) - AGP requires this to be
+        // explicitly opted into rather than assumed. Real build requirement,
+        // not something flutter analyze/flutter test ever exercises.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -57,4 +62,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Required by isCoreLibraryDesugaringEnabled above.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }
