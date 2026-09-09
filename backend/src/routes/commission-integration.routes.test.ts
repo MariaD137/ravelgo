@@ -12,11 +12,15 @@ import { calculatePayoutForPeriod } from "../services/payouts";
 beforeEach(async () => {
   resetRealtimeState();
   await resetDb();
+  // Not covered by resetDb() (see trips.routes.test.ts's identical pattern)
+  // — the last test in this file creates a PricingRule named "Standard".
+  await prisma.pricingRule.deleteMany();
 });
 afterEach(() => {
   restoreAuth();
 });
 after(async () => {
+  await prisma.pricingRule.deleteMany();
   await resetDb();
   await prisma.$disconnect();
 });

@@ -1,4 +1,9 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
+
+function isUniqueConstraintViolation(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+}
 
 /** The fixed id of the single PricingPolicy row — this app has exactly one. */
 export const PRICING_POLICY_ID = "default";
@@ -25,11 +30,23 @@ export interface PricingPolicySettings {
  * (Admin, audited).
  */
 export async function getPricingPolicy(): Promise<PricingPolicySettings> {
-  const row = await prisma.pricingPolicy.upsert({
-    where: { id: PRICING_POLICY_ID },
-    update: {},
-    create: { id: PRICING_POLICY_ID },
-  });
+  let row;
+  try {
+    row = await prisma.pricingPolicy.upsert({
+      where: { id: PRICING_POLICY_ID },
+      update: {},
+      create: { id: PRICING_POLICY_ID },
+    });
+  } catch (err) {
+    // Same concurrent-first-read race as commission.ts#getServiceCommissionRate
+    // — e.g. quoteAllDeliveryVehicles resolving the policy once per vehicle
+    // class in parallel. The row exists once the race is lost; read it back.
+    if (isUniqueConstraintViolation(err)) {
+      row = await prisma.pricingPolicy.findUniqueOrThrow({ where: { id: PRICING_POLICY_ID } });
+    } else {
+      throw err;
+    }
+  }
   return {
     rideCancellationGraceSec: row.rideCancellationGraceSec,
     rideCancellationFee: row.rideCancellationFee,

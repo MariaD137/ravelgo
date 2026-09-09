@@ -12,8 +12,14 @@
  * the Trip/CourierRequest/FinancialTransaction rows.
  */
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { roundMoney } from "../lib/money";
+
+/** True for Prisma's "unique constraint violated" error (P2002). */
+function isUniqueConstraintViolation(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
+}
 
 export type CommissionServiceKey = "RIDE" | "DELIVERY";
 
@@ -29,12 +35,27 @@ export const DEFAULT_COMMISSION_RATE = 0.2;
  * the same singleton-on-read pattern lib/payment-rules.ts uses for AppSetting.
  */
 export async function getServiceCommissionRate(service: CommissionServiceKey): Promise<number> {
-  const row = await prisma.commissionConfig.upsert({
-    where: { service },
-    update: {},
-    create: { service, rate: DEFAULT_COMMISSION_RATE },
-  });
-  return row.rate;
+  try {
+    const row = await prisma.commissionConfig.upsert({
+      where: { service },
+      update: {},
+      create: { service, rate: DEFAULT_COMMISSION_RATE },
+    });
+    return row.rate;
+  } catch (err) {
+    // Two callers seeding the same service concurrently (e.g. a multi-category
+    // fare quote resolving RIDE's rate for each category in parallel) can both
+    // race past the upsert's own read and both attempt the create — the loser
+    // hits a real P2002 on the now-unique `service` column. The row DOES
+    // exist at that point (the winner just created it), so read it back
+    // rather than surfacing a spurious 500 for what is, from the caller's
+    // perspective, a successful read.
+    if (isUniqueConstraintViolation(err)) {
+      const row = await prisma.commissionConfig.findUniqueOrThrow({ where: { service } });
+      return row.rate;
+    }
+    throw err;
+  }
 }
 
 /** Every configured service commission rate, for the admin dashboard. */

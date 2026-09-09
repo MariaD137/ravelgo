@@ -16,12 +16,15 @@ after(async () => {
   await prisma.$disconnect();
 });
 
+let fixtureCounter = 0;
+
 async function seedRideFixture() {
+  const tag = `${Date.now()}-${++fixtureCounter}`;
   const rider = await prisma.user.create({
-    data: { cognitoSub: "ldg-rider", role: "RIDER", firstName: "R", lastName: "L", email: "ldg-rider@example.com" },
+    data: { cognitoSub: `ldg-rider-${tag}`, role: "RIDER", firstName: "R", lastName: "L", email: `ldg-rider-${tag}@example.com` },
   });
   const driverUser = await prisma.user.create({
-    data: { cognitoSub: "ldg-driver", role: "DRIVER", firstName: "D", lastName: "L", email: "ldg-driver@example.com" },
+    data: { cognitoSub: `ldg-driver-${tag}`, role: "DRIVER", firstName: "D", lastName: "L", email: `ldg-driver-${tag}@example.com` },
   });
   const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE" } });
   const trip = await prisma.trip.create({
