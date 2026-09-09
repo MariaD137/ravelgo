@@ -19,6 +19,12 @@ class FindDriverScreen extends StatefulWidget {
   final double? pickupLng;
   final double? dropoffLat;
   final double? dropoffLng;
+  // The ride category (Swift/Ease/Luxe/Elite) chosen on SelectRide, if any.
+  // When set, this screen re-quotes from the SAME category-specific endpoint
+  // SelectRide used (GET /api/pricing/categories) rather than the legacy
+  // single-fare endpoint, so the price shown here never diverges from what
+  // the rider picked. Also sent through to trip creation.
+  final String? rideCategoryKey;
   const FindDriverScreen({
     super.key,
     this.pickup,
@@ -30,6 +36,7 @@ class FindDriverScreen extends StatefulWidget {
     this.pickupLng,
     this.dropoffLat,
     this.dropoffLng,
+    this.rideCategoryKey,
   });
 
   @override
@@ -47,10 +54,17 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
   double get _distanceKm => widget.distanceKm ?? BookingApi.placeholderDistanceKm;
   double get _durationMinutes => widget.durationMinutes ?? BookingApi.placeholderDurationMinutes;
 
+  // Either a legacy single-fare quote (no category chosen) or the matching
+  // entry from the same category-specific endpoint SelectRide used — never
+  // both, so the shown price can't diverge between the two screens.
   FareQuote? _quote;
+  RideCategoryQuote? _categoryQuote;
   String? _quoteError;
   bool _quoteLoading = true;
   bool _requesting = false;
+
+  double get _shownFare => _categoryQuote?.estimatedFare ?? _quote?.estimatedFare ?? 0;
+  double get _shownSurge => _categoryQuote?.surgeMultiplier ?? _quote?.surgeMultiplier ?? 1;
 
   String get _destination =>
       (widget.destination != null && widget.destination!.trim().isNotEmpty)
@@ -69,15 +83,43 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
       _quoteError = null;
     });
     try {
-      final q = await BookingApi.quote(
-        distanceKm: _distanceKm,
-        durationMinutes: _durationMinutes,
-      );
-      if (!mounted) return;
-      setState(() {
-        _quote = q;
-        _quoteLoading = false;
-      });
+      final categoryKey = widget.rideCategoryKey;
+      if (categoryKey != null && categoryKey.isNotEmpty && widget.pickupLat != null && widget.pickupLng != null) {
+        // A ride category was chosen on SelectRide — requote from the SAME
+        // category-specific endpoint so this screen's price never diverges
+        // from what the rider was shown when they picked it.
+        final cats = await BookingApi.categories(
+          pickupLat: widget.pickupLat!,
+          pickupLng: widget.pickupLng!,
+          distanceKm: _distanceKm,
+          durationMinutes: _durationMinutes,
+        );
+        final match = cats.where((c) => c.categoryKey == categoryKey).toList();
+        if (!mounted) return;
+        if (match.isEmpty) {
+          setState(() {
+            _quoteError = 'That ride option is no longer available.';
+            _quoteLoading = false;
+          });
+          return;
+        }
+        setState(() {
+          _categoryQuote = match.first;
+          _quote = null;
+          _quoteLoading = false;
+        });
+      } else {
+        final q = await BookingApi.quote(
+          distanceKm: _distanceKm,
+          durationMinutes: _durationMinutes,
+        );
+        if (!mounted) return;
+        setState(() {
+          _quote = q;
+          _categoryQuote = null;
+          _quoteLoading = false;
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -128,6 +170,7 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
         pickupLng: from.lng,
         dropoffLat: to.lat,
         dropoffLng: to.lng,
+        rideCategoryKey: widget.rideCategoryKey,
       );
       if (!mounted) return;
       Navigator.of(context).push(
@@ -251,14 +294,16 @@ class _FindDriverScreenState extends State<FindDriverScreen> {
     if (_quoteError != null) {
       return Text(_quoteError!, style: const TextStyle(color: AppColors.error, fontSize: 13));
     }
-    final q = _quote!;
+    final categoryName = _categoryQuote?.name;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Estimated fare: ${Currency.format(q.estimatedFare)}',
+        if (categoryName != null)
+          Text(categoryName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        Text('Estimated fare: ${Currency.format(_shownFare)}',
             style: const TextStyle(color: AppColors.primaryDark, fontWeight: FontWeight.bold, fontSize: 16)),
-        if (q.surgeMultiplier > 1)
-          Text('Surge ${q.surgeMultiplier.toStringAsFixed(1)}x in effect',
+        if (_shownSurge > 1)
+          Text('Surge ${_shownSurge.toStringAsFixed(1)}x in effect',
               style: const TextStyle(color: AppColors.error, fontSize: 12)),
       ],
     );

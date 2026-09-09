@@ -14,12 +14,14 @@ import {
 } from "../realtime/hub";
 import { notifyAllAdmins, notifyUser } from "../lib/notifications";
 import { matchDriverToTrip } from "../services/matching";
-import { quoteFare } from "../services/pricing";
+import { quoteFare, quoteFareForCategory } from "../services/pricing";
 import { MAX_FINAL_FARE_MULTIPLIER, MIN_FINAL_FARE_MULTIPLIER, moneyAmountSchema } from "../lib/money";
 import { sensitiveLimiter } from "../middleware/rate-limit";
 import { estimateDurationMinutes, haversineKm, isValidCoordinate, MAX_TRIP_DISTANCE_KM } from "../lib/geo";
 import { driverMayTransition, isValidTransition, riderMayCancel } from "../services/trip-status";
 import { serializeTrip } from "../lib/trip-view";
+import { computeRideWaitingCharge, getPricingPolicy } from "../lib/pricing-policy";
+import { recordDriverCompensationCharge } from "../services/ledger";
 
 export const tripsRouter = Router();
 
@@ -46,6 +48,10 @@ const createTripSchema = z.object({
   dropoffLng: coord.min(-180).max(180),
   zone: z.string().min(1).optional(),
   category: z.string().default("Personal"),
+  // The ride tier (RideCategory.key, e.g. "SWIFT") — optional so an older
+  // client build that predates categories still works exactly as before,
+  // pricing off the single active PricingRule via quoteFare().
+  rideCategoryKey: z.string().optional(),
   pickupNote: z.string().optional(),
 });
 
@@ -71,12 +77,24 @@ tripsRouter.post("/trips", sensitiveLimiter, requireAuth, requireRole("Rider"), 
   const rider = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
   if (!rider) return res.status(404).json({ error: "Rider not found" });
 
-  // Authoritative fare — never taken from the request body.
-  let fare;
-  try {
-    fare = await quoteFare(distanceKm, durationMinutes, parsed.data.zone);
-  } catch (err) {
-    return next(err); // 409 when no active pricing rule is configured
+  // Authoritative fare — never taken from the request body. A rideCategoryKey
+  // prices off that category's own rate card; otherwise falls back to the
+  // single active PricingRule, unchanged from before categories existed.
+  let estimatedFare: number;
+  if (parsed.data.rideCategoryKey) {
+    const category = await prisma.rideCategory.findUnique({ where: { key: parsed.data.rideCategoryKey } });
+    if (!category || !category.active) {
+      return res.status(400).json({ error: "Unknown or inactive ride category" });
+    }
+    const fare = await quoteFareForCategory(category, distanceKm, durationMinutes, parsed.data.zone);
+    estimatedFare = fare.estimatedFare;
+  } else {
+    try {
+      const fare = await quoteFare(distanceKm, durationMinutes, parsed.data.zone);
+      estimatedFare = fare.estimatedFare;
+    } catch (err) {
+      return next(err); // 409 when no active pricing rule is configured
+    }
   }
 
   const trip = await prisma.trip.create({
@@ -89,8 +107,9 @@ tripsRouter.post("/trips", sensitiveLimiter, requireAuth, requireRole("Rider"), 
       dropoffLng,
       distanceKm,
       category: parsed.data.category,
+      rideCategoryKey: parsed.data.rideCategoryKey,
       pickupNote: parsed.data.pickupNote,
-      estimatedFare: fare.estimatedFare,
+      estimatedFare,
       riderId: rider.id,
     },
   });
@@ -207,6 +226,27 @@ tripsRouter.get("/trips/:id", requireAuth, async (req, res) => {
   res.json(isOwner || isAdmin ? { ...body, payment: trip.payment ?? null } : body);
 });
 
+// Driver assigned to it: report physical arrival at the pickup point.
+// Anchors the free-waiting-period clock (lib/pricing-policy.ts) — set once,
+// ignored on a repeat call so a flaky retry can never push the clock forward.
+tripsRouter.post("/trips/:id/arrived", requireAuth, requireRole("Driver"), async (req, res) => {
+  const existing = await prisma.trip.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: "Trip not found" });
+
+  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  if (!driver || existing.driverId !== driver.id) {
+    return res.status(403).json({ error: "Not authorized to update this trip" });
+  }
+  if (existing.status !== "MATCHED") {
+    return res.status(409).json({ error: "Can only report arrival for a matched trip" });
+  }
+
+  const trip = existing.arrivedAt
+    ? existing
+    : await prisma.trip.update({ where: { id: existing.id }, data: { arrivedAt: new Date() } });
+  res.json(serializeTrip(trip));
+});
+
 const updateStatusSchema = z.object({
   status: z.enum(["MATCHED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "DISPUTED"]),
   finalFare: moneyAmountSchema.optional(),
@@ -291,6 +331,23 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
   }
   broadcastTripStatus(trip.id, trip.status, trip.finalFare);
   if (trip.status === "IN_PROGRESS") {
+    // Lock in the waiting charge now, from the real arrivedAt timestamp — the
+    // one moment this is knowable, since the trip is about to actually start.
+    // 100% driver-compensation, not commissioned (see services/commission.ts).
+    if (trip.arrivedAt && trip.driverId) {
+      const policy = await getPricingPolicy();
+      const waitingCharge = computeRideWaitingCharge(policy, trip.arrivedAt);
+      if (waitingCharge > 0) {
+        await prisma.trip.update({ where: { id: trip.id }, data: { waitingCharge } });
+        await recordDriverCompensationCharge({
+          type: "WAITING_CHARGE",
+          tripId: trip.id,
+          customerId: trip.riderId,
+          driverId: trip.driverId,
+          amount: waitingCharge,
+        });
+      }
+    }
     await notifyUser(trip.riderId, "RIDE_STARTED", "Ride started", "Your ride is now under way.", {
       type: "TRIP",
       id: trip.id,
@@ -366,11 +423,35 @@ tripsRouter.post("/trips/:id/cancel", requireAuth, requireRole("Rider"), async (
     });
   }
 
+  // A cancellation fee applies only once a driver is actually assigned and
+  // dispatched (MATCHED) — cancelling a still-REQUESTED trip never cost
+  // anyone anything — and only past the configured grace period. There is no
+  // separate "matchedAt" timestamp, so requestedAt is used as the elapsed-time
+  // anchor; in practice matching happens within seconds of the request, so
+  // this is a close enough proxy for "how long has a driver been committed."
+  let cancellationFee = 0;
+  if (existing.status === "MATCHED" && existing.driverId) {
+    const policy = await getPricingPolicy();
+    const elapsedSec = (Date.now() - existing.requestedAt.getTime()) / 1000;
+    if (elapsedSec > policy.rideCancellationGraceSec) {
+      cancellationFee = policy.rideCancellationFee;
+    }
+  }
+
   const trip = await prisma.trip.update({
     where: { id: existing.id },
-    data: { status: "CANCELLED" },
+    data: { status: "CANCELLED", cancellationFee: cancellationFee > 0 ? cancellationFee : undefined },
     include: { rider: true, driver: { include: { user: true, vehicles: true } } },
   });
+  if (cancellationFee > 0 && trip.driverId) {
+    await recordDriverCompensationCharge({
+      type: "CANCELLATION_FEE",
+      tripId: trip.id,
+      customerId: trip.riderId,
+      driverId: trip.driverId,
+      amount: cancellationFee,
+    });
+  }
   clearRiderLocation(trip.id);
   broadcastTripStatus(trip.id, trip.status, trip.finalFare);
   await notifyUser(trip.riderId, "RIDE_CANCELLED", "Ride cancelled", "Your ride was cancelled.", {

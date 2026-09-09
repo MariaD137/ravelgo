@@ -10,8 +10,12 @@ import { recordAudit } from "../lib/audit";
 import { notifyUser, type NotificationType } from "../lib/notifications";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { getLatestDriverLocation, locationFreshness } from "../realtime/hub";
-import { isValidCoordinate } from "../lib/geo";
+import { haversineKm, isValidCoordinate } from "../lib/geo";
 import { serializeCourierRequest } from "../lib/courier-view";
+import { LEGACY_PACKAGE_PRICES, quoteDelivery } from "../services/delivery-pricing";
+import { getPricingPolicy } from "../lib/pricing-policy";
+import { recordDriverCompensationCharge } from "../services/ledger";
+import { MAX_FINAL_FARE_MULTIPLIER, MIN_FINAL_FARE_MULTIPLIER } from "../lib/money";
 
 export const courierRouter = Router();
 
@@ -66,21 +70,16 @@ function withCourierLocation<T extends { driverId: string | null }>(
   };
 }
 
-// Flat rate by package size — the only pricing input a delivery has today
-// (there's no pickup/dropoff geocoding on this model, unlike Trip). Server
-// computes the price from this table; the client only says which size.
-const PACKAGE_PRICES: Record<string, number> = {
-  SMALL: 800,
-  MEDIUM: 1500,
-  LARGE: 2500,
-};
-
 const coord = z.number().finite();
 const createCourierSchema = z.object({
   pickupAddress: z.string().min(1),
   dropoffAddress: z.string().min(1),
   packageDescription: z.string().min(1),
   packageSize: z.enum(["SMALL", "MEDIUM", "LARGE"]).default("MEDIUM"),
+  // The delivery vehicle class to price against (services/delivery-pricing.ts).
+  // Optional so an older client build that never sends one still works,
+  // falling back to the legacy flat packageSize table below.
+  deliveryVehicleClass: z.enum(["BIKE", "CAR", "SUV", "VAN"]).optional(),
   recipientName: z.string().min(1),
   recipientPhone: z.string().min(1),
   // Resolved by the sender's Places-backed address search — optional so a
@@ -93,7 +92,9 @@ const createCourierSchema = z.object({
 });
 
 // Rider: request a courier/package delivery. estimatedFare is always
-// computed server-side from packageSize — the client never asserts a price.
+// computed server-side — from the deliveryVehicleClass rate card + real
+// distance when both pickup/dropoff coordinates are given, else the legacy
+// flat packageSize table — the client never asserts a price.
 courierRouter.post("/courier-requests", requireAuth, requireRole("Rider"), async (req, res) => {
   const parsed = createCourierSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -101,15 +102,30 @@ courierRouter.post("/courier-requests", requireAuth, requireRole("Rider"), async
   const sender = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
   if (!sender) return res.status(404).json({ error: "Sender not found" });
 
-  const { pickupLat, pickupLng, dropoffLat, dropoffLng, ...rest } = parsed.data;
+  const { pickupLat, pickupLng, dropoffLat, dropoffLng, deliveryVehicleClass, ...rest } = parsed.data;
   const pickup = pickupLat != null && pickupLng != null && isValidCoordinate({ lat: pickupLat, lng: pickupLng });
   const dropoff = dropoffLat != null && dropoffLng != null && isValidCoordinate({ lat: dropoffLat, lng: dropoffLng });
+
+  let estimatedFare: number;
+  let resolvedVehicleClass: typeof deliveryVehicleClass;
+  if (deliveryVehicleClass && pickup && dropoff) {
+    const distanceKm = haversineKm({ lat: pickupLat!, lng: pickupLng! }, { lat: dropoffLat!, lng: dropoffLng! });
+    const quote = await quoteDelivery(deliveryVehicleClass, distanceKm, parsed.data.packageSize);
+    estimatedFare = quote.estimatedFare;
+    resolvedVehicleClass = deliveryVehicleClass;
+  } else {
+    // Legacy fallback: no vehicle class chosen, or no resolved coordinates
+    // to price a distance against.
+    estimatedFare = LEGACY_PACKAGE_PRICES[parsed.data.packageSize];
+    resolvedVehicleClass = undefined;
+  }
 
   const request = await prisma.courierRequest.create({
     data: {
       ...rest,
       senderId: sender.id,
-      estimatedFare: PACKAGE_PRICES[parsed.data.packageSize],
+      deliveryVehicleClass: resolvedVehicleClass,
+      estimatedFare,
       pickupLat: pickup ? pickupLat : undefined,
       pickupLng: pickup ? pickupLng : undefined,
       dropoffLat: dropoff ? dropoffLat : undefined,
@@ -267,6 +283,24 @@ courierRouter.patch("/courier-requests/:id/status", requireAuth, requireRole("Dr
     }
   }
 
+  // Same anchor-to-the-estimate guard trips.routes.ts already applies to
+  // finalFare — a courier could otherwise bill any amount at all, with no
+  // relationship to what was quoted (this delivery's commission integrity
+  // depends on finalFare being a real number, not an asserted one).
+  if (parsed.data.finalFare != null && !isAdmin) {
+    const lower = existing.estimatedFare * MIN_FINAL_FARE_MULTIPLIER;
+    const upper = existing.estimatedFare * MAX_FINAL_FARE_MULTIPLIER;
+    if (parsed.data.finalFare < lower || parsed.data.finalFare > upper) {
+      return res.status(422).json({
+        error: {
+          code: "FARE_OUT_OF_RANGE",
+          message: `finalFare must be within ${MIN_FINAL_FARE_MULTIPLIER}x–${MAX_FINAL_FARE_MULTIPLIER}x the estimated fare of ${existing.estimatedFare}`,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
+  }
+
   const request = await prisma.courierRequest.update({
     where: { id: req.params.id },
     data: {
@@ -340,10 +374,32 @@ courierRouter.post("/courier-requests/:id/cancel", requireAuth, requireRole("Rid
     });
   }
 
+  // Same shape as the ride cancellation fee (trips.routes.ts): only once a
+  // courier is actually assigned (MATCHED) and past the configured grace
+  // period. Recorded for driver-transparency/audit; not itself collected
+  // here — see the equivalent note on the ride cancellation-fee path.
+  let cancellationFee = 0;
+  if (existing.status === "MATCHED" && existing.driverId) {
+    const policy = await getPricingPolicy();
+    const elapsedSec = (Date.now() - existing.requestedAt.getTime()) / 1000;
+    if (elapsedSec > policy.deliveryCancellationGraceSec) {
+      cancellationFee = policy.deliveryCancellationFee;
+    }
+  }
+
   const request = await prisma.courierRequest.update({
     where: { id: existing.id },
-    data: { status: "CANCELLED" },
+    data: { status: "CANCELLED", cancellationFee: cancellationFee > 0 ? cancellationFee : undefined },
   });
+  if (cancellationFee > 0 && request.driverId) {
+    await recordDriverCompensationCharge({
+      type: "CANCELLATION_FEE",
+      courierRequestId: request.id,
+      customerId: request.senderId,
+      driverId: request.driverId,
+      amount: cancellationFee,
+    });
+  }
   // Notify the sender too (same as trips.routes.ts's rider-initiated trip
   // cancel), so this shows up in their real notification/activity feed like
   // every other status change, not just ones someone else triggered.

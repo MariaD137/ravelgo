@@ -7,7 +7,7 @@
 
 import type { Payout, Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
-import { PLATFORM_COMMISSION_RATE, roundMoney } from "../lib/money";
+import { roundMoney } from "../lib/money";
 
 interface PayoutCalculation {
   driverId: string;
@@ -21,16 +21,29 @@ interface PayoutCalculation {
 
 /**
  * Calculate payout for a driver for a given period (YYYY-MM for monthly, YYYY-W## for weekly).
- * Only includes COMPLETED trips where driver was not suspended.
+ *
+ * Sources gross/commission/driver-earnings from the FinancialTransaction
+ * ledger (services/ledger.ts) — the amounts actually locked in at each
+ * transaction's settlement — rather than recomputing commission from
+ * whatever the current CommissionConfig says (spec #14: a rate change must
+ * never retroactively change an already-settled transaction's split).
+ *
+ * CASH transactions are deliberately EXCLUDED from this payout: a cash
+ * fare's driver-earnings share never passed through RavelGo (the driver
+ * already physically holds it), so it must never be paid out again via bank
+ * transfer. Only its commission is owed to RavelGo, tracked separately by
+ * the cash-remittance reconciliation (cash.routes.ts) — excluding it here is
+ * exactly what stops that commission being deducted twice (once from this
+ * payout, once from the driver's physical cash hand-in).
  *
  * `driverId` here is the caller-facing identifier — User.id, the same value
  * stored on Payout.driverId and DriverBankAccount.driverId (both FK ->
- * User.id, see prisma/schema.prisma). Trip.driverId and
- * DriverSubscription.driverId are FKs to the separate Driver.id, so that
+ * User.id, see prisma/schema.prisma). Trip.driverId, FinancialTransaction.driverId
+ * and DriverSubscription.driverId are FKs to the separate Driver.id, so that
  * record is resolved first rather than querying those tables with the
  * User.id directly — passing the wrong id silently matched zero rows
- * (every trip/subscription lookup below would return nothing), which is
- * exactly the bug this comment is here to prevent regressing.
+ * (every lookup below would return nothing), which is exactly the bug this
+ * comment is here to prevent regressing.
  */
 export async function calculatePayoutForPeriod(
   driverId: string,
@@ -44,34 +57,37 @@ export async function calculatePayoutForPeriod(
   const driverProfile = await prisma.driver.findUnique({ where: { userId: driverId } });
 
   // No Driver profile (User exists but never completed driver onboarding) ->
-  // no trips or subscription possibly exist for them either.
-  const trips = driverProfile
-    ? await prisma.trip.findMany({
+  // no ledger rows or subscription possibly exist for them either.
+  const ledgerRows = driverProfile
+    ? await prisma.financialTransaction.findMany({
         where: {
           driverId: driverProfile.id,
-          status: "COMPLETED",
-          completedAt: {
-            gte: startDate,
-            lt: endDate,
-          },
-        },
-        include: {
-          payment: true,
+          type: { in: ["RIDE_FARE", "DELIVERY_FARE", "REFUND"] },
+          status: "SETTLED",
+          createdAt: { gte: startDate, lt: endDate },
         },
       })
     : [];
 
-  // Sum up all successful payments from these trips. payment.amount is the
-  // tax-inclusive total the rider paid (card or wallet), so commission below
-  // is taken on the tax-inclusive total, exactly as the product requires.
-  const grossAmount = roundMoney(
-    trips.reduce((sum, trip) => {
-      return sum + (trip.payment?.status === "SUCCEEDED" ? trip.payment.amount : 0);
-    }, 0),
-  );
+  const payableRows = ledgerRows.filter((r) => r.paymentMethod !== "CASH");
 
-  // RavelGo keeps PLATFORM_COMMISSION_RATE (25%); the rest is the driver's.
-  const platformFee = roundMoney(grossAmount * PLATFORM_COMMISSION_RATE);
+  let grossAmount = 0;
+  let platformFee = 0;
+  let driverGrossEarnings = 0;
+  let tripsIncluded = 0;
+  for (const row of payableRows) {
+    // A REFUND row's grossAmount is the (positive) amount given back — it
+    // reduces gross rather than adding to it; its commissionAmount/
+    // driverEarnings are already stored negative (services/ledger.ts), so
+    // summing those two fields needs no special-casing.
+    grossAmount += row.type === "REFUND" ? -row.grossAmount : row.grossAmount;
+    platformFee += row.commissionAmount;
+    driverGrossEarnings += row.driverEarnings;
+    if (row.type !== "REFUND") tripsIncluded += 1;
+  }
+  grossAmount = roundMoney(grossAmount);
+  platformFee = roundMoney(platformFee);
+  driverGrossEarnings = roundMoney(driverGrossEarnings);
 
   // Check if driver has active subscription (subscription fee offset)
   const subscription = driverProfile
@@ -83,8 +99,8 @@ export async function calculatePayoutForPeriod(
 
   const subscriptionFee = subscription?.status === "ACTIVE" ? subscription.plan?.priceMonthly || 0 : 0;
 
-  // Net = Gross - Platform Commission - Subscription Fee
-  const netAmount = Math.max(0, roundMoney(grossAmount - platformFee - subscriptionFee));
+  // Net = (already-commissioned) driver earnings - Subscription Fee
+  const netAmount = Math.max(0, roundMoney(driverGrossEarnings - subscriptionFee));
 
   return {
     driverId,
@@ -92,7 +108,7 @@ export async function calculatePayoutForPeriod(
     platformFee,
     subscriptionFee,
     netAmount,
-    tripsIncluded: trips.length,
+    tripsIncluded,
     period,
   };
 }

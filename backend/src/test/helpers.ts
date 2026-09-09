@@ -95,6 +95,15 @@ export async function resetDb() {
   // in one test don't leak entries into another (the audit test asserts an
   // exact row count).
   await prisma.auditLog.deleteMany();
+  // FinancialTransaction is deliberately NOT a Prisma relation to
+  // Trip/CourierRequest/Payment/Driver/User (an append-only ledger must
+  // survive even if the entity it references is later deleted) — no FK
+  // ordering constraint, safe to clear anywhere, same as AuditLog above.
+  await prisma.financialTransaction.deleteMany();
+  await prisma.rideCategory.deleteMany();
+  await prisma.deliveryVehicleRate.deleteMany();
+  await prisma.commissionConfig.deleteMany();
+  await prisma.pricingPolicy.deleteMany();
   // Payout and WalletAccount are ON DELETE RESTRICT against User (P0 #12), so
   // they must be cleared explicitly before users (they no longer cascade).
   await prisma.payout.deleteMany();

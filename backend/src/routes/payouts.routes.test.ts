@@ -106,8 +106,27 @@ test("POST /payouts/calculate computes a real amount from the driver's completed
       completedAt: new Date("2026-01-15"),
     },
   });
-  await prisma.payment.create({
+  const payment = await prisma.payment.create({
     data: { tripId: trip.id, userId: rider.id, amount: 100, status: "SUCCEEDED", paidAt: new Date("2026-01-15") },
+  });
+  // calculatePayoutForPeriod sources gross/commission/driver-earnings from
+  // the FinancialTransaction ledger (services/ledger.ts), written by
+  // recordRideCommission() at real payment settlement — not raw Payment rows.
+  await prisma.financialTransaction.create({
+    data: {
+      type: "RIDE_FARE",
+      tripId: trip.id,
+      paymentId: payment.id,
+      customerId: rider.id,
+      driverId: driver.id,
+      grossAmount: 100,
+      commissionRate: 0.2,
+      commissionAmount: 20,
+      driverEarnings: 80,
+      paymentMethod: "CARD",
+      status: "SETTLED",
+      createdAt: new Date("2026-01-15"),
+    },
   });
 
   const token = mockAuthAs({ sub: "admin-sub-2", groups: ["Admin"] });
@@ -119,9 +138,10 @@ test("POST /payouts/calculate computes a real amount from the driver's completed
   assert.equal(res.status, 200);
   assert.equal(res.body.tripsIncluded, 1);
   assert.equal(res.body.grossAmount, 100);
-  // RavelGo keeps 25%; the driver's net is the remaining 75%.
-  assert.equal(res.body.platformFee, 25);
-  assert.equal(res.body.netAmount, 75);
+  // RavelGo's default commission is 20% (services/commission.ts); the
+  // driver's net is the remaining 80%.
+  assert.equal(res.body.platformFee, 20);
+  assert.equal(res.body.netAmount, 80);
 });
 
 test("Admin-only payout endpoints reject a Driver caller", async () => {

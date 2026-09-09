@@ -1,20 +1,34 @@
 import { Router } from "express";
 import { z } from "zod";
+import type { PaymentMethod, PaymentStatus } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { requireAdminPermission } from "../lib/admin-permissions";
+import { recordAudit } from "../lib/audit";
+import { notifyUser } from "../lib/notifications";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { sensitiveLimiter } from "../middleware/rate-limit";
+import { stripeClient } from "../billing/stripe";
+import { moneyAmountSchema, toCents } from "../lib/money";
 import { AlreadyChargedError, InsufficientFundsError } from "../services/wallet";
 import { CashLimitExceededError, settleTripPayment, TripNotChargeableError } from "../services/trip-payment";
+import {
+  DeliveryCashLimitExceededError,
+  DeliveryNotChargeableError,
+  settleCourierPayment,
+} from "../services/courier-payment";
+import { reverseCommission } from "../services/ledger";
 
 export const paymentsRouter = Router();
 
 /** Map the settlement service's typed errors to HTTP; rethrow anything else. */
 function respondToSettleError(res: import("express").Response, err: unknown, next: import("express").NextFunction) {
   if (err instanceof InsufficientFundsError) return res.status(402).json({ error: "Insufficient wallet balance" });
-  if (err instanceof AlreadyChargedError) return res.status(409).json({ error: "Trip has already been charged" });
+  if (err instanceof AlreadyChargedError) return res.status(409).json({ error: "This has already been charged" });
   if (err instanceof CashLimitExceededError) return res.status(400).json({ error: err.message });
+  if (err instanceof DeliveryCashLimitExceededError) return res.status(400).json({ error: err.message });
   if (err instanceof TripNotChargeableError) return res.status(409).json({ error: err.message });
+  if (err instanceof DeliveryNotChargeableError) return res.status(409).json({ error: err.message });
   return next(err);
 }
 
@@ -84,11 +98,173 @@ paymentsRouter.post("/trips/:id/pay", sensitiveLimiter, requireAuth, async (req,
   }
 });
 
-// Rider (who owns the payment) or Admin: a receipt for a charged trip
+// Driver or Admin: charge the sender for a delivered package's final fare.
+// Mirrors POST /trips/:id/charge exactly — see settleCourierPayment.
+paymentsRouter.post("/courier-requests/:id/charge", sensitiveLimiter, requireAuth, requireRole("Driver", "Admin"), async (req, res, next) => {
+  const parsed = chargeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const request = await prisma.courierRequest.findUnique({
+    where: { id: req.params.id },
+    include: { driver: { include: { user: true } } },
+  });
+  if (!request) return res.status(404).json({ error: "Delivery request not found" });
+
+  const isAdmin = req.user!.groups.includes("Admin");
+  if (!isAdmin && request.driver?.user.cognitoSub !== req.user!.sub) {
+    return res.status(403).json({ error: "Not authorized to charge this delivery" });
+  }
+
+  try {
+    const { payment, clientSecret } = await settleCourierPayment(request, parsed.data.method);
+    return res.status(201).json(clientSecret ? { ...(payment as object), clientSecret } : payment);
+  } catch (err) {
+    return respondToSettleError(res, err, next);
+  }
+});
+
+// Rider (who owns the delivery request): pay for my OWN delivered package.
+paymentsRouter.post("/courier-requests/:id/pay", sensitiveLimiter, requireAuth, async (req, res, next) => {
+  const parsed = chargeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const user = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
+  if (!user) return res.status(404).json({ error: "User profile not found" });
+
+  const request = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
+  if (!request) return res.status(404).json({ error: "Delivery request not found" });
+  if (request.senderId !== user.id) {
+    return res.status(403).json({ error: "Not authorized to pay for this delivery" });
+  }
+
+  try {
+    const { payment, clientSecret } = await settleCourierPayment(request, parsed.data.method);
+    return res.status(201).json(clientSecret ? { ...(payment as object), clientSecret } : payment);
+  } catch (err) {
+    return respondToSettleError(res, err, next);
+  }
+});
+
+const refundSchema = z.object({
+  // Omitted = full refund. Partial refunds proportionally reverse the
+  // commission/driver-earnings split — see services/ledger.ts#reverseCommission.
+  amount: moneyAmountSchema.optional(),
+  reason: z.string().min(1).max(500),
+});
+
+/**
+ * Actually move the money back for a settled Payment, then reverse its
+ * commission on the ledger. Shared by the trip and delivery refund routes
+ * below — same logic, just parameterized by which Payment/ledger key to use.
+ * CARD refunds through Stripe; WALLET credits the payer's balance directly
+ * (RavelGo held those funds); CASH never passed through RavelGo at all, so
+ * there is nothing to refund through the platform — only the ledger
+ * (commission owed) is reversed, and the actual cash return between rider
+ * and driver happens outside the app, same as a cash charge itself does.
+ */
+async function refundSettledPayment(
+  payment: { id: string; amount: number; method: PaymentMethod; providerReference: string | null; userId: string; status: PaymentStatus },
+  refundAmount: number,
+  ledgerKey: { tripId?: string; courierRequestId?: string },
+  reason: string,
+): Promise<void> {
+  if (payment.method === "CARD" && payment.providerReference) {
+    await stripeClient.refunds.create({ payment_intent: payment.providerReference, amount: toCents(refundAmount) });
+  } else if (payment.method === "WALLET") {
+    const wallet = await prisma.walletAccount.findUnique({ where: { userId: payment.userId } });
+    if (wallet) {
+      await prisma.$transaction([
+        prisma.walletAccount.update({ where: { id: wallet.id }, data: { balanceCents: { increment: toCents(refundAmount) } } }),
+        prisma.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            type: "REFUND",
+            status: "COMPLETED",
+            amountCents: toCents(refundAmount),
+            tripId: ledgerKey.tripId,
+            courierRequestId: ledgerKey.courierRequestId,
+          },
+        }),
+      ]);
+    }
+  }
+  // CASH: nothing moves through RavelGo — see doc comment above.
+
+  const isFull = refundAmount >= payment.amount - 0.005;
+  await prisma.payment.update({ where: { id: payment.id }, data: { status: isFull ? "REFUNDED" : payment.status } });
+  await reverseCommission({ ...ledgerKey, refundAmount, reason });
+}
+
+// Admin: refund a trip's payment (full or partial). Reverses the commission
+// on the ledger and, for CARD/WALLET, actually returns the funds.
+paymentsRouter.post("/trips/:id/refund", sensitiveLimiter, requireAuth, requireAdminPermission("payouts:write"), async (req, res) => {
+  const parsed = refundSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const trip = await prisma.trip.findUnique({ where: { id: req.params.id } });
+  if (!trip) return res.status(404).json({ error: "Trip not found" });
+
+  const payment = await prisma.payment.findUnique({ where: { tripId: trip.id } });
+  if (!payment || payment.status !== "SUCCEEDED") {
+    return res.status(409).json({ error: "This trip has no successful payment to refund" });
+  }
+  const refundAmount = parsed.data.amount ?? payment.amount;
+  if (refundAmount > payment.amount) {
+    return res.status(400).json({ error: "Refund amount cannot exceed the original payment" });
+  }
+
+  await refundSettledPayment(payment, refundAmount, { tripId: trip.id }, parsed.data.reason);
+  await recordAudit({
+    actorSub: req.user!.sub,
+    action: "TRIP_PAYMENT_REFUNDED",
+    entityType: "Trip",
+    entityId: trip.id,
+    metadata: { refundAmount, reason: parsed.data.reason },
+  });
+  await notifyUser(trip.riderId, "PAYMENT_SUCCEEDED", "Refund issued", `${refundAmount} was refunded for this ride.`, {
+    type: "TRIP",
+    id: trip.id,
+  });
+  res.json({ refunded: refundAmount });
+});
+
+// Admin: refund a delivery's payment. Mirrors the trip refund route exactly.
+paymentsRouter.post("/courier-requests/:id/refund", sensitiveLimiter, requireAuth, requireAdminPermission("payouts:write"), async (req, res) => {
+  const parsed = refundSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const request = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
+  if (!request) return res.status(404).json({ error: "Delivery request not found" });
+
+  const payment = await prisma.payment.findUnique({ where: { courierRequestId: request.id } });
+  if (!payment || payment.status !== "SUCCEEDED") {
+    return res.status(409).json({ error: "This delivery has no successful payment to refund" });
+  }
+  const refundAmount = parsed.data.amount ?? payment.amount;
+  if (refundAmount > payment.amount) {
+    return res.status(400).json({ error: "Refund amount cannot exceed the original payment" });
+  }
+
+  await refundSettledPayment(payment, refundAmount, { courierRequestId: request.id }, parsed.data.reason);
+  await recordAudit({
+    actorSub: req.user!.sub,
+    action: "DELIVERY_PAYMENT_REFUNDED",
+    entityType: "CourierRequest",
+    entityId: request.id,
+    metadata: { refundAmount, reason: parsed.data.reason },
+  });
+  await notifyUser(request.senderId, "PAYMENT_SUCCEEDED", "Refund issued", `${refundAmount} was refunded for this delivery.`, {
+    type: "COURIER_REQUEST",
+    id: request.id,
+  });
+  res.json({ refunded: refundAmount });
+});
+
+// Rider (who owns the payment) or Admin: a receipt for a charged trip or delivery.
 paymentsRouter.get("/payments/:id/receipt", requireAuth, async (req, res) => {
   const payment = await prisma.payment.findUnique({
     where: { id: req.params.id },
-    include: { trip: true, user: true },
+    include: { trip: true, courierRequest: true, user: true },
   });
   if (!payment) return res.status(404).json({ error: "Payment not found" });
 
@@ -97,11 +273,15 @@ paymentsRouter.get("/payments/:id/receipt", requireAuth, async (req, res) => {
     return res.status(403).json({ error: "Not authorized to view this receipt" });
   }
 
+  const pickup = payment.trip?.pickup ?? payment.courierRequest?.pickupAddress ?? null;
+  const destination = payment.trip?.destination ?? payment.courierRequest?.dropoffAddress ?? null;
+
   res.json({
     paymentId: payment.id,
     tripId: payment.tripId,
-    pickup: payment.trip.pickup,
-    destination: payment.trip.destination,
+    courierRequestId: payment.courierRequestId,
+    pickup,
+    destination,
     amount: payment.amount,
     currency: payment.currency,
     method: payment.method,

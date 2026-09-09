@@ -2,6 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { requireAdminPermission } from "../lib/admin-permissions";
+import { recordAudit } from "../lib/audit";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { serializeVehicle } from "../lib/vehicle-view";
 
@@ -45,6 +47,34 @@ vehiclesRouter.get("/vehicles", requireAuth, requireRole("Admin"), async (req, r
   );
 });
 
+const setVehicleClassSchema = z.object({
+  vehicleClass: z.enum(["ECONOMY", "COMFORT", "PREMIUM", "LUXURY"]).nullable(),
+});
+
+// Admin: correct/set any vehicle's ride-category eligibility class (pricing
+// spec #22/#23 — "Admin must control which vehicles qualify for each ride
+// category"), independent of the driver's own self-declared value.
+vehiclesRouter.patch("/admin/vehicles/:id/class", requireAuth, requireAdminPermission("drivers:write"), async (req, res) => {
+  const parsed = setVehicleClassSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const vehicle = await prisma.vehicle.findUnique({ where: { id: req.params.id } });
+  if (!vehicle) return res.status(404).json({ error: "Vehicle not found" });
+
+  const updated = await prisma.vehicle.update({
+    where: { id: req.params.id },
+    data: { vehicleClass: parsed.data.vehicleClass },
+  });
+  await recordAudit({
+    actorSub: req.user!.sub,
+    action: "VEHICLE_CLASS_SET",
+    entityType: "Vehicle",
+    entityId: vehicle.id,
+    metadata: { from: vehicle.vehicleClass, to: parsed.data.vehicleClass },
+  });
+  res.json(serializeVehicle(updated));
+});
+
 // Driver: list my own vehicles
 vehiclesRouter.get("/vehicles/me", requireAuth, requireRole("Driver"), async (req, res) => {
   const driver = await findOwnDriver(req.user!.sub);
@@ -69,6 +99,10 @@ const createVehicleSchema = z.object({
   plateNumber: z.string().min(1),
   year: z.string().min(4),
   isPrimary: z.boolean().default(false),
+  // Which ride categories this vehicle is eligible for (RideCategory.
+  // eligibleVehicleClasses) — self-declared by the driver, admin-correctable.
+  // Optional — a vehicle can be added first and classified later via PATCH.
+  vehicleClass: z.enum(["ECONOMY", "COMFORT", "PREMIUM", "LUXURY"]).optional(),
   // S3 key from POST /uploads/presign (bucket: "assets"). Optional — a
   // vehicle can be added first and photographed later via PATCH.
   photoKey: z.string().min(1).optional(),

@@ -37,6 +37,69 @@ class FareQuote {
       );
 }
 
+/// One ride tier's rate-card-backed quote (GET /api/pricing/categories) — one
+/// per active RideCategory (Swift/Ease/Luxe/Elite today). Every figure here is
+/// the backend's real computation for the given trip; the client never
+/// asserts a price.
+class RideCategoryQuote {
+  final String categoryKey;
+  final String name;
+  final String description;
+  final String benefit;
+  final double estimatedFare;
+  final double subtotal;
+  final double tax;
+  final double taxRate;
+  final double surgeMultiplier;
+  final double distanceKm;
+  final double tripEtaMinutes;
+  // Minutes until a driver could reach the pickup — null when no eligible
+  // online driver currently has a live location. Never fabricate a number
+  // here; the UI must omit the pickup-ETA line instead.
+  final double? pickupEtaMinutes;
+  final String availability; // AVAILABLE | LIMITED | UNAVAILABLE
+  final double commissionRate;
+
+  RideCategoryQuote({
+    required this.categoryKey,
+    required this.name,
+    required this.description,
+    required this.benefit,
+    required this.estimatedFare,
+    required this.subtotal,
+    required this.tax,
+    required this.taxRate,
+    required this.surgeMultiplier,
+    required this.distanceKm,
+    required this.tripEtaMinutes,
+    required this.pickupEtaMinutes,
+    required this.availability,
+    required this.commissionRate,
+  });
+
+  static double _d(dynamic v) => v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
+  static double? _dOrNull(dynamic v) => v == null ? null : _d(v);
+
+  factory RideCategoryQuote.fromJson(Map<String, dynamic> j) => RideCategoryQuote(
+        categoryKey: '${j['categoryKey'] ?? ''}',
+        name: '${j['name'] ?? ''}',
+        description: '${j['description'] ?? ''}',
+        benefit: '${j['benefit'] ?? ''}',
+        estimatedFare: _d(j['estimatedFare']),
+        subtotal: _d(j['subtotal']),
+        tax: _d(j['tax']),
+        taxRate: _d(j['taxRate']),
+        surgeMultiplier: _d(j['surgeMultiplier'] ?? 1),
+        distanceKm: _d(j['distanceKm']),
+        tripEtaMinutes: _d(j['tripEtaMinutes']),
+        pickupEtaMinutes: _dOrNull(j['pickupEtaMinutes']),
+        availability: '${j['availability'] ?? 'AVAILABLE'}',
+        commissionRate: _d(j['commissionRate']),
+      );
+
+  bool get isUnavailable => availability == 'UNAVAILABLE';
+}
+
 class BookingApi {
   // Placeholder trip metrics. The backend needs a distance and duration to
   // price a trip, but the app has no routing/geocoding yet (the destination is
@@ -74,10 +137,34 @@ class BookingApi {
     return FareQuote.fromJson(data as Map<String, dynamic>);
   }
 
+  /// Live per-tier fare estimates for a trip of the given distance/duration —
+  /// one real, rate-card-backed quote per active ride category (Swift/Ease/
+  /// Luxe/Elite today). Never hides a category the backend returns.
+  static Future<List<RideCategoryQuote>> categories({
+    required double pickupLat,
+    required double pickupLng,
+    required double distanceKm,
+    required double durationMinutes,
+    String? zone,
+  }) async {
+    final q = StringBuffer(
+      '/api/pricing/categories?pickupLat=$pickupLat&pickupLng=$pickupLng&distanceKm=$distanceKm&durationMinutes=$durationMinutes',
+    );
+    if (zone != null && zone.isNotEmpty) q.write('&zone=${Uri.encodeComponent(zone)}');
+    final data = await ApiClient.get(q.toString());
+    return ((data as List?) ?? const [])
+        .map((e) => RideCategoryQuote.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   /// Request a trip. Pickup + dropoff COORDINATES are sent (not a distance):
   /// the backend computes the authoritative distance and fare from them and
   /// tries to match an available driver, returning the created (and possibly
   /// MATCHED) trip. A client-asserted distance is neither sent nor trusted.
+  ///
+  /// [rideCategoryKey], when set, prices the trip off that ride category's
+  /// rate card (Swift/Ease/Luxe/Elite) instead of the legacy single
+  /// PricingRule — this is what the rider chose on SelectRide.
   static Future<Trip> requestTrip({
     required String pickup,
     required String destination,
@@ -88,6 +175,7 @@ class BookingApi {
     String category = 'Personal',
     String? zone,
     String? pickupNote,
+    String? rideCategoryKey,
   }) async {
     final data = await ApiClient.post('/api/trips', {
       'pickup': pickup,
@@ -99,6 +187,7 @@ class BookingApi {
       'category': category,
       if (zone != null && zone.isNotEmpty) 'zone': zone,
       if (pickupNote != null && pickupNote.isNotEmpty) 'pickupNote': pickupNote,
+      if (rideCategoryKey != null && rideCategoryKey.isNotEmpty) 'rideCategoryKey': rideCategoryKey,
     });
     return Trip.fromJson(data as Map<String, dynamic>);
   }

@@ -28,13 +28,19 @@ export const MIN_FINAL_FARE_MULTIPLIER = 0.5;
 
 // VAT applied on top of the base fare. Nigeria VAT is 7.5%. A single global
 // rate is intentional for this stage — if per-region tax is ever needed it
-// belongs on PricingRule/SurgeZone, not scattered through the routes.
+// belongs on PricingRule/SurgeZone, not scattered through the routes. Kept
+// deliberately separate from RavelGo's commission (services/commission.ts) —
+// government VAT and RavelGo's own cut must never be presented as the same
+// line item (see the pricing spec's tax-separation requirement).
 export const TAX_RATE = 0.075;
 
-// RavelGo's cut of each completed ride, computed on the tax-inclusive total
-// the rider actually paid. The remaining share is remitted to the driver's
-// bank account by the payout system (services/payouts.ts).
-export const PLATFORM_COMMISSION_RATE = 0.25;
+// RavelGo's commission rate now lives in the DB (CommissionConfig, one row
+// per service, Admin-configurable) rather than as a hardcoded constant here
+// — see services/commission.ts. The old flat PLATFORM_COMMISSION_RATE (25%,
+// applied uniformly to every ride regardless of tier, and even to cash trips
+// the driver already held) has been removed; services/commission.ts's
+// DEFAULT_COMMISSION_RATE (20%) is only ever used to seed that DB row on
+// first read, never applied directly to a transaction.
 
 /** Round a currency amount to whole cents (2 dp), avoiding float drift. */
 export function roundMoney(amount: number): number {

@@ -1363,6 +1363,323 @@ paths:
         "409":
           description: No active pricing rule configured
 
+  /pricing/categories:
+    get:
+      tags: [Pricing]
+      summary: Quote every active ride category (Swift/Ease/Luxe/Elite) for one route (any authenticated user)
+      parameters:
+        - name: pickupLat
+          in: query
+          required: true
+          schema: { type: number }
+        - name: pickupLng
+          in: query
+          required: true
+          schema: { type: number }
+        - name: distanceKm
+          in: query
+          required: true
+          schema: { type: number }
+        - name: durationMinutes
+          in: query
+          required: true
+          schema: { type: number }
+        - name: zone
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: One quote per active category
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CategoryQuote" }
+
+  /admin/ride-categories:
+    get:
+      tags: [Pricing]
+      summary: List every ride category, active or not (Admin)
+      responses:
+        "200":
+          description: Categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RideCategory" }
+    post:
+      tags: [Pricing]
+      summary: Create a ride category (Admin, pricing:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RideCategoryInput" }
+      responses:
+        "201":
+          description: Category
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideCategory" }
+  /admin/ride-categories/{id}:
+    patch:
+      tags: [Pricing]
+      summary: Edit, activate/deactivate, or reorder a ride category (Admin, pricing:write)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RideCategoryInput" }
+      responses:
+        "200":
+          description: Updated category
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RideCategory" }
+
+  /pricing/delivery-quote:
+    get:
+      tags: [Pricing]
+      summary: Quote every active delivery vehicle class (Bike/Car/SUV/Van) for a distance + package size (any authenticated user)
+      parameters:
+        - name: distanceKm
+          in: query
+          required: true
+          schema: { type: number }
+        - name: packageSize
+          in: query
+          schema: { type: string, enum: [SMALL, MEDIUM, LARGE] }
+      responses:
+        "200":
+          description: One quote per active vehicle class
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DeliveryQuote" }
+
+  /admin/delivery-vehicle-rates:
+    get:
+      tags: [Pricing]
+      summary: List the four delivery vehicle-class rate cards (Admin)
+      responses:
+        "200":
+          description: Rates
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DeliveryVehicleRate" }
+  /admin/delivery-vehicle-rates/{vehicleClass}:
+    patch:
+      tags: [Pricing]
+      summary: Edit one delivery vehicle class's rate card (Admin, pricing:write)
+      parameters:
+        - name: vehicleClass
+          in: path
+          required: true
+          schema: { type: string, enum: [BIKE, CAR, SUV, VAN] }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                initialFee: { type: number }
+                perKm: { type: number }
+                commissionRate: { type: number, nullable: true, description: "0-1, overrides the DELIVERY service default" }
+                active: { type: boolean }
+      responses:
+        "200":
+          description: Updated rate
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeliveryVehicleRate" }
+
+  /admin/commission-config:
+    get:
+      tags: [Pricing]
+      summary: List every service's current commission rate (Admin)
+      responses:
+        "200":
+          description: Rates, one row per service
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CommissionConfig" }
+  /admin/commission-config/{service}:
+    patch:
+      tags: [Pricing]
+      summary: Change a service's default commission rate (Admin, settings:write / Super Admin only). Never affects an already-settled transaction.
+      parameters:
+        - name: service
+          in: path
+          required: true
+          schema: { type: string, enum: [RIDE, DELIVERY] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rate]
+              properties:
+                rate: { type: number, minimum: 0, maximum: 1 }
+      responses:
+        "200":
+          description: Updated commission config
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommissionConfig" }
+
+  /admin/pricing-policy:
+    get:
+      tags: [Pricing]
+      summary: The current cancellation/waiting/surge-band/package-surcharge policy (Admin)
+      responses:
+        "200":
+          description: Policy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PricingPolicy" }
+    patch:
+      tags: [Pricing]
+      summary: Change the cancellation/waiting/surge/package policy (Admin, settings:write / Super Admin only)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PricingPolicy" }
+      responses:
+        "200":
+          description: Updated policy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PricingPolicy" }
+
+  /admin/financial-dashboard:
+    get:
+      tags: [Pricing]
+      summary: Marketplace-wide financial rollup, computed live from the commission ledger (Admin)
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Aggregated financial figures
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  grossMarketplaceVolume: { type: number }
+                  ravelgoRevenue: { type: number, description: Total commission earned }
+                  driverEarnings: { type: number }
+                  refunds: { type: number }
+                  cancellationFees: { type: number }
+                  waitingCharges: { type: number }
+                  rideRevenue: { type: number }
+                  deliveryRevenue: { type: number }
+                  cashCommissionRecorded: { type: number, description: "Commission recorded against CASH transactions in the window — see GET /admin/cash-reconciliation for the true outstanding figure net of remittances" }
+
+  /trips/{id}/arrived:
+    post:
+      tags: [Trips]
+      summary: Driver reports physical arrival at pickup — anchors the free-waiting-period clock (Driver, owner only)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Trip with arrivedAt set
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Trip" }
+
+  /trips/{id}/refund:
+    post:
+      tags: [Payments]
+      summary: Refund a trip's payment, full or partial, reversing its commission (Admin, payouts:write)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                amount: { type: number, description: Omit for a full refund }
+                reason: { type: string }
+      responses:
+        "200":
+          description: Refund result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refunded: { type: number }
+
+  /courier-requests/{id}/charge:
+    post:
+      tags: [Payments]
+      summary: Charge the sender for a delivered package's final fare (Driver assigned to it, or Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                method: { type: string, enum: [CARD, WALLET, CASH] }
+      responses:
+        "201":
+          description: Payment
+  /courier-requests/{id}/pay:
+    post:
+      tags: [Payments]
+      summary: Pay for my own delivered package (Rider who sent it)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                method: { type: string, enum: [CARD, WALLET, CASH] }
+      responses:
+        "201":
+          description: Payment
+  /courier-requests/{id}/refund:
+    post:
+      tags: [Payments]
+      summary: Refund a delivery's payment, full or partial (Admin, payouts:write)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                amount: { type: number }
+                reason: { type: string }
+      responses:
+        "200":
+          description: Refund result
+
   /wallet/me:
     get:
       tags: [Wallet]
@@ -1556,7 +1873,14 @@ components:
         finalFare: { type: number, nullable: true }
         status: { type: string, enum: [REQUESTED, MATCHED, IN_PROGRESS, COMPLETED, CANCELLED, DISPUTED] }
         category: { type: string }
+        rideCategoryKey: { type: string, nullable: true, description: "The ride tier chosen (RideCategory.key), e.g. SWIFT" }
         distanceKm: { type: number, nullable: true }
+        arrivedAt: { type: string, format: date-time, nullable: true }
+        commissionRate: { type: number, nullable: true, description: Locked in at payment settlement, never recalculated later }
+        platformCommission: { type: number, nullable: true }
+        driverEarnings: { type: number, nullable: true }
+        waitingCharge: { type: number, nullable: true, description: 100% driver-compensation, not commissioned }
+        cancellationFee: { type: number, nullable: true, description: 100% driver-compensation, not commissioned }
         payment:
           allOf: [{ $ref: "#/components/schemas/Payment" }]
           nullable: true
@@ -1612,7 +1936,12 @@ components:
             id: { type: string }
             senderId: { type: string }
             driverId: { type: string, nullable: true }
+            deliveryVehicleClass: { type: string, nullable: true, enum: [BIKE, CAR, SUV, VAN] }
             finalFare: { type: number, nullable: true }
+            commissionRate: { type: number, nullable: true, description: Locked in at payment settlement }
+            platformCommission: { type: number, nullable: true }
+            driverEarnings: { type: number, nullable: true }
+            cancellationFee: { type: number, nullable: true }
             status: { type: string, enum: [REQUESTED, MATCHED, IN_TRANSIT, DELIVERED, CANCELLED] }
             courierLat:
               type: number
@@ -1718,6 +2047,110 @@ components:
         active: { type: boolean }
         startsAt: { type: string, format: date-time, nullable: true }
         endsAt: { type: string, format: date-time, nullable: true }
+
+    RideCategory:
+      type: object
+      properties:
+        id: { type: string }
+        key: { type: string, description: "Stable identifier, e.g. SWIFT" }
+        name: { type: string }
+        description: { type: string }
+        benefit: { type: string, nullable: true }
+        baseFare: { type: number }
+        perKm: { type: number }
+        perMinute: { type: number }
+        minimumFare: { type: number }
+        commissionRate: { type: number, nullable: true, description: Overrides the RIDE service default when set }
+        active: { type: boolean }
+        sortOrder: { type: integer }
+        eligibleVehicleClasses:
+          type: array
+          items: { type: string, enum: [ECONOMY, COMFORT, PREMIUM, LUXURY] }
+          description: Empty = no restriction, any vehicle is eligible
+
+    RideCategoryInput:
+      type: object
+      properties:
+        key: { type: string }
+        name: { type: string }
+        description: { type: string }
+        benefit: { type: string }
+        baseFare: { type: number }
+        perKm: { type: number }
+        perMinute: { type: number }
+        minimumFare: { type: number }
+        commissionRate: { type: number }
+        sortOrder: { type: integer }
+        eligibleVehicleClasses:
+          type: array
+          items: { type: string, enum: [ECONOMY, COMFORT, PREMIUM, LUXURY] }
+        active: { type: boolean }
+
+    CategoryQuote:
+      type: object
+      properties:
+        categoryKey: { type: string }
+        name: { type: string }
+        description: { type: string }
+        benefit: { type: string, nullable: true }
+        estimatedFare: { type: number }
+        subtotal: { type: number }
+        tax: { type: number }
+        taxRate: { type: number }
+        surgeMultiplier: { type: number }
+        distanceKm: { type: number }
+        tripEtaMinutes: { type: number }
+        pickupEtaMinutes: { type: number, nullable: true, description: "null when no eligible online driver has a live location" }
+        availability: { type: string, enum: [AVAILABLE, LIMITED, UNAVAILABLE] }
+        commissionRate: { type: number }
+
+    DeliveryVehicleRate:
+      type: object
+      properties:
+        id: { type: string }
+        vehicleClass: { type: string, enum: [BIKE, CAR, SUV, VAN] }
+        name: { type: string }
+        initialFee: { type: number }
+        perKm: { type: number }
+        commissionRate: { type: number, nullable: true, description: Overrides the DELIVERY service default when set }
+        active: { type: boolean }
+
+    DeliveryQuote:
+      type: object
+      properties:
+        vehicleClass: { type: string, enum: [BIKE, CAR, SUV, VAN] }
+        name: { type: string }
+        estimatedFare: { type: number }
+        initialFee: { type: number }
+        distanceFee: { type: number }
+        packageSurcharge: { type: number }
+        commissionRate: { type: number }
+
+    CommissionConfig:
+      type: object
+      properties:
+        service: { type: string, enum: [RIDE, DELIVERY] }
+        rate: { type: number, minimum: 0, maximum: 1 }
+        updatedAt: { type: string, format: date-time }
+        updatedBy: { type: string, nullable: true }
+
+    PricingPolicy:
+      type: object
+      properties:
+        rideCancellationGraceSec: { type: integer }
+        rideCancellationFee: { type: number }
+        rideWaitingFreeSec: { type: integer }
+        rideWaitingPerMinute: { type: number }
+        rideWaitingMaxFee: { type: number }
+        deliveryCancellationGraceSec: { type: integer }
+        deliveryCancellationFee: { type: number }
+        additionalStopFee: { type: number }
+        surgeMinMultiplier: { type: number }
+        surgeMaxMultiplier: { type: number }
+        packageSizeSurcharge:
+          type: object
+          additionalProperties: { type: number }
+          description: "Additive surcharge by CourierRequest.packageSize, e.g. {\"SMALL\":0,\"MEDIUM\":300,\"LARGE\":800}"
 
     PaginatedUser:
       type: object

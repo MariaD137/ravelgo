@@ -245,9 +245,7 @@ class _DeliveryDetailScreenState extends State<DeliveryDetailScreen> {
             if (r.senderName != null) _row('Customer', r.senderName!),
           ]),
           const SizedBox(height: 12),
-          _sectionCard('Earnings', [
-            _row(r.finalFare != null ? 'Final fare' : 'Estimated fare', Currency.format(r.finalFare ?? r.estimatedFare, decimals: 0)),
-          ]),
+          _sectionCard('Earnings', _earningsRows(r)),
           if (r.status == 'DELIVERED' && (r.deliveryPhotoUrl != null || r.recipientSignatureUrl != null)) ...[
             const SizedBox(height: 12),
             _sectionCard('Proof of delivery', [
@@ -467,6 +465,60 @@ class _DeliveryDetailScreenState extends State<DeliveryDetailScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  /// The commission breakdown, or the plain fare — never a computed guess.
+  ///
+  /// `driverEarnings`/`platformCommission` come straight from the backend
+  /// (courier-view.ts) and are null until this delivery's payment actually
+  /// settles. Until then there is no real split to show, so this falls back
+  /// to the single fare row exactly as before rather than inventing one.
+  List<Widget> _earningsRows(CourierRequest r) {
+    if (r.driverEarnings == null) {
+      final rows = <Widget>[
+        _row(r.finalFare != null ? 'Final fare' : 'Estimated fare',
+            Currency.format(r.finalFare ?? r.estimatedFare, decimals: 0)),
+      ];
+      if (r.status == 'DELIVERED') {
+        rows.add(const Padding(
+          padding: EdgeInsets.only(top: 2),
+          child: Text('Payment pending — earnings will show once it settles.',
+              style: TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+        ));
+      }
+      return rows;
+    }
+
+    final commission = r.platformCommission ?? 0;
+    // Reconstructs the exact gross that was commissioned (finalFare) from the
+    // backend's own split — never a value this app computed independently.
+    final grossFare = r.driverEarnings! + commission;
+    final pct = r.commissionRate != null ? ' (${(r.commissionRate! * 100).round()}%)' : '';
+
+    return [
+      _earningsRow('Customer paid', Currency.format(grossFare, decimals: 0)),
+      if (commission > 0) _earningsRow('RavelGo commission$pct', '-${Currency.format(commission, decimals: 0)}', muted: true),
+      if (r.cancellationFee != null && r.cancellationFee! > 0)
+        _earningsRow('Cancellation fee', '+${Currency.format(r.cancellationFee!, decimals: 0)}', accent: AppColors.success),
+      const SizedBox(height: 4),
+      AppComponents.divider(),
+      const SizedBox(height: 4),
+      _earningsRow('Your earnings', Currency.format(r.driverEarnings!, decimals: 0), bold: true),
+    ];
+  }
+
+  Widget _earningsRow(String label, String value, {bool bold = false, bool muted = false, Color? accent}) {
+    final color = accent ?? (muted ? AppColors.textMuted : null);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(fontSize: 13.5, fontWeight: bold ? FontWeight.w700 : FontWeight.w500, color: color)),
+          Text(value, style: TextStyle(fontSize: 13.5, fontWeight: bold ? FontWeight.w700 : FontWeight.w500, color: color)),
+        ],
+      ),
     );
   }
 

@@ -41,10 +41,15 @@ interface CourierRequestRel {
   dropoffAddress: string;
   packageDescription: string;
   packageSize: string;
+  deliveryVehicleClass?: string | null;
   recipientName: string;
   recipientPhone: string;
   estimatedFare: number;
   finalFare?: number | null;
+  commissionRate?: number | null;
+  platformCommission?: number | null;
+  driverEarnings?: number | null;
+  cancellationFee?: number | null;
   status: string;
   requestedAt: Date;
   pickedUpAt?: Date | null;
@@ -90,10 +95,15 @@ export function serializeCourierRequest(request: CourierRequestRel) {
     dropoffAddress: request.dropoffAddress,
     packageDescription: request.packageDescription,
     packageSize: request.packageSize,
+    deliveryVehicleClass: request.deliveryVehicleClass ?? null,
     recipientName: request.recipientName,
     recipientPhone: request.recipientPhone,
     estimatedFare: request.estimatedFare,
     finalFare: request.finalFare ?? null,
+    commissionRate: request.commissionRate ?? null,
+    platformCommission: request.platformCommission ?? null,
+    driverEarnings: request.driverEarnings ?? null,
+    cancellationFee: request.cancellationFee ?? null,
     status: request.status,
     requestedAt: request.requestedAt,
     pickedUpAt: request.pickedUpAt ?? null,

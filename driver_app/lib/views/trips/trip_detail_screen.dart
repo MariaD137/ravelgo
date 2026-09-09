@@ -135,13 +135,7 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
                       ),
                     ),
                   const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text("Fare", style: TextStyle(fontWeight: FontWeight.w700)),
-                      Text(Currency.format(_trip.fare), style: const TextStyle(fontWeight: FontWeight.w700)),
-                    ],
-                  ),
+                  ..._earningsRows(),
                 ],
               ),
             ),
@@ -179,6 +173,66 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
           ),
         ];
     }
+  }
+
+  /// The commission breakdown, or the plain fare — never a computed guess.
+  ///
+  /// `driverEarnings`/`platformCommission` come straight from the backend
+  /// (trip-view.ts) and are null until this trip's payment actually settles.
+  /// Until then there is no real split to show, so this falls back to the
+  /// single fare row exactly as before rather than inventing one.
+  List<Widget> _earningsRows() {
+    final t = _trip;
+    if (t.driverEarnings == null) {
+      return [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text("Fare", style: TextStyle(fontWeight: FontWeight.w700)),
+            Text(Currency.format(t.fare), style: const TextStyle(fontWeight: FontWeight.w700)),
+          ],
+        ),
+        if (t.status == 'COMPLETED') ...[
+          const SizedBox(height: 4),
+          const Text("Payment pending — earnings will show once it settles.",
+              style: TextStyle(fontSize: 11.5, color: AppColors.textMuted)),
+        ],
+      ];
+    }
+
+    final commission = t.platformCommission ?? 0;
+    // Reconstructs the exact gross that was commissioned (finalFare) from the
+    // backend's own split — never a value this app computed independently.
+    final grossFare = t.driverEarnings! + commission;
+    final pct = t.commissionRate != null ? ' (${(t.commissionRate! * 100).round()}%)' : '';
+
+    return [
+      _earningsRow("Customer paid", Currency.format(grossFare)),
+      if (commission > 0) _earningsRow("RavelGo commission$pct", '-${Currency.format(commission)}', muted: true),
+      if (t.waitingCharge != null && t.waitingCharge! > 0)
+        _earningsRow("Waiting charge", '+${Currency.format(t.waitingCharge!)}', accent: AppColors.success),
+      if (t.cancellationFee != null && t.cancellationFee! > 0)
+        _earningsRow("Cancellation fee", '+${Currency.format(t.cancellationFee!)}', accent: AppColors.success),
+      AppComponents.divider(),
+      const SizedBox(height: 4),
+      _earningsRow("Your earnings", Currency.format(t.driverEarnings!), bold: true),
+    ];
+  }
+
+  Widget _earningsRow(String label, String value, {bool bold = false, bool muted = false, Color? accent}) {
+    final color = accent ?? (muted ? AppColors.textSecondary : null);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label,
+              style: TextStyle(fontWeight: bold ? FontWeight.w700 : FontWeight.w500, color: color)),
+          Text(value,
+              style: TextStyle(fontWeight: bold ? FontWeight.w700 : FontWeight.w500, color: color)),
+        ],
+      ),
+    );
   }
 
   Widget _row(IconData icon, String text) {

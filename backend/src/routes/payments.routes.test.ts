@@ -149,7 +149,7 @@ test("CASH is rejected for a ₦20,000 fare — the backend is the real enforcem
   assert.equal(await prisma.payment.count(), 0);
 });
 
-test("a completed CASH trip is exactly what the cash-reconciliation endpoint counts as this driver's expected cash", async () => {
+test("a completed CASH trip's expected cash is the COMMISSION owed to RavelGo, not the full fare the driver already collected and keeps", async () => {
   const { rider, driver } = await createRiderAndDriver();
   const trip = await prisma.trip.create({
     data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 5000, finalFare: 5000, status: "COMPLETED" },
@@ -167,9 +167,13 @@ test("a completed CASH trip is exactly what the cash-reconciliation endpoint cou
   assert.equal(recon.status, 200);
   const row = recon.body.find((r: { driverId: string }) => r.driverId === driver.id);
   assert.ok(row, "driver should appear in reconciliation once they have a CASH payment");
-  assert.equal(row.expectedCash, 5000);
+  // ₦5,000 fare @ 20% default commission = ₦1,000 owed — never the full
+  // ₦5,000 (the driver already collected that in person and keeps ₦4,000
+  // of it; only the commission is "owed to RavelGo" cash — see
+  // services/ledger.ts and services/payouts.ts's matching exclusion).
+  assert.equal(row.expectedCash, 1000);
   assert.equal(row.submittedCash, 0);
-  assert.equal(row.outstandingCash, 5000);
+  assert.equal(row.outstandingCash, 1000);
   assert.equal(row.status, "OUTSTANDING");
 });
 

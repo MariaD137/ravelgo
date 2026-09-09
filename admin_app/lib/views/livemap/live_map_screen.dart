@@ -183,6 +183,118 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
     return lines;
   }
 
+  // A real GoogleMap on every tab, matching the Drivers tab's treatment —
+  // not just the Drivers tab. The map shows whatever real positions exist
+  // for that tab's items (a rider's own reported GPS, a package's courier's
+  // GPS — reusing the same driver location feed the Drivers tab uses, never
+  // a second tracking system); the list below it keeps every item visible
+  // even the ones with no position yet, so nothing that used to be shown is
+  // lost. Rentals never have a position (no GPS source exists anywhere in
+  // that data model) — that map stays markerless with an explanatory
+  // banner, kept for visual consistency with the other three tabs rather
+  // than silently falling back to a list-only view.
+  Widget _splitMapAndList({required Widget map, required Widget list}) {
+    return Column(
+      children: [
+        SizedBox(height: 260, child: map),
+        const Divider(height: 1),
+        Expanded(child: list),
+      ],
+    );
+  }
+
+  Set<Marker> _riderMarkers() {
+    final markers = <Marker>{};
+    for (final r in _data?.riders ?? const []) {
+      if (r.lat == null || r.lng == null) continue;
+      markers.add(Marker(
+        markerId: MarkerId('rider-${r.tripId}'),
+        position: LatLng(r.lat!, r.lng!),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        infoWindow: InfoWindow(title: r.riderName.isEmpty ? 'Rider' : r.riderName, snippet: '${r.pickup} → ${r.destination}'),
+        onTap: () => _openTrip(r.tripId),
+      ));
+    }
+    return markers;
+  }
+
+  Widget _ridersMapView() {
+    final riders = _data?.riders ?? const [];
+    final positioned = riders.where((r) => r.lat != null && r.lng != null).length;
+    return Stack(
+      children: [
+        GoogleMap(
+          initialCameraPosition: _lagos,
+          markers: _riderMarkers(),
+          myLocationButtonEnabled: false,
+          zoomControlsEnabled: false,
+          mapToolbarEnabled: false,
+        ),
+        if (!_loading && riders.isEmpty)
+          Positioned(top: 10, left: 10, right: 10, child: _infoBanner('No riders are currently on an active trip.')),
+        if (!_loading && riders.isNotEmpty && positioned == 0)
+          Positioned(top: 10, left: 10, right: 10, child: _infoBanner('${riders.length} rider(s) on trip — none have reported a live location yet.')),
+      ],
+    );
+  }
+
+  Set<Marker> _packageMarkers() {
+    final markers = <Marker>{};
+    for (final p in _data?.packages ?? const []) {
+      if (p.lat == null || p.lng == null) continue;
+      markers.add(Marker(
+        markerId: MarkerId('package-${p.id}'),
+        position: LatLng(p.lat!, p.lng!),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+        infoWindow: InfoWindow(
+          title: 'Package ${p.id.length > 8 ? p.id.substring(0, 8) : p.id}',
+          snippet: p.courierName ?? 'Courier',
+        ),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CourierRequestsScreen())),
+      ));
+    }
+    return markers;
+  }
+
+  Widget _packagesMapView() {
+    final packages = _data?.packages ?? const [];
+    final positioned = packages.where((p) => p.lat != null && p.lng != null).length;
+    return Stack(
+      children: [
+        GoogleMap(
+          initialCameraPosition: _lagos,
+          markers: _packageMarkers(),
+          myLocationButtonEnabled: false,
+          zoomControlsEnabled: false,
+          mapToolbarEnabled: false,
+        ),
+        if (!_loading && packages.isEmpty)
+          Positioned(top: 10, left: 10, right: 10, child: _infoBanner('No packages are currently in transit.')),
+        if (!_loading && packages.isNotEmpty && positioned == 0)
+          Positioned(top: 10, left: 10, right: 10, child: _infoBanner('${packages.length} package(s) in transit — their courier hasn\'t reported a live location yet.')),
+      ],
+    );
+  }
+
+  Widget _rentalsMapView() {
+    return Stack(
+      children: [
+        GoogleMap(
+          initialCameraPosition: _lagos,
+          myLocationButtonEnabled: false,
+          zoomControlsEnabled: false,
+          mapToolbarEnabled: false,
+        ),
+        Positioned(
+          top: 10,
+          left: 10,
+          right: 10,
+          child: _infoBanner('Rentals have no GPS/telematics source — a self-drive listing can\'t be plotted here. Real rental data is in the list below.'),
+        ),
+      ],
+    );
+  }
+
   Future<void> _openTrip(String tripId) async {
     try {
       final trip = await AdminApi.trip(tripId);
@@ -209,9 +321,9 @@ class _LiveMapScreenState extends State<LiveMapScreen> {
         Expanded(
           child: switch (_tab) {
             _MonitorTab.drivers => _driversMap(),
-            _MonitorTab.riders => _ridersList(),
-            _MonitorTab.packages => _packagesList(),
-            _MonitorTab.rentals => _rentalsList(),
+            _MonitorTab.riders => _splitMapAndList(map: _ridersMapView(), list: _ridersList()),
+            _MonitorTab.packages => _splitMapAndList(map: _packagesMapView(), list: _packagesList()),
+            _MonitorTab.rentals => _splitMapAndList(map: _rentalsMapView(), list: _rentalsList()),
           },
         ),
       ],

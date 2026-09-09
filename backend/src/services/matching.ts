@@ -1,3 +1,4 @@
+import type { RideVehicleClass } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { broadcastTripStatus } from "../realtime/hub";
 import { notifyUser } from "../lib/notifications";
@@ -22,11 +23,25 @@ export async function matchDriverToTrip(tripId: string) {
   const trip = await prisma.trip.findUnique({ where: { id: tripId } });
   if (!trip || trip.status !== "REQUESTED") return null;
 
+  // "Customer chooses category -> RavelGo chooses eligible vehicle" (pricing
+  // spec #3): a category with configured eligibleVehicleClasses only matches
+  // a driver whose primary vehicle is one of them. An empty list (the
+  // default for a freshly-created category) means no restriction, so this
+  // never makes an unconfigured category unmatchable.
+  let eligibleClasses: RideVehicleClass[] = [];
+  if (trip.rideCategoryKey) {
+    const category = await prisma.rideCategory.findUnique({ where: { key: trip.rideCategoryKey } });
+    eligibleClasses = category?.eligibleVehicleClasses ?? [];
+  }
+
   const driver = await prisma.driver.findFirst({
     where: {
       status: "ACTIVE",
       isOnline: true,
       tripsAsDriver: { none: { status: { in: ["MATCHED", "IN_PROGRESS"] } } },
+      ...(eligibleClasses.length > 0
+        ? { vehicles: { some: { isPrimary: true, vehicleClass: { in: eligibleClasses } } } }
+        : {}),
     },
     orderBy: { rating: "desc" },
   });

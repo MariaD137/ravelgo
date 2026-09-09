@@ -1,9 +1,24 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, requireRole } from "../middleware/auth";
 import { requireAdminPermission } from "../lib/admin-permissions";
-import { computeFare, findActiveSurgeZone, requireActivePricingRule } from "../services/pricing";
+import { recordAudit } from "../lib/audit";
+import {
+  computeFare,
+  ensureDefaultRideCategories,
+  findActiveSurgeZone,
+  quoteAllCategories,
+  requireActivePricingRule,
+} from "../services/pricing";
+import { ensureDefaultDeliveryVehicleRates, quoteAllDeliveryVehicles } from "../services/delivery-pricing";
+import {
+  getServiceCommissionRate,
+  listCommissionConfig,
+  setServiceCommissionRate,
+} from "../services/commission";
+import { getPricingPolicy, PRICING_POLICY_ID } from "../lib/pricing-policy";
+import { roundMoney } from "../lib/money";
 
 export const pricingRouter = Router();
 
@@ -103,4 +118,335 @@ pricingRouter.get("/pricing/quote", requireAuth, async (req, res) => {
   }
   const surge = await findActiveSurgeZone(zone);
   res.json(computeFare(rule, distanceKm, durationMinutes, surge));
+});
+
+// ---------------------------------------------------------------------------
+// Ride categories — the multi-tier "Choose your ride" quote + Admin CRUD.
+// ---------------------------------------------------------------------------
+
+const categoryQuoteSchema = z.object({
+  pickupLat: z.coerce.number().gte(-90).lte(90),
+  pickupLng: z.coerce.number().gte(-180).lte(180),
+  distanceKm: z.coerce.number().nonnegative(),
+  durationMinutes: z.coerce.number().nonnegative(),
+  zone: z.string().optional(),
+});
+
+// Any authenticated user: a quote for every active ride category on one
+// route, for the fare-selection screen. Real availability/pickup-ETA, real
+// per-category rate cards — nothing here is a fabricated placeholder price.
+pricingRouter.get("/pricing/categories", requireAuth, async (req, res) => {
+  const parsed = categoryQuoteSchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { pickupLat, pickupLng, distanceKm, durationMinutes, zone } = parsed.data;
+  const quotes = await quoteAllCategories({ lat: pickupLat, lng: pickupLng }, distanceKm, durationMinutes, zone);
+  res.json(quotes);
+});
+
+// Admin (any preset — reads stay open): every ride category, active or not,
+// for the pricing management screen.
+pricingRouter.get("/admin/ride-categories", requireAuth, requireRole("Admin"), async (_req, res) => {
+  await ensureDefaultRideCategories();
+  const categories = await prisma.rideCategory.findMany({ orderBy: { sortOrder: "asc" } });
+  res.json(categories);
+});
+
+const rideCategoryKeySchema = z
+  .string()
+  .min(1)
+  .max(30)
+  .regex(/^[A-Z0-9_]+$/, "key must be upper-case letters, numbers, and underscores only");
+
+const createRideCategorySchema = z.object({
+  key: rideCategoryKeySchema,
+  name: z.string().min(1),
+  description: z.string().min(1),
+  benefit: z.string().max(200).optional(),
+  baseFare: z.number().nonnegative(),
+  perKm: z.number().nonnegative(),
+  perMinute: z.number().nonnegative(),
+  minimumFare: z.number().nonnegative().default(0),
+  // Overrides the RIDE service default (services/commission.ts) for this
+  // category only. Omitted = inherit the service-wide rate.
+  commissionRate: z.number().min(0).max(1).optional(),
+  sortOrder: z.number().int().default(0),
+  eligibleVehicleClasses: z.array(z.enum(["ECONOMY", "COMFORT", "PREMIUM", "LUXURY"])).default([]),
+});
+
+// Admin: create a ride category.
+pricingRouter.post("/admin/ride-categories", requireAuth, requireAdminPermission("pricing:write"), async (req, res) => {
+  const parsed = createRideCategorySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const category = await prisma.rideCategory.create({ data: parsed.data });
+  await recordAudit({
+    actorSub: req.user!.sub,
+    action: "RIDE_CATEGORY_CREATED",
+    entityType: "RideCategory",
+    entityId: category.id,
+    metadata: parsed.data,
+  });
+  res.status(201).json(category);
+});
+
+const updateRideCategorySchema = createRideCategorySchema.partial().extend({ active: z.boolean().optional() });
+
+// Admin: edit, activate/deactivate, reorder, or reconfigure a ride category.
+pricingRouter.patch("/admin/ride-categories/:id", requireAuth, requireAdminPermission("pricing:write"), async (req, res) => {
+  const parsed = updateRideCategorySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const existing = await prisma.rideCategory.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: "Ride category not found" });
+
+  const category = await prisma.rideCategory.update({ where: { id: req.params.id }, data: parsed.data });
+  await recordAudit({
+    actorSub: req.user!.sub,
+    action: "RIDE_CATEGORY_UPDATED",
+    entityType: "RideCategory",
+    entityId: category.id,
+    metadata: { changed: parsed.data },
+  });
+  res.json(category);
+});
+
+// ---------------------------------------------------------------------------
+// Delivery vehicle rates — the "choose your delivery vehicle" quote + Admin CRUD.
+// ---------------------------------------------------------------------------
+
+const deliveryQuoteSchema = z.object({
+  distanceKm: z.coerce.number().nonnegative(),
+  packageSize: z.enum(["SMALL", "MEDIUM", "LARGE"]).default("MEDIUM"),
+});
+
+// Any authenticated user: a quote for every active delivery vehicle class.
+pricingRouter.get("/pricing/delivery-quote", requireAuth, async (req, res) => {
+  const parsed = deliveryQuoteSchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const quotes = await quoteAllDeliveryVehicles(parsed.data.distanceKm, parsed.data.packageSize);
+  res.json(quotes);
+});
+
+// Admin (any preset — reads stay open): the four delivery vehicle-class rate cards.
+pricingRouter.get("/admin/delivery-vehicle-rates", requireAuth, requireRole("Admin"), async (_req, res) => {
+  await ensureDefaultDeliveryVehicleRates();
+  const rates = await prisma.deliveryVehicleRate.findMany({ orderBy: { initialFee: "asc" } });
+  res.json(rates);
+});
+
+const DELIVERY_VEHICLE_CLASSES = ["BIKE", "CAR", "SUV", "VAN"] as const;
+const updateDeliveryRateSchema = z.object({
+  name: z.string().min(1).optional(),
+  initialFee: z.number().nonnegative().optional(),
+  perKm: z.number().nonnegative().optional(),
+  commissionRate: z.number().min(0).max(1).nullable().optional(),
+  active: z.boolean().optional(),
+});
+
+// Admin: edit one delivery vehicle class's rate card. There are always
+// exactly the four reference classes (seeded on first read) — no create/
+// delete, matching the pricing spec's fixed Bike/Car/SUV/Van table.
+pricingRouter.patch(
+  "/admin/delivery-vehicle-rates/:vehicleClass",
+  requireAuth,
+  requireAdminPermission("pricing:write"),
+  async (req, res) => {
+    const parsed = updateDeliveryRateSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const vehicleClass = req.params.vehicleClass.toUpperCase();
+    if (!DELIVERY_VEHICLE_CLASSES.includes(vehicleClass as (typeof DELIVERY_VEHICLE_CLASSES)[number])) {
+      return res.status(400).json({ error: "Unknown delivery vehicle class" });
+    }
+    await ensureDefaultDeliveryVehicleRates();
+
+    const existing = await prisma.deliveryVehicleRate.findUnique({
+      where: { vehicleClass: vehicleClass as (typeof DELIVERY_VEHICLE_CLASSES)[number] },
+    });
+    if (!existing) return res.status(404).json({ error: "Delivery vehicle rate not found" });
+
+    const rate = await prisma.deliveryVehicleRate.update({
+      where: { vehicleClass: vehicleClass as (typeof DELIVERY_VEHICLE_CLASSES)[number] },
+      data: parsed.data,
+    });
+    await recordAudit({
+      actorSub: req.user!.sub,
+      action: "DELIVERY_VEHICLE_RATE_UPDATED",
+      entityType: "DeliveryVehicleRate",
+      entityId: rate.id,
+      metadata: { vehicleClass, changed: parsed.data },
+    });
+    res.json(rate);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Commission configuration — the DB-driven replacement for the old hardcoded
+// PLATFORM_COMMISSION_RATE constant. Super-Admin only ("settings:write"),
+// matching the "Configure commissions" line item admin-permissions.ts's own
+// doc comment already anticipated.
+// ---------------------------------------------------------------------------
+
+// Admin (any preset — reads stay open): every service's current commission rate.
+pricingRouter.get("/admin/commission-config", requireAuth, requireRole("Admin"), async (_req, res) => {
+  res.json(await listCommissionConfig());
+});
+
+const updateCommissionSchema = z.object({ rate: z.number().min(0).max(1) });
+
+// Admin (Super Admin only): change a service's default commission rate.
+// Never affects an already-settled transaction (spec #14) — only
+// transactions settled AFTER this change use the new rate.
+pricingRouter.patch("/admin/commission-config/:service", requireAuth, requireAdminPermission("settings:write"), async (req, res) => {
+  const parsed = updateCommissionSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const service = req.params.service.toUpperCase();
+  if (service !== "RIDE" && service !== "DELIVERY") {
+    return res.status(400).json({ error: "Unknown service — must be RIDE or DELIVERY" });
+  }
+
+  const before = await getServiceCommissionRate(service);
+  const updated = await setServiceCommissionRate(service, parsed.data.rate, req.user!.email ?? req.user!.sub);
+  await recordAudit({
+    actorSub: req.user!.sub,
+    action: "COMMISSION_RATE_CHANGED",
+    entityType: "CommissionConfig",
+    entityId: service,
+    metadata: { service, from: before, to: parsed.data.rate },
+  });
+  res.json(updated);
+});
+
+// ---------------------------------------------------------------------------
+// Pricing policy — cancellation/waiting/surge-band/package-surcharge config.
+// ---------------------------------------------------------------------------
+
+// Admin (any preset — reads stay open): the current policy.
+pricingRouter.get("/admin/pricing-policy", requireAuth, requireRole("Admin"), async (_req, res) => {
+  res.json(await getPricingPolicy());
+});
+
+const updatePricingPolicySchema = z.object({
+  rideCancellationGraceSec: z.number().int().nonnegative().optional(),
+  rideCancellationFee: z.number().nonnegative().optional(),
+  rideWaitingFreeSec: z.number().int().nonnegative().optional(),
+  rideWaitingPerMinute: z.number().nonnegative().optional(),
+  rideWaitingMaxFee: z.number().nonnegative().optional(),
+  deliveryCancellationGraceSec: z.number().int().nonnegative().optional(),
+  deliveryCancellationFee: z.number().nonnegative().optional(),
+  additionalStopFee: z.number().nonnegative().optional(),
+  surgeMinMultiplier: z.number().positive().optional(),
+  surgeMaxMultiplier: z.number().positive().optional(),
+  packageSizeSurcharge: z.record(z.string(), z.number().nonnegative()).optional(),
+});
+
+// Admin (Super Admin only, matching the cash-limit precedent in
+// settings.routes.ts): change the cancellation/waiting/surge/package policy.
+pricingRouter.patch("/admin/pricing-policy", requireAuth, requireAdminPermission("settings:write"), async (req, res) => {
+  const parsed = updatePricingPolicySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const before = await getPricingPolicy();
+  const updated = await prisma.pricingPolicy.upsert({
+    where: { id: PRICING_POLICY_ID },
+    update: parsed.data,
+    create: { id: PRICING_POLICY_ID, ...parsed.data },
+  });
+  await recordAudit({
+    actorSub: req.user!.sub,
+    action: "PRICING_POLICY_UPDATED",
+    entityType: "PricingPolicy",
+    entityId: PRICING_POLICY_ID,
+    metadata: { before, changed: parsed.data },
+  });
+  res.json(updated);
+});
+
+// ---------------------------------------------------------------------------
+// Admin financial dashboard — the ledger, aggregated (pricing spec #26).
+// ---------------------------------------------------------------------------
+
+const dashboardQuerySchema = z.object({
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+});
+
+// Admin (any preset — reads stay open): marketplace-wide financial rollup,
+// computed live from the FinancialTransaction ledger — never a cached or
+// estimated figure.
+pricingRouter.get("/admin/financial-dashboard", requireAuth, requireRole("Admin"), async (req, res) => {
+  const parsed = dashboardQuerySchema.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const rows = await prisma.financialTransaction.findMany({
+    where: {
+      status: "SETTLED",
+      createdAt: {
+        gte: parsed.data.from,
+        lte: parsed.data.to,
+      },
+    },
+  });
+
+  let grossVolume = 0;
+  let ravelgoRevenue = 0;
+  let totalDriverEarnings = 0;
+  let refundsTotal = 0;
+  let cancellationFeesTotal = 0;
+  let waitingChargesTotal = 0;
+  let rideRevenue = 0;
+  let deliveryRevenue = 0;
+  let cashCommissionRecorded = 0;
+
+  for (const r of rows) {
+    switch (r.type) {
+      case "RIDE_FARE":
+        grossVolume += r.grossAmount;
+        ravelgoRevenue += r.commissionAmount;
+        totalDriverEarnings += r.driverEarnings;
+        rideRevenue += r.grossAmount;
+        break;
+      case "DELIVERY_FARE":
+        grossVolume += r.grossAmount;
+        ravelgoRevenue += r.commissionAmount;
+        totalDriverEarnings += r.driverEarnings;
+        deliveryRevenue += r.grossAmount;
+        break;
+      case "REFUND":
+        // grossAmount here is the refunded amount (a positive reduction);
+        // commissionAmount/driverEarnings are already stored negative.
+        grossVolume -= r.grossAmount;
+        refundsTotal += r.grossAmount;
+        ravelgoRevenue += r.commissionAmount;
+        totalDriverEarnings += r.driverEarnings;
+        break;
+      case "CANCELLATION_FEE":
+        cancellationFeesTotal += r.grossAmount;
+        totalDriverEarnings += r.driverEarnings;
+        break;
+      case "WAITING_CHARGE":
+        waitingChargesTotal += r.grossAmount;
+        totalDriverEarnings += r.driverEarnings;
+        break;
+    }
+    if (r.paymentMethod === "CASH" && (r.type === "RIDE_FARE" || r.type === "DELIVERY_FARE")) {
+      cashCommissionRecorded += r.commissionAmount;
+    }
+  }
+
+  res.json({
+    grossMarketplaceVolume: roundMoney(grossVolume),
+    ravelgoRevenue: roundMoney(ravelgoRevenue),
+    driverEarnings: roundMoney(totalDriverEarnings),
+    refunds: roundMoney(refundsTotal),
+    cancellationFees: roundMoney(cancellationFeesTotal),
+    waitingCharges: roundMoney(waitingChargesTotal),
+    rideRevenue: roundMoney(rideRevenue),
+    deliveryRevenue: roundMoney(deliveryRevenue),
+    // Commission recorded against CASH transactions in this window — see
+    // GET /admin/cash-reconciliation (cash.routes.ts) for the true
+    // outstanding figure net of what drivers have actually remitted.
+    cashCommissionRecorded: roundMoney(cashCommissionRecorded),
+  });
 });

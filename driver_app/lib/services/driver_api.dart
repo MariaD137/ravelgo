@@ -44,6 +44,7 @@ class DriverTrip {
   final double? finalFare;
   final String status;
   final DateTime requestedAt;
+  final DateTime? completedAt;
   final String? riderName;
   final double? distanceKm;
   final double? riderRating;
@@ -54,6 +55,17 @@ class DriverTrip {
   final double? pickupLng;
   final double? dropoffLat;
   final double? dropoffLng;
+  // Commission split, sourced entirely from the backend (lib/trip-view.ts) —
+  // this app never computes driverEarnings itself. All three are null until
+  // the trip's PAYMENT actually settles (CASH/WALLET: immediately on charge;
+  // CARD: after the Stripe webhook confirms), and stay null forever for a
+  // trip that never got charged (e.g. cancelled before payment).
+  final double? commissionRate;
+  final double? platformCommission;
+  final double? driverEarnings;
+  // 100%-driver amounts RavelGo takes 0% of; null unless actually assessed.
+  final double? waitingCharge;
+  final double? cancellationFee;
 
   DriverTrip({
     required this.id,
@@ -63,6 +75,7 @@ class DriverTrip {
     required this.finalFare,
     required this.status,
     required this.requestedAt,
+    this.completedAt,
     required this.riderName,
     this.distanceKm,
     this.riderRating,
@@ -71,6 +84,11 @@ class DriverTrip {
     this.pickupLng,
     this.dropoffLat,
     this.dropoffLng,
+    this.commissionRate,
+    this.platformCommission,
+    this.driverEarnings,
+    this.waitingCharge,
+    this.cancellationFee,
   });
 
   double get fare => finalFare ?? estimatedFare;
@@ -95,6 +113,7 @@ class DriverTrip {
       finalFare: j['finalFare'] == null ? null : _d(j['finalFare']),
       status: '${j['status'] ?? ''}',
       requestedAt: DateTime.tryParse('${j['requestedAt']}')?.toLocal() ?? DateTime.now(),
+      completedAt: j['completedAt'] == null ? null : DateTime.tryParse('${j['completedAt']}')?.toLocal(),
       riderName: riderName,
       distanceKm: j['distanceKm'] == null ? null : _d(j['distanceKm']),
       riderRating: j['riderRating'] == null ? null : _d(j['riderRating']),
@@ -103,6 +122,11 @@ class DriverTrip {
       pickupLng: j['pickupLng'] == null ? null : _d(j['pickupLng']),
       dropoffLat: j['dropoffLat'] == null ? null : _d(j['dropoffLat']),
       dropoffLng: j['dropoffLng'] == null ? null : _d(j['dropoffLng']),
+      commissionRate: j['commissionRate'] == null ? null : _d(j['commissionRate']),
+      platformCommission: j['platformCommission'] == null ? null : _d(j['platformCommission']),
+      driverEarnings: j['driverEarnings'] == null ? null : _d(j['driverEarnings']),
+      waitingCharge: j['waitingCharge'] == null ? null : _d(j['waitingCharge']),
+      cancellationFee: j['cancellationFee'] == null ? null : _d(j['cancellationFee']),
     );
   }
 }
@@ -167,6 +191,15 @@ class CourierRequest {
   final DateTime? pickedUpAt;
   final DateTime? deliveredAt;
   final String? senderName;
+  // Commission split, sourced entirely from the backend (lib/courier-view.ts)
+  // — this app never computes driverEarnings itself. Null until payment
+  // actually settles (mirrors Trip's same rule), and null forever for a
+  // request that never got charged.
+  final double? commissionRate;
+  final double? platformCommission;
+  final double? driverEarnings;
+  // 100%-driver amount RavelGo takes 0% of; null unless actually assessed.
+  final double? cancellationFee;
   final double? distanceKm;
   // Resolved by the sender's address search at request time — null for a
   // request made before this existed, or whose address never resolved.
@@ -202,6 +235,10 @@ class CourierRequest {
     this.pickedUpAt,
     this.deliveredAt,
     this.senderName,
+    this.commissionRate,
+    this.platformCommission,
+    this.driverEarnings,
+    this.cancellationFee,
     this.distanceKm,
     this.pickupLat,
     this.pickupLng,
@@ -244,6 +281,10 @@ class CourierRequest {
       pickedUpAt: j['pickedUpAt'] == null ? null : DateTime.tryParse('${j['pickedUpAt']}')?.toLocal(),
       deliveredAt: j['deliveredAt'] == null ? null : DateTime.tryParse('${j['deliveredAt']}')?.toLocal(),
       senderName: senderName,
+      commissionRate: _dOrNull(j['commissionRate']),
+      platformCommission: _dOrNull(j['platformCommission']),
+      driverEarnings: _dOrNull(j['driverEarnings']),
+      cancellationFee: _dOrNull(j['cancellationFee']),
       distanceKm: _dOrNull(j['distanceKm']),
       pickupLat: _dOrNull(j['pickupLat']),
       pickupLng: _dOrNull(j['pickupLng']),
@@ -357,6 +398,19 @@ class DriverApi {
   /// TripsApi.byId backs the customer app's own notification navigation.
   static Future<DriverTrip> tripById(String id) async {
     final data = await ApiClient.get('/api/trips/$id');
+    return DriverTrip.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Report physical arrival at the pickup point (POST /api/trips/:id/arrived,
+  /// driver-owner only). Anchors the server-side free-waiting-period clock
+  /// (2 min free, then a per-minute charge up to a cap — all computed
+  /// server-side, never in this app). The backend ignores a repeat call, so
+  /// it's safe to call once per trip when the local stage becomes
+  /// "arrived at pickup". Callers should treat this as best-effort: on
+  /// failure the waiting-charge clock simply doesn't start, which is a minor
+  /// miss, not something worth blocking the UI or surfacing an error for.
+  static Future<DriverTrip> reportArrived(String tripId) async {
+    final data = await ApiClient.post('/api/trips/$tripId/arrived');
     return DriverTrip.fromJson(data as Map<String, dynamic>);
   }
 

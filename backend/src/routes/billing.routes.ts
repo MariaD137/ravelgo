@@ -6,6 +6,7 @@ import { stripeClient } from "../billing/stripe";
 import { logSecurityEvent } from "../lib/security-log";
 import { notifyAllAdmins, notifyUser } from "../lib/notifications";
 import { creditWalletFromTopup, failWalletTopup } from "../services/wallet";
+import { recordDeliveryCommission, recordRideCommission } from "../services/ledger";
 
 export const billingRouter = Router();
 
@@ -48,6 +49,35 @@ billingRouter.post("/", async (req, res) => {
       } else {
         await failWalletTopup(intent.id);
       }
+    } else if (intent.metadata?.type === "courier_delivery") {
+      const payment = await prisma.payment.findFirst({ where: { providerReference: intent.id } });
+      if (payment && payment.courierRequestId) {
+        await prisma.payment.update({
+          where: { id: payment.id },
+          data: { status: succeeded ? "SUCCEEDED" : "FAILED", paidAt: succeeded ? new Date() : undefined },
+        });
+        if (succeeded) {
+          const request = await prisma.courierRequest.findUnique({ where: { id: payment.courierRequestId } });
+          if (request) await recordDeliveryCommission(request, payment);
+        }
+        await notifyUser(
+          payment.userId,
+          succeeded ? "PAYMENT_SUCCEEDED" : "PAYMENT_FAILED",
+          succeeded ? "Payment successful" : "Payment failed",
+          succeeded
+            ? `Your card payment of ${payment.amount} for this delivery went through.`
+            : `Your card payment of ${payment.amount} for this delivery could not be completed.`,
+          { type: "COURIER_REQUEST", id: payment.courierRequestId },
+        );
+        if (!succeeded) {
+          await notifyAllAdmins(
+            "ADMIN_PAYMENT_FAILED",
+            "Delivery payment failed",
+            `A card payment of ${payment.amount} for delivery ${payment.courierRequestId} failed.`,
+            { type: "COURIER_REQUEST", id: payment.courierRequestId },
+          );
+        }
+      }
     } else if (intent.metadata?.type === "rental_booking") {
       const booking = await prisma.rentalBooking.findFirst({ where: { providerReference: intent.id } });
       if (booking) {
@@ -77,8 +107,11 @@ billingRouter.post("/", async (req, res) => {
         }
       }
     } else {
+      // Every other PaymentIntent that reaches this webhook is a trip card
+      // charge (payments.routes.ts) — the wallet_topup/rental_booking/
+      // courier_delivery branches above claim their own metadata.type first.
       const payment = await prisma.payment.findFirst({ where: { providerReference: intent.id } });
-      if (payment) {
+      if (payment && payment.tripId) {
         await prisma.payment.update({
           where: { id: payment.id },
           data: {
@@ -86,6 +119,10 @@ billingRouter.post("/", async (req, res) => {
             paidAt: succeeded ? new Date() : undefined,
           },
         });
+        if (succeeded) {
+          const trip = await prisma.trip.findUnique({ where: { id: payment.tripId } });
+          if (trip) await recordRideCommission(trip, payment, trip.finalFare ?? payment.amount);
+        }
         await notifyUser(
           payment.userId,
           succeeded ? "PAYMENT_SUCCEEDED" : "PAYMENT_FAILED",

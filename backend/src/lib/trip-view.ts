@@ -43,10 +43,17 @@ interface TripRel {
   finalFare?: number | null;
   status: string;
   category: string;
+  rideCategoryKey?: string | null;
   pickupNote?: string | null;
   riderRating?: number | null;
   requestedAt: Date;
   completedAt?: Date | null;
+  arrivedAt?: Date | null;
+  commissionRate?: number | null;
+  platformCommission?: number | null;
+  driverEarnings?: number | null;
+  waitingCharge?: number | null;
+  cancellationFee?: number | null;
   rider?: UserRel | null;
   driver?: DriverRel | null;
 }
@@ -69,10 +76,17 @@ export function serializeTrip(trip: TripRel) {
     finalFare: trip.finalFare ?? null,
     status: trip.status,
     category: trip.category,
+    rideCategoryKey: trip.rideCategoryKey ?? null,
     pickupNote: trip.pickupNote ?? null,
     riderRating: trip.riderRating ?? null,
     requestedAt: trip.requestedAt,
     completedAt: trip.completedAt ?? null,
+    arrivedAt: trip.arrivedAt ?? null,
+    commissionRate: trip.commissionRate ?? null,
+    platformCommission: trip.platformCommission ?? null,
+    driverEarnings: trip.driverEarnings ?? null,
+    waitingCharge: trip.waitingCharge ?? null,
+    cancellationFee: trip.cancellationFee ?? null,
     rider: trip.rider ? { firstName: trip.rider.firstName ?? null, lastName: trip.rider.lastName ?? null } : undefined,
     driver: driver
       ? {
