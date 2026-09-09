@@ -13,6 +13,19 @@ class IncomingRequestSheet extends StatelessWidget {
   final bool busy;
   const IncomingRequestSheet({super.key, required this.trip, this.busy = false});
 
+  /// Display-only estimate of what the driver would earn, shown BEFORE
+  /// acceptance. The trip's real `driverEarnings` is null until payment
+  /// settles (long after this request is even accepted), so there is no real
+  /// settled figure to show yet — this uses the trip's own `commissionRate`
+  /// when the backend has already resolved one, falling back to the platform
+  /// default 80%-to-driver split (DEFAULT_COMMISSION_RATE = 0.2 in
+  /// backend/src/services/commission.ts) purely so the driver has a rough,
+  /// clearly-labeled number to react to. This value is never stored or sent
+  /// back to the backend anywhere — it is local display math only, and the
+  /// backend computes and returns the authoritative split once the trip is
+  /// actually paid for.
+  double get _estimatedEarnings => trip.fare * (1 - (trip.commissionRate ?? 0.2));
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -66,14 +79,22 @@ class IncomingRequestSheet extends StatelessWidget {
           const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
                 trip.distanceKm != null ? "${trip.distanceKm!.toStringAsFixed(1)} km" : "Distance —",
                 style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
               ),
-              Text(
-                Currency.format(trip.fare, decimals: 0),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  const Text("Estimated earnings",
+                      style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary)),
+                  Text(
+                    Currency.format(_estimatedEarnings, decimals: 0),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
               ),
             ],
           ),

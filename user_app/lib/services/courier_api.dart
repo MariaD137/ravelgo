@@ -2,6 +2,40 @@ import 'package:ravelgo_user_app/services/api_client.dart';
 
 double _d(dynamic v) => v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
 
+/// One vehicle class's rate-card-backed delivery quote (GET
+/// /api/pricing/delivery-quote) — one per active DeliveryVehicleRate
+/// (Bike/Car/SUV/Van today). Replaces the old hardcoded client-side flat
+/// packageSize table; every figure here is the backend's real computation.
+class DeliveryVehicleQuote {
+  final String vehicleClass; // BIKE | CAR | SUV | VAN
+  final String name;
+  final double estimatedFare;
+  final double initialFee;
+  final double distanceFee;
+  final double packageSurcharge;
+  final double commissionRate;
+
+  DeliveryVehicleQuote({
+    required this.vehicleClass,
+    required this.name,
+    required this.estimatedFare,
+    required this.initialFee,
+    required this.distanceFee,
+    required this.packageSurcharge,
+    required this.commissionRate,
+  });
+
+  factory DeliveryVehicleQuote.fromJson(Map<String, dynamic> j) => DeliveryVehicleQuote(
+        vehicleClass: '${j['vehicleClass'] ?? ''}',
+        name: '${j['name'] ?? ''}',
+        estimatedFare: _d(j['estimatedFare']),
+        initialFee: _d(j['initialFee']),
+        distanceFee: _d(j['distanceFee']),
+        packageSurcharge: _d(j['packageSurcharge']),
+        commissionRate: _d(j['commissionRate']),
+      );
+}
+
 /// A package delivery request, from the sending customer's perspective. The
 /// price (estimatedFare) is always computed server-side from packageSize —
 /// this client never asserts a price.
@@ -39,6 +73,10 @@ class CourierRequest {
   final double? courierLng;
   final DateTime? courierLocationUpdatedAt;
   final String? courierPresence; // LIVE | STALE | null (no report yet)
+  // The vehicle class (BIKE/CAR/SUV/VAN) chosen at request time, when the
+  // backend priced this off the real DeliveryVehicleRate rate card — null for
+  // a request that fell back to the legacy flat packageSize table.
+  final String? deliveryVehicleClass;
 
   CourierRequest({
     required this.id,
@@ -64,6 +102,7 @@ class CourierRequest {
     this.courierLng,
     this.courierLocationUpdatedAt,
     this.courierPresence,
+    this.deliveryVehicleClass,
   });
 
   static double? _dOrNull(dynamic v) => v == null ? null : _d(v);
@@ -104,12 +143,35 @@ class CourierRequest {
         ? null
         : DateTime.tryParse('${j['courierLocationUpdatedAt']}')?.toLocal(),
     courierPresence: j['courierPresence']?.toString(),
+    deliveryVehicleClass: (j['deliveryVehicleClass'] as String?)?.isNotEmpty == true
+        ? j['deliveryVehicleClass'] as String
+        : null,
   );
 }
 
 /// Package delivery, proxied through the RavelGo backend. Backed by the same
 /// POST /api/courier-requests a driver later browses and accepts.
 class CourierApi {
+  /// Real per-vehicle-class delivery quotes (GET /api/pricing/delivery-quote)
+  /// — one entry per active vehicle class (Bike/Car/SUV/Van today). Requires
+  /// a real distance; never call this with a guessed/placeholder one.
+  static Future<List<DeliveryVehicleQuote>> quote({
+    required double distanceKm,
+    required String packageSize,
+  }) async {
+    final data = await ApiClient.get(
+      '/api/pricing/delivery-quote?distanceKm=$distanceKm&packageSize=${Uri.encodeComponent(packageSize)}',
+    );
+    return ((data as List?) ?? const [])
+        .map((e) => DeliveryVehicleQuote.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// [deliveryVehicleClass], when sent together with both pickup/dropoff
+  /// coordinate pairs, prices the request off the real DeliveryVehicleRate
+  /// rate card + haversine distance instead of the legacy flat packageSize
+  /// table — always pass it when a vehicle class and both coordinate pairs
+  /// are known.
   static Future<CourierRequest> create({
     required String pickupAddress,
     required String dropoffAddress,
@@ -121,6 +183,7 @@ class CourierApi {
     double? pickupLng,
     double? dropoffLat,
     double? dropoffLng,
+    String? deliveryVehicleClass,
   }) async {
     final data = await ApiClient.post('/api/courier-requests', {
       'pickupAddress': pickupAddress,
@@ -133,6 +196,8 @@ class CourierApi {
       if (pickupLng != null) 'pickupLng': pickupLng,
       if (dropoffLat != null) 'dropoffLat': dropoffLat,
       if (dropoffLng != null) 'dropoffLng': dropoffLng,
+      if (deliveryVehicleClass != null && deliveryVehicleClass.isNotEmpty)
+        'deliveryVehicleClass': deliveryVehicleClass,
     });
     return CourierRequest.fromJson(data as Map<String, dynamic>);
   }

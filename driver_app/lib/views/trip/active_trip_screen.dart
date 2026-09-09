@@ -133,7 +133,25 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
       });
       return;
     }
-    setState(() => _stage = _TripStage.values[_stage.index + 1]);
+    final nextStage = _TripStage.values[_stage.index + 1];
+    setState(() => _stage = nextStage);
+    if (nextStage == _TripStage.arrivedPickup) {
+      _reportArrived();
+    }
+  }
+
+  /// Tell the backend the driver has physically reached pickup, so the
+  /// server-side waiting-charge clock can start (POST /api/trips/:id/arrived).
+  /// Best-effort by design: a failure here just means the free-waiting-period
+  /// clock doesn't start for this trip — a minor miss, not worth blocking the
+  /// UI or surfacing an error to the driver over.
+  Future<void> _reportArrived() async {
+    try {
+      final updated = await DriverApi.reportArrived(_trip.id);
+      if (mounted) setState(() => _trip = updated);
+    } catch (_) {
+      // Best-effort — see doc comment above.
+    }
   }
 
   Future<void> _transition(String status, {required VoidCallback then}) async {

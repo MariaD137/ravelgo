@@ -7,10 +7,14 @@ import 'package:ravelgo_admin/views/carpaddy/car_paddy_requests_screen.dart';
 import 'package:ravelgo_admin/views/couriers/courier_requests_screen.dart';
 import 'package:ravelgo_admin/views/payments/payments_cash_screen.dart';
 import 'package:ravelgo_admin/views/payouts/payouts_screen.dart';
+import 'package:ravelgo_admin/views/pricing/commission_config_screen.dart';
+import 'package:ravelgo_admin/views/pricing/delivery_vehicle_rates_screen.dart';
 import 'package:ravelgo_admin/views/pricing/pricing_surge_screen.dart';
+import 'package:ravelgo_admin/views/pricing/ride_categories_screen.dart';
 import 'package:ravelgo_admin/views/promotions/loyalty_program_screen.dart';
 import 'package:ravelgo_admin/views/rentals/rental_listings_screen.dart';
 import 'package:ravelgo_admin/views/reports/analytics_screen.dart';
+import 'package:ravelgo_admin/views/reports/financial_dashboard_screen.dart';
 import 'package:ravelgo_admin/views/riders/rider_list_screen.dart';
 import 'package:ravelgo_admin/views/safety/emergency_alerts_screen.dart';
 import 'package:ravelgo_admin/views/safety/fraud_alerts_screen.dart';
@@ -59,9 +63,13 @@ class SideMenuAdmin extends StatelessWidget {
             _item(context, Icons.villa_outlined, "Short Stays", () => const StaysManagementScreen()),
             _item(context, Icons.directions_car_outlined, "Vehicle Inventory", () => const VehicleInventoryScreen()),
             _item(context, Icons.tune_outlined, "Pricing & Surge", () => const PricingSurgeScreen()),
+            _item(context, Icons.category_outlined, "Ride Categories", () => const RideCategoriesScreen()),
+            _item(context, Icons.local_shipping_outlined, "Delivery Vehicle Rates", () => const DeliveryVehicleRatesScreen()),
+            _item(context, Icons.percent, "Commission Config", () => const CommissionConfigScreen()),
             _item(context, Icons.workspace_premium_outlined, "Driver Subscriptions", () => const DriverSubscriptionsScreen()),
             _item(context, Icons.payments_outlined, "Payments & Cash", () => const PaymentsCashScreen()),
             _item(context, Icons.account_balance_wallet_outlined, "Payouts", () => const PayoutsScreen()),
+            _item(context, Icons.query_stats_outlined, "Financial Dashboard", () => const FinancialDashboardScreen()),
             AppComponents.divider(),
             _item(context, Icons.warning_amber_outlined, "Fraud Alerts", () => const FraudAlertsScreen()),
             _item(context, Icons.sos, "Emergency Alerts", () => const EmergencyAlertsScreen()),

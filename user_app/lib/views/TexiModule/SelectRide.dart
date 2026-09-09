@@ -48,15 +48,16 @@ class _SelectRideState extends State<SelectRide> {
   // denied/unavailable — the only prior way to set pickup at all).
   bool _locatingPickup = true;
 
-  // The real backend-computed fare for this trip, loaded once both pickup and
-  // destination coordinates are known. There is only one fare per trip on the
-  // backend today (a single active PricingRule) — no per-tier rate cards — so
-  // this screen shows exactly one real, trustworthy price rather than
-  // fabricated tier prices that would just be overwritten by the real one on
-  // the next screen.
-  FareQuote? _quote;
-  String? _quoteError;
-  bool _quoteLoading = false;
+  // The real backend-computed fare per ride category (Swift/Ease/Luxe/Elite),
+  // loaded once both pickup and destination coordinates are known. Each entry
+  // is a real, rate-card-backed price from GET /api/pricing/categories — the
+  // rider picks exactly one and that choice (categoryKey) is what flows
+  // through to trip creation, so the price shown here is always what gets
+  // charged (subject to re-quoting for freshness on the next screen).
+  List<RideCategoryQuote> _categories = [];
+  String? _categoriesError;
+  bool _categoriesLoading = false;
+  String? _selectedCategoryKey;
 
   @override
   void initState() {
@@ -128,36 +129,49 @@ class _SelectRideState extends State<SelectRide> {
         ? null
         : BookingApi.distanceKm(from.latitude, from.longitude, to.latitude, to.longitude);
     if (_distanceKm != null) {
-      _loadQuote();
+      _loadCategories();
     } else {
       setState(() {
-        _quote = null;
-        _quoteError = null;
+        _categories = [];
+        _categoriesError = null;
+        _selectedCategoryKey = null;
       });
     }
   }
 
-  Future<void> _loadQuote() async {
+  Future<void> _loadCategories() async {
     final km = _distanceKm;
-    if (km == null) return;
+    final pickup = _pickupLatLng;
+    if (km == null || pickup == null) return;
     setState(() {
-      _quoteLoading = true;
-      _quoteError = null;
+      _categoriesLoading = true;
+      _categoriesError = null;
     });
     try {
-      final q = await BookingApi.quote(distanceKm: km, durationMinutes: BookingApi.estimatedMinutes(km));
+      final cats = await BookingApi.categories(
+        pickupLat: pickup.latitude,
+        pickupLng: pickup.longitude,
+        distanceKm: km,
+        durationMinutes: BookingApi.estimatedMinutes(km),
+      );
       if (!mounted) return;
       setState(() {
-        _quote = q;
-        _quoteLoading = false;
+        _categories = cats;
+        _categoriesLoading = false;
+        // Keep the previous selection if it's still offered; otherwise default
+        // to the first available (non-UNAVAILABLE) category, if any.
+        if (_selectedCategoryKey == null || !cats.any((c) => c.categoryKey == _selectedCategoryKey)) {
+          final firstAvailable = cats.where((c) => !c.isUnavailable).toList();
+          _selectedCategoryKey = firstAvailable.isNotEmpty ? firstAvailable.first.categoryKey : null;
+        }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _quoteError = e is ApiException && e.statusCode == 409
+        _categoriesError = e is ApiException && e.statusCode == 409
             ? 'Pricing isn\'t set up yet — please try later.'
-            : 'Could not get a fare estimate.';
-        _quoteLoading = false;
+            : 'Could not get fare estimates.';
+        _categoriesLoading = false;
       });
     }
   }
@@ -279,7 +293,7 @@ class _SelectRideState extends State<SelectRide> {
                     // auto-detected (or set manually) and the destination they chose.
                     _buildRouteSummary(),
                     const SizedBox(height: 12),
-                    Expanded(child: SingleChildScrollView(controller: controller, child: _buildFareCard())),
+                    Expanded(child: SingleChildScrollView(controller: controller, child: _buildCategoryList())),
                     const SizedBox(height: 12),
 
                     // Payment row
@@ -319,14 +333,29 @@ class _SelectRideState extends State<SelectRide> {
     );
   }
 
-  bool get _canProceed => _destLatLng != null && !_quoteLoading && _quoteError == null && _quote != null;
+  RideCategoryQuote? get _selectedCategory {
+    final key = _selectedCategoryKey;
+    if (key == null) return null;
+    for (final c in _categories) {
+      if (c.categoryKey == key) return c;
+    }
+    return null;
+  }
+
+  bool get _canProceed =>
+      _destLatLng != null &&
+      !_categoriesLoading &&
+      _categoriesError == null &&
+      _selectedCategory != null &&
+      !_selectedCategory!.isUnavailable;
 
   String get _ctaLabel {
     if (_destLatLng == null) return 'Choose a destination';
     if (_pickupLatLng == null) return 'Set your pickup';
-    if (_quoteLoading) return 'Getting fare…';
-    if (_quoteError != null) return 'Fare unavailable';
-    return 'Confirm ride';
+    if (_categoriesLoading) return 'Getting fares…';
+    if (_categoriesError != null) return 'Fares unavailable';
+    if (_selectedCategory == null) return 'Choose a ride';
+    return 'Confirm ${_selectedCategory!.name}';
   }
 
   void _goToFindDriver() {
@@ -342,6 +371,7 @@ class _SelectRideState extends State<SelectRide> {
           pickupLng: _pickupLatLng?.longitude,
           dropoffLat: _destLatLng?.latitude,
           dropoffLng: _destLatLng?.longitude,
+          rideCategoryKey: _selectedCategoryKey,
         ),
       ),
     );
@@ -454,11 +484,12 @@ class _SelectRideState extends State<SelectRide> {
     );
   }
 
-  /// The one real ride option, priced by the backend. There is no per-tier
-  /// rate card on the backend today, so this shows exactly what will be
-  /// charged — never a placeholder number that gets replaced by a different
-  /// real number on the next screen.
-  Widget _buildFareCard() {
+  /// A scrollable list of real ride category options, one per rate card the
+  /// backend returned (GET /api/pricing/categories) — Swift/Ease/Luxe/Elite
+  /// today, but this never hardcodes that set. The rider taps one to select
+  /// it; that categoryKey is what flows through to trip creation, so the
+  /// price shown here is always what will be charged.
+  Widget _buildCategoryList() {
     if (_destLatLng == null) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 12),
@@ -473,44 +504,111 @@ class _SelectRideState extends State<SelectRide> {
             style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
       );
     }
-    return Container(
-      margin: const EdgeInsets.only(top: 4),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(12),
-        color: AppColors.surface,
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.directions_car),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Ride', style: TextStyle(fontWeight: FontWeight.w600)),
-                if (_distanceKm != null)
-                  Text('≈ ${_distanceKm!.toStringAsFixed(1)} km',
-                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-              ],
-            ),
-          ),
-          if (_quoteLoading)
-            const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
-          else if (_quoteError != null)
-            Flexible(child: Text(_quoteError!, style: const TextStyle(color: AppColors.error, fontSize: 12)))
-          else if (_quote != null)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(Currency.format(_quote!.estimatedFare), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                if (_quote!.surgeMultiplier > 1)
-                  Text('Surge ${_quote!.surgeMultiplier.toStringAsFixed(1)}x',
-                      style: const TextStyle(fontSize: 11, color: AppColors.error)),
-              ],
-            ),
+    if (_categoriesLoading && _categories.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+    if (_categoriesError != null) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Text(_categoriesError!, style: const TextStyle(color: AppColors.error, fontSize: 13)),
+      );
+    }
+    if (_categories.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text('No ride options are available for this trip right now.',
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+      );
+    }
+    return Column(
+      children: [
+        for (final cat in _categories) ...[
+          _buildCategoryCard(cat),
+          const SizedBox(height: 10),
         ],
+      ],
+    );
+  }
+
+  Widget _buildCategoryCard(RideCategoryQuote cat) {
+    final selected = cat.categoryKey == _selectedCategoryKey;
+    final unavailable = cat.isUnavailable;
+    return Opacity(
+      opacity: unavailable ? 0.5 : 1,
+      child: InkWell(
+        onTap: unavailable ? null : () => setState(() => _selectedCategoryKey = cat.categoryKey),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            border: Border.all(color: selected ? AppColors.primary : AppColors.border, width: selected ? 2 : 1),
+            borderRadius: BorderRadius.circular(12),
+            color: AppColors.surface,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.directions_car),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(cat.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                    if (cat.description.isNotEmpty)
+                      Text(cat.description, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${cat.tripEtaMinutes.round()} min · ${cat.distanceKm.toStringAsFixed(1)} km',
+                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    ),
+                    if (cat.pickupEtaMinutes != null)
+                      Text(
+                        '${cat.pickupEtaMinutes!.round()} min away',
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                    if (cat.benefit.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(cat.benefit,
+                            style: const TextStyle(fontSize: 11, color: AppColors.info, fontStyle: FontStyle.italic)),
+                      ),
+                    if (unavailable)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text('Unavailable right now',
+                            style: TextStyle(fontSize: 11, color: AppColors.error, fontWeight: FontWeight.w600)),
+                      )
+                    else if (cat.availability == 'LIMITED')
+                      const Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text('Limited availability',
+                            style: TextStyle(fontSize: 11, color: AppColors.warning, fontWeight: FontWeight.w600)),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(Currency.format(cat.estimatedFare), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                  if (cat.surgeMultiplier > 1)
+                    Text('Surge ${cat.surgeMultiplier.toStringAsFixed(1)}x',
+                        style: const TextStyle(fontSize: 11, color: AppColors.error)),
+                  if (selected)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 4),
+                      child: Icon(Icons.check_circle, color: AppColors.primary, size: 18),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -585,6 +585,147 @@ class SurgeZone {
       );
 }
 
+/// One service's marketplace commission rate (backend `CommissionConfig`
+/// table) — the DB-driven replacement for the old hardcoded
+/// PLATFORM_COMMISSION_RATE constant. Writable by a Super Admin only
+/// ("settings:write"); every Admin preset can read it.
+class CommissionConfigRow {
+  final String service; // RIDE | DELIVERY
+  final double rate; // 0-1
+  final DateTime? updatedAt;
+  final String? updatedBy;
+  CommissionConfigRow({
+    required this.service,
+    required this.rate,
+    required this.updatedAt,
+    required this.updatedBy,
+  });
+  factory CommissionConfigRow.fromJson(Map<String, dynamic> j) => CommissionConfigRow(
+        service: '${j['service'] ?? ''}',
+        rate: _d(j['rate']),
+        updatedAt: j['updatedAt'] == null ? null : _dt(j['updatedAt']),
+        updatedBy: j['updatedBy']?.toString(),
+      );
+}
+
+/// A ride tier in the "Choose your ride" flow (RideCategory table). commissionRate
+/// is nullable — null means "inherit the RIDE service default" from
+/// CommissionConfigRow rather than overriding it per-category.
+class RideCategory {
+  final String id;
+  final String key;
+  final String name;
+  final String description;
+  final String? benefit;
+  final double baseFare;
+  final double perKm;
+  final double perMinute;
+  final double minimumFare;
+  final double? commissionRate;
+  final bool active;
+  final int sortOrder;
+  final List<String> eligibleVehicleClasses; // empty = no restriction
+  RideCategory({
+    required this.id,
+    required this.key,
+    required this.name,
+    required this.description,
+    required this.benefit,
+    required this.baseFare,
+    required this.perKm,
+    required this.perMinute,
+    required this.minimumFare,
+    required this.commissionRate,
+    required this.active,
+    required this.sortOrder,
+    required this.eligibleVehicleClasses,
+  });
+  factory RideCategory.fromJson(Map<String, dynamic> j) => RideCategory(
+        id: '${j['id']}',
+        key: '${j['key'] ?? ''}',
+        name: '${j['name'] ?? ''}',
+        description: '${j['description'] ?? ''}',
+        benefit: j['benefit']?.toString(),
+        baseFare: _d(j['baseFare']),
+        perKm: _d(j['perKm']),
+        perMinute: _d(j['perMinute']),
+        minimumFare: _d(j['minimumFare']),
+        commissionRate: j['commissionRate'] == null ? null : _d(j['commissionRate']),
+        active: j['active'] != false,
+        sortOrder: _i(j['sortOrder']),
+        eligibleVehicleClasses:
+            ((j['eligibleVehicleClasses'] as List?) ?? const []).map((e) => '$e').toList(),
+      );
+}
+
+/// One of the four fixed delivery vehicle classes (BIKE/CAR/SUV/VAN) and its
+/// rate card. commissionRate is nullable — null means "inherit the DELIVERY
+/// service default".
+class DeliveryVehicleRate {
+  final String id;
+  final String vehicleClass; // BIKE | CAR | SUV | VAN
+  final String name;
+  final double initialFee;
+  final double perKm;
+  final double? commissionRate;
+  final bool active;
+  DeliveryVehicleRate({
+    required this.id,
+    required this.vehicleClass,
+    required this.name,
+    required this.initialFee,
+    required this.perKm,
+    required this.commissionRate,
+    required this.active,
+  });
+  factory DeliveryVehicleRate.fromJson(Map<String, dynamic> j) => DeliveryVehicleRate(
+        id: '${j['id']}',
+        vehicleClass: '${j['vehicleClass'] ?? ''}',
+        name: '${j['name'] ?? ''}',
+        initialFee: _d(j['initialFee']),
+        perKm: _d(j['perKm']),
+        commissionRate: j['commissionRate'] == null ? null : _d(j['commissionRate']),
+        active: j['active'] != false,
+      );
+}
+
+/// Marketplace-wide financial rollup for a date range, computed live from the
+/// FinancialTransaction ledger (GET /api/admin/financial-dashboard) — never
+/// cached or estimated.
+class FinancialDashboard {
+  final double grossMarketplaceVolume;
+  final double ravelgoRevenue;
+  final double driverEarnings;
+  final double refunds;
+  final double cancellationFees;
+  final double waitingCharges;
+  final double rideRevenue;
+  final double deliveryRevenue;
+  final double cashCommissionRecorded;
+  FinancialDashboard({
+    required this.grossMarketplaceVolume,
+    required this.ravelgoRevenue,
+    required this.driverEarnings,
+    required this.refunds,
+    required this.cancellationFees,
+    required this.waitingCharges,
+    required this.rideRevenue,
+    required this.deliveryRevenue,
+    required this.cashCommissionRecorded,
+  });
+  factory FinancialDashboard.fromJson(Map<String, dynamic> j) => FinancialDashboard(
+        grossMarketplaceVolume: _d(j['grossMarketplaceVolume']),
+        ravelgoRevenue: _d(j['ravelgoRevenue']),
+        driverEarnings: _d(j['driverEarnings']),
+        refunds: _d(j['refunds']),
+        cancellationFees: _d(j['cancellationFees']),
+        waitingCharges: _d(j['waitingCharges']),
+        rideRevenue: _d(j['rideRevenue']),
+        deliveryRevenue: _d(j['deliveryRevenue']),
+        cashCommissionRecorded: _d(j['cashCommissionRecorded']),
+      );
+}
+
 class PayoutCalculation {
   final String driverId;
   final double grossAmount;
@@ -1423,6 +1564,130 @@ class AdminApi {
       if (active != null) 'active': active,
     });
     return SurgeZone.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ---- Commission config (Super Admin write; every Admin preset can read —
+  // see requireAdminPermission("settings:write") in pricing.routes.ts) ----
+  static Future<List<CommissionConfigRow>> commissionConfig() async {
+    final data = await ApiClient.get('/api/admin/commission-config');
+    return (data as List).whereType<Map<String, dynamic>>().map(CommissionConfigRow.fromJson).toList();
+  }
+
+  static Future<CommissionConfigRow> updateCommissionRate(String service, double rate) async {
+    final data = await ApiClient.patch('/api/admin/commission-config/$service', {'rate': rate});
+    return CommissionConfigRow.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ---- Ride categories (pricing:write to write; reads open to any Admin) ----
+  static Future<List<RideCategory>> rideCategories() async {
+    final data = await ApiClient.get('/api/admin/ride-categories');
+    return (data as List).whereType<Map<String, dynamic>>().map(RideCategory.fromJson).toList();
+  }
+
+  static Future<RideCategory> createRideCategory({
+    required String key,
+    required String name,
+    required String description,
+    String? benefit,
+    required double baseFare,
+    required double perKm,
+    required double perMinute,
+    double minimumFare = 0,
+    double? commissionRate,
+    int sortOrder = 0,
+    List<String> eligibleVehicleClasses = const [],
+    bool active = true,
+  }) async {
+    final data = await ApiClient.post('/api/admin/ride-categories', {
+      'key': key,
+      'name': name,
+      'description': description,
+      if (benefit != null && benefit.isNotEmpty) 'benefit': benefit,
+      'baseFare': baseFare,
+      'perKm': perKm,
+      'perMinute': perMinute,
+      'minimumFare': minimumFare,
+      if (commissionRate != null) 'commissionRate': commissionRate,
+      'sortOrder': sortOrder,
+      'eligibleVehicleClasses': eligibleVehicleClasses,
+      'active': active,
+    });
+    return RideCategory.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<RideCategory> updateRideCategory(
+    String id, {
+    String? name,
+    String? description,
+    String? benefit,
+    double? baseFare,
+    double? perKm,
+    double? perMinute,
+    double? minimumFare,
+    double? commissionRate,
+    // Explicit flag because "clear the override, inherit the service default"
+    // means sending commissionRate: null, indistinguishable from "unset" if we
+    // only checked commissionRate != null.
+    bool clearCommissionRate = false,
+    int? sortOrder,
+    List<String>? eligibleVehicleClasses,
+    bool? active,
+  }) async {
+    final data = await ApiClient.patch('/api/admin/ride-categories/$id', {
+      if (name != null) 'name': name,
+      if (description != null) 'description': description,
+      if (benefit != null) 'benefit': benefit,
+      if (baseFare != null) 'baseFare': baseFare,
+      if (perKm != null) 'perKm': perKm,
+      if (perMinute != null) 'perMinute': perMinute,
+      if (minimumFare != null) 'minimumFare': minimumFare,
+      if (clearCommissionRate)
+        'commissionRate': null
+      else if (commissionRate != null)
+        'commissionRate': commissionRate,
+      if (sortOrder != null) 'sortOrder': sortOrder,
+      if (eligibleVehicleClasses != null) 'eligibleVehicleClasses': eligibleVehicleClasses,
+      if (active != null) 'active': active,
+    });
+    return RideCategory.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ---- Delivery vehicle rates (fixed 4 rows, PATCH-only) ----
+  static Future<List<DeliveryVehicleRate>> deliveryVehicleRates() async {
+    final data = await ApiClient.get('/api/admin/delivery-vehicle-rates');
+    return (data as List).whereType<Map<String, dynamic>>().map(DeliveryVehicleRate.fromJson).toList();
+  }
+
+  static Future<DeliveryVehicleRate> updateDeliveryVehicleRate(
+    String vehicleClass, {
+    String? name,
+    double? initialFee,
+    double? perKm,
+    double? commissionRate,
+    bool clearCommissionRate = false,
+    bool? active,
+  }) async {
+    final data = await ApiClient.patch('/api/admin/delivery-vehicle-rates/$vehicleClass', {
+      if (name != null) 'name': name,
+      if (initialFee != null) 'initialFee': initialFee,
+      if (perKm != null) 'perKm': perKm,
+      if (clearCommissionRate)
+        'commissionRate': null
+      else if (commissionRate != null)
+        'commissionRate': commissionRate,
+      if (active != null) 'active': active,
+    });
+    return DeliveryVehicleRate.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ---- Financial dashboard (read-only, any Admin) ----
+  static Future<FinancialDashboard> financialDashboard({DateTime? from, DateTime? to}) async {
+    final params = <String>[];
+    if (from != null) params.add('from=${Uri.encodeComponent(from.toUtc().toIso8601String())}');
+    if (to != null) params.add('to=${Uri.encodeComponent(to.toUtc().toIso8601String())}');
+    final qs = params.isEmpty ? '' : '?${params.join('&')}';
+    final data = await ApiClient.get('/api/admin/financial-dashboard$qs');
+    return FinancialDashboard.fromJson(data as Map<String, dynamic>);
   }
 
   // ---- Live map (real driver locations + active trips) ----
