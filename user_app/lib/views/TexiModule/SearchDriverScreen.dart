@@ -28,7 +28,14 @@ class SearchDriverScreen extends StatefulWidget {
 class _SearchDriverScreenState extends State<SearchDriverScreen> {
   final RealtimeService _rt = RealtimeService();
 
-  Trip get trip => widget.trip;
+  // Mutable — a driver can now be matched well after this screen was built
+  // (see backend/src/services/matching.ts's matchPendingTrips, triggered by a
+  // driver going online), not just at trip-creation time. The 'trip:status'
+  // WebSocket message that reports that only ever carries a status string,
+  // never driver/vehicle details, so _refreshIfNewlyMatched() re-fetches the
+  // full trip and replaces this rather than trying to patch fields in place.
+  late Trip _trip = widget.trip;
+  Trip get trip => _trip;
 
   // Live state, seeded from the created trip and updated over the WebSocket.
   late String _status = trip.status;
@@ -367,6 +374,18 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
     if (ok) _rt.subscribe(trip.id);
   }
 
+  Future<void> _refreshTrip() async {
+    try {
+      final fresh = await TripsApi.byId(widget.trip.id);
+      if (!mounted) return;
+      setState(() => _trip = fresh);
+    } catch (_) {
+      // Best-effort — the status banner already reflects MATCHED from the
+      // WebSocket message; only the driver-details card is missing until a
+      // retry (the next poll cycle, or a pull-to-refresh path if one exists).
+    }
+  }
+
   void _onMessage(Map<String, dynamic> m) {
     if (!mounted) return;
     switch (m['type']) {
@@ -375,9 +394,17 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
         break;
       case 'trip:status':
         if ('${m['tripId']}' == trip.id) {
-          setState(() => _status = '${m['status']}');
+          final newStatus = '${m['status']}';
+          setState(() => _status = newStatus);
           _syncLocationPing();
           _syncDriverLocationPoll();
+          // This message never carries driver/vehicle details — only a
+          // late match (see backend's matchPendingTrips) reaches this screen
+          // as a bare status flip with nothing else to render, so a matched
+          // trip whose local copy still has no driver needs a real refetch.
+          if (newStatus == 'MATCHED' && (trip.driverName == null || trip.driverName!.isEmpty)) {
+            _refreshTrip();
+          }
         }
         break;
       case 'location':

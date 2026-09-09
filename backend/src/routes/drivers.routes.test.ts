@@ -180,6 +180,70 @@ test("PATCH /api/drivers/me/availability lets an ACTIVE driver go online, blocks
   assert.equal(ok.body.isOnline, true);
 });
 
+// A REQUESTED trip is only ever matched once, synchronously, at creation —
+// there is no background retry (see services/matching.ts). Going online is
+// the one moment that can change the outcome for a rider already waiting,
+// so it must retry matching, not just flip isOnline and leave them stuck.
+test("PATCH /api/drivers/me/availability retries matching for a rider already waiting", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-retry-1", role: "RIDER", firstName: "R", lastName: "W", email: "rw@example.com" },
+  });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "REQUESTED" },
+  });
+
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "drv-retry-1", role: "DRIVER", firstName: "D", lastName: "R", email: "dr@example.com" },
+  });
+  await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE" } });
+  const token = mockAuthAs({ sub: "drv-retry-1", groups: ["Driver"] });
+
+  const res = await request(app)
+    .patch("/api/drivers/me/availability")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ isOnline: true });
+  assert.equal(res.status, 200);
+
+  const updated = await prisma.trip.findUnique({ where: { id: trip.id } });
+  assert.equal(updated?.status, "MATCHED");
+  assert.ok(updated?.driverId);
+
+  const notifications = await prisma.notification.findMany({ where: { userId: rider.id } });
+  assert.ok(notifications.some((n) => n.type === "RIDE_DRIVER_ASSIGNED" && n.referenceId === trip.id));
+});
+
+test("PATCH /api/drivers/me/availability does not reach back and match a stale, long-abandoned request", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-retry-2", role: "RIDER", firstName: "R", lastName: "S", email: "rs@example.com" },
+  });
+  const staleTrip = await prisma.trip.create({
+    data: {
+      riderId: rider.id,
+      pickup: "X",
+      destination: "Y",
+      estimatedFare: 12,
+      status: "REQUESTED",
+      requestedAt: new Date(Date.now() - 60 * 60_000), // an hour ago
+    },
+  });
+
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "drv-retry-2", role: "DRIVER", firstName: "D", lastName: "S", email: "ds@example.com" },
+  });
+  await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE" } });
+  const token = mockAuthAs({ sub: "drv-retry-2", groups: ["Driver"] });
+
+  const res = await request(app)
+    .patch("/api/drivers/me/availability")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ isOnline: true });
+  assert.equal(res.status, 200);
+
+  const stillRequested = await prisma.trip.findUnique({ where: { id: staleTrip.id } });
+  assert.equal(stillRequested?.status, "REQUESTED");
+  assert.equal(stillRequested?.driverId, null);
+});
+
 test("POST /api/drivers/me/location records the driver's position in the realtime hub (backs the admin Live Map)", async () => {
   const user = await prisma.user.create({
     data: { cognitoSub: "drv-loc-1", role: "DRIVER", firstName: "L", lastName: "D", email: "ld@example.com" },
