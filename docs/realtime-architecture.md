@@ -57,6 +57,25 @@ a shared pub/sub backend (Redis, or at that point AppSync starts looking
 more attractive since the single-container assumption above no longer
 holds) so broadcasts fan out across instances.
 
+**Update (P2 #5 follow-up):** this was previously only an assumption — with
+no `AutoScalingConfiguration` attached, App Runner falls back to its account
+default (MinSize 1, MaxSize 25), which could silently scale `RavelGo-Api` to
+more than one instance under real concurrent load with no error and no
+alarm, just an intermittently wrong map for whichever rider/admin landed on
+a different instance. `infra/lib/api-stack.ts` now attaches a dedicated
+`AWS::AppRunner::AutoScalingConfiguration` pinned to `MaxSize: 1` /
+`MinSize: 1`, so "one instance" is an enforced guarantee rather than a hope.
+Raising that limit is the actual trigger to build the shared-store
+replacement described above — don't raise `MaxSize` without doing that
+first.
+
+Stale-location protection already exists independently of instance count:
+`locationFreshness()` classifies every reported position as `LIVE` (within
+`LIVE_LOCATION_THRESHOLD_MS`, 30s) or `STALE`, and every consumer of a
+driver's position — the admin Live Map, a rider's live trip-tracking screen,
+and a delivery's tracking screen — renders that classification rather than
+silently trusting an old coordinate forever.
+
 ## What's built on top of this
 
 - **RT-02 — driver location streaming**: `{"type":"location"}` messages

@@ -6,6 +6,7 @@ import 'package:ravelgo_user_app/views/User/invite_a_friend.dart';
 import 'package:ravelgo_user_app/views/TexiModule/SelectRide.dart';
 import 'package:ravelgo_user_app/views/Services/CarRentalScreen.dart';
 import 'package:ravelgo_user_app/views/Delivery/SendPackageScreen.dart';
+import 'package:ravelgo_user_app/views/Stays/StaysScreen.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:ravelgo_user_app/views/OtherViews/NotificationsScreen.dart';
@@ -20,10 +21,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-
-  // Mock value, replace with live data. Kept in sync with the rating shown
-  // on the Account screen for the same rider.
-  final String _rating = "5.00";
 
   @override
   Widget build(BuildContext context) {
@@ -183,46 +180,11 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  /// Statistic row with label and value aligned like design
-  Widget _statRow(String label, String value) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: TextStyle(fontSize: 15)),
-              SizedBox(height: 2),
-              Text(value, style: TextStyle(fontWeight: FontWeight.w700, color: AppColors.primaryDark)),
-            ],
-          ),
-          Spacer(),
-          Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
-        ],
-      ),
-    );
-  }
-
-  /// Multi-service launcher: Ride, Car Rentals, and Delivery route into flows
-  /// that already exist and have real photography, shown as Uber-style photo
-  /// cards. Services is already reachable from the bottom nav bar, and
-  /// Eats/Hotels have no photography yet, so none of the three get a tile
-  /// here.
-  void _showComingSoon(BuildContext context, String feature) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Coming soon'),
-        content: Text('$feature is coming soon.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
-        ],
-      ),
-    );
-  }
+  /// Multi-service launcher: Ride, Car Rentals, Delivery, and Short Stay
+  /// rentals all route into real, already-built flows with their own live
+  /// backend data — none of these is a placeholder. Eats/Hotels have no
+  /// photography yet and are reachable from the Services tab instead, so
+  /// they don't get a tile here.
 
   Widget _buildServicesLauncher() {
     // Each card image already has its own title, description, icon badge and
@@ -235,7 +197,8 @@ class _HomePageState extends State<HomePage> {
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CarRentalScreen()))),
       ('Delivery', 'assets/card_delivery.png',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SendPackageScreen()))),
-      ('Short stay rentals', 'assets/card_short_stay.png', () => _showComingSoon(context, 'Short stay rentals')),
+      ('Short stay rentals', 'assets/card_short_stay.png',
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StaysScreen()))),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -371,19 +334,6 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
-            const SizedBox(height: 12),
-
-            /// Stats Card
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: _cardContainer(
-                child: Column(
-                  children: [
-                    _statRow("Your Rating", _rating),
-                  ],
-                ),
-              ),
-            ),
           ],
         ),
       ),

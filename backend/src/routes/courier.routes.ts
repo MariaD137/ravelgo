@@ -16,7 +16,7 @@ import { LEGACY_PACKAGE_PRICES, quoteDelivery } from "../services/delivery-prici
 import { getPricingPolicy } from "../lib/pricing-policy";
 import { recordDriverCompensationCharge } from "../services/ledger";
 import { MAX_FINAL_FARE_MULTIPLIER, MIN_FINAL_FARE_MULTIPLIER } from "../lib/money";
-import { driverEligibleForNewDelivery } from "../lib/driver-conflicts";
+import { driverEligibleForNewDelivery, findEligibleDriversForNewDelivery } from "../lib/driver-conflicts";
 
 export const courierRouter = Router();
 
@@ -133,6 +133,34 @@ courierRouter.post("/courier-requests", requireAuth, requireRole("Rider"), async
       dropoffLng: dropoff ? dropoffLng : undefined,
     },
   });
+
+  // P2 #6: push the new delivery to every currently-eligible driver instead
+  // of leaving discovery entirely to polling — admin-approved, online, and
+  // not already committed to a conflicting ride/delivery (never offline,
+  // suspended, pending-review, or already-engaged drivers). The body
+  // deliberately carries only what's needed to decide whether to accept
+  // (pickup area, price) — never the recipient's name/phone, which stays
+  // behind the authenticated detail/accept endpoints. A failure here is
+  // never allowed to fail the delivery itself: the request has already been
+  // created and committed above, and this is a best-effort fan-out on top
+  // of it, exactly like notifyUser's own internal best-effort contract.
+  try {
+    const eligible = await findEligibleDriversForNewDelivery();
+    await Promise.all(
+      eligible.map((driver) =>
+        notifyUser(
+          driver.userId,
+          "DELIVERY_OFFERED",
+          "New delivery available",
+          `Pickup near ${request.pickupAddress}. Estimated fare: ${request.estimatedFare}.`,
+          { type: "COURIER_REQUEST", id: request.id },
+        ),
+      ),
+    );
+  } catch (err) {
+    console.error("Failed to notify eligible drivers of a new delivery", err);
+  }
+
   res.status(201).json(serializeCourierRequest(request));
 });
 

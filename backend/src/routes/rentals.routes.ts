@@ -7,7 +7,12 @@ import { recordAudit } from "../lib/audit";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { sensitiveLimiter } from "../middleware/rate-limit";
 import { InsufficientFundsError } from "../services/wallet";
-import { RentalBookingNotChargeableError, cancelRentalBooking, chargeRentalBooking } from "../services/rental-payment";
+import {
+  RentalBookingNotChargeableError,
+  cancelRentalBooking,
+  chargeRentalBooking,
+  reconcileExpiredRentalBookings,
+} from "../services/rental-payment";
 import { serializeRentalListing, serializeVehicle } from "../lib/vehicle-view";
 
 export const rentalsRouter = Router();
@@ -74,14 +79,27 @@ rentalsRouter.post("/rentals", requireAuth, requireRole("Driver"), async (req, r
   res.status(201).json(serializeRentalListing(listing));
 });
 
-// Driver: view my own rental listings
+// Driver: view my own rental listings, WITH their bookings (dates, status,
+// payment status, and the renter's name only — never email/phone/cognitoSub)
+// so the owner can actually see who booked their car and when, not just that
+// a listing exists. This is the one place bookings are attached to a
+// listing response — the public /rentals browse list never includes them.
 rentalsRouter.get("/rentals/mine", requireAuth, requireRole("Driver"), async (req, res) => {
   const driver = await findOwnDriver(req.user!.sub);
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
+  // Opportunistic reconciliation (see reconcileExpiredRentalBookings' doc
+  // comment) so the owner never sees a booking still marked CONFIRMED after
+  // its dates have actually passed, even if the periodic sweep hasn't run
+  // yet.
+  await reconcileExpiredRentalBookings();
+
   const listings = await prisma.rentalListing.findMany({
     where: { driverId: driver.id },
-    include: { vehicle: true },
+    include: {
+      vehicle: true,
+      bookings: { include: { renter: true }, orderBy: { startDate: "desc" } },
+    },
     orderBy: { createdAt: "desc" },
   });
   res.json(listings.map(serializeRentalListing));
@@ -189,6 +207,8 @@ rentalsRouter.get("/rental-bookings/mine", requireAuth, async (req, res) => {
   const user = await findOwnUser(req.user!.sub);
   if (!user) return res.status(404).json({ error: "User not found" });
 
+  await reconcileExpiredRentalBookings();
+
   const bookings = await prisma.rentalBooking.findMany({
     where: { renterId: user.id },
     include: { listing: { include: { vehicle: true } } },
@@ -224,6 +244,8 @@ rentalsRouter.post("/rental-bookings/:id/pay", sensitiveLimiter, requireAuth, as
 
 // Customer (who owns the booking) or Admin: booking detail.
 rentalsRouter.get("/rental-bookings/:id", requireAuth, async (req, res) => {
+  await reconcileExpiredRentalBookings();
+
   const booking = await prisma.rentalBooking.findUnique({
     where: { id: req.params.id },
     include: { listing: { include: { vehicle: true } } },

@@ -410,6 +410,10 @@ model RentalBooking {
 
   @@index([renterId])
   @@index([listingId])
+  // Backs reconcileExpiredRentalBookings' conditional "close out CONFIRMED
+  // bookings whose endDate has passed" query (services/rental-payment.ts) —
+  // run both periodically and opportunistically on read.
+  @@index([status, endDate])
 }
 
 // Short-stay property rentals (book a place for a range of nights). Mirrors

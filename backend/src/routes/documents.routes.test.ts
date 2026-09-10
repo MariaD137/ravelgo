@@ -185,3 +185,65 @@ test("PATCH /api/documents/:id/review rejects an admin whose role lacks drivers:
 
   assert.equal(res.status, 403);
 });
+
+// --- GET /documents/:id/url: driver self-service signed URL ----------------
+
+test("GET /api/documents/:id/url returns a signed URL for the document's own driver", async () => {
+  await createDriver("driver-self-1");
+  const driver = await prisma.driver.findFirstOrThrow({ where: { user: { cognitoSub: "driver-self-1" } } });
+  const doc = await prisma.driverDocument.create({
+    data: { driverId: driver.id, title: "License", fileKey: "driver-self-1/license.pdf" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-self-1", groups: ["Driver"] });
+  const res = await request(app).get(`/api/documents/${doc.id}/url`).set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.ok(typeof res.body.url === "string" && res.body.url.startsWith("http"));
+  assert.equal(res.body.expiresIn, 300);
+});
+
+test("GET /api/documents/:id/url 404s when the document belongs to a different driver (cross-driver access denied)", async () => {
+  await createDriver("driver-self-2a");
+  await createDriver("driver-self-2b");
+  const driverB = await prisma.driver.findFirstOrThrow({ where: { user: { cognitoSub: "driver-self-2b" } } });
+  const docB = await prisma.driverDocument.create({
+    data: { driverId: driverB.id, title: "License", fileKey: "driver-self-2b/license.pdf" },
+  });
+
+  const tokenA = mockAuthAs({ sub: "driver-self-2a", groups: ["Driver"] });
+  const res = await request(app).get(`/api/documents/${docB.id}/url`).set("Authorization", `Bearer ${tokenA}`);
+
+  assert.equal(res.status, 404);
+});
+
+test("GET /api/documents/:id/url 404s for a document that doesn't exist", async () => {
+  await createDriver("driver-self-3");
+  const token = mockAuthAs({ sub: "driver-self-3", groups: ["Driver"] });
+  const res = await request(app).get(`/api/documents/does-not-exist/url`).set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 404);
+});
+
+test("GET /api/documents/:id/url 404s when the document has no fileKey uploaded yet", async () => {
+  await createDriver("driver-self-4");
+  const driver = await prisma.driver.findFirstOrThrow({ where: { user: { cognitoSub: "driver-self-4" } } });
+  const doc = await prisma.driverDocument.create({
+    data: { driverId: driver.id, title: "License", status: "NOT_UPLOADED" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-self-4", groups: ["Driver"] });
+  const res = await request(app).get(`/api/documents/${doc.id}/url`).set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 404);
+});
+
+test("GET /api/documents/:id/url rejects a non-Driver caller", async () => {
+  await createDriver("driver-self-5");
+  const driver = await prisma.driver.findFirstOrThrow({ where: { user: { cognitoSub: "driver-self-5" } } });
+  const doc = await prisma.driverDocument.create({
+    data: { driverId: driver.id, title: "License", fileKey: "driver-self-5/license.pdf" },
+  });
+
+  const token = mockAuthAs({ sub: "rider-self-5", groups: ["Rider"] });
+  const res = await request(app).get(`/api/documents/${doc.id}/url`).set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 403);
+});

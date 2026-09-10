@@ -3,6 +3,7 @@ import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/courier_api.dart';
 import 'package:ravelgo_user_app/services/rental_api.dart';
+import 'package:ravelgo_user_app/services/stays_api.dart';
 import 'package:ravelgo_user_app/services/trips_api.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:ravelgo_user_app/views/Rentals/RentalBookingDetailScreen.dart';
@@ -18,7 +19,7 @@ bool _isCancellableDeliveryStatus(String status) =>
 /// own real endpoint; there is no unified backend model, so this normalizes
 /// them client-side purely for display.
 class _ActivityEntry {
-  final String type; // Ride | Car Rental | Delivery
+  final String type; // Ride | Car Rental | Delivery | Short Stay
   final IconData icon;
   final String title;
   final String subtitle;
@@ -52,10 +53,8 @@ class _ActivityEntry {
   });
 }
 
-/// Everything this customer has done across all four services, in one place.
-/// Each list comes from its own real backend query — Short Stays is omitted
-/// because that service isn't open to customers yet (see the "Coming soon"
-/// gate on its Home/Services tile).
+/// Everything this customer has done across all five services, in one place.
+/// Each list comes from its own real backend query.
 class MyActivityScreen extends StatefulWidget {
   const MyActivityScreen({super.key});
 
@@ -98,6 +97,18 @@ class _MyActivityScreenState extends State<MyActivityScreen> {
     }
   }
 
+  Color _stayColor(String s) {
+    switch (s) {
+      case 'CONFIRMED':
+      case 'COMPLETED':
+        return AppColors.success;
+      case 'CANCELLED':
+        return AppColors.error;
+      default:
+        return AppColors.warning;
+    }
+  }
+
   Color _deliveryColor(String s) {
     switch (s) {
       case 'DELIVERED':
@@ -122,10 +133,12 @@ class _MyActivityScreenState extends State<MyActivityScreen> {
         TripsApi.mine().catchError((_) => <Trip>[]),
         RentalApi.myBookings().catchError((_) => <RentalBooking>[]),
         CourierApi.sent().catchError((_) => <CourierRequest>[]),
+        StaysApi.myBookings().catchError((_) => <StayBooking>[]),
       ]);
       final trips = results[0] as List<Trip>;
       final rentals = results[1] as List<RentalBooking>;
       final deliveries = results[2] as List<CourierRequest>;
+      final stays = results[3] as List<StayBooking>;
 
       final entries = <_ActivityEntry>[
         ...trips.map(
@@ -197,6 +210,27 @@ class _MyActivityScreenState extends State<MyActivityScreen> {
               'Requested': d.requestedAt.toString().split('.').first,
             },
             courierRequestId: d.id,
+          ),
+        ),
+        ...stays.map(
+          (s) => _ActivityEntry(
+            type: 'Short Stay',
+            icon: Icons.hotel_outlined,
+            title: s.property?.title.isNotEmpty == true ? s.property!.title : 'Stay booking',
+            subtitle: '${s.checkIn.split('T').first} → ${s.checkOut.split('T').first}',
+            status: s.status,
+            statusColor: _stayColor(s.status),
+            date: DateTime.tryParse(s.checkIn) ?? DateTime.now(),
+            amount: s.totalPrice,
+            details: {
+              'Property': s.property?.title ?? '—',
+              'Check-in': s.checkIn.split('T').first,
+              'Check-out': s.checkOut.split('T').first,
+              'Nights': '${s.nights}',
+              'Guests': '${s.guests}',
+              'Status': s.status,
+              'Total': Currency.format(s.totalPrice, decimals: 0),
+            },
           ),
         ),
       ]..sort((a, b) => b.date.compareTo(a.date));
@@ -349,7 +383,7 @@ class _MyActivityScreenState extends State<MyActivityScreen> {
         child: Padding(
           padding: EdgeInsets.all(24),
           child: Text(
-            'No activity yet. Book a ride, rent a car, or send a package to see it here.',
+            'No activity yet. Book a ride, rent a car, send a package, or book a stay to see it here.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppColors.textSecondary),
           ),

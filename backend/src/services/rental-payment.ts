@@ -154,3 +154,67 @@ export async function cancelRentalBooking(booking: ChargeableRentalBooking & { p
   );
   return cancelled;
 }
+
+/**
+ * Close out CONFIRMED bookings whose date range has genuinely ended
+ * (endDate has passed) — nothing else about them is checked or assumed;
+ * a booking that is still within its dates, or not CONFIRMED (PENDING_
+ * PAYMENT, CANCELLED, already COMPLETED), is never touched.
+ *
+ * Safe to call as often and from as many places as convenient:
+ *  - Idempotent: a booking already COMPLETED is not matched by the WHERE
+ *    clause again, so re-running this is always a no-op for it.
+ *  - Multi-instance safe: each booking is closed via its own atomic
+ *    conditional `updateMany` (status: "CONFIRMED" re-checked in the WHERE),
+ *    so if two instances race on the same booking, only the one whose
+ *    UPDATE actually matches a row (count === 1) treats it as newly
+ *    completed and notifies; the loser's updateMany matches 0 rows and is a
+ *    silent no-op — mirrors the exact pattern services/matching.ts's
+ *    expireStaleOffers() already uses for the same class of problem.
+ *  - Timezone-agnostic: endDate is stored as an absolute UTC instant, and
+ *    it's compared against the current instant (`new Date()`) — there is no
+ *    local calendar-day ambiguity to get wrong.
+ *
+ * Called both periodically (see index.ts's startRentalBookingSweep) and
+ * opportunistically wherever a renter/driver's bookings are read
+ * (rentals.routes.ts), so nobody has to wait for the periodic sweep to see
+ * an accurate status.
+ */
+export async function reconcileExpiredRentalBookings(): Promise<number> {
+  const due = await prisma.rentalBooking.findMany({
+    where: { status: "CONFIRMED", endDate: { lte: new Date() } },
+    select: { id: true, renterId: true },
+  });
+
+  let completed = 0;
+  for (const { id, renterId } of due) {
+    const { count } = await prisma.rentalBooking.updateMany({
+      where: { id, status: "CONFIRMED", endDate: { lte: new Date() } },
+      data: { status: "COMPLETED" },
+    });
+    if (count === 0) continue; // already completed by a concurrent reconciliation
+    completed += 1;
+    await notifyUser(
+      renterId,
+      "RENTAL_COMPLETED",
+      "Rental completed",
+      "Your rental period has ended. We hope you enjoyed the ride!",
+      { type: "RENTAL_BOOKING", id },
+    );
+  }
+  return completed;
+}
+
+// Rental completion isn't time-critical the way a ride offer's 20s window is
+// — a booking that ended an hour ago being marked COMPLETED an hour late has
+// no real consequence — so this runs far less often than
+// matching.ts's startOfferExpirySweep, purely as a backstop for a booking
+// nobody happens to read via the opportunistic call sites in
+// rentals.routes.ts.
+const RENTAL_SWEEP_INTERVAL_MS = 15 * 60_000;
+
+export function startRentalBookingSweep(intervalMs = RENTAL_SWEEP_INTERVAL_MS): ReturnType<typeof setInterval> {
+  return setInterval(() => {
+    reconcileExpiredRentalBookings().catch((err) => console.error("Failed to reconcile expired rental bookings", err));
+  }, intervalMs);
+}

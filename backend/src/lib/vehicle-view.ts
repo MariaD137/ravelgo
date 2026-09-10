@@ -35,6 +35,17 @@ interface VehicleRel {
   photoKey?: string | null;
   createdAt: Date;
 }
+interface RentalBookingRel {
+  id: string;
+  startDate: Date;
+  endDate: Date;
+  days: number;
+  totalPrice: number;
+  status: string;
+  paymentStatus: string;
+  createdAt: Date;
+  renter?: UserRel | null;
+}
 interface RentalListingRel {
   id: string;
   driverId: string;
@@ -47,6 +58,29 @@ interface RentalListingRel {
   createdAt: Date;
   vehicle?: VehicleRel | null;
   driver?: DriverRel | null;
+  // Only ever populated for the owning driver's own "my listings" view
+  // (GET /rentals/mine) — never for the public browse listing.
+  bookings?: RentalBookingRel[] | null;
+}
+
+// The renter's identity is stripped to first/last name only, the same
+// minimal-PII bar every other counterparty view in this codebase uses
+// (serializeTrip's rider, serializeCourierRequest's sender) — the vehicle
+// owner needs to know WHO booked their car, never their email or Cognito sub.
+function serializeRentalBooking(booking: RentalBookingRel) {
+  return {
+    id: booking.id,
+    startDate: booking.startDate,
+    endDate: booking.endDate,
+    days: booking.days,
+    totalPrice: booking.totalPrice,
+    status: booking.status,
+    paymentStatus: booking.paymentStatus,
+    createdAt: booking.createdAt,
+    renter: booking.renter
+      ? { firstName: booking.renter.firstName ?? null, lastName: booking.renter.lastName ?? null }
+      : undefined,
+  };
 }
 
 export function photoUrlFor(photoKey: string | null | undefined): string | null {
@@ -92,5 +126,6 @@ export function serializeRentalListing(listing: RentalListingRel) {
             : undefined,
         }
       : undefined,
+    bookings: listing.bookings ? listing.bookings.map(serializeRentalBooking) : undefined,
   };
 }

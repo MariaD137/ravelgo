@@ -39,3 +39,24 @@ export async function driverEligibleForNewRide(driverId: string): Promise<boolea
 export async function driverEligibleForNewDelivery(driverId: string): Promise<boolean> {
   return !(await driverHasActiveRide(driverId));
 }
+
+/**
+ * Every driver eligible to be OFFERED a brand-new delivery right now:
+ * admin-approved (ACTIVE — excludes SUSPENDED and PENDING_REVIEW), online,
+ * and not already committed to a conflicting ride or delivery. Used to fan
+ * out the "new delivery available" push notification (P2 #6) — this is a
+ * pure read, so a failure here must never affect delivery creation itself
+ * (see courier.routes.ts, which wraps the call in try/catch for exactly
+ * that reason).
+ */
+export async function findEligibleDriversForNewDelivery(): Promise<{ userId: string }[]> {
+  return prisma.driver.findMany({
+    where: {
+      status: "ACTIVE",
+      isOnline: true,
+      tripsAsDriver: { none: { status: { in: ["OFFERED", "MATCHED", "IN_PROGRESS"] } } },
+      courierRequestsHandled: { none: { status: { in: ["MATCHED", "PICKED_UP", "IN_TRANSIT"] } } },
+    },
+    select: { userId: true },
+  });
+}

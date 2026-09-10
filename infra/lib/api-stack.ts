@@ -90,6 +90,28 @@ export class ApiStack extends cdk.Stack {
       description: "From App Runner VPC connector",
     });
 
+    // P2 #5 (driver-location architecture): the real-time layer
+    // (src/realtime/hub.ts) is deliberately in-memory, single-instance —
+    // see docs/realtime-architecture.md's "trade-off, on the record". That
+    // was previously only an assumption: with no AutoScalingConfiguration
+    // attached, App Runner falls back to its account default (MinSize 1,
+    // MaxSize 25), which COULD silently scale this service to more than one
+    // instance under real concurrent load, quietly breaking driver-location
+    // visibility for whichever riders/admins land on a different instance —
+    // with no error, no alarm, just an intermittently wrong map. Pinning
+    // MaxSize to 1 here turns "we don't currently need more than one
+    // instance" into an enforced guarantee instead of a hope, at zero
+    // additional runtime cost (an AutoScalingConfiguration is a free
+    // control-plane resource). The concrete signal to revisit this (raise
+    // MaxSize and move the realtime hub to a shared store) is this service
+    // genuinely needing to scale out under real load — see
+    // docs/realtime-architecture.md.
+    const autoScaling = new apprunner.CfnAutoScalingConfiguration(this, "SingleInstanceAutoScaling", {
+      autoScalingConfigurationName: resourceName,
+      maxSize: 1,
+      minSize: 1,
+    });
+
     const vpcConnector = new apprunner.CfnVpcConnector(this, "VpcConnector", {
       // Egress subnets (route to NAT) so the service can reach Stripe and the
       // Cognito JWKS endpoint; it still reaches RDS in the isolated subnets
@@ -209,6 +231,7 @@ export class ApiStack extends cdk.Stack {
     if (deployService) {
     const service = new apprunner.CfnService(this, "BackendService", {
       serviceName: resourceName,
+      autoScalingConfigurationArn: autoScaling.attrAutoScalingConfigurationArn,
       sourceConfiguration: {
         autoDeploymentsEnabled: true,
         authenticationConfiguration: { accessRoleArn: accessRole.roleArn },

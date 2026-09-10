@@ -12,9 +12,11 @@ import 'package:ravelgo_driver_app/views/incentives/incentives_screen.dart';
 import 'package:ravelgo_driver_app/views/preferences/driver_preferences_screen.dart';
 import 'package:ravelgo_driver_app/views/ratings/my_ratings_screen.dart';
 import 'package:ravelgo_driver_app/views/rentals/list_vehicle_for_rental_screen.dart';
+import 'package:ravelgo_driver_app/views/rentals/my_rental_listings_screen.dart';
 import 'package:ravelgo_driver_app/views/safety/emergency_screen.dart';
 import 'package:ravelgo_driver_app/views/subscription/driver_subscription_screen.dart';
 import 'package:ravelgo_driver_app/views/support/contact_us_screen.dart';
+import 'package:ravelgo_driver_app/views/support/driver_support_screen.dart';
 import 'package:ravelgo_driver_app/views/support/faq_screen.dart';
 import 'package:ravelgo_driver_app/views/vehicles/vehicle_list_screen.dart';
 
@@ -68,6 +70,8 @@ class AccountScreen extends StatelessWidget {
                 AppComponents.divider(),
                 AppComponents.tile(title: "List Car for Luxury Rental", leading: Icons.key_outlined, onTap: () => _go(context, const ListVehicleForRentalScreen())),
                 AppComponents.divider(),
+                AppComponents.tile(title: "My Listings", leading: Icons.event_note_outlined, onTap: () => _go(context, const MyRentalListingsScreen())),
+                AppComponents.divider(),
                 AppComponents.tile(title: "Subscription Plan", leading: Icons.workspace_premium_outlined, onTap: () => _go(context, const DriverSubscriptionScreen())),
               ],
             ),
@@ -97,6 +101,8 @@ class AccountScreen extends StatelessWidget {
                 AppComponents.tile(title: "FAQ", leading: Icons.help_outline, onTap: () => _go(context, const FAQScreen())),
                 AppComponents.divider(),
                 AppComponents.tile(title: "Contact Support", leading: Icons.phone_outlined, onTap: () => _go(context, const ContactUsScreen())),
+                AppComponents.divider(),
+                AppComponents.tile(title: "Support & Disputes", leading: Icons.support_agent_outlined, onTap: () => _go(context, const DriverSupportScreen())),
                 AppComponents.divider(),
                 AppComponents.tile(
                   title: "Log out",

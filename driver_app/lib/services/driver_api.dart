@@ -346,6 +346,84 @@ class Vehicle {
       );
 }
 
+/// One reservation against the owning driver's own rental listing. Renter is
+/// intentionally minimal (first/last name only) — the backend never sends
+/// the renter's email, phone, or Cognito sub to the vehicle owner.
+class RentalBooking {
+  final String id;
+  final DateTime startDate;
+  final DateTime endDate;
+  final int days;
+  final double totalPrice;
+  final String status; // PENDING_PAYMENT | CONFIRMED | CANCELLED | COMPLETED
+  final String paymentStatus;
+  final String renterName;
+
+  RentalBooking({
+    required this.id,
+    required this.startDate,
+    required this.endDate,
+    required this.days,
+    required this.totalPrice,
+    required this.status,
+    required this.paymentStatus,
+    required this.renterName,
+  });
+
+  factory RentalBooking.fromJson(Map<String, dynamic> j) {
+    final renter = j['renter'] as Map?;
+    final first = '${renter?['firstName'] ?? ''}'.trim();
+    final last = '${renter?['lastName'] ?? ''}'.trim();
+    final name = '$first $last'.trim();
+    return RentalBooking(
+      id: '${j['id']}',
+      startDate: DateTime.tryParse('${j['startDate']}') ?? DateTime.now(),
+      endDate: DateTime.tryParse('${j['endDate']}') ?? DateTime.now(),
+      days: j['days'] is num ? (j['days'] as num).toInt() : int.tryParse('${j['days']}') ?? 0,
+      totalPrice: j['totalPrice'] is num ? (j['totalPrice'] as num).toDouble() : double.tryParse('${j['totalPrice']}') ?? 0,
+      status: '${j['status'] ?? 'PENDING_PAYMENT'}',
+      paymentStatus: '${j['paymentStatus'] ?? 'PENDING'}',
+      renterName: name.isEmpty ? 'Renter' : name,
+    );
+  }
+}
+
+/// One of the calling driver's own rental listings (GET /api/rentals/mine) —
+/// real backend data, including this listing's real bookings. Never mock.
+class RentalListing {
+  final String id;
+  final String status; // PENDING_APPROVAL | APPROVED | REJECTED
+  final double dailyRate;
+  final String location;
+  final Vehicle? vehicle;
+  final List<RentalBooking> bookings;
+
+  RentalListing({
+    required this.id,
+    required this.status,
+    required this.dailyRate,
+    required this.location,
+    required this.vehicle,
+    required this.bookings,
+  });
+
+  factory RentalListing.fromJson(Map<String, dynamic> j) {
+    final vehicleJson = j['vehicle'] as Map<String, dynamic>?;
+    final bookingsJson = j['bookings'] as List?;
+    return RentalListing(
+      id: '${j['id']}',
+      status: '${j['status'] ?? 'PENDING_APPROVAL'}',
+      dailyRate: j['dailyRate'] is num ? (j['dailyRate'] as num).toDouble() : double.tryParse('${j['dailyRate']}') ?? 0,
+      location: '${j['location'] ?? ''}',
+      vehicle: vehicleJson != null ? Vehicle.fromJson(vehicleJson) : null,
+      bookings: (bookingsJson ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(RentalBooking.fromJson)
+          .toList(),
+    );
+  }
+}
+
 class DriverApi {
   /// Apply to become a driver (safe to call after sign-in; idempotent).
   ///
@@ -494,6 +572,16 @@ class DriverApi {
     return list.whereType<Map<String, dynamic>>().map(DriverDocument.fromJson).toList();
   }
 
+  /// A short-lived signed URL to view one of the calling driver's OWN
+  /// uploaded documents (GET /api/documents/:id/url). The backend enforces
+  /// ownership server-side — this can never return another driver's
+  /// document — so there is nothing to check client-side beyond simply
+  /// calling it. Throws ApiException(404) if this document has no file yet.
+  static Future<String> myDocumentUrl(String documentId) async {
+    final data = await ApiClient.get('/api/documents/$documentId/url') as Map<String, dynamic>;
+    return data['url'] as String;
+  }
+
   /// Raise an emergency SOS alert (reaches the admin safety queue).
   static Future<void> raiseSos({String? message}) async {
     await ApiClient.post('/api/emergency-alerts', {
@@ -592,6 +680,16 @@ class DriverApi {
       if (lat != null) 'lat': lat,
       if (lng != null) 'lng': lng,
     });
+  }
+
+  /// The calling driver's own rental listings, each WITH its bookings
+  /// (dates, status, payment status, and the renter's name only — see
+  /// backend/src/lib/vehicle-view.ts#serializeRentalListing). Real backend
+  /// data only; there is no local/mock rental list.
+  static Future<List<RentalListing>> myRentalListings() async {
+    final data = await ApiClient.get('/api/rentals/mine');
+    final list = data is List ? data : const [];
+    return list.whereType<Map<String, dynamic>>().map(RentalListing.fromJson).toList();
   }
 
   /// The driver's saved payout bank account, or null if none set.

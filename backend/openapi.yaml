@@ -606,6 +606,28 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/DriverDocument" }
+  /documents/{id}/url:
+    get:
+      tags: [Documents]
+      summary: >-
+        A short-lived (5 min) presigned URL to view one of the calling
+        driver's OWN documents (Driver, ownership-enforced — a document
+        belonging to a different driver, or one that doesn't exist, both
+        404).
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Signed URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string }
+                  expiresIn: { type: integer }
+        "404":
+          description: Document not found, belongs to a different driver, or has no file uploaded yet
   /documents:
     post:
       tags: [Documents]
@@ -1895,6 +1917,25 @@ components:
         dailyRate: { type: number }
         location: { type: string }
         status: { type: string, enum: [PENDING_APPROVAL, APPROVED, REJECTED] }
+        bookings:
+          type: array
+          description: Only populated on GET /rentals/mine (the owning driver's own view) — never on the public browse listing.
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              startDate: { type: string, format: date-time }
+              endDate: { type: string, format: date-time }
+              days: { type: integer }
+              totalPrice: { type: number }
+              status: { type: string, enum: [PENDING_PAYMENT, CONFIRMED, CANCELLED, COMPLETED] }
+              paymentStatus: { type: string, enum: [PENDING, SUCCEEDED, FAILED, REFUNDED] }
+              renter:
+                type: object
+                description: First/last name only — never email, phone, or Cognito sub.
+                properties:
+                  firstName: { type: string, nullable: true }
+                  lastName: { type: string, nullable: true }
 
     Trip:
       type: object

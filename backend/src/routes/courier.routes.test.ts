@@ -69,6 +69,139 @@ test("POST /api/courier-requests computes the price server-side from packageSize
   assert.equal(res.body.estimatedFare, 2500);
 });
 
+// --- P2 #6: push notification fan-out to eligible drivers on creation ------
+
+async function createOnlineDriver(cognitoSub: string, opts: { status?: "ACTIVE" | "PENDING_REVIEW" | "SUSPENDED"; isOnline?: boolean } = {}) {
+  const user = await prisma.user.create({
+    data: { cognitoSub, role: "DRIVER", firstName: "D", lastName: "R", email: `${cognitoSub}@example.com` },
+  });
+  return prisma.driver.create({
+    data: { userId: user.id, status: opts.status ?? "ACTIVE", isOnline: opts.isOnline ?? true },
+  });
+}
+
+async function createRiderAndPostDelivery(riderSub: string) {
+  await createRider(riderSub);
+  const token = mockAuthAs({ sub: riderSub, groups: ["Rider"] });
+  const res = await request(app)
+    .post("/api/courier-requests")
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      pickupAddress: "1 Main St",
+      dropoffAddress: "2 Side St",
+      packageDescription: "Documents",
+      recipientName: "Sam",
+      recipientPhone: "555-0100",
+    });
+  return res.body as { id: string };
+}
+
+test("a new delivery notifies an eligible (ACTIVE, online, unencumbered) driver", async () => {
+  const driver = await createOnlineDriver("driver-notify-1");
+  restoreAuth();
+  await createRiderAndPostDelivery("rider-notify-1");
+
+  const notifications = await prisma.notification.findMany({
+    where: { userId: driver.userId, type: "DELIVERY_OFFERED" },
+  });
+  assert.equal(notifications.length, 1);
+  assert.ok(notifications[0].body.includes("1 Main St"));
+});
+
+test("a new delivery does NOT notify an offline driver", async () => {
+  const driver = await createOnlineDriver("driver-notify-2", { isOnline: false });
+  restoreAuth();
+  await createRiderAndPostDelivery("rider-notify-2");
+
+  const notifications = await prisma.notification.findMany({
+    where: { userId: driver.userId, type: "DELIVERY_OFFERED" },
+  });
+  assert.equal(notifications.length, 0);
+});
+
+test("a new delivery does NOT notify a suspended driver", async () => {
+  const driver = await createOnlineDriver("driver-notify-3", { status: "SUSPENDED" });
+  restoreAuth();
+  await createRiderAndPostDelivery("rider-notify-3");
+
+  const notifications = await prisma.notification.findMany({
+    where: { userId: driver.userId, type: "DELIVERY_OFFERED" },
+  });
+  assert.equal(notifications.length, 0);
+});
+
+test("a new delivery does NOT notify a pending-review driver", async () => {
+  const driver = await createOnlineDriver("driver-notify-4", { status: "PENDING_REVIEW" });
+  restoreAuth();
+  await createRiderAndPostDelivery("rider-notify-4");
+
+  const notifications = await prisma.notification.findMany({
+    where: { userId: driver.userId, type: "DELIVERY_OFFERED" },
+  });
+  assert.equal(notifications.length, 0);
+});
+
+test("a new delivery does NOT notify a driver already on an active ride", async () => {
+  const driver = await createOnlineDriver("driver-notify-5");
+  const rider = await createRider("rider-notify-5-passenger");
+  await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "MATCHED" },
+  });
+  restoreAuth();
+  await createRiderAndPostDelivery("rider-notify-5");
+
+  const notifications = await prisma.notification.findMany({
+    where: { userId: driver.userId, type: "DELIVERY_OFFERED" },
+  });
+  assert.equal(notifications.length, 0);
+});
+
+test("a new delivery does NOT notify a driver already carrying another active delivery", async () => {
+  const driver = await createOnlineDriver("driver-notify-6");
+  const otherSender = await createRider("rider-notify-6-other");
+  await prisma.courierRequest.create({
+    data: {
+      senderId: otherSender.id,
+      driverId: driver.id,
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "box",
+      recipientName: "R",
+      recipientPhone: "123",
+      estimatedFare: 1000,
+      status: "IN_TRANSIT",
+    },
+  });
+  restoreAuth();
+  await createRiderAndPostDelivery("rider-notify-6");
+
+  const notifications = await prisma.notification.findMany({
+    where: { userId: driver.userId, type: "DELIVERY_OFFERED" },
+  });
+  assert.equal(notifications.length, 0);
+});
+
+test("a new delivery notifies every eligible driver, not just one", async () => {
+  const driverA = await createOnlineDriver("driver-notify-7a");
+  const driverB = await createOnlineDriver("driver-notify-7b");
+  restoreAuth();
+  await createRiderAndPostDelivery("rider-notify-7");
+
+  const notificationsA = await prisma.notification.findMany({ where: { userId: driverA.userId, type: "DELIVERY_OFFERED" } });
+  const notificationsB = await prisma.notification.findMany({ where: { userId: driverB.userId, type: "DELIVERY_OFFERED" } });
+  assert.equal(notificationsA.length, 1);
+  assert.equal(notificationsB.length, 1);
+});
+
+test("delivery creation still succeeds (201) even though the notification fan-out runs after the request is already created", async () => {
+  await createOnlineDriver("driver-notify-8");
+  restoreAuth();
+  const created = await createRiderAndPostDelivery("rider-notify-8");
+  assert.ok(created.id);
+  const stored = await prisma.courierRequest.findUnique({ where: { id: created.id } });
+  assert.ok(stored, "the delivery itself must exist regardless of notification fan-out");
+});
+
 test("GET /api/courier-requests/sent lists only the caller's own sent requests", async () => {
   const senderA = await createRider("rider-sub-1c");
   const tokenA = mockAuthAs({ sub: "rider-sub-1c", groups: ["Rider"] });

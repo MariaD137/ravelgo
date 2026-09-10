@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class MyDocumentsScreen extends StatefulWidget {
   const MyDocumentsScreen({super.key});
@@ -24,6 +25,7 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
   bool _uploading = false;
   String? _error;
   List<DriverDocument> _docs = const [];
+  String? _openingDocId;
 
   @override
   void initState() {
@@ -118,6 +120,28 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
     }
   }
 
+  /// Opens a real, freshly-signed URL for a document this driver actually
+  /// uploaded (GET /api/documents/:id/url) — never a public/permanent link,
+  /// never another driver's document (the backend enforces ownership; the
+  /// only thing gating this client-side is that NOT_UPLOADED documents have
+  /// no file to view at all).
+  Future<void> _viewDocument(DriverDocument doc) async {
+    setState(() => _openingDocId = doc.id);
+    try {
+      final url = await DriverApi.myDocumentUrl(doc.id);
+      final uri = Uri.tryParse(url);
+      if (uri == null || !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        throw Exception('Could not open this document.');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e is ApiException ? e.message : 'Could not open this document. Please try again.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    } finally {
+      if (mounted) setState(() => _openingDocId = null);
+    }
+  }
+
   Color _statusColor(String s) {
     switch (s) {
       case 'APPROVED':
@@ -200,26 +224,39 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
         separatorBuilder: (_, __) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
           final d = _docs[i];
-          return Container(
-            padding: const EdgeInsets.all(14),
-            decoration: AppComponents.cardDecoration(),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(d.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                      if (d.expiryDate != null) ...[
-                        const SizedBox(height: 4),
-                        Text("Expires ${d.expiryDate!.toLocal().toString().split(' ').first}",
-                            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          final hasFile = d.status != 'NOT_UPLOADED';
+          final opening = _openingDocId == d.id;
+          return InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: (!hasFile || opening) ? null : () => _viewDocument(d),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: AppComponents.cardDecoration(),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(d.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        if (d.expiryDate != null) ...[
+                          const SizedBox(height: 4),
+                          Text("Expires ${d.expiryDate!.toLocal().toString().split(' ').first}",
+                              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                        ],
+                        if (hasFile) ...[
+                          const SizedBox(height: 4),
+                          const Text("Tap to view", style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary)),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-                AppComponents.badge(_label(d.status), color: _statusColor(d.status)),
-              ],
+                  if (opening)
+                    const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  else
+                    AppComponents.badge(_label(d.status), color: _statusColor(d.status)),
+                ],
+              ),
             ),
           );
         },

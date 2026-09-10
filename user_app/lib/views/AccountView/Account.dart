@@ -88,18 +88,6 @@ class _AccountviewState extends State<Accountview> {
                         : ((_name?.isNotEmpty ?? false) ? _name! : (_email ?? 'Rider')),
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                   ),
-                  const SizedBox(height: 6),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.star, color: AppColors.success, size: 18),
-                      SizedBox(width: 6),
-                      Text(
-                        '5.00 Rating',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
                   const SizedBox(height: 8),
                   if (_loading)
                     const Text('Connecting to RavelGo…',

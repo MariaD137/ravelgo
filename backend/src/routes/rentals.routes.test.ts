@@ -6,6 +6,7 @@ import { prisma } from "../db/prisma";
 import { env } from "../config/env";
 import { stripeClient } from "../billing/stripe";
 import { mockAuthAs, mockPaymentIntentCreate, restoreAuth, resetDb } from "../test/helpers";
+import { reconcileExpiredRentalBookings } from "../services/rental-payment";
 
 // Build a signed rental-booking webhook the same way Stripe would.
 function signedRentalBookingEvent(intentId: string, type: "payment_intent.succeeded" | "payment_intent.payment_failed") {
@@ -537,4 +538,200 @@ test("a failed CARD rental booking webhook marks the payment FAILED and leaves t
   const notifications = await prisma.notification.findMany({ where: { userId: rider.id } });
   assert.equal(notifications.length, 1);
   assert.equal(notifications[0].type, "PAYMENT_FAILED");
+});
+
+// --- GET /rentals/mine: booking visibility for the owning driver -----------
+
+test("GET /api/rentals/mine includes each listing's bookings with the renter's name only (no email/cognitoSub)", async () => {
+  const listing = await createApprovedListing("driver-mine-1", 100);
+  const renter = await prisma.user.create({
+    data: { cognitoSub: "renter-mine-1", role: "RIDER", firstName: "Zainab", lastName: "Bello", email: "zainab@example.com" },
+  });
+  await prisma.rentalBooking.create({
+    data: {
+      renterId: renter.id,
+      listingId: listing.id,
+      startDate: new Date("2027-04-01T00:00:00.000Z"),
+      endDate: new Date("2027-04-04T00:00:00.000Z"),
+      days: 3,
+      totalPrice: 300,
+      status: "CONFIRMED",
+      paymentStatus: "SUCCEEDED",
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-mine-1", groups: ["Driver"] });
+  const res = await request(app).get("/api/rentals/mine").set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.length, 1);
+  assert.equal(res.body[0].bookings.length, 1);
+  const booking = res.body[0].bookings[0];
+  assert.equal(booking.status, "CONFIRMED");
+  assert.equal(booking.totalPrice, 300);
+  assert.equal(booking.renter.firstName, "Zainab");
+  assert.equal(booking.renter.lastName, "Bello");
+  const blob = JSON.stringify(res.body);
+  assert.ok(!blob.includes("zainab@example.com"), "renter email must not be exposed to the vehicle owner");
+  assert.ok(!blob.includes("renter-mine-1"), "renter cognitoSub must not be exposed to the vehicle owner");
+});
+
+test("GET /api/rentals/mine only returns the calling driver's own listings, never another driver's", async () => {
+  await createApprovedListing("driver-mine-a", 100);
+  await createApprovedListing("driver-mine-b", 100);
+
+  const tokenA = mockAuthAs({ sub: "driver-mine-a", groups: ["Driver"] });
+  const resA = await request(app).get("/api/rentals/mine").set("Authorization", `Bearer ${tokenA}`);
+  assert.equal(resA.status, 200);
+  assert.equal(resA.body.length, 1);
+  assert.equal(resA.body[0].driverId !== undefined, true);
+
+  const driverBListing = await prisma.rentalListing.findFirst({ where: { driver: { user: { cognitoSub: "driver-mine-b" } } } });
+  assert.ok(!resA.body.some((l: { id: string }) => l.id === driverBListing!.id), "Driver A must never see Driver B's listing");
+});
+
+// --- RentalBooking -> COMPLETED reconciliation ------------------------------
+
+async function createBookingWithStatus(
+  driverSub: string,
+  renterSub: string,
+  status: "PENDING_PAYMENT" | "CONFIRMED" | "CANCELLED" | "COMPLETED",
+  { start, end }: { start: Date; end: Date },
+) {
+  const listing = await createApprovedListing(driverSub, 100);
+  const renter = await createRider(renterSub);
+  const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)));
+  const booking = await prisma.rentalBooking.create({
+    data: {
+      renterId: renter.id,
+      listingId: listing.id,
+      startDate: start,
+      endDate: end,
+      days,
+      totalPrice: days * 100,
+      status,
+      paymentStatus: status === "PENDING_PAYMENT" ? "PENDING" : "SUCCEEDED",
+    },
+  });
+  return { listing, renter, booking };
+}
+
+test("reconcileExpiredRentalBookings closes a CONFIRMED booking whose endDate has passed", async () => {
+  const { booking, renter } = await createBookingWithStatus(
+    "driver-recon-1",
+    "renter-recon-1",
+    "CONFIRMED",
+    { start: new Date(Date.now() - 5 * 86_400_000), end: new Date(Date.now() - 86_400_000) },
+  );
+
+  const count = await reconcileExpiredRentalBookings();
+  assert.equal(count, 1);
+
+  const after = await prisma.rentalBooking.findUnique({ where: { id: booking.id } });
+  assert.equal(after?.status, "COMPLETED");
+
+  const notifications = await prisma.notification.findMany({ where: { userId: renter.id } });
+  assert.ok(notifications.some((n) => n.type === "RENTAL_COMPLETED"));
+});
+
+test("reconcileExpiredRentalBookings leaves an active (still within date range) CONFIRMED booking alone", async () => {
+  const { booking } = await createBookingWithStatus(
+    "driver-recon-2",
+    "renter-recon-2",
+    "CONFIRMED",
+    { start: new Date(Date.now() - 86_400_000), end: new Date(Date.now() + 5 * 86_400_000) },
+  );
+  await reconcileExpiredRentalBookings();
+  const after = await prisma.rentalBooking.findUnique({ where: { id: booking.id } });
+  assert.equal(after?.status, "CONFIRMED");
+});
+
+test("reconcileExpiredRentalBookings leaves a future CONFIRMED booking alone", async () => {
+  const { booking } = await createBookingWithStatus(
+    "driver-recon-3",
+    "renter-recon-3",
+    "CONFIRMED",
+    { start: new Date(Date.now() + 5 * 86_400_000), end: new Date(Date.now() + 8 * 86_400_000) },
+  );
+  await reconcileExpiredRentalBookings();
+  const after = await prisma.rentalBooking.findUnique({ where: { id: booking.id } });
+  assert.equal(after?.status, "CONFIRMED");
+});
+
+test("reconcileExpiredRentalBookings never touches a PENDING_PAYMENT booking, even past its dates", async () => {
+  const { booking } = await createBookingWithStatus(
+    "driver-recon-4",
+    "renter-recon-4",
+    "PENDING_PAYMENT",
+    { start: new Date(Date.now() - 5 * 86_400_000), end: new Date(Date.now() - 86_400_000) },
+  );
+  await reconcileExpiredRentalBookings();
+  const after = await prisma.rentalBooking.findUnique({ where: { id: booking.id } });
+  assert.equal(after?.status, "PENDING_PAYMENT");
+});
+
+test("reconcileExpiredRentalBookings never touches a CANCELLED booking", async () => {
+  const { booking } = await createBookingWithStatus(
+    "driver-recon-5",
+    "renter-recon-5",
+    "CANCELLED",
+    { start: new Date(Date.now() - 5 * 86_400_000), end: new Date(Date.now() - 86_400_000) },
+  );
+  await reconcileExpiredRentalBookings();
+  const after = await prisma.rentalBooking.findUnique({ where: { id: booking.id } });
+  assert.equal(after?.status, "CANCELLED");
+});
+
+test("reconcileExpiredRentalBookings is idempotent — a second run finds nothing left to do and sends no duplicate notification", async () => {
+  const { booking, renter } = await createBookingWithStatus(
+    "driver-recon-6",
+    "renter-recon-6",
+    "CONFIRMED",
+    { start: new Date(Date.now() - 5 * 86_400_000), end: new Date(Date.now() - 86_400_000) },
+  );
+  const first = await reconcileExpiredRentalBookings();
+  assert.equal(first, 1);
+  const second = await reconcileExpiredRentalBookings();
+  assert.equal(second, 0);
+
+  const after = await prisma.rentalBooking.findUnique({ where: { id: booking.id } });
+  assert.equal(after?.status, "COMPLETED");
+  const notifications = await prisma.notification.findMany({
+    where: { userId: renter.id, type: "RENTAL_COMPLETED" },
+  });
+  assert.equal(notifications.length, 1);
+});
+
+test("reconcileExpiredRentalBookings is safe under concurrent execution — a booking is only ever completed and notified once", async () => {
+  const { booking, renter } = await createBookingWithStatus(
+    "driver-recon-7",
+    "renter-recon-7",
+    "CONFIRMED",
+    { start: new Date(Date.now() - 5 * 86_400_000), end: new Date(Date.now() - 86_400_000) },
+  );
+
+  const [a, b] = await Promise.all([reconcileExpiredRentalBookings(), reconcileExpiredRentalBookings()]);
+  // Exactly one of the two concurrent calls actually completed this booking.
+  assert.equal(a + b, 1);
+
+  const after = await prisma.rentalBooking.findUnique({ where: { id: booking.id } });
+  assert.equal(after?.status, "COMPLETED");
+  const notifications = await prisma.notification.findMany({
+    where: { userId: renter.id, type: "RENTAL_COMPLETED" },
+  });
+  assert.equal(notifications.length, 1);
+});
+
+test("GET /api/rental-bookings/mine reflects a booking reconciled to COMPLETED without a separate sweep call", async () => {
+  const { booking } = await createBookingWithStatus(
+    "driver-recon-8",
+    "renter-recon-8",
+    "CONFIRMED",
+    { start: new Date(Date.now() - 5 * 86_400_000), end: new Date(Date.now() - 86_400_000) },
+  );
+  const token = mockAuthAs({ sub: "renter-recon-8", groups: ["Rider"] });
+  const res = await request(app).get("/api/rental-bookings/mine").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 200);
+  const found = res.body.find((b: { id: string }) => b.id === booking.id);
+  assert.equal(found.status, "COMPLETED");
 });

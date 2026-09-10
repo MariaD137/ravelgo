@@ -11,9 +11,11 @@ import 'package:ravelgo_driver_app/views/incentives/incentives_screen.dart';
 import 'package:ravelgo_driver_app/views/preferences/driver_preferences_screen.dart';
 import 'package:ravelgo_driver_app/views/ratings/my_ratings_screen.dart';
 import 'package:ravelgo_driver_app/views/rentals/list_vehicle_for_rental_screen.dart';
+import 'package:ravelgo_driver_app/views/rentals/my_rental_listings_screen.dart';
 import 'package:ravelgo_driver_app/views/safety/emergency_screen.dart';
 import 'package:ravelgo_driver_app/views/subscription/driver_subscription_screen.dart';
 import 'package:ravelgo_driver_app/views/support/contact_us_screen.dart';
+import 'package:ravelgo_driver_app/views/support/driver_support_screen.dart';
 import 'package:ravelgo_driver_app/views/support/faq_screen.dart';
 import 'package:ravelgo_driver_app/views/vehicles/vehicle_list_screen.dart';
 
@@ -60,6 +62,7 @@ class SideMenuDriver extends StatelessWidget {
             _item(context, Icons.badge_outlined, "Car Paddy – License Renewal", () => const CarPaddyScreen()),
             _item(context, Icons.directions_car_outlined, "My Vehicles", () => const VehicleListScreen()),
             _item(context, Icons.key_outlined, "List Car for Luxury Rental", () => const ListVehicleForRentalScreen()),
+            _item(context, Icons.event_note_outlined, "My Listings", () => const MyRentalListingsScreen()),
             _item(context, Icons.workspace_premium_outlined, "Subscription Plan", () => const DriverSubscriptionScreen()),
             _item(context, Icons.alt_route_outlined, "Driver Assistance Mode", () => const DriverAssistanceScreen()),
             _item(context, Icons.emoji_events_outlined, "Incentives & Badges", () => const IncentivesScreen()),
@@ -69,6 +72,7 @@ class SideMenuDriver extends StatelessWidget {
             AppComponents.divider(),
             _item(context, Icons.help_outline, "FAQ", () => const FAQScreen()),
             _item(context, Icons.phone_outlined, "Contact Support", () => const ContactUsScreen()),
+            _item(context, Icons.support_agent_outlined, "Support & Disputes", () => const DriverSupportScreen()),
             _item(context, Icons.logout, "Log out", () => const LoginScreen(), replace: true, preAction: AuthService.signOut),
           ],
         ),
