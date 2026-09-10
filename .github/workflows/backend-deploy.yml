@@ -12,6 +12,31 @@ permissions:
   contents: read
 
 jobs:
+  # Loudly warn when the commit being auto-deployed adds/changes a Prisma
+  # migration — this workflow (unlike staging-deploy.yml's manual
+  # workflow_dispatch) runs automatically on every push to main, so a schema
+  # change here can silently ship new backend code against an unmigrated
+  # production database (broad `include: { user: true }` / `{ vehicles: true }`
+  # queries fail with a generic "Database operation failed" until someone runs
+  # `bash scripts/migrate-production.sh`). This never blocks the deploy — a
+  # permanently-red, unblockable gate would be worse than a missed migration —
+  # it just makes sure one is never applied silently.
+  check-migrations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Warn if the deployed commit adds Prisma migrations
+        run: |
+          if git diff --name-only HEAD~1 HEAD -- backend/prisma/migrations | grep -q .; then
+            echo "::warning::The commit being deployed adds or changes Prisma migrations. Run 'bash scripts/migrate-production.sh' against production before (or right after) this deploy, or the backend may not work against the old schema. New migration files:"
+            git diff --name-only HEAD~1 HEAD -- backend/prisma/migrations
+          else
+            echo "No migration changes in the commit being deployed."
+          fi
+
   build-and-deploy:
     # Deploy only once the one-time AWS setup has been done (an OIDC deploy
     # role in AWS plus the AWS_DEPLOY_ROLE_ARN / AWS_REGION /

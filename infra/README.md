@@ -145,12 +145,18 @@ One-time setup:
 
 Database migrations are **not** part of this automation — the database has no
 public endpoint, so applying one requires the separate, deliberately manual
-`bash scripts/migrate-staging.sh` (see its own comments for why this stays a
-human step rather than something the CI role can trigger unattended). The
-workflow's `check-migrations` job just warns, non-blockingly, when the commit
-you're deploying adds a new migration you haven't applied yet.
+`bash scripts/migrate-staging.sh` (see its own comments, and
+`scripts/migrate-env.sh`, for why this stays a human step rather than
+something the CI role can trigger unattended). The workflow's
+`check-migrations` job just warns, non-blockingly, when the commit you're
+deploying adds a new migration you haven't applied yet.
 
-For production, GitHub Actions CI/CD covers only the backend today (see
-`.github/workflows/backend-deploy.yml`) — its web apps and migrations aren't
-auto-deployed. Extending it the same way staging's workflow does is a
-reasonable next step once production has its own web-app hosting story.
+For production, `.github/workflows/backend-deploy.yml` runs automatically on
+every push to `main` that touches `backend/**` — unlike staging's manual
+`workflow_dispatch`, there is no deliberate trigger to pair with a migration
+step. It carries the same non-blocking `check-migrations` warning staging
+does, and the matching manual step is `bash scripts/migrate-production.sh`
+(asks for an explicit typed confirmation before touching the live database).
+Its web app isn't auto-deployed yet — extending this workflow to publish the
+three Flutter web builds the way staging's does is a reasonable next step
+once production has its own web-app hosting story.
