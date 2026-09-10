@@ -423,6 +423,26 @@ class DriverApi {
     return DriverTrip.fromJson(data as Map<String, dynamic>);
   }
 
+  /// Accept a trip that has been OFFERED to this driver (POST
+  /// /api/trips/:id/accept). This is the ONLY thing that actually moves a
+  /// trip from OFFERED to MATCHED on the backend — there is no local
+  /// "accept" that fakes it. Can throw ApiException(409) if the offer
+  /// already expired or was resolved another way (declined, or the rider
+  /// cancelled) between being shown and this call.
+  static Future<DriverTrip> acceptTrip(String tripId) async {
+    final data = await ApiClient.post('/api/trips/$tripId/accept');
+    return DriverTrip.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Decline a trip that has been OFFERED to this driver (POST
+  /// /api/trips/:id/decline). This never cancels the rider's trip — the
+  /// backend releases the offer and re-offers it to the next eligible
+  /// driver. Can throw ApiException(409) if the offer already expired or
+  /// was resolved another way.
+  static Future<void> declineTrip(String tripId) async {
+    await ApiClient.post('/api/trips/$tripId/decline');
+  }
+
   /// Presign an S3 key (documents bucket by default; pass bucket: 'assets'
   /// for something meant to be publicly viewable, like a vehicle photo) and
   /// PUT the bytes straight to S3. Returns the object key — the caller

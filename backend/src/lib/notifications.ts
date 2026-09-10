@@ -7,7 +7,9 @@ import { sendPushToUser } from "../services/push";
  * the Customer/Driver apps are built to render — no ad hoc type strings.
  */
 export type NotificationType =
+  | "RIDE_OFFERED"
   | "RIDE_DRIVER_ASSIGNED"
+  | "RIDE_DRIVER_ARRIVED"
   | "RIDE_STARTED"
   | "RIDE_COMPLETED"
   | "RIDE_CANCELLED"
@@ -22,7 +24,8 @@ export type NotificationType =
   | "PAYMENT_FAILED"
   | "ADMIN_PAYMENT_FAILED"
   | "ADMIN_SAFETY_ALERT_RAISED"
-  | "ADMIN_TRIP_DISPUTED";
+  | "ADMIN_TRIP_DISPUTED"
+  | "DRIVER_ACCOUNT_STATUS_CHANGED";
 
 export type NotificationReferenceType =
   | "TRIP"

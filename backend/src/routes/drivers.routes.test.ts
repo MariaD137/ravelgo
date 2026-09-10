@@ -131,6 +131,12 @@ test("PATCH /api/drivers/:id/status lets an Admin suspend a driver", async () =>
 
   assert.equal(res.status, 200);
   assert.equal(res.body.status, "SUSPENDED");
+
+  // EI-1 gap closed: the driver must actually be told their account status
+  // changed, not just have an audit row written about them.
+  const notifications = await prisma.notification.findMany({ where: { userId: user.id } });
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].type, "DRIVER_ACCOUNT_STATUS_CHANGED");
 });
 
 test("PATCH /api/drivers/:id/status rejects a Support Agent admin preset", async () => {
@@ -205,11 +211,16 @@ test("PATCH /api/drivers/me/availability retries matching for a rider already wa
   assert.equal(res.status, 200);
 
   const updated = await prisma.trip.findUnique({ where: { id: trip.id } });
-  assert.equal(updated?.status, "MATCHED");
+  // Offered, not yet matched — the driver still has to explicitly accept
+  // (see services/matching.ts / POST /trips/:id/accept).
+  assert.equal(updated?.status, "OFFERED");
   assert.ok(updated?.driverId);
 
-  const notifications = await prisma.notification.findMany({ where: { userId: rider.id } });
-  assert.ok(notifications.some((n) => n.type === "RIDE_DRIVER_ASSIGNED" && n.referenceId === trip.id));
+  const driverNotifications = await prisma.notification.findMany({ where: { userId: driverUser.id } });
+  assert.ok(driverNotifications.some((n) => n.type === "RIDE_OFFERED" && n.referenceId === trip.id));
+  // The rider is not told "driver assigned" until the driver actually accepts.
+  const riderNotifications = await prisma.notification.findMany({ where: { userId: rider.id } });
+  assert.ok(!riderNotifications.some((n) => n.type === "RIDE_DRIVER_ASSIGNED"));
 });
 
 test("PATCH /api/drivers/me/availability does not reach back and match a stale, long-abandoned request", async () => {

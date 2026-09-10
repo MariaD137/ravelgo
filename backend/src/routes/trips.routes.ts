@@ -13,7 +13,8 @@ import {
   recordRiderLocation,
 } from "../realtime/hub";
 import { notifyAllAdmins, notifyUser } from "../lib/notifications";
-import { matchDriverToTrip } from "../services/matching";
+import { acceptTripOffer, declineTripOffer, matchDriverToTrip } from "../services/matching";
+import { driverHasActiveDelivery } from "../lib/driver-conflicts";
 import { quoteFare, quoteFareForCategory } from "../services/pricing";
 import { MAX_FINAL_FARE_MULTIPLIER, MIN_FINAL_FARE_MULTIPLIER, moneyAmountSchema } from "../lib/money";
 import { sensitiveLimiter } from "../middleware/rate-limit";
@@ -114,17 +115,12 @@ tripsRouter.post("/trips", sensitiveLimiter, requireAuth, requireRole("Rider"), 
     },
   });
 
-  const matched = await matchDriverToTrip(trip.id);
-  if (matched?.driverId) {
-    await notifyUser(
-      trip.riderId,
-      "RIDE_DRIVER_ASSIGNED",
-      "Driver assigned",
-      "A driver has been assigned to your ride.",
-      { type: "TRIP", id: trip.id },
-    );
-  }
-  res.status(201).json(serializeTrip(matched ?? trip));
+  // Offers the trip to one eligible driver (status -> OFFERED) — it is NOT
+  // yet MATCHED, and the rider is not told "driver assigned" until that
+  // driver actually calls POST /trips/:id/accept (see services/matching.ts).
+  // Nothing here fakes an acceptance the driver hasn't given.
+  const offered = await matchDriverToTrip(trip.id);
+  res.status(201).json(serializeTrip(offered ?? trip));
 });
 
 // Rider or Driver: list the trips I'm party to (as the rider, or as the
@@ -241,10 +237,73 @@ tripsRouter.post("/trips/:id/arrived", requireAuth, requireRole("Driver"), async
     return res.status(409).json({ error: "Can only report arrival for a matched trip" });
   }
 
-  const trip = existing.arrivedAt
-    ? existing
-    : await prisma.trip.update({ where: { id: existing.id }, data: { arrivedAt: new Date() } });
+  if (!existing.arrivedAt) {
+    const trip = await prisma.trip.update({
+      where: { id: existing.id },
+      data: { arrivedAt: new Date() },
+      include: { rider: true },
+    });
+    // EI-1 gap closed: the rider previously had no way to know the driver had
+    // physically arrived, on the app's own strongest signal for it.
+    await notifyUser(
+      trip.riderId,
+      "RIDE_DRIVER_ARRIVED",
+      "Your driver has arrived",
+      "Your driver is waiting at the pickup point.",
+      { type: "TRIP", id: trip.id },
+    );
+    return res.json(serializeTrip(trip));
+  }
+  res.json(serializeTrip(existing));
+});
+
+// Driver: accept a trip that has been OFFERED to them. Server-authoritative
+// (P0 special requirement) — this is the ONLY way a trip moves OFFERED ->
+// MATCHED; nothing accepts on the driver's behalf, and the underlying update
+// is atomic (services/matching.ts#acceptTripOffer) so two concurrent accept
+// calls, or an accept racing a decline/expiry, can only ever have one winner.
+tripsRouter.post("/trips/:id/accept", requireAuth, requireRole("Driver"), async (req, res) => {
+  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  if (await driverHasActiveDelivery(driver.id)) {
+    return res.status(409).json({
+      error: "You're already carrying an active delivery. Finish or hand it off before accepting a ride.",
+    });
+  }
+
+  const trip = await acceptTripOffer(req.params.id, driver.id);
+  if (!trip) {
+    return res.status(409).json({
+      error: {
+        code: "OFFER_NO_LONGER_AVAILABLE",
+        message: "This ride offer is no longer available. It may have expired or already been resolved.",
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
   res.json(serializeTrip(trip));
+});
+
+// Driver: decline a trip that has been OFFERED to them. Per the P0 special
+// requirement, this must NEVER cancel the rider's trip — it releases the
+// offer back to the pool and the matching engine immediately tries the next
+// eligible driver (excluding this one, permanently, for this trip).
+tripsRouter.post("/trips/:id/decline", requireAuth, requireRole("Driver"), async (req, res) => {
+  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  const declined = await declineTripOffer(req.params.id, driver.id);
+  if (!declined) {
+    return res.status(409).json({
+      error: {
+        code: "OFFER_NO_LONGER_AVAILABLE",
+        message: "This ride offer is no longer available. It may have expired or already been resolved.",
+        timestamp: new Date().toISOString(),
+      },
+    });
+  }
+  res.status(204).send();
 });
 
 const updateStatusSchema = z.object({
@@ -458,6 +517,15 @@ tripsRouter.post("/trips/:id/cancel", requireAuth, requireRole("Rider"), async (
     type: "TRIP",
     id: trip.id,
   });
+  // A driver may already be OFFERED or MATCHED when the rider cancels — they
+  // need to know it's off, the same as courier.routes.ts's equivalent path
+  // already notifies an assigned courier on a sender-initiated cancellation.
+  if (trip.driver) {
+    await notifyUser(trip.driver.user.id, "RIDE_CANCELLED", "Ride cancelled", "The rider cancelled this ride.", {
+      type: "TRIP",
+      id: trip.id,
+    });
+  }
   res.json(serializeTrip(trip));
 });
 

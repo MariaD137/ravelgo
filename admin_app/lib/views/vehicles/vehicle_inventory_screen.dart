@@ -3,9 +3,13 @@ import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 
-/// Read-only cross-driver vehicle inventory (GET /api/vehicles, admin-only).
-/// There's no admin write endpoint for another driver's vehicle — only the
-/// owning driver can edit/delete their own — so this is view-only by design.
+/// Cross-driver vehicle inventory (GET /api/vehicles, admin-only). Admin
+/// cannot edit a driver's own vehicle details (brand/plate/etc — only the
+/// owning driver can), but CAN set/correct which ride-category vehicle class
+/// (Economy/Comfort/Premium/Luxury) a vehicle counts as, via the real
+/// PATCH /api/admin/vehicles/:id/class endpoint — this is what
+/// services/matching.ts actually reads when a ride category restricts
+/// itself to specific vehicle classes.
 class VehicleInventoryScreen extends StatefulWidget {
   const VehicleInventoryScreen({super.key});
 
@@ -81,29 +85,81 @@ class _VehicleInventoryScreenState extends State<VehicleInventoryScreen> {
           return Container(
             padding: const EdgeInsets.all(14),
             decoration: AppComponents.cardDecoration(),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("${v.year} ${v.brand} ${v.model}".trim(),
-                          style: const TextStyle(fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 4),
-                      Text("${v.colour} · ${v.plateNumber}",
-                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                      const SizedBox(height: 4),
-                      Text(v.ownerName.isEmpty ? v.ownerEmail : v.ownerName,
-                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                    ],
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("${v.year} ${v.brand} ${v.model}".trim(),
+                              style: const TextStyle(fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 4),
+                          Text("${v.colour} · ${v.plateNumber}",
+                              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                          const SizedBox(height: 4),
+                          Text(v.ownerName.isEmpty ? v.ownerEmail : v.ownerName,
+                              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                        ],
+                      ),
+                    ),
+                    if (v.listedForRental) AppComponents.badge("Listed for rental", color: AppColors.info),
+                  ],
                 ),
-                if (v.listedForRental) AppComponents.badge("Listed for rental", color: AppColors.info),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    const Text("Ride class:", style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: DropdownButton<String?>(
+                        isDense: true,
+                        isExpanded: true,
+                        value: v.vehicleClass,
+                        hint: const Text("Unclassified", style: TextStyle(fontSize: 13)),
+                        items: [
+                          const DropdownMenuItem<String?>(value: null, child: Text("Unclassified")),
+                          ...rideVehicleClasses.map((c) => DropdownMenuItem<String?>(value: c, child: Text(c))),
+                        ],
+                        onChanged: (value) => _setClass(v, value),
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           );
         },
       ),
     );
+  }
+
+  Future<void> _setClass(AdminVehicle vehicle, String? vehicleClass) async {
+    final index = _vehicles.indexOf(vehicle);
+    try {
+      await AdminApi.setVehicleClass(vehicle.id, vehicleClass);
+      if (!mounted) return;
+      setState(() {
+        _vehicles = [..._vehicles]..[index] = AdminVehicle(
+            id: vehicle.id,
+            brand: vehicle.brand,
+            model: vehicle.model,
+            colour: vehicle.colour,
+            plateNumber: vehicle.plateNumber,
+            year: vehicle.year,
+            listedForRental: vehicle.listedForRental,
+            ownerName: vehicle.ownerName,
+            ownerEmail: vehicle.ownerEmail,
+            vehicleClass: vehicleClass,
+          );
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e is ApiException ? e.message : "Could not update this vehicle's class.")),
+      );
+    }
   }
 }

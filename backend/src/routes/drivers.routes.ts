@@ -12,6 +12,7 @@ import { cognitoGroups } from "../services/cognito";
 import { sensitiveLimiter } from "../middleware/rate-limit";
 import { recordDriverLocation } from "../realtime/hub";
 import { matchPendingTrips } from "../services/matching";
+import { notifyUser } from "../lib/notifications";
 
 // Same pattern as courier.routes.ts's withProofUrls: a dedicated S3 client for
 // signing GET URLs to objects in the private documents bucket. Kept
@@ -278,6 +279,21 @@ const statusSchema = z.object({
   status: z.enum(["ACTIVE", "PENDING_REVIEW", "SUSPENDED"]),
 });
 
+const DRIVER_STATUS_MESSAGES: Record<"ACTIVE" | "PENDING_REVIEW" | "SUSPENDED", { title: string; body: string }> = {
+  ACTIVE: {
+    title: "You're approved!",
+    body: "Your driver account has been approved. You can now go online and start accepting trips.",
+  },
+  SUSPENDED: {
+    title: "Account suspended",
+    body: "Your driver account has been suspended. Contact support for details.",
+  },
+  PENDING_REVIEW: {
+    title: "Application under review",
+    body: "Your driver account is back under review. We'll notify you once it's decided.",
+  },
+};
+
 // Admin: suspend / reactivate a driver
 driversRouter.patch("/drivers/:id/status", requireAuth, requireAdminPermission("drivers:write"), async (req, res) => {
   const parsed = statusSchema.safeParse(req.body);
@@ -294,6 +310,11 @@ driversRouter.patch("/drivers/:id/status", requireAuth, requireAdminPermission("
     entityId: driver.id,
     metadata: { status: parsed.data.status },
   });
+  // EI-1 gap closed: an approval/suspension/rejection previously only wrote
+  // an audit row — the driver themself was never told their account status
+  // had changed at all.
+  const message = DRIVER_STATUS_MESSAGES[parsed.data.status];
+  await notifyUser(driver.userId, "DRIVER_ACCOUNT_STATUS_CHANGED", message.title, message.body);
   res.json(driver);
 });
 

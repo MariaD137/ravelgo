@@ -34,6 +34,11 @@ enum DriverStatus {
 
 enum TripStatus {
   REQUESTED
+  // A specific driver has been offered this trip and has OFFER_TTL_SECONDS
+  // (services/matching.ts) to accept before the offer expires and the trip is
+  // re-offered to the next eligible driver. Distinct from MATCHED, which now
+  // means the driver has actually accepted — see POST /trips/:id/accept.
+  OFFERED
   MATCHED
   IN_PROGRESS
   COMPLETED
@@ -301,6 +306,15 @@ model Trip {
   // POST /trips/:id/arrived. Anchors the free-waiting-period clock; null
   // until the driver reports arrival.
   arrivedAt       DateTime?
+  // While status is OFFERED, the moment this offer expires and is released
+  // back to the pool for the next eligible driver (services/matching.ts).
+  // Null once the offer has been accepted, declined, or was never made.
+  offerExpiresAt  DateTime?
+  // Drivers who have already declined (or let expire) an offer on THIS trip —
+  // excluded from being offered it again, so a decline never just loops the
+  // same trip back to the same driver. Reset never; a trip only ever
+  // accumulates declines over its own lifetime.
+  declinedDriverIds String[] @default([])
 
   // The commission actually applied to this trip, locked in at payment
   // settlement (services/ledger.ts#recordRideCommission) — never

@@ -17,13 +17,19 @@ class _TripCompleteScreenState extends State<TripCompleteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // The backend has finalized the trip; use its real fare. The service-fee
-    // line mirrors the backend's 25% platform commission (PLATFORM_COMMISSION_RATE)
-    // and is labelled as an estimate — the authoritative amount is the payout the
-    // backend generates from completed trips.
+    // The backend has finalized the trip; use its real fare and, when the
+    // trip's payment has already settled, its real locked-in commission
+    // split (commissionRate/platformCommission/driverEarnings — see
+    // backend/src/services/ledger.ts). Payment settlement can happen after
+    // trip completion, so those fields may still be null at this exact
+    // moment; the 20% fallback here matches the platform's real default
+    // (DEFAULT_COMMISSION_RATE in backend/src/services/commission.ts), the
+    // same fallback IncomingRequestSheet already uses, rather than an
+    // arbitrary, wrong 25%.
     final fare = widget.trip.fare;
-    final platformFee = fare * 0.25;
-    final earnings = fare - platformFee;
+    final commissionRate = widget.trip.commissionRate ?? 0.2;
+    final platformFee = widget.trip.platformCommission ?? (fare * commissionRate);
+    final earnings = widget.trip.driverEarnings ?? (fare - platformFee);
 
     return Scaffold(
       backgroundColor: AppColors.background,

@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { app } from "./app";
 import { env } from "./config/env";
 import { attachRealtime } from "./realtime/server";
+import { startOfferExpirySweep } from "./services/matching";
 
 // Last-resort safety nets. express-async-errors routes handler rejections to
 // errorHandler, so these should rarely fire — but a stray rejection from a
@@ -25,3 +26,8 @@ attachRealtime(server);
 server.listen(env.PORT, () => {
   console.log(`RavelGo backend listening on port ${env.PORT} (${env.NODE_ENV})`);
 });
+
+// Releases any ride offer nobody responded to in time and re-offers it to
+// the next eligible driver (services/matching.ts) — the fallback for a
+// driver who never explicitly declines at all.
+startOfferExpirySweep();

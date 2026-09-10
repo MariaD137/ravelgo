@@ -1602,6 +1602,41 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Trip" }
 
+  /trips/{id}/accept:
+    post:
+      tags: [Trips]
+      summary: >-
+        Driver accepts a trip OFFERED to them, moving it OFFERED -> MATCHED
+        (Driver, the offered driver only). Atomic — a stale/expired offer, or
+        one already resolved another way, returns 409 rather than silently
+        succeeding.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: The now-MATCHED trip
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Trip" }
+        "409":
+          description: Offer no longer available (expired, declined, or resolved elsewhere)
+
+  /trips/{id}/decline:
+    post:
+      tags: [Trips]
+      summary: >-
+        Driver declines a trip OFFERED to them (Driver, the offered driver
+        only). Never cancels the rider's trip — releases the offer and the
+        matching engine immediately re-offers it to the next eligible
+        driver, excluding this one for the rest of this trip's lifetime.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "204":
+          description: Declined; the trip has been released and, if possible, re-offered
+        "409":
+          description: Offer no longer available (already expired or resolved elsewhere)
+
   /trips/{id}/refund:
     post:
       tags: [Payments]
@@ -1871,7 +1906,7 @@ components:
         destination: { type: string }
         estimatedFare: { type: number }
         finalFare: { type: number, nullable: true }
-        status: { type: string, enum: [REQUESTED, MATCHED, IN_PROGRESS, COMPLETED, CANCELLED, DISPUTED] }
+        status: { type: string, enum: [REQUESTED, OFFERED, MATCHED, IN_PROGRESS, COMPLETED, CANCELLED, DISPUTED], description: "OFFERED means a specific driver has this trip pending their accept/decline (see POST /trips/{id}/accept and /decline); MATCHED means that driver has actually accepted." }
         category: { type: string }
         rideCategoryKey: { type: string, nullable: true, description: "The ride tier chosen (RideCategory.key), e.g. SWIFT" }
         distanceKm: { type: number, nullable: true }
@@ -1942,7 +1977,7 @@ components:
             platformCommission: { type: number, nullable: true }
             driverEarnings: { type: number, nullable: true }
             cancellationFee: { type: number, nullable: true }
-            status: { type: string, enum: [REQUESTED, MATCHED, IN_TRANSIT, DELIVERED, CANCELLED] }
+            status: { type: string, enum: [REQUESTED, MATCHED, PICKED_UP, IN_TRANSIT, DELIVERED, CANCELLED] }
             courierLat:
               type: number
               nullable: true

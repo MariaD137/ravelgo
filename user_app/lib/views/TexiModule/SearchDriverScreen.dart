@@ -15,8 +15,12 @@ import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 /// Shown after a trip is actually created on the backend. Reflects the real
-/// result: either a driver was auto-matched (status MATCHED) or the request is
-/// waiting for a driver to come online (status REQUESTED).
+/// result: a driver may already have been OFFERED the trip (they still have
+/// to explicitly accept — see backend/src/services/matching.ts), or the
+/// request may be waiting for a driver to come online at all (REQUESTED).
+/// Either way this screen keeps showing "looking for a driver" until the
+/// offered driver actually accepts (status becomes MATCHED) — it never
+/// presents a driver as assigned before the backend confirms an acceptance.
 class SearchDriverScreen extends StatefulWidget {
   final Trip trip;
   const SearchDriverScreen({super.key, required this.trip});
@@ -289,8 +293,8 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
   bool get _completed => _status == 'COMPLETED';
   bool get _cancelled => _status == 'CANCELLED' || _status == 'DISPUTED';
   // Cancellation is only offered before the ride is under way — mirrors the
-  // backend's riderMayCancel (REQUESTED or MATCHED only).
-  bool get _cancellable => _status == 'REQUESTED' || _status == 'MATCHED';
+  // backend's riderMayCancel (REQUESTED, OFFERED, or MATCHED).
+  bool get _cancellable => _status == 'REQUESTED' || _status == 'OFFERED' || _status == 'MATCHED';
 
   @override
   void initState() {

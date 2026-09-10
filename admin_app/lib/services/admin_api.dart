@@ -800,6 +800,11 @@ class AdminPayout {
   }
 }
 
+// Which ride categories a vehicle is eligible for (RideCategory.
+// eligibleVehicleClasses) — null means unclassified (won't match any
+// category that restricts itself to specific classes).
+const List<String> rideVehicleClasses = ['ECONOMY', 'COMFORT', 'PREMIUM', 'LUXURY'];
+
 class AdminVehicle {
   final String id;
   final String brand;
@@ -810,6 +815,7 @@ class AdminVehicle {
   final bool listedForRental;
   final String ownerName;
   final String ownerEmail;
+  final String? vehicleClass;
   AdminVehicle({
     required this.id,
     required this.brand,
@@ -820,6 +826,7 @@ class AdminVehicle {
     required this.listedForRental,
     required this.ownerName,
     required this.ownerEmail,
+    required this.vehicleClass,
   });
   factory AdminVehicle.fromJson(Map<String, dynamic> j) {
     final driver = j['driver'] as Map?;
@@ -834,6 +841,7 @@ class AdminVehicle {
       listedForRental: j['listedForRental'] == true,
       ownerName: _name(user),
       ownerEmail: '${user?['email'] ?? ''}',
+      vehicleClass: j['vehicleClass'] as String?,
     );
   }
 }
@@ -1435,6 +1443,15 @@ class AdminApi {
   static Future<List<AdminVehicle>> vehicles() async {
     final data = await ApiClient.get('/api/vehicles?pageSize=100');
     return _list(data).whereType<Map<String, dynamic>>().map(AdminVehicle.fromJson).toList();
+  }
+
+  /// Admin-set (or clear, with null) a vehicle's ride-category eligibility
+  /// class — PATCH /api/admin/vehicles/:id/class. Independent of whatever the
+  /// driver self-declared when adding the vehicle; this is what
+  /// services/matching.ts actually reads when a RideCategory restricts
+  /// itself to specific vehicle classes.
+  static Future<void> setVehicleClass(String vehicleId, String? vehicleClass) async {
+    await ApiClient.patch('/api/admin/vehicles/$vehicleId/class', {'vehicleClass': vehicleClass});
   }
 
   // ---- Payouts ----

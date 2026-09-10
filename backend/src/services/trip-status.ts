@@ -6,13 +6,18 @@ import type { TripStatus } from "@prisma/client";
  * and bill a trip that was never driven, or resurrect a CANCELLED trip. The
  * backend is now authoritative: only the transitions below are legal.
  *
- * States (existing enum, unchanged): REQUESTED → MATCHED → IN_PROGRESS →
- * COMPLETED, with CANCELLED and DISPUTED as side exits. There is deliberately
- * no ARRIVED state yet — adding it touches both mobile apps and is tracked as a
- * follow-up; its absence does not weaken this guard.
+ * States: REQUESTED → OFFERED (a specific driver has this trip pending their
+ * accept/decline, see services/matching.ts) → MATCHED (that driver accepted)
+ * → IN_PROGRESS → COMPLETED, with CANCELLED and DISPUTED as side exits.
+ * OFFERED→REQUESTED is the decline/expiry path (matching.ts re-offers to the
+ * next eligible driver from there) — it is not reachable through this
+ * PATCH /trips/:id/status route at all; only through POST
+ * /trips/:id/accept|decline, which apply it via their own atomic conditional
+ * update, precisely so a driver can never "PATCH" their way around a race.
  */
 export const TRIP_TRANSITIONS: Record<TripStatus, TripStatus[]> = {
-  REQUESTED: ["MATCHED", "CANCELLED"],
+  REQUESTED: ["OFFERED", "CANCELLED"],
+  OFFERED: ["MATCHED", "REQUESTED", "CANCELLED"],
   MATCHED: ["IN_PROGRESS", "CANCELLED", "DISPUTED"],
   IN_PROGRESS: ["COMPLETED", "CANCELLED", "DISPUTED"],
   // A completed trip is terminal except that it can still be disputed.
@@ -45,5 +50,5 @@ export function driverMayTransition(from: TripStatus, to: TripStatus): boolean {
 
 /** A rider may cancel their own trip only before it is under way. */
 export function riderMayCancel(from: TripStatus): boolean {
-  return from === "REQUESTED" || from === "MATCHED";
+  return from === "REQUESTED" || from === "OFFERED" || from === "MATCHED";
 }

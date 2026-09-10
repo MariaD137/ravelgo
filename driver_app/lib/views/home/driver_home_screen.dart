@@ -4,7 +4,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_driver_app/config/currency.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
-import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/notifications/notifications_screen.dart';
@@ -153,21 +152,28 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       _earningsToday = completedToday.fold<double>(0, (sum, t) => sum + t.fare);
     });
 
-    DriverTrip? match;
+    DriverTrip? offer;
     for (final t in trips) {
-      if (t.status == 'MATCHED') {
-        match = t;
+      if (t.status == 'OFFERED') {
+        offer = t;
         break;
       }
     }
-    if (match != null) await _presentRequest(match);
+    if (offer != null) await _presentRequest(offer);
   }
 
+  /// Shows the real OFFERED trip and waits for the driver to actually accept
+  /// or decline it through the backend (IncomingRequestSheet calls
+  /// DriverApi.acceptTrip/declineTrip itself). A non-null result means the
+  /// backend confirmed the accept and returned the now-MATCHED trip; a null
+  /// result means it was declined, the offer expired, or it was otherwise
+  /// resolved elsewhere — either way, this driver has nothing further to do
+  /// for it and polling simply continues for the next offer, if any.
   Future<void> _presentRequest(DriverTrip trip) async {
     if (_handlingRequest) return;
     _handlingRequest = true;
     try {
-      final accepted = await showModalBottomSheet<bool>(
+      final matched = await showModalBottomSheet<DriverTrip>(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
@@ -176,29 +182,15 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
         builder: (_) => IncomingRequestSheet(trip: trip),
       );
       if (!mounted) return;
-      if (accepted == true) {
-        // The trip is already MATCHED (accepted); the live screen drives the
-        // real MATCHED→IN_PROGRESS→COMPLETED transitions.
+      if (matched != null) {
         await Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => ActiveTripScreen(trip: trip)),
+          MaterialPageRoute(builder: (_) => ActiveTripScreen(trip: matched)),
         );
         if (mounted) await _refreshTrips();
-      } else if (accepted == false) {
-        await _decline(trip);
       }
     } finally {
       _handlingRequest = false;
-    }
-  }
-
-  Future<void> _decline(DriverTrip trip) async {
-    try {
-      await DriverApi.updateTripStatus(trip.id, 'CANCELLED');
-    } catch (e) {
-      if (!mounted) return;
-      final msg = e is ApiException ? e.message : e.toString();
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
   }
 
@@ -330,7 +322,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                             child: Text(
                               _handlingRequest
                                   ? "You have a ride request."
-                                  : "Waiting for ride requests. We'll notify you the moment one is matched to you.",
+                                  : "Waiting for ride requests. We'll notify you the moment one is offered to you.",
                               style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
                             ),
                           ),

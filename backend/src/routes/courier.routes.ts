@@ -16,6 +16,7 @@ import { LEGACY_PACKAGE_PRICES, quoteDelivery } from "../services/delivery-prici
 import { getPricingPolicy } from "../lib/pricing-policy";
 import { recordDriverCompensationCharge } from "../services/ledger";
 import { MAX_FINAL_FARE_MULTIPLIER, MIN_FINAL_FARE_MULTIPLIER } from "../lib/money";
+import { driverEligibleForNewDelivery } from "../lib/driver-conflicts";
 
 export const courierRouter = Router();
 
@@ -218,13 +219,32 @@ courierRouter.patch("/courier-requests/:id/accept", requireAuth, requireRole("Dr
 
   const existing = await prisma.courierRequest.findUnique({ where: { id: req.params.id } });
   if (!existing) return res.status(404).json({ error: "Courier request not found" });
-  if (existing.status !== "REQUESTED" || existing.driverId) {
+
+  // P0: a driver must not simultaneously hold an active ride and an active
+  // delivery — checked again here (matching.ts's ride offers already exclude
+  // a driver with an active delivery), since this driver could have been
+  // OFFERED or accepted a ride in the time since they last polled available
+  // deliveries.
+  if (!(await driverEligibleForNewDelivery(driver.id))) {
+    return res.status(409).json({
+      error: "You already have an active ride in progress. Finish it before accepting a delivery.",
+    });
+  }
+
+  // Atomic conditional update (updateMany, not findUnique-then-update): two
+  // drivers hitting accept on the same request at the same instant can only
+  // ever have one winner — the loser gets a clean 409 instead of a lost
+  // update silently overwriting the winner's assignment.
+  const { count } = await prisma.courierRequest.updateMany({
+    where: { id: req.params.id, status: "REQUESTED", driverId: null },
+    data: { driverId: driver.id, status: "MATCHED" },
+  });
+  if (count === 0) {
     return res.status(409).json({ error: "Request already matched" });
   }
 
-  const request = await prisma.courierRequest.update({
+  const request = await prisma.courierRequest.findUniqueOrThrow({
     where: { id: req.params.id },
-    data: { driverId: driver.id, status: "MATCHED" },
     include: { sender: true },
   });
   await notifyUser(

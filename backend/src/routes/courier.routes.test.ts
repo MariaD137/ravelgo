@@ -231,6 +231,59 @@ test("PATCH /api/courier-requests/:id/accept matches a driver to the request", a
   assert.equal(notifications[0].referenceId, req.id);
 });
 
+test("PATCH /api/courier-requests/:id/accept: two concurrent accepts for the same request — only one wins", async () => {
+  const sender = await createRider("rider-race-1");
+  await createDriver("driver-race-1");
+  const req = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-race-1", groups: ["Driver"] });
+  const [first, second] = await Promise.all([
+    request(app).patch(`/api/courier-requests/${req.id}/accept`).set("Authorization", `Bearer ${token}`),
+    request(app).patch(`/api/courier-requests/${req.id}/accept`).set("Authorization", `Bearer ${token}`),
+  ]);
+  const statuses = [first.status, second.status].sort();
+  assert.deepEqual(statuses, [200, 409]);
+});
+
+test("A driver cannot accept a delivery while already on an active ride", async () => {
+  const sender = await createRider("rider-conflict-2");
+  const rider = await createRider("rider-conflict-3");
+  const driver = await createDriver("driver-conflict-2");
+  // This driver already has an active (MATCHED) ride.
+  await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "MATCHED" },
+  });
+  const req = await prisma.courierRequest.create({
+    data: {
+      senderId: sender.id,
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "Box",
+      recipientName: "X",
+      recipientPhone: "555-1",
+      estimatedFare: 10,
+    },
+  });
+
+  const token = mockAuthAs({ sub: "driver-conflict-2", groups: ["Driver"] });
+  const res = await request(app).patch(`/api/courier-requests/${req.id}/accept`).set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 409);
+
+  const unchanged = await prisma.courierRequest.findUnique({ where: { id: req.id } });
+  assert.equal(unchanged?.status, "REQUESTED");
+  assert.equal(unchanged?.driverId, null);
+});
+
 test("POST /api/courier-requests stores real pickup/dropoff coordinates when provided, and GET /:id returns them plus the courier's live location", async () => {
   await createRider("rider-coords-1");
   const driver = await createDriver("driver-coords-1");

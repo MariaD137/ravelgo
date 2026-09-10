@@ -104,7 +104,7 @@ test("POST /api/trips rejects missing, malformed, and negative trip inputs", asy
   }
 });
 
-test("POST /api/trips auto-matches an available ACTIVE driver", async () => {
+test("POST /api/trips offers an available ACTIVE driver, but does not yet MATCH them", async () => {
   await prisma.user.create({
     data: { cognitoSub: "rider-sub-6", role: "RIDER", firstName: "G", lastName: "H", email: "g@example.com" },
   });
@@ -116,9 +116,145 @@ test("POST /api/trips auto-matches an available ACTIVE driver", async () => {
   const token = mockAuthAs({ sub: "rider-sub-6", groups: ["Rider"] });
   const res = await request(app).post("/api/trips").set("Authorization", `Bearer ${token}`).send(tripInput);
 
+  // P0 special requirement: matching offers a trip, it doesn't fake an
+  // acceptance the driver hasn't given yet.
   assert.equal(res.status, 201);
-  assert.equal(res.body.status, "MATCHED");
+  assert.equal(res.body.status, "OFFERED");
   assert.equal(res.body.driverId, driver.id);
+});
+
+test("POST /api/trips/:id/accept lets the offered driver actually accept, moving the trip to MATCHED", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-accept-1", role: "RIDER", firstName: "G", lastName: "H", email: "accept1r@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-accept-1", role: "DRIVER", firstName: "I", lastName: "J", email: "accept1d@example.com" },
+  });
+  await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE", isOnline: true } });
+
+  const riderToken = mockAuthAs({ sub: "rider-accept-1", groups: ["Rider"] });
+  const created = await request(app).post("/api/trips").set("Authorization", `Bearer ${riderToken}`).send(tripInput);
+  assert.equal(created.body.status, "OFFERED");
+
+  const driverToken = mockAuthAs({ sub: "driver-accept-1", groups: ["Driver"] });
+  const accepted = await request(app)
+    .post(`/api/trips/${created.body.id}/accept`)
+    .set("Authorization", `Bearer ${driverToken}`)
+    .send();
+
+  assert.equal(accepted.status, 200);
+  assert.equal(accepted.body.status, "MATCHED");
+});
+
+test("POST /api/trips/:id/decline releases the offer and re-offers it to the next eligible driver, never cancelling the rider's trip", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-decline-1", role: "RIDER", firstName: "G", lastName: "H", email: "decline1r@example.com" },
+  });
+  const decliningUser = await prisma.user.create({
+    data: { cognitoSub: "driver-decline-1", role: "DRIVER", firstName: "I", lastName: "J", email: "decline1d@example.com" },
+  });
+  const decliningDriver = await prisma.driver.create({
+    data: { userId: decliningUser.id, status: "ACTIVE", isOnline: true, rating: 5.0 },
+  });
+  const secondUser = await prisma.user.create({
+    data: { cognitoSub: "driver-decline-2", role: "DRIVER", firstName: "K", lastName: "L", email: "decline2d@example.com" },
+  });
+  const secondDriver = await prisma.driver.create({
+    data: { userId: secondUser.id, status: "ACTIVE", isOnline: true, rating: 4.0 },
+  });
+
+  const riderToken = mockAuthAs({ sub: "rider-decline-1", groups: ["Rider"] });
+  const created = await request(app).post("/api/trips").set("Authorization", `Bearer ${riderToken}`).send(tripInput);
+  // Highest-rated driver is offered first.
+  assert.equal(created.body.driverId, decliningDriver.id);
+
+  const decliningToken = mockAuthAs({ sub: "driver-decline-1", groups: ["Driver"] });
+  const declined = await request(app)
+    .post(`/api/trips/${created.body.id}/decline`)
+    .set("Authorization", `Bearer ${decliningToken}`)
+    .send();
+  assert.equal(declined.status, 204);
+
+  const after = await prisma.trip.findUniqueOrThrow({ where: { id: created.body.id } });
+  // Never cancelled — re-offered to the next eligible driver instead.
+  assert.equal(after.status, "OFFERED");
+  assert.equal(after.driverId, secondDriver.id);
+  assert.ok(after.declinedDriverIds.includes(decliningDriver.id));
+
+  // The declining driver is never re-offered the same trip again.
+  const secondDeclineAttempt = await request(app)
+    .post(`/api/trips/${created.body.id}/decline`)
+    .set("Authorization", `Bearer ${decliningToken}`)
+    .send();
+  assert.equal(secondDeclineAttempt.status, 409);
+});
+
+test("POST /api/trips/:id/accept: two concurrent accepts for the same offer — only one wins", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-race-1", role: "RIDER", firstName: "G", lastName: "H", email: "race1r@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-race-1", role: "DRIVER", firstName: "I", lastName: "J", email: "race1d@example.com" },
+  });
+  await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE", isOnline: true } });
+
+  const riderToken = mockAuthAs({ sub: "rider-race-1", groups: ["Rider"] });
+  const created = await request(app).post("/api/trips").set("Authorization", `Bearer ${riderToken}`).send(tripInput);
+
+  const driverToken = mockAuthAs({ sub: "driver-race-1", groups: ["Driver"] });
+  const [first, second] = await Promise.all([
+    request(app).post(`/api/trips/${created.body.id}/accept`).set("Authorization", `Bearer ${driverToken}`).send(),
+    request(app).post(`/api/trips/${created.body.id}/accept`).set("Authorization", `Bearer ${driverToken}`).send(),
+  ]);
+  const statuses = [first.status, second.status].sort();
+  // Exactly one 200 (the winner) and one 409 (the loser) — never two 200s.
+  assert.deepEqual(statuses, [200, 409]);
+});
+
+test("A driver cannot accept a ride while already carrying an active delivery", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-conflict-1", role: "RIDER", firstName: "G", lastName: "H", email: "conflict1r@example.com" },
+  });
+  const senderUser = await prisma.user.create({
+    data: { cognitoSub: "sender-conflict-1", role: "RIDER", firstName: "S", lastName: "L", email: "conflict1s@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-conflict-1", role: "DRIVER", firstName: "I", lastName: "J", email: "conflict1d@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE", isOnline: true } });
+  // This driver already has an active (MATCHED) delivery.
+  await prisma.courierRequest.create({
+    data: {
+      senderId: senderUser.id,
+      driverId: driver.id,
+      pickupAddress: "A",
+      dropoffAddress: "B",
+      packageDescription: "box",
+      recipientName: "R",
+      recipientPhone: "123",
+      estimatedFare: 1000,
+      status: "MATCHED",
+    },
+  });
+
+  const riderToken = mockAuthAs({ sub: "rider-conflict-1", groups: ["Rider"] });
+  const created = await request(app).post("/api/trips").set("Authorization", `Bearer ${riderToken}`).send(tripInput);
+  // Matching itself must skip this driver — nobody else is eligible, so the
+  // trip stays REQUESTED rather than being offered to a conflicted driver.
+  assert.equal(created.body.status, "REQUESTED");
+  assert.equal(created.body.driverId, null);
+
+  // Defense in depth: even if somehow offered, accept must still reject it.
+  await prisma.trip.update({
+    where: { id: created.body.id },
+    data: { status: "OFFERED", driverId: driver.id, offerExpiresAt: new Date(Date.now() + 60_000) },
+  });
+  const driverToken = mockAuthAs({ sub: "driver-conflict-1", groups: ["Driver"] });
+  const accepted = await request(app)
+    .post(`/api/trips/${created.body.id}/accept`)
+    .set("Authorization", `Bearer ${driverToken}`)
+    .send();
+  assert.equal(accepted.status, 409);
 });
 
 test("POST /api/trips leaves a trip REQUESTED when the only ACTIVE driver is offline", async () => {
@@ -513,7 +649,7 @@ test("POST /api/trips returns a safe driver summary when matched (no sensitive f
   const res = await request(app).post("/api/trips").set("Authorization", `Bearer ${token}`).send(tripInput);
 
   assert.equal(res.status, 201);
-  assert.equal(res.body.status, "MATCHED");
+  assert.equal(res.body.status, "OFFERED");
   assert.equal(res.body.driver.user.firstName, "Dele");
   assert.equal(res.body.driver.rating, 4.7);
   assert.equal(res.body.driver.vehicle.plateNumber, "LND-482-KJ");
@@ -525,7 +661,7 @@ test("POST /api/trips returns a safe driver summary when matched (no sensitive f
 
 // --- P0 #9: trip status state machine -------------------------------------
 
-async function seedAssignedTrip(riderSub: string, driverSub: string, status: "REQUESTED" | "MATCHED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED") {
+async function seedAssignedTrip(riderSub: string, driverSub: string, status: "REQUESTED" | "OFFERED" | "MATCHED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED") {
   const rider = await prisma.user.create({
     data: { cognitoSub: riderSub, role: "RIDER", firstName: "R", lastName: "R", email: `${riderSub}@example.com` },
   });
@@ -538,6 +674,26 @@ async function seedAssignedTrip(riderSub: string, driverSub: string, status: "RE
   });
   return trip;
 }
+
+test("POST /api/trips/:id/arrived notifies the rider, and is idempotent on a repeat call", async () => {
+  const trip = await seedAssignedTrip("rider-arr-1", "driver-arr-1", "MATCHED");
+  const token = mockAuthAs({ sub: "driver-arr-1", groups: ["Driver"] });
+
+  const first = await request(app).post(`/api/trips/${trip.id}/arrived`).set("Authorization", `Bearer ${token}`).send();
+  assert.equal(first.status, 200);
+  assert.ok(first.body.arrivedAt);
+
+  const notifications = await prisma.notification.findMany({ where: { userId: trip.riderId } });
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].type, "RIDE_DRIVER_ARRIVED");
+
+  // A repeat call must not push the arrival clock forward or double-notify.
+  const second = await request(app).post(`/api/trips/${trip.id}/arrived`).set("Authorization", `Bearer ${token}`).send();
+  assert.equal(second.status, 200);
+  assert.equal(second.body.arrivedAt, first.body.arrivedAt);
+  const stillOne = await prisma.notification.findMany({ where: { userId: trip.riderId } });
+  assert.equal(stillOne.length, 1);
+});
 
 test("state machine rejects REQUESTED->COMPLETED (billing a trip never driven)", async () => {
   const trip = await seedAssignedTrip("rider-sm1", "driver-sm1", "REQUESTED");
@@ -591,6 +747,14 @@ test("POST /api/trips/:id/cancel refuses to cancel an IN_PROGRESS trip", async (
   const res = await request(app).post(`/api/trips/${trip.id}/cancel`).set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 409);
   assert.equal(res.body.error.code, "TRIP_NOT_CANCELLABLE");
+});
+
+test("POST /api/trips/:id/cancel lets the owning rider cancel while a driver has only been OFFERED (not yet accepted)", async () => {
+  const trip = await seedAssignedTrip("rider-cx4", "driver-cx4", "OFFERED");
+  const token = mockAuthAs({ sub: "rider-cx4", groups: ["Rider"] });
+  const res = await request(app).post(`/api/trips/${trip.id}/cancel`).set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "CANCELLED");
 });
 
 test("POST /api/trips/:id/cancel denies a rider who does not own the trip", async () => {

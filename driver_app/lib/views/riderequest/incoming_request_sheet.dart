@@ -1,17 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/config/currency.dart';
+import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 
-/// Shown when the backend has matched a REAL trip to this driver (status
-/// MATCHED). Accepting starts the trip on the backend; declining cancels it.
-/// There is no fabricated countdown or fare "negotiation" here — the trip and
-/// its fare are the backend's, and the two buttons drive real state changes
-/// (P0 #3).
-class IncomingRequestSheet extends StatelessWidget {
+/// Shown when the backend has OFFERED a REAL trip to this driver (status
+/// OFFERED). Accept/Decline both call the real backend
+/// (POST /trips/:id/accept | /decline) — there is no local-only acceptance;
+/// the trip only becomes MATCHED once the backend says so (P0 special
+/// requirement: server-authoritative accept/decline, never faked).
+class IncomingRequestSheet extends StatefulWidget {
   final DriverTrip trip;
-  final bool busy;
-  const IncomingRequestSheet({super.key, required this.trip, this.busy = false});
+  const IncomingRequestSheet({super.key, required this.trip});
+
+  @override
+  State<IncomingRequestSheet> createState() => _IncomingRequestSheetState();
+}
+
+class _IncomingRequestSheetState extends State<IncomingRequestSheet> {
+  bool _busy = false;
+  String? _error;
+
+  DriverTrip get trip => widget.trip;
 
   /// Display-only estimate of what the driver would earn, shown BEFORE
   /// acceptance. The trip's real `driverEarnings` is null until payment
@@ -98,24 +108,73 @@ class IncomingRequestSheet extends StatelessWidget {
               ),
             ],
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: AppColors.danger.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
+              child: Text(_error!, style: const TextStyle(fontSize: 12.5, color: AppColors.danger)),
+            ),
+          ],
           const SizedBox(height: 20),
-          if (busy)
+          if (_busy)
             const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator()))
+          else if (_error != null)
+            AppComponents.primaryButton(text: "OK", onPressed: () => Navigator.pop(context, null))
           else
             Row(
               children: [
-                Expanded(
-                    child: AppComponents.outlineButton(
-                        text: "Decline", onPressed: () => Navigator.pop(context, false))),
+                Expanded(child: AppComponents.outlineButton(text: "Decline", onPressed: _decline)),
                 const SizedBox(width: 12),
-                Expanded(
-                    child: AppComponents.primaryButton(
-                        text: "Accept", onPressed: () => Navigator.pop(context, true))),
+                Expanded(child: AppComponents.primaryButton(text: "Accept", onPressed: _accept)),
               ],
             ),
         ],
       ),
     );
+  }
+
+  /// Calls the real backend accept endpoint (P0 special requirement — never a
+  /// fabricated local acceptance). Pops with the now-MATCHED trip on success
+  /// so the caller can open the live trip screen with fresh, authoritative
+  /// fields; pops with null (after the user acknowledges the error) if the
+  /// offer was already resolved another way (expired, declined elsewhere,
+  /// or the rider cancelled).
+  Future<void> _accept() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final updated = await DriverApi.acceptTrip(trip.id);
+      if (mounted) Navigator.pop(context, updated);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e is ApiException ? e.message : "Could not accept this request. Please try again.";
+      });
+    }
+  }
+
+  /// Calls the real backend decline endpoint. This NEVER cancels the rider's
+  /// trip — the backend releases the offer and re-offers it to the next
+  /// eligible driver on its own.
+  Future<void> _decline() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await DriverApi.declineTrip(trip.id);
+      if (mounted) Navigator.pop(context, null);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e is ApiException ? e.message : "Could not decline this request. Please try again.";
+      });
+    }
   }
 
   Widget _row(IconData icon, String text) {
