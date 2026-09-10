@@ -85,7 +85,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
       appBar: AppBar(title: const Text("My Vehicles")),
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.textPrimary,
+        foregroundColor: Colors.white,
         onPressed: _busy ? null : () => _addOrEdit(),
         child: const Icon(Icons.add),
       ),

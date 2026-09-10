@@ -182,7 +182,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
                       onPressed: () => _payTrip('CARD'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.primary,
-                        foregroundColor: AppColors.textPrimary,
+                        foregroundColor: Colors.white,
                       ),
                       icon: const Icon(Icons.credit_card),
                       label: const Text('Pay by card'),
