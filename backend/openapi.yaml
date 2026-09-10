@@ -319,7 +319,7 @@ paths:
       requestBody:
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/VehicleInput" }
+            schema: { $ref: "#/components/schemas/VehicleUpdateInput" }
       responses:
         "200":
           description: Updated vehicle
@@ -1898,6 +1898,31 @@ components:
         plateNumber: { type: string }
         year: { type: string }
         isPrimary: { type: boolean }
+        photoKeys:
+          type: array
+          maxItems: 7
+          items: { type: string }
+          description: S3 keys from POST /uploads/presign (bucket "assets"), up to 7 per vehicle.
+
+    VehicleUpdateInput:
+      type: object
+      properties:
+        brand: { type: string }
+        model: { type: string }
+        colour: { type: string }
+        plateNumber: { type: string }
+        year: { type: string }
+        isPrimary: { type: boolean }
+        addPhotoKeys:
+          type: array
+          maxItems: 7
+          items: { type: string }
+          description: Newly presigned S3 keys to append to the vehicle's existing photos.
+        removePhotoUrls:
+          type: array
+          maxItems: 7
+          items: { type: string }
+          description: photoUrl values (as returned by GET) of existing photos to remove.
 
     Vehicle:
       allOf:
@@ -1907,6 +1932,11 @@ components:
             id: { type: string }
             driverId: { type: string }
             listedForRental: { type: boolean }
+            photoUrl: { type: string, nullable: true, description: "The first photo's public CDN URL, or null." }
+            photoUrls:
+              type: array
+              items: { type: string }
+              description: All of this vehicle's public CDN photo URLs. Raw S3 keys are never returned.
 
     RentalListing:
       type: object

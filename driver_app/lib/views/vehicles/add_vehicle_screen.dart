@@ -5,14 +5,32 @@ import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 
+/// One photo slot in the editor — either one of the vehicle's existing,
+/// already-uploaded photos, or one the driver just picked on this screen.
+class _PhotoItem {
+  final String? existingUrl;
+  final XFile? newFile;
+  _PhotoItem.existing(String url)
+      : existingUrl = url,
+        newFile = null;
+  _PhotoItem.newlyPicked(XFile file)
+      : existingUrl = null,
+        newFile = file;
+}
+
+const _maxVehiclePhotos = 7;
+
 /// Add or edit a vehicle. Real backend-backed: POST /api/vehicles to add,
 /// PATCH /api/vehicles/:id to edit. Pops `true` on success so the caller
 /// reloads the real list rather than trusting a locally-fabricated record.
 ///
-/// The photo (if picked) is presigned + uploaded to the public "assets"
-/// bucket (DriverApi.uploadToDocumentsBucket) only once Save is pressed, so
-/// picking a photo and backing out never leaves an orphaned S3 object tied
-/// to a vehicle that was never actually created/updated.
+/// Up to 7 photos per vehicle. Newly picked photos are presigned + uploaded
+/// to the public "assets" bucket (DriverApi.uploadToDocumentsBucket) only
+/// once Save is pressed, so picking photos and backing out never leaves an
+/// orphaned S3 object tied to a vehicle that was never actually
+/// created/updated. On edit, the backend never hands raw S3 keys back to
+/// the client, so removing an existing photo is done by its photoUrl and
+/// adding a new one by its freshly presigned key — never a full replace.
 class AddVehicleScreen extends StatefulWidget {
   final Vehicle? existing;
   const AddVehicleScreen({super.key, this.existing});
@@ -31,8 +49,8 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   late bool _isPrimary = widget.existing?.isPrimary ?? false;
   bool _saving = false;
 
-  XFile? _newPhoto;
-  bool get _hasPhoto => _newPhoto != null || widget.existing?.photoUrl != null;
+  late final List<_PhotoItem> _photos =
+      (widget.existing?.photoUrls ?? const []).map(_PhotoItem.existing).toList();
 
   bool get _isEditing => widget.existing != null;
 
@@ -46,35 +64,43 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     super.dispose();
   }
 
-  Future<void> _pickPhoto() async {
-    final photo = await ImagePicker().pickImage(source: ImageSource.gallery, imageQuality: 85);
-    if (photo == null || !mounted) return;
-    setState(() => _newPhoto = photo);
+  Future<void> _pickPhotos() async {
+    final remaining = _maxVehiclePhotos - _photos.length;
+    if (remaining <= 0) return;
+    final picked = await ImagePicker().pickMultiImage(imageQuality: 85, limit: remaining);
+    if (picked.isEmpty || !mounted) return;
+    setState(() => _photos.addAll(picked.take(remaining).map(_PhotoItem.newlyPicked)));
   }
+
+  void _removePhoto(int index) => setState(() => _photos.removeAt(index));
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     try {
-      String? photoKey;
-      final photo = _newPhoto;
-      if (photo != null) {
-        final bytes = await photo.readAsBytes();
-        final lower = photo.name.toLowerCase();
+      final newKeys = <String>[];
+      for (final photo in _photos) {
+        final file = photo.newFile;
+        if (file == null) continue;
+        final bytes = await file.readAsBytes();
+        final lower = file.name.toLowerCase();
         final contentType = lower.endsWith('.png')
             ? 'image/png'
             : lower.endsWith('.webp')
                 ? 'image/webp'
                 : 'image/jpeg';
-        photoKey = await DriverApi.uploadToDocumentsBucket(
-          fileName: 'vehicle-photo-${DateTime.now().millisecondsSinceEpoch}.${contentType.split('/').last}',
+        final key = await DriverApi.uploadToDocumentsBucket(
+          fileName: 'vehicle-photo-${DateTime.now().millisecondsSinceEpoch}-${newKeys.length}.${contentType.split('/').last}',
           contentType: contentType,
           bytes: bytes,
           bucket: 'assets',
         );
+        newKeys.add(key);
       }
 
       if (_isEditing) {
+        final keptUrls = _photos.map((p) => p.existingUrl).whereType<String>().toSet();
+        final removedUrls = widget.existing!.photoUrls.where((u) => !keptUrls.contains(u)).toList();
         await DriverApi.updateVehicle(
           widget.existing!.id,
           brand: _brand.text.trim(),
@@ -83,7 +109,8 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
           plateNumber: _plate.text.trim(),
           year: _year.text.trim(),
           isPrimary: _isPrimary,
-          photoKey: photoKey,
+          addPhotoKeys: newKeys,
+          removePhotoUrls: removedUrls,
         );
       } else {
         await DriverApi.addVehicle(
@@ -93,7 +120,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
           plateNumber: _plate.text.trim(),
           year: _year.text.trim(),
           isPrimary: _isPrimary,
-          photoKey: photoKey,
+          photoKeys: newKeys,
         );
       }
       if (!mounted) return;
@@ -116,7 +143,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            _photoPicker(),
+            _photoGrid(),
             const SizedBox(height: 20),
             TextFormField(
               controller: _brand,
@@ -175,61 +202,94 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     );
   }
 
-  Widget _photoPicker() {
-    return GestureDetector(
-      onTap: _saving ? null : _pickPhoto,
-      child: Container(
-        height: 160,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: AppColors.surfaceElevated,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border),
+  Widget _photoGrid() {
+    final canAddMore = _photos.length < _maxVehiclePhotos;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Vehicle photos (${_photos.length}/$_maxVehiclePhotos)',
+          style: const TextStyle(fontWeight: FontWeight.w600),
         ),
-        clipBehavior: Clip.antiAlias,
-        child: _hasPhoto ? _photoPreview() : _photoPlaceholder(),
-      ),
-    );
-  }
-
-  Widget _photoPreview() {
-    final overlay = Positioned(
-      right: 8,
-      bottom: 8,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(8)),
-        child: const Row(
-          mainAxisSize: MainAxisSize.min,
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
           children: [
-            Icon(Icons.edit, size: 14, color: Colors.white),
-            SizedBox(width: 4),
-            Text('Change photo', style: TextStyle(fontSize: 12, color: Colors.white)),
+            for (var i = 0; i < _photos.length; i++) _photoTile(i),
+            if (canAddMore) _addPhotoTile(),
           ],
         ),
-      ),
+        if (_photos.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text(
+              'Add up to 7 photos of the vehicle.',
+              style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+            ),
+          ),
+      ],
     );
-    final image = _newPhoto != null
-        ? Image.file(File(_newPhoto!.path), fit: BoxFit.cover, width: double.infinity, height: double.infinity)
-        : Image.network(
-            widget.existing!.photoUrl!,
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: double.infinity,
-            errorBuilder: (_, __, ___) => _photoPlaceholder(),
-          );
-    return Stack(fit: StackFit.expand, children: [image, overlay]);
   }
 
-  Widget _photoPlaceholder() {
-    return const Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+  Widget _photoTile(int index) {
+    final photo = _photos[index];
+    final image = photo.newFile != null
+        ? Image.file(File(photo.newFile!.path), fit: BoxFit.cover, width: 100, height: 100)
+        : Image.network(
+            photo.existingUrl!,
+            fit: BoxFit.cover,
+            width: 100,
+            height: 100,
+            errorBuilder: (_, __, ___) => const ColoredBox(
+              color: AppColors.surfaceElevated,
+              child: Icon(Icons.directions_car, color: AppColors.textSecondary),
+            ),
+          );
+    return SizedBox(
+      width: 100,
+      height: 100,
+      child: Stack(
         children: [
-          Icon(Icons.add_a_photo_outlined, color: AppColors.textSecondary),
-          SizedBox(height: 6),
-          Text('Add a photo of the vehicle', style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary)),
+          ClipRRect(borderRadius: BorderRadius.circular(10), child: image),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: GestureDetector(
+              onTap: _saving ? null : () => _removePhoto(index),
+              child: const CircleAvatar(
+                radius: 12,
+                backgroundColor: Colors.black54,
+                child: Icon(Icons.close, size: 14, color: Colors.white),
+              ),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _addPhotoTile() {
+    return GestureDetector(
+      onTap: _saving ? null : _pickPhotos,
+      child: Container(
+        width: 100,
+        height: 100,
+        decoration: BoxDecoration(
+          color: AppColors.surfaceElevated,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.add_a_photo_outlined, color: AppColors.textSecondary),
+              SizedBox(height: 4),
+              Text('Add', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+            ],
+          ),
+        ),
       ),
     );
   }

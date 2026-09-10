@@ -6,10 +6,10 @@ import { env } from "../config/env";
  * responses used to return the raw Prisma object with the full `driver.user`
  * relation, leaking email and cognitoSub to any rider browsing listings.
  *
- * photoUrl is built from Vehicle.photoKey + the assets bucket's CloudFront
- * domain (ASSETS_CDN_DOMAIN) — never a raw S3 URL, and never fabricated: a
- * vehicle with no photoKey, or a deploy with no CDN domain configured, gets
- * photoUrl: null rather than a broken link.
+ * photoUrl/photoUrls are built from Vehicle.photoKeys + the assets bucket's
+ * CloudFront domain (ASSETS_CDN_DOMAIN) — never raw S3 URLs, and never
+ * fabricated: a vehicle with no photos, or a deploy with no CDN domain
+ * configured, gets photoUrl: null / photoUrls: [] rather than broken links.
  */
 
 interface UserRel {
@@ -32,7 +32,7 @@ interface VehicleRel {
   isPrimary: boolean;
   listedForRental: boolean;
   vehicleClass?: string | null;
-  photoKey?: string | null;
+  photoKeys?: string[] | null;
   createdAt: Date;
 }
 interface RentalBookingRel {
@@ -89,6 +89,9 @@ export function photoUrlFor(photoKey: string | null | undefined): string | null 
 }
 
 export function serializeVehicle(vehicle: VehicleRel) {
+  const photoUrls = (vehicle.photoKeys ?? [])
+    .map(photoUrlFor)
+    .filter((url): url is string => url !== null);
   return {
     id: vehicle.id,
     driverId: vehicle.driverId,
@@ -100,7 +103,8 @@ export function serializeVehicle(vehicle: VehicleRel) {
     isPrimary: vehicle.isPrimary,
     listedForRental: vehicle.listedForRental,
     vehicleClass: vehicle.vehicleClass ?? null,
-    photoUrl: photoUrlFor(vehicle.photoKey),
+    photoUrl: photoUrls[0] ?? null,
+    photoUrls,
     createdAt: vehicle.createdAt,
   };
 }

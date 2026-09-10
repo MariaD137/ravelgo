@@ -28,7 +28,7 @@ async function findOwnUser(cognitoSub: string) {
 }
 
 // A booking's nested listing.vehicle never carries a driver.user relation at
-// this call depth, so there's no PII to strip here — just run photoKey
+// this call depth, so there's no PII to strip here — just run photoKeys
 // through the same public-URL builder every other vehicle response uses.
 function withVehiclePhotoUrl<T extends { listing: { vehicle: Parameters<typeof serializeVehicle>[0] } & Record<string, unknown> }>(
   booking: T,

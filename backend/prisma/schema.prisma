@@ -256,10 +256,11 @@ model Vehicle {
   year            String
   isPrimary       Boolean           @default(false)
   listedForRental Boolean           @default(false)
-  // S3 key in the public "assets" bucket (served via CloudFront) — never a
-  // raw URL, so the CDN domain can change without touching stored data.
-  // Nullable: not every vehicle has a photo yet.
-  photoKey        String?
+  // S3 keys in the public "assets" bucket (served via CloudFront) — never
+  // raw URLs, so the CDN domain can change without touching stored data.
+  // Up to 7 per vehicle (enforced in the route handlers); empty until the
+  // driver uploads at least one photo.
+  photoKeys       String[]          @default([])
   // Which ride categories this vehicle is eligible to serve (see
   // RideCategory.eligibleVehicleClasses). Self-declared by the driver when
   // adding/editing the vehicle, admin-correctable. Nullable: a vehicle added

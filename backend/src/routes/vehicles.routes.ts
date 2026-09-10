@@ -5,7 +5,7 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { requireAdminPermission } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
-import { serializeVehicle } from "../lib/vehicle-view";
+import { photoUrlFor, serializeVehicle } from "../lib/vehicle-view";
 
 export const vehiclesRouter = Router();
 
@@ -35,11 +35,14 @@ vehiclesRouter.get("/vehicles", requireAuth, requireRole("Admin"), async (req, r
     prisma.vehicle.count(),
   ]);
   // Admin-only view: keeps the raw driver.user include (email is genuinely
-  // useful here) but still runs photoKey through the same URL builder as
-  // everywhere else rather than leaking the raw S3 key.
+  // useful here) but still runs photoKeys through the same URL builder as
+  // everywhere else rather than leaking the raw S3 keys.
   res.json(
     paginate(
-      vehicles.map((v) => ({ ...v, photoKey: undefined, photoUrl: serializeVehicle(v).photoUrl })),
+      vehicles.map((v) => {
+        const { photoUrl, photoUrls } = serializeVehicle(v);
+        return { ...v, photoKeys: undefined, photoUrl, photoUrls };
+      }),
       total,
       page,
       pageSize,
@@ -103,16 +106,17 @@ const createVehicleSchema = z.object({
   // eligibleVehicleClasses) — self-declared by the driver, admin-correctable.
   // Optional — a vehicle can be added first and classified later via PATCH.
   vehicleClass: z.enum(["ECONOMY", "COMFORT", "PREMIUM", "LUXURY"]).optional(),
-  // S3 key from POST /uploads/presign (bucket: "assets"). Optional — a
-  // vehicle can be added first and photographed later via PATCH.
-  photoKey: z.string().min(1).optional(),
+  // S3 keys from POST /uploads/presign (bucket: "assets"), up to 7 per
+  // vehicle. Optional — a vehicle can be added first and photographed later
+  // via PATCH.
+  photoKeys: z.array(z.string().min(1)).max(7).optional(),
 });
 
 // Driver: add a vehicle
 vehiclesRouter.post("/vehicles", requireAuth, requireRole("Driver"), async (req, res) => {
   const parsed = createVehicleSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  if (parsed.data.photoKey && !ownsUploadKey(req.user!.sub, parsed.data.photoKey)) {
+  if (parsed.data.photoKeys?.some((key) => !ownsUploadKey(req.user!.sub, key))) {
     return res.status(403).json({ error: "Uploaded file does not belong to the calling user" });
   }
 
@@ -125,13 +129,24 @@ vehiclesRouter.post("/vehicles", requireAuth, requireRole("Driver"), async (req,
   res.status(201).json(serializeVehicle(vehicle));
 });
 
-const updateVehicleSchema = createVehicleSchema.partial();
+// Photo edits use add/remove rather than a full replace: the client is
+// never handed the raw S3 keys (only photoUrl/photoUrls), so it can't
+// resubmit "the full desired list" the way it can for a plain text field —
+// it can only say which newly-presigned keys to append and which existing
+// photoUrl values (as returned by GET) to drop.
+const updateVehicleSchema = createVehicleSchema
+  .omit({ photoKeys: true })
+  .partial()
+  .extend({
+    addPhotoKeys: z.array(z.string().min(1)).max(7).optional(),
+    removePhotoUrls: z.array(z.string().min(1)).max(7).optional(),
+  });
 
 // Driver: update one of my own vehicles
 vehiclesRouter.patch("/vehicles/:id", requireAuth, requireRole("Driver"), async (req, res) => {
   const parsed = updateVehicleSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  if (parsed.data.photoKey && !ownsUploadKey(req.user!.sub, parsed.data.photoKey)) {
+  if (parsed.data.addPhotoKeys?.some((key) => !ownsUploadKey(req.user!.sub, key))) {
     return res.status(403).json({ error: "Uploaded file does not belong to the calling user" });
   }
 
@@ -143,9 +158,22 @@ vehiclesRouter.patch("/vehicles/:id", requireAuth, requireRole("Driver"), async 
     return res.status(404).json({ error: "Vehicle not found" });
   }
 
+  const { addPhotoKeys, removePhotoUrls, ...rest } = parsed.data;
+  let photoKeys = vehicle.photoKeys;
+  if (removePhotoUrls?.length) {
+    const removeSet = new Set(removePhotoUrls);
+    photoKeys = photoKeys.filter((key) => !removeSet.has(photoUrlFor(key) ?? ""));
+  }
+  if (addPhotoKeys?.length) {
+    photoKeys = [...photoKeys, ...addPhotoKeys];
+  }
+  if (photoKeys.length > 7) {
+    return res.status(400).json({ error: "A vehicle can have at most 7 photos." });
+  }
+
   const updated = await prisma.vehicle.update({
     where: { id: req.params.id },
-    data: parsed.data,
+    data: { ...rest, photoKeys },
   });
   res.json(serializeVehicle(updated));
 });

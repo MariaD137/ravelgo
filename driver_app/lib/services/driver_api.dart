@@ -314,10 +314,10 @@ class Vehicle {
   final String year;
   final bool isPrimary;
   final bool listedForRental;
-  // A signed-nothing, publicly viewable CDN URL (the backend serves this
-  // from the assets bucket) — never a raw S3 key, and null until a photo has
-  // actually been uploaded for this vehicle.
-  final String? photoUrl;
+  // Publicly viewable CDN URLs (the backend serves these from the assets
+  // bucket) — never raw S3 keys. Up to 7 per vehicle; empty until at least
+  // one photo has been uploaded.
+  final List<String> photoUrls;
 
   Vehicle({
     required this.id,
@@ -328,10 +328,14 @@ class Vehicle {
     required this.year,
     required this.isPrimary,
     required this.listedForRental,
-    this.photoUrl,
+    this.photoUrls = const [],
   });
 
   String get label => '$brand $model'.trim();
+
+  // The cover photo shown wherever only a single thumbnail fits (list rows,
+  // rental-listing picker).
+  String? get photoUrl => photoUrls.isNotEmpty ? photoUrls.first : null;
 
   factory Vehicle.fromJson(Map<String, dynamic> j) => Vehicle(
         id: '${j['id']}',
@@ -342,7 +346,10 @@ class Vehicle {
         year: '${j['year'] ?? ''}',
         isPrimary: j['isPrimary'] == true,
         listedForRental: j['listedForRental'] == true,
-        photoUrl: (j['photoUrl'] as String?)?.isNotEmpty == true ? j['photoUrl'] as String : null,
+        photoUrls: ((j['photoUrls'] as List?) ?? const [])
+            .whereType<String>()
+            .where((u) => u.isNotEmpty)
+            .toList(),
       );
 }
 
@@ -610,9 +617,10 @@ class DriverApi {
     return list.whereType<Map<String, dynamic>>().map(Vehicle.fromJson).toList();
   }
 
-  /// Add a vehicle owned by the calling driver. photoKey (if given) must be
-  /// an S3 key this same caller was just presigned for (uploadToDocumentsBucket
-  /// with bucket: 'assets') — the backend rejects one that isn't theirs.
+  /// Add a vehicle owned by the calling driver. photoKeys (if given, up to 7)
+  /// must be S3 keys this same caller was just presigned for
+  /// (uploadToDocumentsBucket with bucket: 'assets') — the backend rejects
+  /// any key that isn't theirs.
   static Future<Vehicle> addVehicle({
     required String brand,
     required String model,
@@ -620,7 +628,7 @@ class DriverApi {
     required String plateNumber,
     required String year,
     bool isPrimary = false,
-    String? photoKey,
+    List<String> photoKeys = const [],
   }) async {
     final data = await ApiClient.post('/api/vehicles', {
       'brand': brand,
@@ -629,12 +637,16 @@ class DriverApi {
       'plateNumber': plateNumber,
       'year': year,
       'isPrimary': isPrimary,
-      if (photoKey != null) 'photoKey': photoKey,
+      if (photoKeys.isNotEmpty) 'photoKeys': photoKeys,
     });
     return Vehicle.fromJson(data as Map<String, dynamic>);
   }
 
-  /// Update one of the calling driver's own vehicles.
+  /// Update one of the calling driver's own vehicles. Photos are never sent
+  /// as a full replace (the backend never hands raw S3 keys back to the
+  /// client, so there is nothing to resend) — addPhotoKeys appends newly
+  /// presigned uploads, removePhotoUrls drops existing photos by the exact
+  /// photoUrl values from Vehicle.photoUrls.
   static Future<Vehicle> updateVehicle(
     String id, {
     required String brand,
@@ -643,7 +655,8 @@ class DriverApi {
     required String plateNumber,
     required String year,
     bool isPrimary = false,
-    String? photoKey,
+    List<String> addPhotoKeys = const [],
+    List<String> removePhotoUrls = const [],
   }) async {
     final data = await ApiClient.patch('/api/vehicles/$id', {
       'brand': brand,
@@ -652,7 +665,8 @@ class DriverApi {
       'plateNumber': plateNumber,
       'year': year,
       'isPrimary': isPrimary,
-      if (photoKey != null) 'photoKey': photoKey,
+      if (addPhotoKeys.isNotEmpty) 'addPhotoKeys': addPhotoKeys,
+      if (removePhotoUrls.isNotEmpty) 'removePhotoUrls': removePhotoUrls,
     });
     return Vehicle.fromJson(data as Map<String, dynamic>);
   }

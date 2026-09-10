@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
+import { env } from "../config/env";
 import { prisma } from "../db/prisma";
 import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
 
@@ -75,15 +76,44 @@ test("POST /api/vehicles rejects a photoKey that doesn't belong to the caller", 
       colour: "Silver",
       plateNumber: "PHT-100",
       year: "2022",
-      photoKey: "someone-elses-sub/photo.jpg",
+      photoKeys: ["someone-elses-sub/photo.jpg"],
     });
 
   assert.equal(res.status, 403);
 });
 
-test("POST /api/vehicles accepts a photoKey the caller owns and never returns the raw key", async () => {
-  await createDriver("driver-sub-photo-2");
-  const token = mockAuthAs({ sub: "driver-sub-photo-2", groups: ["Driver"] });
+test("POST /api/vehicles accepts photoKeys the caller owns and never returns raw keys", async () => {
+  const beforeCdn = env.ASSETS_CDN_DOMAIN;
+  env.ASSETS_CDN_DOMAIN = "cdn.ravelgo.example.com";
+  try {
+    await createDriver("driver-sub-photo-2");
+    const token = mockAuthAs({ sub: "driver-sub-photo-2", groups: ["Driver"] });
+
+    const res = await request(app)
+      .post("/api/vehicles")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        brand: "Toyota",
+        model: "Camry",
+        colour: "Silver",
+        plateNumber: "PHT-200",
+        year: "2022",
+        photoKeys: ["driver-sub-photo-2/photo-1.jpg", "driver-sub-photo-2/photo-2.jpg"],
+      });
+
+    assert.equal(res.status, 201);
+    assert.ok(!("photoKeys" in res.body), "raw S3 keys must never be returned to the client");
+    assert.ok(!("photoKey" in res.body), "raw S3 key must never be returned to the client");
+    assert.equal(res.body.photoUrls.length, 2);
+    assert.equal(res.body.photoUrl, res.body.photoUrls[0]);
+  } finally {
+    env.ASSETS_CDN_DOMAIN = beforeCdn;
+  }
+});
+
+test("POST /api/vehicles rejects more than 7 photos", async () => {
+  await createDriver("driver-sub-photo-many");
+  const token = mockAuthAs({ sub: "driver-sub-photo-many", groups: ["Driver"] });
 
   const res = await request(app)
     .post("/api/vehicles")
@@ -92,17 +122,15 @@ test("POST /api/vehicles accepts a photoKey the caller owns and never returns th
       brand: "Toyota",
       model: "Camry",
       colour: "Silver",
-      plateNumber: "PHT-200",
+      plateNumber: "PHT-800",
       year: "2022",
-      photoKey: "driver-sub-photo-2/photo.jpg",
+      photoKeys: Array.from({ length: 8 }, (_, i) => `driver-sub-photo-many/photo-${i}.jpg`),
     });
 
-  assert.equal(res.status, 201);
-  assert.ok(!("photoKey" in res.body), "raw S3 key must never be returned to the client");
-  assert.ok("photoUrl" in res.body);
+  assert.equal(res.status, 400);
 });
 
-test("PATCH /api/vehicles/:id rejects a photoKey that doesn't belong to the caller", async () => {
+test("PATCH /api/vehicles/:id rejects an addPhotoKeys entry that doesn't belong to the caller", async () => {
   const driver = await createDriver("driver-sub-photo-3");
   const vehicle = await prisma.vehicle.create({
     data: { driverId: driver.id, brand: "Kia", model: "Rio", colour: "Blue", plateNumber: "PHT-300", year: "2020" },
@@ -112,11 +140,72 @@ test("PATCH /api/vehicles/:id rejects a photoKey that doesn't belong to the call
   const res = await request(app)
     .patch(`/api/vehicles/${vehicle.id}`)
     .set("Authorization", `Bearer ${token}`)
-    .send({ photoKey: "someone-elses-sub/photo.jpg" });
+    .send({ addPhotoKeys: ["someone-elses-sub/photo.jpg"] });
 
   assert.equal(res.status, 403);
   const unchanged = await prisma.vehicle.findUnique({ where: { id: vehicle.id } });
-  assert.equal(unchanged?.photoKey, null);
+  assert.deepEqual(unchanged?.photoKeys, []);
+});
+
+test("PATCH /api/vehicles/:id can append and remove photos without ever receiving raw keys", async () => {
+  const beforeCdn = env.ASSETS_CDN_DOMAIN;
+  env.ASSETS_CDN_DOMAIN = "cdn.ravelgo.example.com";
+  try {
+    const driver = await createDriver("driver-sub-photo-4");
+    const vehicle = await prisma.vehicle.create({
+      data: {
+        driverId: driver.id,
+        brand: "Kia",
+        model: "Rio",
+        colour: "Blue",
+        plateNumber: "PHT-400",
+        year: "2020",
+        photoKeys: ["driver-sub-photo-4/existing-1.jpg", "driver-sub-photo-4/existing-2.jpg"],
+      },
+    });
+    const token = mockAuthAs({ sub: "driver-sub-photo-4", groups: ["Driver"] });
+
+    const get = await request(app).get("/api/vehicles/me").set("Authorization", `Bearer ${token}`);
+    const existingUrls: string[] = get.body[0].photoUrls;
+    assert.equal(existingUrls.length, 2);
+
+    const res = await request(app)
+      .patch(`/api/vehicles/${vehicle.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ removePhotoUrls: [existingUrls[0]], addPhotoKeys: ["driver-sub-photo-4/new-1.jpg"] });
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.photoUrls.length, 2);
+    assert.ok(!res.body.photoUrls.includes(existingUrls[0]));
+    assert.ok(res.body.photoUrls.includes(existingUrls[1]));
+  } finally {
+    env.ASSETS_CDN_DOMAIN = beforeCdn;
+  }
+});
+
+test("PATCH /api/vehicles/:id rejects growing past 7 photos", async () => {
+  const driver = await createDriver("driver-sub-photo-5");
+  const vehicle = await prisma.vehicle.create({
+    data: {
+      driverId: driver.id,
+      brand: "Kia",
+      model: "Rio",
+      colour: "Blue",
+      plateNumber: "PHT-500",
+      year: "2020",
+      photoKeys: Array.from({ length: 6 }, (_, i) => `driver-sub-photo-5/existing-${i}.jpg`),
+    },
+  });
+  const token = mockAuthAs({ sub: "driver-sub-photo-5", groups: ["Driver"] });
+
+  const res = await request(app)
+    .patch(`/api/vehicles/${vehicle.id}`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ addPhotoKeys: ["driver-sub-photo-5/new-1.jpg", "driver-sub-photo-5/new-2.jpg"] });
+
+  assert.equal(res.status, 400);
+  const unchanged = await prisma.vehicle.findUnique({ where: { id: vehicle.id } });
+  assert.equal(unchanged?.photoKeys.length, 6);
 });
 
 test("GET /api/vehicles/me only returns the calling driver's own vehicles", async () => {

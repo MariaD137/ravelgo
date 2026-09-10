@@ -34,7 +34,7 @@ test("photoUrlFor builds a real https URL from the key and configured CDN domain
   }
 });
 
-test("serializeVehicle never includes the raw photoKey", () => {
+test("serializeVehicle exposes photoUrl/photoUrls but never the raw photoKeys", () => {
   const before = env.ASSETS_CDN_DOMAIN;
   env.ASSETS_CDN_DOMAIN = "cdn.ravelgo.example.com";
   try {
@@ -48,14 +48,37 @@ test("serializeVehicle never includes the raw photoKey", () => {
       year: "2021",
       isPrimary: true,
       listedForRental: false,
-      photoKey: "driver-sub-1/photo.jpg",
+      photoKeys: ["driver-sub-1/photo-1.jpg", "driver-sub-1/photo-2.jpg"],
       createdAt: new Date(),
     });
-    assert.equal(out.photoUrl, "https://cdn.ravelgo.example.com/driver-sub-1/photo.jpg");
+    assert.equal(out.photoUrl, "https://cdn.ravelgo.example.com/driver-sub-1/photo-1.jpg");
+    assert.deepEqual(out.photoUrls, [
+      "https://cdn.ravelgo.example.com/driver-sub-1/photo-1.jpg",
+      "https://cdn.ravelgo.example.com/driver-sub-1/photo-2.jpg",
+    ]);
+    assert.ok(!("photoKeys" in out), "raw photoKeys must never leak in the serialized shape");
     assert.ok(!("photoKey" in out), "raw photoKey must never leak in the serialized shape");
   } finally {
     env.ASSETS_CDN_DOMAIN = before;
   }
+});
+
+test("serializeVehicle handles a vehicle with no photos", () => {
+  const out = serializeVehicle({
+    id: "v2",
+    driverId: "d1",
+    brand: "Toyota",
+    model: "Camry",
+    colour: "Silver",
+    plateNumber: "ABC-999",
+    year: "2021",
+    isPrimary: true,
+    listedForRental: false,
+    photoKeys: [],
+    createdAt: new Date(),
+  });
+  assert.equal(out.photoUrl, null);
+  assert.deepEqual(out.photoUrls, []);
 });
 
 test("serializeRentalListing never includes the driver's email or cognitoSub", () => {
@@ -77,7 +100,7 @@ test("serializeRentalListing never includes the driver's email or cognitoSub", (
       year: "2021",
       isPrimary: true,
       listedForRental: true,
-      photoKey: null,
+      photoKeys: [],
       createdAt: new Date(),
     },
     driver: { id: "d1", rating: 4.8, user: { firstName: "Ada", lastName: "O" } },
