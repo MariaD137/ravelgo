@@ -217,8 +217,8 @@ rentalsRouter.get("/rental-bookings/mine", requireAuth, async (req, res) => {
   res.json(bookings.map(withVehiclePhotoUrl));
 });
 
-// Customer (who owns the booking): pay for it. CARD returns a Stripe
-// clientSecret for the app's PaymentSheet; WALLET debits the customer's own
+// Customer (who owns the booking): pay for it. CARD returns a Paystack
+// authorizationUrl for the app to complete; WALLET debits the customer's own
 // prepaid RavelGo Cash balance immediately. Same server-authoritative amount
 // (booking.totalPrice) as every other payment path in this codebase.
 const payRentalSchema = z.object({ method: z.enum(["CARD", "WALLET"]).default("CARD") });
@@ -235,8 +235,8 @@ rentalsRouter.post("/rental-bookings/:id/pay", sensitiveLimiter, requireAuth, as
   if (booking.renterId !== user.id) return res.status(403).json({ error: "Not authorized to pay for this booking" });
 
   try {
-    const { booking: updated, clientSecret } = await chargeRentalBooking(booking, parsed.data.method);
-    return res.status(201).json(clientSecret ? { ...(updated as object), clientSecret } : updated);
+    const { booking: updated, authorizationUrl } = await chargeRentalBooking(booking, parsed.data.method);
+    return res.status(201).json(authorizationUrl ? { ...(updated as object), authorizationUrl } : updated);
   } catch (err) {
     return respondToChargeError(res, err, next);
   }
@@ -263,7 +263,7 @@ rentalsRouter.get("/rental-bookings/:id", requireAuth, async (req, res) => {
 });
 
 // Customer (who owns the booking): cancel it. A booking that was already
-// paid is refunded (Stripe refund for CARD, a wallet credit for WALLET).
+// paid is refunded (Paystack refund for CARD, a wallet credit for WALLET).
 rentalsRouter.patch("/rental-bookings/:id/cancel", requireAuth, async (req, res, next) => {
   const user = await findOwnUser(req.user!.sub);
   if (!user) return res.status(404).json({ error: "User not found" });

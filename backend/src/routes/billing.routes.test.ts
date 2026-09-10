@@ -3,9 +3,8 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { env } from "../config/env";
-import { stripeClient } from "../billing/stripe";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { signWebhookPayloadForTesting } from "../billing/paystack";
+import { mockAuthAs, mockPaystackVerify, restoreAuth, resetDb } from "../test/helpers";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -24,10 +23,7 @@ after(async () => {
 // failure while writing these tests).
 function signedWebhookRequest(payload: unknown) {
   const body = JSON.stringify(payload);
-  const signature = stripeClient.webhooks.generateTestHeaderString({
-    payload: body,
-    secret: env.STRIPE_WEBHOOK_SECRET!,
-  });
+  const signature = signWebhookPayloadForTesting(Buffer.from(body, "utf8"));
   return { body, signature };
 }
 
@@ -43,12 +39,12 @@ async function createChargedTrip(providerReference: string) {
     data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 10, status: "COMPLETED" },
   });
   const payment = await prisma.payment.create({
-    data: { tripId: trip.id, userId: rider.id, amount: 10, status: "PENDING", providerReference },
+    data: { tripId: trip.id, userId: rider.id, amount: 10, status: "PENDING", provider: "PAYSTACK", providerReference },
   });
   return payment;
 }
 
-test("POST /api/billing/webhook rejects a request with no stripe-signature header", async () => {
+test("POST /api/billing/webhook rejects a request with no x-paystack-signature header", async () => {
   const res = await request(app).post("/api/billing/webhook").set("Content-Type", "application/json").send("{}");
   assert.equal(res.status, 400);
 });
@@ -57,24 +53,23 @@ test("POST /api/billing/webhook rejects an invalid signature", async () => {
   const res = await request(app)
     .post("/api/billing/webhook")
     .set("Content-Type", "application/json")
-    .set("stripe-signature", "t=1,v1=not-a-real-signature")
+    .set("x-paystack-signature", "not-a-real-signature")
     .send("{}");
   assert.equal(res.status, 400);
 });
 
-test("payment_intent.succeeded marks the matching Payment SUCCEEDED", async () => {
-  const payment = await createChargedTrip("pi_test_success_1");
+test("charge.success marks the matching Payment SUCCEEDED (verified via the trusted verify endpoint, not the webhook body alone)", async () => {
+  const payment = await createChargedTrip("ravelgo_trip_success_1");
+  mockPaystackVerify({ status: "success" });
   const { body, signature } = signedWebhookRequest({
-    id: "evt_test_1",
-    object: "event",
-    type: "payment_intent.succeeded",
-    data: { object: { id: "pi_test_success_1", object: "payment_intent" } },
+    event: "charge.success",
+    data: { reference: "ravelgo_trip_success_1", status: "success" },
   });
 
   const res = await request(app)
     .post("/api/billing/webhook")
     .set("Content-Type", "application/json")
-    .set("stripe-signature", signature)
+    .set("x-paystack-signature", signature)
     .send(body);
 
   assert.equal(res.status, 200);
@@ -88,19 +83,18 @@ test("payment_intent.succeeded marks the matching Payment SUCCEEDED", async () =
   assert.equal(notifications[0].referenceId, payment.tripId);
 });
 
-test("payment_intent.payment_failed marks the matching Payment FAILED", async () => {
-  const payment = await createChargedTrip("pi_test_fail_1");
+test("charge.failed (verification reports failed) marks the matching Payment FAILED", async () => {
+  const payment = await createChargedTrip("ravelgo_trip_fail_1");
+  mockPaystackVerify({ status: "failed" });
   const { body, signature } = signedWebhookRequest({
-    id: "evt_test_2",
-    object: "event",
-    type: "payment_intent.payment_failed",
-    data: { object: { id: "pi_test_fail_1", object: "payment_intent" } },
+    event: "charge.failed",
+    data: { reference: "ravelgo_trip_fail_1", status: "failed" },
   });
 
   const res = await request(app)
     .post("/api/billing/webhook")
     .set("Content-Type", "application/json")
-    .set("stripe-signature", signature)
+    .set("x-paystack-signature", signature)
     .send(body);
 
   assert.equal(res.status, 200);
@@ -113,18 +107,35 @@ test("payment_intent.payment_failed marks the matching Payment FAILED", async ()
   assert.equal(notifications[0].type, "PAYMENT_FAILED");
 });
 
-test("an event for an unknown PaymentIntent id is accepted but updates nothing", async () => {
+test("a redelivered webhook for an already-settled Payment is a no-op (idempotency)", async () => {
+  const payment = await createChargedTrip("ravelgo_trip_dup_1");
+  mockPaystackVerify({ status: "success" });
   const { body, signature } = signedWebhookRequest({
-    id: "evt_test_3",
-    object: "event",
-    type: "payment_intent.succeeded",
-    data: { object: { id: "pi_does_not_exist", object: "payment_intent" } },
+    event: "charge.success",
+    data: { reference: "ravelgo_trip_dup_1", status: "success" },
+  });
+
+  await request(app).post("/api/billing/webhook").set("Content-Type", "application/json").set("x-paystack-signature", signature).send(body);
+  const res = await request(app).post("/api/billing/webhook").set("Content-Type", "application/json").set("x-paystack-signature", signature).send(body);
+
+  assert.equal(res.status, 200);
+  const notifications = await prisma.notification.findMany({ where: { userId: payment.userId } });
+  // Exactly one PAYMENT_SUCCEEDED, not two — the second delivery found the
+  // Payment already SUCCEEDED (not PENDING) and didn't re-apply it.
+  assert.equal(notifications.length, 1);
+});
+
+test("an event for an unknown reference is accepted but updates nothing", async () => {
+  mockPaystackVerify({ status: "success" });
+  const { body, signature } = signedWebhookRequest({
+    event: "charge.success",
+    data: { reference: "ravelgo_trip_does_not_exist", status: "success" },
   });
 
   const res = await request(app)
     .post("/api/billing/webhook")
     .set("Content-Type", "application/json")
-    .set("stripe-signature", signature)
+    .set("x-paystack-signature", signature)
     .send(body);
 
   assert.equal(res.status, 200);

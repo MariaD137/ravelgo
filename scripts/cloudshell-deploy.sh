@@ -8,7 +8,7 @@
 #
 #   bash scripts/cloudshell-deploy.sh preflight
 #   bash scripts/cloudshell-deploy.sh infra-base     # VPC/RDS/Cognito/ECR, no service
-#   bash scripts/cloudshell-deploy.sh secrets        # overwrite Stripe/Maps placeholders
+#   bash scripts/cloudshell-deploy.sh secrets        # overwrite Paystack/Maps placeholders
 #   bash scripts/cloudshell-deploy.sh image          # docker build + push to ECR
 #   bash scripts/cloudshell-deploy.sh service        # bring up App Runner
 #   bash scripts/cloudshell-deploy.sh outputs        # print everything you need
@@ -119,17 +119,16 @@ phase_infra_base() {
 # The stacks lay down placeholder secrets so no real key is ever committed.
 # Replace them BEFORE the service serves traffic.
 phase_secrets() {
-  local stripe_arn maps_arn
-  stripe_arn="$(stack_output "$API_STACK" StripeSecretArn)"
+  local paystack_arn maps_arn
+  paystack_arn="$(stack_output "$API_STACK" PaystackSecretArn)"
   maps_arn="$(stack_output "$API_STACK" MapsSecretArn)"
-  [[ -n "$stripe_arn" && "$stripe_arn" != "None" ]] || die "StripeSecretArn not found — has 'infra-base' completed?"
+  [[ -n "$paystack_arn" && "$paystack_arn" != "None" ]] || die "PaystackSecretArn not found — has 'infra-base' completed?"
 
-  say "Stripe keys"
-  read -rsp "  Stripe SECRET key (sk_live_/sk_test_): " sk; echo
-  read -rsp "  Stripe WEBHOOK secret (whsec_):        " wh; echo
-  [[ "$sk" == sk_* && "$wh" == whsec_* ]] || die "Those don't look like Stripe keys; nothing written."
-  aws secretsmanager put-secret-value --region "$AWS_REGION" --secret-id "$stripe_arn" \
-    --secret-string "$(printf '{"secretKey":"%s","webhookSecret":"%s"}' "$sk" "$wh")" >/dev/null
+  say "Paystack secret key"
+  read -rsp "  Paystack SECRET key (sk_live_/sk_test_): " sk; echo
+  [[ "$sk" == sk_* ]] || die "That doesn't look like a Paystack secret key; nothing written."
+  aws secretsmanager put-secret-value --region "$AWS_REGION" --secret-id "$paystack_arn" \
+    --secret-string "$(printf '{"secretKey":"%s"}' "$sk")" >/dev/null
   echo "  stored."
 
   say "Google Maps SERVER key (backend-only; never shipped to a client)"

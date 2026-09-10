@@ -3,20 +3,19 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { env } from "../config/env";
-import { stripeClient } from "../billing/stripe";
-import { mockAuthAs, mockPaymentIntentCreate, restoreAuth, resetDb } from "../test/helpers";
+import { signWebhookPayloadForTesting } from "../billing/paystack";
+import { mockAuthAs, mockPaystackInitialize, mockPaystackVerify, restoreAuth, resetDb } from "../test/helpers";
 import { reconcileExpiredRentalBookings } from "../services/rental-payment";
 
-// Build a signed rental-booking webhook the same way Stripe would.
-function signedRentalBookingEvent(intentId: string, type: "payment_intent.succeeded" | "payment_intent.payment_failed") {
+// Build a signed rental-booking webhook the same way Paystack would, and
+// stub the verify-endpoint call the handler makes before trusting it.
+function signedRentalBookingEvent(reference: string, succeeded: boolean) {
+  mockPaystackVerify({ status: succeeded ? "success" : "failed", metadata: { type: "rental_booking" } });
   const payload = JSON.stringify({
-    id: "evt_rental_1",
-    object: "event",
-    type,
-    data: { object: { id: intentId, object: "payment_intent", metadata: { type: "rental_booking" } } },
+    event: succeeded ? "charge.success" : "charge.failed",
+    data: { reference, status: succeeded ? "success" : "failed" },
   });
-  const signature = stripeClient.webhooks.generateTestHeaderString({ payload, secret: env.STRIPE_WEBHOOK_SECRET! });
+  const signature = signWebhookPayloadForTesting(Buffer.from(payload, "utf8"));
   return { payload, signature };
 }
 
@@ -382,7 +381,7 @@ test("POST /api/rental-bookings/:id/pay with CARD creates a real PaymentIntent a
   const listing = await createApprovedListing("driver-sub-12", 100);
   await createRider("rider-sub-8");
   const token = mockAuthAs({ sub: "rider-sub-8", groups: ["Rider"] });
-  const intentId = mockPaymentIntentCreate();
+  mockPaystackInitialize();
 
   const book = await request(app)
     .post(`/api/rentals/${listing.id}/book`)
@@ -396,8 +395,8 @@ test("POST /api/rental-bookings/:id/pay with CARD creates a real PaymentIntent a
 
   assert.equal(pay.status, 201);
   assert.equal(pay.body.status, "PENDING_PAYMENT");
-  assert.equal(pay.body.providerReference, intentId);
-  assert.ok(pay.body.clientSecret);
+  assert.ok(pay.body.providerReference.startsWith(`ravelgo_rental_${book.body.id}_`));
+  assert.ok(pay.body.authorizationUrl);
 });
 
 test("POST /api/rental-bookings/:id/pay rejects a caller who doesn't own the booking", async () => {
@@ -480,7 +479,7 @@ test("a CARD rental booking is only CONFIRMED once the signed webhook confirms t
   const listing = await createApprovedListing("driver-sub-16", 100);
   const rider = await createRider("rider-sub-14");
   const token = mockAuthAs({ sub: "rider-sub-14", groups: ["Rider"] });
-  const intentId = mockPaymentIntentCreate("pi_rental_1");
+  mockPaystackInitialize();
 
   const book = await request(app)
     .post(`/api/rentals/${listing.id}/book`)
@@ -492,11 +491,11 @@ test("a CARD rental booking is only CONFIRMED once the signed webhook confirms t
     .send({ method: "CARD" });
   assert.equal(pay.body.status, "PENDING_PAYMENT");
 
-  const { payload, signature } = signedRentalBookingEvent(intentId, "payment_intent.succeeded");
+  const { payload, signature } = signedRentalBookingEvent(pay.body.providerReference, true);
   const hook = await request(app)
     .post("/api/billing/webhook")
     .set("Content-Type", "application/json")
-    .set("stripe-signature", signature)
+    .set("x-paystack-signature", signature)
     .send(payload);
   assert.equal(hook.status, 200);
 
@@ -513,22 +512,22 @@ test("a failed CARD rental booking webhook marks the payment FAILED and leaves t
   const listing = await createApprovedListing("driver-sub-17", 100);
   const rider = await createRider("rider-sub-15");
   const token = mockAuthAs({ sub: "rider-sub-15", groups: ["Rider"] });
-  const intentId = mockPaymentIntentCreate("pi_rental_2");
+  mockPaystackInitialize();
 
   const book = await request(app)
     .post(`/api/rentals/${listing.id}/book`)
     .set("Authorization", `Bearer ${token}`)
     .send({ startDate: "2027-10-01T00:00:00.000Z", endDate: "2027-10-02T00:00:00.000Z" });
-  await request(app)
+  const pay = await request(app)
     .post(`/api/rental-bookings/${book.body.id}/pay`)
     .set("Authorization", `Bearer ${token}`)
     .send({ method: "CARD" });
 
-  const { payload, signature } = signedRentalBookingEvent(intentId, "payment_intent.payment_failed");
+  const { payload, signature } = signedRentalBookingEvent(pay.body.providerReference, false);
   await request(app)
     .post("/api/billing/webhook")
     .set("Content-Type", "application/json")
-    .set("stripe-signature", signature)
+    .set("x-paystack-signature", signature)
     .send(payload);
 
   const failed = await prisma.rentalBooking.findUnique({ where: { id: book.body.id } });

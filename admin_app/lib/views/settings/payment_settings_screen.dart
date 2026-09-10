@@ -186,7 +186,7 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
               ),
               _methodSwitch(
                 'Card',
-                'Paid securely via Stripe.',
+                'Paid securely via Paystack.',
                 s.cardPaymentEnabled,
                 (v) => _apply(
                   () => AdminApi.updatePaymentSettings(cardPaymentEnabled: v),

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/services/auth_service.dart';
 import 'package:ravelgo_user_app/services/notification_navigation.dart';
 import 'package:ravelgo_user_app/services/push_notification_service.dart';
-import 'package:ravelgo_user_app/services/stripe_service.dart';
 import 'package:ravelgo_user_app/views/SplashScreen/SplashScreen.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -22,9 +21,6 @@ void main() async {
   // Build the persistent-storage-backed Cognito pool before the first frame so
   // a stored session can be restored on startup (survives browser refresh).
   await AuthService.init();
-  // Configure Stripe with the publishable key (no-op if unconfigured). Payment
-  // actions surface a clear error rather than crashing when it isn't set.
-  await StripeService.init();
   // Best-effort, and a genuine no-op when push isn't configured for this
   // build — covers the "already signed in from a restored session" case;
   // login.dart also calls this after a fresh sign-in.

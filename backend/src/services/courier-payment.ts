@@ -1,5 +1,5 @@
 import { prisma } from "../db/prisma";
-import { stripeClient } from "../billing/stripe";
+import { paystackClient } from "../billing/paystack";
 import { MAX_MONEY_AMOUNT, toCents } from "../lib/money";
 import { getPaymentSettings, isCashPaymentAllowed } from "../lib/payment-rules";
 import { notifyUser } from "../lib/notifications";
@@ -43,7 +43,7 @@ export interface ChargeableCourierRequest {
 export async function settleCourierPayment(
   request: ChargeableCourierRequest,
   method: CourierPaymentMethod,
-): Promise<{ payment: unknown; clientSecret?: string | null }> {
+): Promise<{ payment: unknown; authorizationUrl?: string | null }> {
   if (request.status !== "DELIVERED" || request.finalFare == null) {
     throw new DeliveryNotChargeableError("Delivery must be DELIVERED with a finalFare before it can be charged");
   }
@@ -81,9 +81,14 @@ export async function settleCourierPayment(
   }
 
   if (method === "CARD") {
-    const intent = await stripeClient.paymentIntents.create({
-      amount: toCents(request.finalFare),
-      currency: "usd",
+    const sender = await prisma.user.findUnique({ where: { id: request.senderId }, select: { email: true } });
+    if (!sender) throw new DeliveryNotChargeableError("Sender profile not found");
+
+    const reference = `ravelgo_delivery_${request.id}`;
+    const { authorizationUrl } = await paystackClient.initializeTransaction({
+      email: sender.email,
+      amountKobo: toCents(request.finalFare),
+      reference,
       metadata: { type: "courier_delivery", courierRequestId: request.id },
     });
     const payment = await prisma.payment.create({
@@ -93,10 +98,11 @@ export async function settleCourierPayment(
         amount: request.finalFare,
         method: "CARD",
         status: "PENDING",
-        providerReference: intent.id,
+        provider: "PAYSTACK",
+        providerReference: reference,
       },
     });
-    return { payment, clientSecret: intent.client_secret };
+    return { payment, authorizationUrl };
   }
 
   // WALLET: settle immediately.

@@ -7,7 +7,7 @@ import { z } from "zod";
  * slips through.
  *
  * These are deliberately generous absolute bounds (denominated in the app's
- * single currency, USD): they exist to stop obviously-malicious or
+ * single currency, NGN): they exist to stop obviously-malicious or
  * obviously-broken values (0, -5, 1e12, NaN), NOT to encode real pricing —
  * real pricing lives in PricingRule/SurgeZone and services/pricing.ts.
  */

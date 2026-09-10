@@ -1,5 +1,5 @@
 import { prisma } from "../db/prisma";
-import { stripeClient } from "../billing/stripe";
+import { paystackClient } from "../billing/paystack";
 import { MAX_MONEY_AMOUNT, toCents } from "../lib/money";
 import { getPaymentSettings, isCashPaymentAllowed } from "../lib/payment-rules";
 import { notifyUser } from "../lib/notifications";
@@ -54,9 +54,11 @@ function chargeableTotal(trip: ChargeableTrip): number {
  *  - only a COMPLETED trip with a finite, in-range finalFare is chargeable
  *  - exactly one Payment per trip (Payment.tripId @unique + a fast-path check),
  *    so a second settle — even a concurrent one — gets AlreadyChargedError
- *  - CARD creates a real Stripe PaymentIntent and a PENDING Payment; the outcome
- *    arrives on the signed webhook. WALLET debits the rider's real balance
- *    atomically via chargeWalletForRide (debit + ledger + Payment in one tx).
+ *  - CARD initializes a real Paystack transaction and a PENDING Payment; the
+ *    outcome arrives on the signed webhook (verified against Paystack's own
+ *    verify endpoint before being trusted — see billing.routes.ts). WALLET
+ *    debits the rider's real balance atomically via chargeWalletForRide
+ *    (debit + ledger + Payment in one tx).
  *
  * The amount charged is always the server-side trip.finalFare — never a value
  * from the client.
@@ -64,7 +66,7 @@ function chargeableTotal(trip: ChargeableTrip): number {
 export async function settleTripPayment(
   trip: ChargeableTrip,
   method: PaymentMethod,
-): Promise<{ payment: unknown; clientSecret?: string | null }> {
+): Promise<{ payment: unknown; authorizationUrl?: string | null }> {
   if (trip.status !== "COMPLETED" || trip.finalFare == null) {
     throw new TripNotChargeableError("Trip must be COMPLETED with a finalFare before it can be charged");
   }
@@ -121,10 +123,15 @@ export async function settleTripPayment(
   }
 
   if (method === "CARD") {
-    const intent = await stripeClient.paymentIntents.create({
-      amount: toCents(chargeAmount),
-      currency: "usd",
-      metadata: { tripId: trip.id },
+    const rider = await prisma.user.findUnique({ where: { id: trip.riderId }, select: { email: true } });
+    if (!rider) throw new TripNotChargeableError("Rider profile not found");
+
+    const reference = `ravelgo_trip_${trip.id}`;
+    const { authorizationUrl } = await paystackClient.initializeTransaction({
+      email: rider.email,
+      amountKobo: toCents(chargeAmount),
+      reference,
+      metadata: { type: "trip", tripId: trip.id },
     });
     const payment = await prisma.payment.create({
       data: {
@@ -133,10 +140,11 @@ export async function settleTripPayment(
         amount: chargeAmount,
         method: "CARD",
         status: "PENDING",
-        providerReference: intent.id,
+        provider: "PAYSTACK",
+        providerReference: reference,
       },
     });
-    return { payment, clientSecret: intent.client_secret };
+    return { payment, authorizationUrl };
   }
 
   // WALLET: settle immediately from the rider's real prepaid balance.

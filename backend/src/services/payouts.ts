@@ -7,7 +7,9 @@
 
 import type { Payout, Prisma } from "@prisma/client";
 import { prisma } from "../db/prisma";
-import { roundMoney } from "../lib/money";
+import { roundMoney, toCents } from "../lib/money";
+import { PaystackApiError, paystackClient } from "../billing/paystack";
+import { notifyUser } from "../lib/notifications";
 
 interface PayoutCalculation {
   driverId: string;
@@ -114,8 +116,9 @@ export async function calculatePayoutForPeriod(
 }
 
 /**
- * Create a payout record (does not actually process payment to bank).
- * Separate service handles actual Stripe/payment provider integration.
+ * Create a payout record (does not actually process payment to bank —
+ * processPayout() below does, via a real Paystack transfer when the
+ * driver's bank account has a bank code on file).
  */
 type PayoutWithDriverBank = Prisma.PayoutGetPayload<{
   include: { driver: { include: { bankAccount: true } } };
@@ -126,7 +129,7 @@ export async function createPayout(calculation: PayoutCalculation): Promise<Payo
     data: {
       driverId: calculation.driverId,
       amount: calculation.netAmount,
-      currency: "USD",
+      currency: "NGN",
       status: "PENDING",
       period: calculation.period,
     },
@@ -140,19 +143,32 @@ export async function createPayout(calculation: PayoutCalculation): Promise<Payo
   return payout;
 }
 
+/** processPayout() couldn't initiate a real Paystack transfer — the payout stays PENDING, unchanged. Maps to 502. */
+export class PayoutTransferFailedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PayoutTransferFailedError";
+  }
+}
+
 /**
- * Mark a pending payout as PROCESSING — i.e. an admin/ops has started an
- * actual transfer to the driver's bank account, outside this system (there
- * is no real Stripe Connect / ACH integration wired up yet: see PY-1).
+ * Mark a pending payout as PROCESSING and, when the driver's bank account
+ * has a Paystack bank code on file, actually initiate a real Paystack
+ * Transfer — closing PY-1 (there used to be no live provider integration at
+ * all here; processPayout() only flipped a status and completePayout()
+ * required an admin to paste a reference from a transfer made entirely
+ * outside this system). The transfer's outcome (transfer.success /
+ * transfer.failed) arrives on the same signed webhook billing.routes.ts
+ * already handles for charges, and finalizePayoutFromTransferWebhook()
+ * below applies it.
  *
- * This deliberately does NOT set transactionId. It used to fabricate one
- * (`stripe_payout_${Date.now()}`) that looked like a real payment-provider
- * reference but was never sent to, or verified by, any payment provider —
- * a payout could reach COMPLETED carrying a permanent, convincing-looking
- * transactionId for a transfer that, as far as this system can actually
- * prove, never happened. completePayout() below already accepts a real
- * transactionId from its caller; that is the only place one should ever be
- * recorded, and only once a real transfer reference exists to record.
+ * Falls back to the old manual-reference flow (PROCESSING with no
+ * transactionId, left for an admin to confirm via completePayout()) when the
+ * driver has no bank code on file yet — this only happens for bank accounts
+ * saved before the Paystack fields existed, or a bank Paystack doesn't
+ * support transfers to. It is never a silent failure: the caller can tell
+ * the two cases apart via the returned payout's `provider` field (PAYSTACK
+ * vs null).
  */
 export async function processPayout(payoutId: string): Promise<Payout> {
   const payout = await prisma.payout.findUnique({
@@ -167,24 +183,96 @@ export async function processPayout(payoutId: string): Promise<Payout> {
   if (!payout) throw new Error("Payout not found");
   if (payout.status !== "PENDING") throw new Error("Payout must be PENDING to process");
 
-  const processed = await prisma.payout.update({
-    where: { id: payoutId },
-    data: { status: "PROCESSING" },
-  });
+  const account = payout.driver.bankAccount;
+  if (!account || !account.bankCode) {
+    return prisma.payout.update({ where: { id: payoutId }, data: { status: "PROCESSING" } });
+  }
 
-  return processed;
+  try {
+    let recipientCode = account.paystackRecipientCode;
+    if (!recipientCode) {
+      // Confirms the account number is real before RavelGo ever tries to
+      // send money to it — Paystack itself requires this before a transfer
+      // recipient can be created.
+      await paystackClient.resolveAccountNumber(account.accountNumber, account.bankCode);
+      const recipient = await paystackClient.createTransferRecipient({
+        name: account.accountHolderName,
+        accountNumber: account.accountNumber,
+        bankCode: account.bankCode,
+      });
+      recipientCode = recipient.recipientCode;
+      await prisma.driverBankAccount.update({
+        where: { id: account.id },
+        data: { paystackRecipientCode: recipientCode },
+      });
+    }
+
+    const reference = `ravelgo_payout_${payout.id}`;
+    await paystackClient.initiateTransfer({
+      amountKobo: toCents(payout.amount),
+      recipientCode,
+      reference,
+      reason: `RavelGo payout ${payout.period}`,
+    });
+
+    return prisma.payout.update({
+      where: { id: payoutId },
+      data: { status: "PROCESSING", provider: "PAYSTACK", transactionId: reference },
+    });
+  } catch (err) {
+    const message = err instanceof PaystackApiError ? err.message : "Failed to initiate transfer";
+    throw new PayoutTransferFailedError(message);
+  }
 }
 
 /**
- * Mark a payout as completed (successful transfer to driver's bank).
+ * Finalize a payout that processPayout() initiated a real Paystack transfer
+ * for, driven by the transfer.success / transfer.failed webhook
+ * (billing.routes.ts). Idempotent against a duplicate webhook delivery for
+ * the same reference: only a payout still PROCESSING is matched, so a
+ * redelivered event is a no-op the second time (same pattern as the
+ * charge.success handling in billing.routes.ts).
+ */
+export async function finalizePayoutFromTransferWebhook(
+  reference: string,
+  succeeded: boolean,
+  failureReason?: string,
+): Promise<void> {
+  const payout = await prisma.payout.findFirst({ where: { transactionId: reference, status: "PROCESSING" } });
+  if (!payout) return; // unknown, already finalized, or a manual (non-Paystack) reference
+
+  const { count } = await prisma.payout.updateMany({
+    where: { id: payout.id, status: "PROCESSING" },
+    data: succeeded
+      ? { status: "COMPLETED", completedAt: new Date() }
+      : { status: "FAILED", failureReason: failureReason ?? "Transfer failed" },
+  });
+  if (count !== 1) return;
+
+  await notifyUser(
+    payout.driverId,
+    succeeded ? "PAYOUT_COMPLETED" : "PAYOUT_FAILED",
+    succeeded ? "Payout sent" : "Payout failed",
+    succeeded
+      ? `Your payout of ${payout.amount} for ${payout.period} has been sent to your bank account.`
+      : `Your payout of ${payout.amount} for ${payout.period} could not be sent. RavelGo support has been notified.`,
+    { type: "PAYOUT", id: payout.id },
+  );
+}
+
+/**
+ * Manually mark a payout as completed (successful transfer to driver's
+ * bank) — the fallback path for a payout processPayout() couldn't
+ * automate (no Paystack bank code on file; see PY-1). A payout that DID go
+ * through Paystack finalizes itself via finalizePayoutFromTransferWebhook()
+ * instead, driven by the transfer.success webhook, never this function.
  *
- * `transactionId` is required (SE-4): there is no live Stripe Connect/ACH
- * integration yet (see PY-1), so this is called by an admin confirming a
- * transfer they made outside this system, and the real bank/wire reference
- * is the only thing that makes that confirmation checkable later. A payout
- * can only ever reach COMPLETED carrying a real, unique transaction
- * reference — never a fabricated one (see processPayout above) and never
- * none at all.
+ * `transactionId` is required (SE-4): this is called by an admin confirming
+ * a transfer they made outside this system, and the real bank/wire
+ * reference is the only thing that makes that confirmation checkable
+ * later. A payout can only ever reach COMPLETED this way carrying a real,
+ * unique transaction reference — never a fabricated one (see processPayout
+ * above) and never none at all.
  */
 export async function completePayout(payoutId: string, transactionId: string): Promise<Payout> {
   return prisma.payout.update({

@@ -3,9 +3,8 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { env } from "../config/env";
-import { stripeClient } from "../billing/stripe";
-import { mockAuthAs, mockPaymentIntentCreate, restoreAuth, resetDb } from "../test/helpers";
+import { signWebhookPayloadForTesting } from "../billing/paystack";
+import { mockAuthAs, mockPaystackInitialize, mockPaystackVerify, restoreAuth, resetDb } from "../test/helpers";
 import { resetRealtimeState } from "../realtime/hub";
 import { calculatePayoutForPeriod } from "../services/payouts";
 
@@ -95,37 +94,34 @@ test("WALLET ride charge locks in commission the same way as CASH", async () => 
   assert.equal(updated.driverEarnings, 4000);
 });
 
-test("CARD ride charge only locks in commission once the Stripe webhook confirms it, never at charge time", async () => {
+test("CARD ride charge only locks in commission once the Paystack webhook confirms it, never at charge time", async () => {
   const { rider, driver } = await createRiderAndDriver();
   const trip = await prisma.trip.create({
     data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 5000, finalFare: 5000, status: "COMPLETED" },
   });
 
-  const intentId = mockPaymentIntentCreate();
+  mockPaystackInitialize();
   const token = mockAuthAs({ sub: "ci-driver", groups: ["Driver"] });
   const charge = await request(app)
     .post(`/api/trips/${trip.id}/charge`)
     .set("Authorization", `Bearer ${token}`)
     .send({ method: "CARD" });
   assert.equal(charge.status, 201);
+  const reference: string = charge.body.providerReference;
 
   // Not yet settled — no ledger row, no commission on the trip.
   assert.equal(await prisma.financialTransaction.count({ where: { tripId: trip.id } }), 0);
   const pending = await prisma.trip.findUniqueOrThrow({ where: { id: trip.id } });
   assert.equal(pending.platformCommission, null);
 
-  const payload = {
-    id: "evt_ci_1",
-    object: "event",
-    type: "payment_intent.succeeded",
-    data: { object: { id: intentId, object: "payment_intent", metadata: {} } },
-  };
+  mockPaystackVerify({ status: "success" });
+  const payload = { event: "charge.success", data: { reference, status: "success" } };
   const body = JSON.stringify(payload);
-  const signature = stripeClient.webhooks.generateTestHeaderString({ payload: body, secret: env.STRIPE_WEBHOOK_SECRET! });
+  const signature = signWebhookPayloadForTesting(Buffer.from(body, "utf8"));
   const webhook = await request(app)
     .post("/api/billing/webhook")
     .set("Content-Type", "application/json")
-    .set("stripe-signature", signature)
+    .set("x-paystack-signature", signature)
     .send(body);
   assert.equal(webhook.status, 200);
 
@@ -246,24 +242,21 @@ test("a driver's CASH earnings never appear in their bank payout, only CARD/WALL
     .send({ method: "CASH" });
   assert.equal(cashCharge.status, 201);
 
-  mockPaymentIntentCreate("pi_payout_test_1");
+  mockPaystackInitialize();
   const cardCharge = await request(app)
     .post(`/api/trips/${cardTrip.id}/charge`)
     .set("Authorization", `Bearer ${driverToken}`)
     .send({ method: "CARD" });
   assert.equal(cardCharge.status, 201);
+  const reference: string = cardCharge.body.providerReference;
 
   // Confirm the CARD payment via webhook so it's SETTLED and thus payable.
   restoreAuth();
-  const payload = {
-    id: "evt_payout_1",
-    object: "event",
-    type: "payment_intent.succeeded",
-    data: { object: { id: "pi_payout_test_1", object: "payment_intent", metadata: {} } },
-  };
+  mockPaystackVerify({ status: "success" });
+  const payload = { event: "charge.success", data: { reference, status: "success" } };
   const body = JSON.stringify(payload);
-  const signature = stripeClient.webhooks.generateTestHeaderString({ payload: body, secret: env.STRIPE_WEBHOOK_SECRET! });
-  await request(app).post("/api/billing/webhook").set("Content-Type", "application/json").set("stripe-signature", signature).send(body);
+  const signature = signWebhookPayloadForTesting(Buffer.from(body, "utf8"));
+  await request(app).post("/api/billing/webhook").set("Content-Type", "application/json").set("x-paystack-signature", signature).send(body);
 
   // Backdate the ledger rows into the payout period the same way the real
   // settlement flow's timestamp would land inside a real "this month" window

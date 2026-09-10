@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, mockAuthAsMany, mockPaymentIntentCreate, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, mockAuthAsMany, mockPaystackInitialize, restoreAuth, resetDb } from "../test/helpers";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -40,7 +40,7 @@ test("POST /api/trips/:id/charge refuses to charge a trip that isn't COMPLETED",
   assert.equal(res.status, 409);
 });
 
-test("POST /api/trips/:id/charge (CARD) creates a Stripe PaymentIntent, PENDING until the webhook confirms it, and rejects a second charge", async () => {
+test("POST /api/trips/:id/charge (CARD) initializes a Paystack transaction, PENDING until the webhook confirms it, and rejects a second charge", async () => {
   const { rider, driver } = await createRiderAndDriver();
   const trip = await prisma.trip.create({
     data: {
@@ -54,7 +54,7 @@ test("POST /api/trips/:id/charge (CARD) creates a Stripe PaymentIntent, PENDING 
     },
   });
 
-  const intentId = mockPaymentIntentCreate();
+  mockPaystackInitialize();
   const token = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
   const first = await request(app)
     .post(`/api/trips/${trip.id}/charge`)
@@ -64,8 +64,8 @@ test("POST /api/trips/:id/charge (CARD) creates a Stripe PaymentIntent, PENDING 
   assert.equal(first.status, 201);
   assert.equal(first.body.amount, 14.5);
   assert.equal(first.body.status, "PENDING");
-  assert.equal(first.body.providerReference, intentId);
-  assert.ok(first.body.clientSecret);
+  assert.equal(first.body.providerReference, `ravelgo_trip_${trip.id}`);
+  assert.ok(first.body.authorizationUrl);
 
   const second = await request(app)
     .post(`/api/trips/${trip.id}/charge`)
@@ -182,7 +182,7 @@ test("a CARD trip is never counted as physical cash collected", async () => {
   const trip = await prisma.trip.create({
     data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 5000, finalFare: 5000, status: "COMPLETED" },
   });
-  mockPaymentIntentCreate();
+  mockPaystackInitialize();
   const driverToken = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
   const charge = await request(app)
     .post(`/api/trips/${trip.id}/charge`)
@@ -334,13 +334,13 @@ test("POST /api/trips/:id/pay (WALLET) lets the rider pay their own trip from th
   assert.equal(w?.balanceCents, 550); // 2000 - 1450
 });
 
-test("POST /api/trips/:id/pay (CARD) returns a clientSecret for the rider to confirm", async () => {
+test("POST /api/trips/:id/pay (CARD) returns a Paystack authorizationUrl for the rider to confirm", async () => {
   const { rider, driver } = await createRiderAndDriver();
   const trip = await prisma.trip.create({
     data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 10, finalFare: 14.5, status: "COMPLETED" },
   });
 
-  mockPaymentIntentCreate();
+  mockPaystackInitialize();
   const token = mockAuthAs({ sub: "rider-sub-1", groups: ["Rider"] });
   const res = await request(app)
     .post(`/api/trips/${trip.id}/pay`)
@@ -349,7 +349,7 @@ test("POST /api/trips/:id/pay (CARD) returns a clientSecret for the rider to con
 
   assert.equal(res.status, 201);
   assert.equal(res.body.status, "PENDING");
-  assert.ok(res.body.clientSecret);
+  assert.ok(res.body.authorizationUrl);
 });
 
 test("POST /api/trips/:id/pay refuses a rider paying someone else's trip", async () => {

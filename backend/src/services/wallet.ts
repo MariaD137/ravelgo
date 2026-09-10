@@ -1,10 +1,10 @@
 import { prisma } from "../db/prisma";
 
 /**
- * Credit a wallet for a confirmed Stripe top-up. Called from the signed
- * webhook only, never from a client path. Idempotent: Stripe can deliver the
- * same event more than once, so a top-up already marked COMPLETED is a no-op
- * and the balance is never double-credited.
+ * Credit a wallet for a confirmed Paystack top-up. Called from the signed
+ * webhook only, never from a client path. Idempotent: Paystack can deliver
+ * the same event more than once, so a top-up already marked COMPLETED is a
+ * no-op and the balance is never double-credited.
  */
 export async function creditWalletFromTopup(providerReference: string): Promise<void> {
   await prisma.$transaction(async (tx) => {
@@ -18,7 +18,7 @@ export async function creditWalletFromTopup(providerReference: string): Promise<
   });
 }
 
-/** Mark a top-up FAILED when Stripe reports the charge failed. Idempotent. */
+/** Mark a top-up FAILED when Paystack reports the charge failed. Idempotent. */
 export async function failWalletTopup(providerReference: string): Promise<void> {
   await prisma.walletTransaction.updateMany({
     where: { providerReference, type: "TOPUP", status: "PENDING" },

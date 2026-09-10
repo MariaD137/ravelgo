@@ -14,12 +14,14 @@ import { Errors } from "../lib/errors";
 import { moneyAmountSchema } from "../lib/money";
 import { sensitiveLimiter } from "../middleware/rate-limit";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { paystackClient } from "../billing/paystack";
 import {
   calculatePayoutForPeriod,
   createPayout,
   processPayout,
   completePayout,
   failPayout,
+  PayoutTransferFailedError,
 } from "../services/payouts";
 
 export const payoutsRouter = Router();
@@ -47,13 +49,28 @@ function maskBankAccount<T extends { accountNumber?: string | null; routingNumbe
   return { ...acct, accountNumber: last4(acct.accountNumber), routingNumber: last4(acct.routingNumber) };
 }
 
-// Bank account schemas
+// Bank account schemas. routingNumber is now optional — it's a US-ABA-style
+// field with no Nigerian equivalent, kept only so bank accounts saved before
+// the Paystack migration keep their stored value. bankCode (from
+// GET /payouts/banks) is what real Paystack transfers actually key off.
 const bankAccountSchema = z.object({
   accountHolderName: z.string().min(1),
   bankName: z.string().min(1),
+  bankCode: z.string().min(1).optional(),
   accountNumber: z.string().min(8),
-  routingNumber: z.string().min(9),
+  routingNumber: z.string().min(9).optional(),
   accountType: z.enum(["CHECKING", "SAVINGS"]).optional(),
+});
+
+// Driver: get the list of banks (name + Paystack bank code) to pick from
+// when entering bank-account details — the code is required for an
+// automated Paystack transfer to work (see services/payouts.ts#processPayout).
+payoutsRouter.get("/payouts/banks", requireAuth, requireRole("Driver"), async (_req, res, next) => {
+  try {
+    res.json(await paystackClient.listBanks());
+  } catch (err) {
+    next(err);
+  }
 });
 
 // Driver: register/update bank account for payouts
@@ -70,7 +87,11 @@ payoutsRouter.post("/payouts/bank-account", requireAuth, requireRole("Driver"), 
     if (existing) {
       bankAccount = await prisma.driverBankAccount.update({
         where: { driverId },
-        data: { ...data, isVerified: false }, // Re-verify when updated
+        // Re-verify when updated, and clear any cached Paystack transfer
+        // recipient — it was created against the OLD account details, and
+        // reusing it after an edit would send a future payout to the wrong
+        // place.
+        data: { ...data, isVerified: false, paystackRecipientCode: null },
       });
     } else {
       bankAccount = await prisma.driverBankAccount.create({
@@ -203,19 +224,30 @@ payoutsRouter.post("/payouts/create", sensitiveLimiter, requireAuth, requireAdmi
   }
 });
 
-// Admin: process a pending payout
+// Admin: process a pending payout — initiates a real Paystack transfer when
+// the driver's bank account has a bank code on file (see
+// services/payouts.ts#processPayout); otherwise falls back to the manual
+// flow completed via POST /payouts/:id/complete below.
 payoutsRouter.post("/payouts/:id/process", sensitiveLimiter, requireAuth, requireAdminPermission("payouts:write"), async (req, res, next) => {
   try {
     const payout = await processPayout(req.params.id);
     res.json(payout);
   } catch (err) {
+    if (err instanceof PayoutTransferFailedError) {
+      return res.status(502).json({ error: err.message });
+    }
     next(err);
   }
 });
 
-// Admin: mark payout as completed. transactionId is required (SE-4) — the
+// Admin: mark payout as completed manually — for a payout that never
+// automated (no Paystack bank code on file, see processPayout()) or one
+// completed by some other means. transactionId is required (SE-4) — the
 // real bank/wire reference for the transfer the admin just made outside this
-// system, never a fabricated placeholder. See completePayout() for why.
+// system, never a fabricated placeholder. See completePayout() for why. A
+// payout processPayout() already sent through Paystack finalizes itself via
+// the transfer.success/transfer.failed webhook instead — this route is the
+// fallback path, not the primary one.
 payoutsRouter.post(
   "/payouts/:id/complete",
   sensitiveLimiter,

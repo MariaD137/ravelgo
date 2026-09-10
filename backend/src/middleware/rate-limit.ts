@@ -47,7 +47,7 @@ export function createRateLimiter(options: {
 }
 
 // Expensive or abuse-prone operations that cost real money or storage:
-// presigning uploads (S3), charging a card (Stripe), creating/processing
+// presigning uploads (S3), charging a card (Paystack), creating/processing
 // payouts, and creating trips (each triggers matching + a DB write). Sized
 // far above any legitimate single-session burst.
 export const sensitiveLimiter = createRateLimiter({ limit: 40, name: "sensitive" });
@@ -57,7 +57,7 @@ export const sensitiveLimiter = createRateLimiter({ limit: 40, name: "sensitive"
 // under what scripted abuse of the paid API would need.
 export const placesLimiter = createRateLimiter({ limit: 200, name: "places" });
 
-// The Stripe webhook is authenticated by signature, and Stripe legitimately
+// The Paystack webhook is authenticated by signature, and Paystack legitimately
 // retries, so this ceiling is high — it's a flood backstop, not a throttle on
-// normal delivery, and a dropped webhook here would be re-sent by Stripe.
+// normal delivery, and a dropped webhook here would be re-sent by Paystack.
 export const webhookLimiter = createRateLimiter({ limit: 600, windowMs: 60 * 1000, name: "webhook" });

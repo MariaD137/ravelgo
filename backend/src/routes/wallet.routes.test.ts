@@ -3,9 +3,8 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { env } from "../config/env";
-import { stripeClient } from "../billing/stripe";
-import { mockAuthAs, mockPaymentIntentCreate, restoreAuth, resetDb } from "../test/helpers";
+import { signWebhookPayloadForTesting } from "../billing/paystack";
+import { mockAuthAs, mockPaystackInitialize, mockPaystackVerify, restoreAuth, resetDb } from "../test/helpers";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -22,16 +21,27 @@ async function createRider(cognitoSub: string) {
   });
 }
 
-// Build a signed wallet-topup webhook the same way Stripe would.
-function signedTopupEvent(intentId: string, type: "payment_intent.succeeded" | "payment_intent.payment_failed") {
+// Build a signed wallet-topup webhook the same way Paystack would, and stub
+// the verify-endpoint call the handler makes before trusting it. The topup
+// route's HTTP response never carries the raw reference (only the
+// authorizationUrl), so tests read it back off the WalletTransaction row
+// the route just created.
+function signedTopupEvent(reference: string, succeeded: boolean) {
+  mockPaystackVerify({ status: succeeded ? "success" : "failed", metadata: { type: "wallet_topup" } });
   const payload = JSON.stringify({
-    id: "evt_wallet_1",
-    object: "event",
-    type,
-    data: { object: { id: intentId, object: "payment_intent", metadata: { type: "wallet_topup" } } },
+    event: succeeded ? "charge.success" : "charge.failed",
+    data: { reference, status: succeeded ? "success" : "failed" },
   });
-  const signature = stripeClient.webhooks.generateTestHeaderString({ payload, secret: env.STRIPE_WEBHOOK_SECRET! });
+  const signature = signWebhookPayloadForTesting(Buffer.from(payload, "utf8"));
   return { payload, signature };
+}
+
+async function latestPendingTopupReference(): Promise<string> {
+  const txn = await prisma.walletTransaction.findFirstOrThrow({
+    where: { type: "TOPUP", status: "PENDING" },
+    orderBy: { createdAt: "desc" },
+  });
+  return txn.providerReference!;
 }
 
 test("GET /wallet/me starts every user at a zero balance", async () => {
@@ -42,9 +52,9 @@ test("GET /wallet/me starts every user at a zero balance", async () => {
   assert.equal(res.body.balance, 0);
 });
 
-test("wallet top-up credits the balance only after Stripe confirms via the signed webhook", async () => {
+test("wallet top-up credits the balance only after Paystack confirms via the signed webhook", async () => {
   await createRider("rider-w2");
-  const intentId = mockPaymentIntentCreate("pi_topup_1");
+  mockPaystackInitialize();
   const token = mockAuthAs({ sub: "rider-w2", groups: ["Rider"] });
 
   // 1. Request a top-up: creates a PENDING transaction, balance still 0.
@@ -54,17 +64,18 @@ test("wallet top-up credits the balance only after Stripe confirms via the signe
     .send({ amount: 30 });
   assert.equal(topup.status, 201);
   assert.equal(topup.body.status, "PENDING");
-  assert.ok(topup.body.clientSecret);
+  assert.ok(topup.body.authorizationUrl);
 
   const beforeWebhook = await request(app).get("/api/wallet/me").set("Authorization", `Bearer ${token}`);
   assert.equal(beforeWebhook.body.balance, 0); // not credited yet
 
-  // 2. Stripe confirms the charge -> webhook credits the balance.
-  const { payload, signature } = signedTopupEvent(intentId, "payment_intent.succeeded");
+  // 2. Paystack confirms the charge -> webhook credits the balance.
+  const reference = await latestPendingTopupReference();
+  const { payload, signature } = signedTopupEvent(reference, true);
   const hook = await request(app)
     .post("/api/billing/webhook")
     .set("Content-Type", "application/json")
-    .set("stripe-signature", signature)
+    .set("x-paystack-signature", signature)
     .send(payload);
   assert.equal(hook.status, 200);
 
@@ -75,7 +86,7 @@ test("wallet top-up credits the balance only after Stripe confirms via the signe
   await request(app)
     .post("/api/billing/webhook")
     .set("Content-Type", "application/json")
-    .set("stripe-signature", signature)
+    .set("x-paystack-signature", signature)
     .send(payload);
   const afterDuplicate = await request(app).get("/api/wallet/me").set("Authorization", `Bearer ${token}`);
   assert.equal(afterDuplicate.body.balance, 30);
@@ -83,28 +94,29 @@ test("wallet top-up credits the balance only after Stripe confirms via the signe
 
 test("a failed top-up webhook leaves the balance at zero and marks the transaction FAILED", async () => {
   const rider = await createRider("rider-w3");
-  const intentId = mockPaymentIntentCreate("pi_topup_fail");
+  mockPaystackInitialize();
   const token = mockAuthAs({ sub: "rider-w3", groups: ["Rider"] });
 
   await request(app).post("/api/wallet/topup").set("Authorization", `Bearer ${token}`).send({ amount: 15 });
+  const reference = await latestPendingTopupReference();
 
-  const { payload, signature } = signedTopupEvent(intentId, "payment_intent.payment_failed");
+  const { payload, signature } = signedTopupEvent(reference, false);
   await request(app)
     .post("/api/billing/webhook")
     .set("Content-Type", "application/json")
-    .set("stripe-signature", signature)
+    .set("x-paystack-signature", signature)
     .send(payload);
 
   const wallet = await prisma.walletAccount.findUnique({ where: { userId: rider.id } });
   assert.equal(wallet?.balanceCents, 0);
-  const txn = await prisma.walletTransaction.findUnique({ where: { providerReference: intentId } });
+  const txn = await prisma.walletTransaction.findUnique({ where: { providerReference: reference } });
   assert.equal(txn?.status, "FAILED");
 });
 
 test("an authorized third party can fund another user's wallet; only the beneficiary is credited", async () => {
   const payer = await createRider("payer-1");
   const beneficiary = await createRider("beneficiary-1");
-  const intentId = mockPaymentIntentCreate("pi_gift_1");
+  mockPaystackInitialize();
   const payerToken = mockAuthAs({ sub: "payer-1", groups: ["Rider"] });
 
   // Payer tops up the beneficiary's wallet by email.
@@ -114,13 +126,14 @@ test("an authorized third party can fund another user's wallet; only the benefic
     .send({ amount: 50, beneficiaryEmail: "beneficiary-1@example.com" });
   assert.equal(topup.status, 201);
   assert.equal(topup.body.beneficiary, "beneficiary-1@example.com");
+  const reference = await latestPendingTopupReference();
 
-  // Stripe confirms the charge.
-  const { payload, signature } = signedTopupEvent(intentId, "payment_intent.succeeded");
+  // Paystack confirms the charge.
+  const { payload, signature } = signedTopupEvent(reference, true);
   await request(app)
     .post("/api/billing/webhook")
     .set("Content-Type", "application/json")
-    .set("stripe-signature", signature)
+    .set("x-paystack-signature", signature)
     .send(payload);
 
   // The beneficiary's balance rose; the payer's did not.
@@ -130,7 +143,7 @@ test("an authorized third party can fund another user's wallet; only the benefic
   assert.equal(payerWallet?.balanceCents ?? 0, 0);
 
   // The ledger permanently records who funded it.
-  const txn = await prisma.walletTransaction.findUnique({ where: { providerReference: intentId } });
+  const txn = await prisma.walletTransaction.findUnique({ where: { providerReference: reference } });
   assert.equal(txn?.walletId, beneficiaryWallet?.id);
   assert.equal(txn?.fundedBySub, "payer-1");
 });

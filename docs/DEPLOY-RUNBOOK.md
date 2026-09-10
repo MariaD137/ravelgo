@@ -87,7 +87,7 @@ export ALERT_EMAIL="ops@yourdomain.com"
 # --- run the phases, checking output between each ----------------------------
 bash scripts/cloudshell-deploy.sh preflight
 bash scripts/cloudshell-deploy.sh infra-base   # ~15 min (RDS is the slow part)
-bash scripts/cloudshell-deploy.sh secrets      # prompts for Stripe + Maps keys
+bash scripts/cloudshell-deploy.sh secrets      # prompts for Paystack + Maps keys
 bash scripts/cloudshell-deploy.sh image        # docker build + push to ECR
 bash scripts/cloudshell-deploy.sh service      # App Runner comes up
 bash scripts/cloudshell-deploy.sh outputs      # everything you need afterwards
@@ -117,8 +117,8 @@ The sections below explain what each phase does and how to do it by hand.
   (`aws configure`; verify `aws sts get-caller-identity`).
 - Node.js 22 and npm.
 - Docker running locally (needed to build the backend image).
-- Real Stripe keys: `sk_live_…` (or `sk_test_…`) and the webhook signing
-  secret `whsec_…`.
+- A real Paystack secret key: `sk_live_…` (or `sk_test_…`). Paystack signs
+  webhooks with this same key — no separate webhook secret to obtain.
 - A Google Maps **server** API key (for the backend Places/Geocoding proxy).
 - For email (P0 #13): a domain or address you can verify in SES, and — for real
   delivery beyond the SES sandbox — SES production access (request early; it can
@@ -162,7 +162,7 @@ npx cdk deploy --all \
 - RDS takes **10–15 min** — normal.
 - Approve the IAM/security-group change sets when prompted.
 - **Save these CDK outputs** (also in the CloudFormation console):
-  `EcrRepositoryUri`, `DatabaseSecretArn`, `StripeSecretArn`, `MapsSecretArn`,
+  `EcrRepositoryUri`, `DatabaseSecretArn`, `PaystackSecretArn`, `MapsSecretArn`,
   `UserPoolId`, `UserPoolClientId`, `GitHubActionsDeployRoleArn`,
   `AssetsDistributionDomain`, `AlertTopicArn`. (`ServiceUrl` appears after
   phase 2.)
@@ -174,8 +174,8 @@ export ECR_URI=$(aws cloudformation describe-stacks --stack-name RavelGo-Api \
   --query "Stacks[0].Outputs[?OutputKey=='EcrRepositoryUri'].OutputValue" --output text)
 export DB_SECRET_ARN=$(aws cloudformation describe-stacks --stack-name RavelGo-Api \
   --query "Stacks[0].Outputs[?OutputKey=='DatabaseSecretArn'].OutputValue" --output text)
-export STRIPE_SECRET_ARN=$(aws cloudformation describe-stacks --stack-name RavelGo-Api \
-  --query "Stacks[0].Outputs[?OutputKey=='StripeSecretArn'].OutputValue" --output text)
+export PAYSTACK_SECRET_ARN=$(aws cloudformation describe-stacks --stack-name RavelGo-Api \
+  --query "Stacks[0].Outputs[?OutputKey=='PaystackSecretArn'].OutputValue" --output text)
 export MAPS_SECRET_ARN=$(aws cloudformation describe-stacks --stack-name RavelGo-Api \
   --query "Stacks[0].Outputs[?OutputKey=='MapsSecretArn'].OutputValue" --output text)
 ```
@@ -188,8 +188,8 @@ The stack lays down placeholders (`sk_live_REPLACE_ME`, etc.) so nothing real is
 committed. Overwrite them **before** the service serves traffic:
 
 ```bash
-aws secretsmanager put-secret-value --secret-id "$STRIPE_SECRET_ARN" \
-  --secret-string '{"secretKey":"sk_live_xxx","webhookSecret":"whsec_xxx"}'
+aws secretsmanager put-secret-value --secret-id "$PAYSTACK_SECRET_ARN" \
+  --secret-string '{"secretKey":"sk_live_xxx"}'
 
 aws secretsmanager put-secret-value --secret-id "$MAPS_SECRET_ARN" \
   --secret-string '{"serverKey":"AIza_your_server_key"}'
@@ -358,13 +358,13 @@ from `.env.example` and set:
 - `COGNITO_USER_POOL_ID` = `UserPoolId` output
 - `COGNITO_CLIENT_ID` = `UserPoolClientId` output
 - `AWS_REGION`, `GOOGLE_MAPS_API_KEY` (browser key), currency vars
-- `user_app` only: `STRIPE_PUBLISHABLE_KEY` = your `pk_live_…`/`pk_test_…`
-  (**publishable** key only — never the secret)
+- No Paystack key belongs in any app's `.env` — the backend holds the
+  Paystack secret key and returns a one-time checkout URL for card
+  payments/top-ups; see `user_app/lib/services/paystack_service.dart`.
 
-Then build (`flutter pub get && flutter build …`). `flutter_stripe` needs its
-native setup (Android `minSdk 21`, iOS deployment target) per the Stripe SDK
-docs. **These app builds were not run in the dev environment (no Flutter SDK),
-so build and smoke-test each app against staging before release.**
+Then build (`flutter pub get && flutter build …`). **These app builds were
+not run in the dev environment (no Flutter SDK), so build and smoke-test
+each app against staging before release.**
 
 ---
 

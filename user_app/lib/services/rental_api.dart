@@ -105,16 +105,17 @@ class RentalApi {
     return RentalBooking.fromJson(data as Map<String, dynamic>);
   }
 
-  /// Pay for a booking by CARD. The backend creates a Stripe PaymentIntent and
-  /// returns its clientSecret, which the app confirms via the PaymentSheet.
+  /// Pay for a booking by CARD. The backend initializes a Paystack
+  /// transaction and returns its authorizationUrl, which the app opens for
+  /// the customer to pay.
   static Future<String> payWithCard(String bookingId) async {
     final data = await ApiClient.post('/api/rental-bookings/$bookingId/pay', {'method': 'CARD'});
     final m = data as Map<String, dynamic>;
-    final secret = m['clientSecret'];
-    if (secret == null || '$secret'.isEmpty) {
+    final url = m['authorizationUrl'];
+    if (url == null || '$url'.isEmpty) {
       throw Exception('Card payment could not be started.');
     }
-    return '$secret';
+    return '$url';
   }
 
   /// Pay for a booking from the customer's RavelGo Cash balance. Settles

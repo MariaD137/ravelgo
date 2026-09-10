@@ -33,12 +33,11 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql://ravelgo:ravelgo@localhost:5432/ravelgo_test
-      # Dummy — QA-01's tests mock the Cognito verifier and the Stripe SDK
+      # Dummy — QA-01's tests mock the Cognito verifier and paystackClient
       # directly, so no real credentials are needed to run them in CI.
       COGNITO_USER_POOL_ID: us-east-1_ciPool0000
       COGNITO_CLIENT_ID: ciclientid0000000000000
-      STRIPE_SECRET_KEY: sk_test_ci_dummy
-      STRIPE_WEBHOOK_SECRET: whsec_ci_dummy
+      PAYSTACK_SECRET_KEY: sk_test_ci_dummy
       # uploads.routes.test.ts presigns a real (fake-credentialed) S3 URL —
       # SigV4 presigning is done entirely offline (no network call), but the
       # SDK still needs a region and a set of credentials in the provider

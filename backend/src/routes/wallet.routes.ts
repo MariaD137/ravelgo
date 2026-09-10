@@ -1,10 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth } from "../middleware/auth";
 import { sensitiveLimiter } from "../middleware/rate-limit";
 import { fromCents, moneyAmountSchema, toCents } from "../lib/money";
-import { stripeClient } from "../billing/stripe";
+import { paystackClient } from "../billing/paystack";
 import { Errors } from "../lib/errors";
 
 export const walletRouter = Router();
@@ -60,25 +61,30 @@ walletRouter.get("/wallet/transactions", requireAuth, async (req, res, next) => 
 const topUpSchema = z.object({
   amount: moneyAmountSchema,
   // Optional: fund SOMEONE ELSE'S wallet ("send money"). When present the
-  // authenticated caller is the payer (their card is charged via Stripe) and
+  // authenticated caller is the payer (their card is charged via Paystack) and
   // this names the beneficiary whose balance is credited on webhook success.
   // Omit to top up your own wallet.
   beneficiaryEmail: z.string().email().optional(),
 });
 
 // Any authenticated user: top up a wallet — their own, or (with
-// beneficiaryEmail) an authorized third party's. Either way this creates a
-// real Stripe PaymentIntent and a PENDING credit; the balance is only credited
-// once Stripe confirms the charge via POST /billing/webhook. The money is never
-// trusted from the client and moves only on the signed webhook, so a caller can
-// only ever ADD funds (their own money) to a wallet — never move funds out of
-// one — which is what makes third-party funding safe without extra consent.
+// beneficiaryEmail) an authorized third party's. Either way this initializes
+// a real Paystack transaction and a PENDING credit; the balance is only
+// credited once Paystack confirms the charge via POST /billing/webhook
+// (verified against Paystack's own verify endpoint first). The money is
+// never trusted from the client and moves only on the signed, verified
+// webhook, so a caller can only ever ADD funds (their own money) to a
+// wallet — never move funds out of one — which is what makes third-party
+// funding safe without extra consent.
 walletRouter.post("/wallet/topup", sensitiveLimiter, requireAuth, async (req, res, next) => {
   try {
     const parsed = topUpSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
     const payerSub = req.user!.sub;
+    const payer = await prisma.user.findUnique({ where: { cognitoSub: payerSub } });
+    if (!payer) throw Errors.notFound("User profile");
+
     let wallet;
     let fundedBySub: string | undefined;
 
@@ -92,12 +98,18 @@ walletRouter.post("/wallet/topup", sensitiveLimiter, requireAuth, async (req, re
       // user topping up their own wallet by email still reads as a self top-up.
       if (beneficiary.cognitoSub !== payerSub) fundedBySub = payerSub;
     } else {
-      wallet = await getOrCreateWallet(payerSub);
+      wallet = await getOrCreateWalletForUserId(payer.id);
     }
 
-    const intent = await stripeClient.paymentIntents.create({
-      amount: toCents(parsed.data.amount),
-      currency: wallet.currency.toLowerCase(),
+    // Every top-up needs its own reference (unlike a one-shot trip/delivery
+    // charge, a wallet may legitimately be topped up many times), so this is
+    // random rather than derived from the wallet/booking id.
+    const reference = `ravelgo_topup_${randomUUID()}`;
+    const { authorizationUrl } = await paystackClient.initializeTransaction({
+      email: payer.email,
+      amountKobo: toCents(parsed.data.amount),
+      reference,
+      currency: wallet.currency,
       metadata: { type: "wallet_topup", walletId: wallet.id, fundedBy: fundedBySub ?? payerSub },
     });
 
@@ -107,13 +119,14 @@ walletRouter.post("/wallet/topup", sensitiveLimiter, requireAuth, async (req, re
         type: "TOPUP",
         status: "PENDING",
         amountCents: toCents(parsed.data.amount),
-        providerReference: intent.id,
+        provider: "PAYSTACK",
+        providerReference: reference,
         fundedBySub,
       },
     });
 
     res.status(201).json({
-      clientSecret: intent.client_secret,
+      authorizationUrl,
       amount: parsed.data.amount,
       status: "PENDING",
       beneficiary: fundedBySub ? parsed.data.beneficiaryEmail : undefined,

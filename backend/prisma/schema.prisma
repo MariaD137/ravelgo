@@ -137,6 +137,16 @@ enum PaymentStatus {
   REFUNDED
 }
 
+// Which payment processor actually moved (or was asked to move) the money for
+// a given row. STRIPE only ever labels rows that predate the Paystack
+// migration (see backend/prisma/migrations/.../paystack_migration) — no new
+// row is ever created with provider STRIPE. Kept so old records stay
+// readable/auditable rather than being silently relabeled.
+enum PaymentProvider {
+  STRIPE
+  PAYSTACK
+}
+
 enum PayoutStatus {
   PENDING
   PROCESSING
@@ -280,49 +290,49 @@ model Vehicle {
 }
 
 model Trip {
-  id              String     @id @default(uuid())
-  riderId         String
-  rider           User       @relation("RiderTrips", fields: [riderId], references: [id])
-  driverId        String?
+  id                String     @id @default(uuid())
+  riderId           String
+  rider             User       @relation("RiderTrips", fields: [riderId], references: [id])
+  driverId          String?
   // Restrict (P0 #12): a completed trip must keep its link to the driver who
   // was paid out for it — deleting the driver is blocked, not silently nulled.
-  driver          Driver?    @relation("DriverTrips", fields: [driverId], references: [id], onDelete: Restrict)
-  pickup          String
-  destination     String
+  driver            Driver?    @relation("DriverTrips", fields: [driverId], references: [id], onDelete: Restrict)
+  pickup            String
+  destination       String
   // Coordinates the fare is computed from. The server derives distance from
   // these (services never trust a client-supplied distance) — see lib/geo.ts.
   // Nullable so pre-coordinate rows remain valid.
-  pickupLat       Float?
-  pickupLng       Float?
-  dropoffLat      Float?
-  dropoffLng      Float?
-  distanceKm      Float? // server-computed great-circle distance, for audit/receipts
-  estimatedFare   Float
-  finalFare       Float?
-  status          TripStatus @default(REQUESTED)
-  category        String     @default("Personal")
+  pickupLat         Float?
+  pickupLng         Float?
+  dropoffLat        Float?
+  dropoffLng        Float?
+  distanceKm        Float? // server-computed great-circle distance, for audit/receipts
+  estimatedFare     Float
+  finalFare         Float?
+  status            TripStatus @default(REQUESTED)
+  category          String     @default("Personal")
   // The ride tier the rider chose (RideCategory.key, e.g. "SWIFT") — separate
   // from the free-text `category` field above (an unrelated rider-purpose
   // label, e.g. "Personal"/"Business"). Nullable so a trip requested before
   // categories existed remains valid.
-  rideCategoryKey String?
-  pickupNote      String?
-  riderRating     Float? // 1–5 rating the rider gave the driver for this trip
-  requestedAt     DateTime   @default(now())
-  completedAt     DateTime?
+  rideCategoryKey   String?
+  pickupNote        String?
+  riderRating       Float? // 1–5 rating the rider gave the driver for this trip
+  requestedAt       DateTime   @default(now())
+  completedAt       DateTime?
   // Set once, by the driver, when they physically reach the pickup point —
   // POST /trips/:id/arrived. Anchors the free-waiting-period clock; null
   // until the driver reports arrival.
-  arrivedAt       DateTime?
+  arrivedAt         DateTime?
   // While status is OFFERED, the moment this offer expires and is released
   // back to the pool for the next eligible driver (services/matching.ts).
   // Null once the offer has been accepted, declined, or was never made.
-  offerExpiresAt  DateTime?
+  offerExpiresAt    DateTime?
   // Drivers who have already declined (or let expire) an offer on THIS trip —
   // excluded from being offered it again, so a decline never just loops the
   // same trip back to the same driver. Reset never; a trip only ever
   // accumulates declines over its own lifetime.
-  declinedDriverIds String[] @default([])
+  declinedDriverIds String[]   @default([])
 
   // The commission actually applied to this trip, locked in at payment
   // settlement (services/ledger.ts#recordRideCommission) — never
@@ -413,7 +423,8 @@ model RentalBooking {
   status            RentalBookingStatus @default(PENDING_PAYMENT)
   paymentMethod     PaymentMethod?
   paymentStatus     PaymentStatus       @default(PENDING)
-  providerReference String?             @unique // Stripe PaymentIntent id, for CARD payment
+  provider          PaymentProvider     @default(PAYSTACK)
+  providerReference String?             @unique // Paystack transaction reference, for CARD payment
   createdAt         DateTime            @default(now())
 
   @@index([renterId])
@@ -620,9 +631,12 @@ model Payment {
   userId            String
   user              User            @relation(fields: [userId], references: [id])
   amount            Float
-  currency          String          @default("USD")
+  currency          String          @default("NGN")
   method            PaymentMethod   @default(CARD)
   status            PaymentStatus   @default(PENDING)
+  // Which processor providerReference belongs to — always PAYSTACK for any
+  // row created after the migration (see PaymentProvider comment).
+  provider          PaymentProvider @default(PAYSTACK)
   providerReference String?
   createdAt         DateTime        @default(now())
   paidAt            DateTime?
@@ -827,7 +841,7 @@ model FinancialTransaction {
   commissionRate   Float
   commissionAmount Float
   driverEarnings   Float
-  currency         String                     @default("USD")
+  currency         String                     @default("NGN")
   paymentMethod    PaymentMethod?
   status           FinancialTransactionStatus @default(SETTLED)
   // For a REFUND row, the id of the RIDE_FARE/DELIVERY_FARE row it reverses.
@@ -845,39 +859,61 @@ model FinancialTransaction {
 }
 
 model DriverBankAccount {
-  id                String   @id @default(uuid())
-  driverId          String   @unique
-  driver            User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  accountHolderName String
-  bankName          String
-  accountNumber     String
-  routingNumber     String
-  accountType       String   @default("CHECKING") // CHECKING, SAVINGS
-  isVerified        Boolean  @default(false)
-  verificationToken String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                    String   @id @default(uuid())
+  driverId              String   @unique
+  driver                User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  accountHolderName     String
+  bankName              String
+  accountNumber         String
+  // US-shaped fields, unused by the Paystack integration (Nigerian banking
+  // has no routing-number/checking-vs-savings concept) — kept, not
+  // backfilled or removed, so no existing driver record loses data. Made
+  // optional (was required) so a new/edited bank account for a Nigerian
+  // driver isn't forced to supply one. New Paystack-specific fields live
+  // alongside them below.
+  routingNumber         String?
+  accountType           String   @default("CHECKING") // CHECKING, SAVINGS
+  // Paystack's bank code for bankName (from GET /bank) — required to resolve
+  // the account number and create a transfer recipient. Null until the
+  // driver's bank account is (re)saved through the Paystack-aware flow.
+  bankCode              String?
+  // Cached Paystack Transfer Recipient code (POST /transferrecipient),
+  // created once per bank account and reused for every payout — Paystack
+  // recipients don't need to be recreated per transfer. Cleared whenever the
+  // account details change (see payouts.routes.ts) so a stale recipient is
+  // never reused after a driver edits their bank details.
+  paystackRecipientCode String?
+  isVerified            Boolean  @default(false)
+  verificationToken     String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 model Payout {
-  id            String       @id @default(uuid())
+  id            String           @id @default(uuid())
   driverId      String
   // Restrict (P0 #12): payout history is a financial record — never destroyed
   // by deleting the user it belongs to.
-  driver        User         @relation(fields: [driverId], references: [id], onDelete: Restrict)
+  driver        User             @relation(fields: [driverId], references: [id], onDelete: Restrict)
   amount        Float
-  currency      String       @default("USD")
-  status        PayoutStatus @default(PENDING)
+  currency      String           @default("NGN")
+  status        PayoutStatus     @default(PENDING)
   period        String // e.g., "2024-07" for weekly/monthly payout period
-  // The real payment-provider (or bank wire) transaction reference — set only
-  // by completePayout(), and only once, on the transition to COMPLETED (SE-4).
-  // Unique so the same reference can never be recorded against two payouts,
-  // whether by a mistaken paste or a compromised admin session reusing one.
-  transactionId String?      @unique
+  // Set once processPayout() actually calls Paystack's Transfer API — null
+  // means this payout was never automated (predates Paystack Transfers, or
+  // fell back to a manual bank wire confirmed via completePayout()).
+  provider      PaymentProvider?
+  // The real payment-provider (Paystack transfer reference) or manual bank
+  // wire transaction reference — set either by processPayout() initiating a
+  // real Paystack transfer, or by completePayout() recording an admin's
+  // manual transfer confirmation (SE-4). Unique so the same reference can
+  // never be recorded against two payouts, whether by a mistaken paste or a
+  // compromised admin session reusing one.
+  transactionId String?          @unique
   failureReason String?
   completedAt   DateTime?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   // Business invariant (P0 #6): one driver gets at most one payout per period.
   // The DB enforces it so a re-run of generatePayoutsForPeriod, a concurrent
@@ -889,7 +925,7 @@ model Payout {
 }
 
 enum WalletTransactionType {
-  TOPUP // rider added funds via Stripe
+  TOPUP // rider added funds via Paystack
   RIDE_PAYMENT // rider paid for a trip from their balance
   RENTAL_PAYMENT // rider paid for a car rental booking from their balance
   DELIVERY_PAYMENT // sender paid for a courier delivery from their balance
@@ -897,14 +933,14 @@ enum WalletTransactionType {
 }
 
 enum WalletTransactionStatus {
-  PENDING // TOPUP awaiting Stripe webhook confirmation
+  PENDING // TOPUP awaiting Paystack webhook confirmation
   COMPLETED
   FAILED
 }
 
 // A rider's prepaid RavelGo balance. Held in integer cents so incremental
 // credits/debits never accumulate floating-point drift. Funded only through
-// Stripe top-ups (so the money is real and RavelGo holds it), and spent on
+// Paystack top-ups (so the money is real and RavelGo holds it), and spent on
 // rides — a wallet ride payment still leaves RavelGo in control of the funds,
 // which is what lets the platform take its commission and remit the rest to
 // the driver, exactly like a card payment (and unlike cash).
@@ -915,7 +951,7 @@ model WalletAccount {
   // deleting the owning user is blocked so the balance + transactions survive.
   user         User     @relation(fields: [userId], references: [id], onDelete: Restrict)
   balanceCents Int      @default(0)
-  currency     String   @default("USD")
+  currency     String   @default("NGN")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -929,7 +965,8 @@ model WalletTransaction {
   type              WalletTransactionType
   status            WalletTransactionStatus @default(COMPLETED)
   amountCents       Int // positive = credit (top-up/refund), negative = debit (ride)
-  providerReference String?                 @unique // Stripe PaymentIntent id for a TOPUP
+  provider          PaymentProvider         @default(PAYSTACK)
+  providerReference String?                 @unique // Paystack transaction reference, for a TOPUP
   tripId            String? // the trip a RIDE_PAYMENT paid for
   rentalBookingId   String? // the booking a RENTAL_PAYMENT paid for
   courierRequestId  String? // the delivery a DELIVERY_PAYMENT paid for

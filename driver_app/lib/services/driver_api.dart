@@ -58,7 +58,7 @@ class DriverTrip {
   // Commission split, sourced entirely from the backend (lib/trip-view.ts) —
   // this app never computes driverEarnings itself. All three are null until
   // the trip's PAYMENT actually settles (CASH/WALLET: immediately on charge;
-  // CARD: after the Stripe webhook confirms), and stay null forever for a
+  // CARD: after the Paystack webhook confirms), and stay null forever for a
   // trip that never got charged (e.g. cancelled before payment).
   final double? commissionRate;
   final double? platformCommission;

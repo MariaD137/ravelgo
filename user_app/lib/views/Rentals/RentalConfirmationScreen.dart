@@ -4,7 +4,7 @@ import 'package:ravelgo_user_app/services/rental_api.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 /// Shown after a real booking is created/paid. Reflects the actual backend
-/// state — a CARD payment may still show PENDING_PAYMENT here if Stripe's
+/// state — a CARD payment may still show PENDING_PAYMENT here if Paystack's
 /// webhook hasn't landed yet; nothing on this screen is fabricated.
 class RentalConfirmationScreen extends StatelessWidget {
   final RentalBooking booking;

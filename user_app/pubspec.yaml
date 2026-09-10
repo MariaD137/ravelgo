@@ -42,11 +42,11 @@ dependencies:
   http: ^1.2.0
   web_socket_channel: ^3.0.0
   shared_preferences: ^2.2.2
-  # Stripe PaymentSheet for card charges and wallet top-ups. Configured with the
-  # PUBLISHABLE key only (STRIPE_PUBLISHABLE_KEY in .env) — the secret key never
-  # ships in the app. Native setup (Android minSdk 21, iOS deployment target) is
-  # required for a build; see the Stripe SDK docs.
-  flutter_stripe: ^11.1.0
+  # Card charges and wallet top-ups go through Paystack. No SDK/keys ship in
+  # this app at all — the backend holds the Paystack secret key and returns a
+  # one-time checkout URL, which url_launcher opens in an in-app browser tab
+  # (Chrome Custom Tabs / SFSafariViewController). See paystack_service.dart.
+  url_launcher: ^6.3.1
   # Device push notifications — AWS-native end to end. The backend sends
   # through Amazon Pinpoint (backend/src/services/push.ts); these packages
   # are used ONLY to obtain the real FCM/APNs device token and to observe

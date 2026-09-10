@@ -27,14 +27,17 @@ export type NotificationType =
   | "ADMIN_PAYMENT_FAILED"
   | "ADMIN_SAFETY_ALERT_RAISED"
   | "ADMIN_TRIP_DISPUTED"
-  | "DRIVER_ACCOUNT_STATUS_CHANGED";
+  | "DRIVER_ACCOUNT_STATUS_CHANGED"
+  | "PAYOUT_COMPLETED"
+  | "PAYOUT_FAILED";
 
 export type NotificationReferenceType =
   | "TRIP"
   | "COURIER_REQUEST"
   | "RENTAL_BOOKING"
   | "PAYMENT"
-  | "EMERGENCY_ALERT";
+  | "EMERGENCY_ALERT"
+  | "PAYOUT";
 
 /**
  * Create a real, persisted in-app notification for one user. This is the

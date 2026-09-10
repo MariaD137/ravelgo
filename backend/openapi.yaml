@@ -511,12 +511,12 @@ paths:
       tags: [Payments]
       summary: >-
         Charge the rider for a completed trip's final (tax-inclusive) fare
-        (Driver on the trip, or Admin). CARD creates a real Stripe
-        PaymentIntent and returns the Payment as PENDING plus a clientSecret
-        for the mobile app to confirm; the outcome lands asynchronously via
-        POST /billing/webhook. WALLET debits the rider's Stripe-funded
-        RavelGo balance and settles immediately. Cash is not a payment
-        method.
+        (Driver on the trip, or Admin). CARD initializes a real Paystack
+        transaction and returns the Payment as PENDING plus an
+        authorizationUrl for the mobile app to open; the outcome lands
+        asynchronously via POST /billing/webhook. WALLET debits the rider's
+        Paystack-funded RavelGo balance and settles immediately. Cash is not
+        a payment method.
       parameters:
         - $ref: "#/components/parameters/id"
       requestBody:
@@ -528,7 +528,7 @@ paths:
                 method: { type: string, enum: [CARD, WALLET], default: CARD }
       responses:
         "201":
-          description: Payment record (PENDING with a clientSecret for CARD, SUCCEEDED for WALLET)
+          description: Payment record (PENDING with an authorizationUrl for CARD, SUCCEEDED for WALLET)
           content:
             application/json:
               schema:
@@ -536,7 +536,7 @@ paths:
                   - $ref: "#/components/schemas/Payment"
                   - type: object
                     properties:
-                      clientSecret: { type: string, nullable: true }
+                      authorizationUrl: { type: string, nullable: true }
         "402":
           description: Wallet balance insufficient for the fare
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -574,10 +574,10 @@ paths:
   /billing/webhook:
     post:
       tags: [Payments]
-      summary: Stripe webhook (not called by any RavelGo client — Stripe calls this directly)
+      summary: Paystack webhook (not called by any RavelGo client — Paystack calls this directly)
       security: []
       parameters:
-        - name: stripe-signature
+        - name: x-paystack-signature
           in: header
           required: true
           schema: { type: string }
@@ -587,7 +587,7 @@ paths:
           application/json:
             schema:
               type: object
-              description: A raw Stripe Event payload; signature-verified against STRIPE_WEBHOOK_SECRET
+              description: A raw Paystack event payload; signature-verified (HMAC-SHA512) against PAYSTACK_SECRET_KEY
       responses:
         "200":
           description: Acknowledged
@@ -1924,9 +1924,10 @@ paths:
     post:
       tags: [Wallet]
       summary: >-
-        Add funds to my wallet. Creates a Stripe PaymentIntent and returns a
-        clientSecret for the mobile app to confirm; the balance is credited
-        only once Stripe confirms the charge via POST /billing/webhook.
+        Add funds to my wallet. Initializes a Paystack transaction and
+        returns an authorizationUrl for the mobile app to open; the balance
+        is credited only once Paystack confirms the charge via POST
+        /billing/webhook.
       requestBody:
         required: true
         content:
@@ -1944,7 +1945,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  clientSecret: { type: string }
+                  authorizationUrl: { type: string }
                   amount: { type: number }
                   status: { type: string, enum: [PENDING] }
         "400": { $ref: "#/components/responses/BadRequest" }

@@ -17,7 +17,7 @@ type PaymentForLedger = Pick<Payment, "id" | "amount" | "method">;
 
 /**
  * Record a ride's commission the moment its payment settles. Idempotent: a
- * retried Stripe webhook delivery, or a caller invoked twice, never creates
+ * retried Paystack webhook delivery, or a caller invoked twice, never creates
  * a second RIDE_FARE row for the same trip.
  *
  * `fareAmount` — defaulting to the full payment amount — is the commissioned

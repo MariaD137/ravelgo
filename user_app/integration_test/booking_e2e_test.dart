@@ -36,7 +36,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() async {
-    dotenv.loadFromString(envString: 'API_BASE_URL=http://localhost:8080\nSTRIPE_PUBLISHABLE_KEY=\n');
+    dotenv.loadFromString(envString: 'API_BASE_URL=http://localhost:8080\n');
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final claims = {
       'sub': 'seed-rider-amaka',

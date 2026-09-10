@@ -113,7 +113,7 @@ export class ApiStack extends cdk.Stack {
     });
 
     const vpcConnector = new apprunner.CfnVpcConnector(this, "VpcConnector", {
-      // Egress subnets (route to NAT) so the service can reach Stripe and the
+      // Egress subnets (route to NAT) so the service can reach Paystack and the
       // Cognito JWKS endpoint; it still reaches RDS in the isolated subnets
       // over the same VPC. Isolated subnets alone would leave it with no
       // internet path and break payments + auth.
@@ -176,28 +176,29 @@ export class ApiStack extends cdk.Stack {
 
     const dbSecretArn = props.dbInstance.secret!.secretArn;
 
-    // Placeholder values — CDK can't know your real Stripe keys, and they
-    // shouldn't be plaintext CDK context/props anyway. Deploy creates this
-    // secret with dummy values that will fail real Stripe calls until you
+    // Placeholder value — CDK can't know your real Paystack secret key, and
+    // it shouldn't be plaintext CDK context/props anyway. Deploy creates this
+    // secret with a dummy value that will fail real Paystack calls until you
     // overwrite it once, post-deploy:
-    //   aws secretsmanager put-secret-value --secret-id <StripeSecretArn output> \
-    //     --secret-string '{"secretKey":"sk_live_...","webhookSecret":"whsec_..."}'
+    //   aws secretsmanager put-secret-value --secret-id <PaystackSecretArn output> \
+    //     --secret-string '{"secretKey":"sk_live_..."}'
+    // Only one field — unlike the removed Stripe integration, Paystack signs
+    // webhooks with this same secret key rather than a separate one.
     // See ../../docs/admin-bootstrap.md for the same "one manual step,
     // documented" pattern used for the first Cognito Admin user.
-    const stripeSecret = new secretsmanager.Secret(this, "StripeSecret", {
-      description: "RavelGo Stripe keys — replace these placeholders post-deploy, see api-stack.ts",
+    const paystackSecret = new secretsmanager.Secret(this, "PaystackSecret", {
+      description: "RavelGo Paystack secret key — replace this placeholder post-deploy, see api-stack.ts",
       secretObjectValue: {
-        // unsafePlainText is fine here specifically because these aren't
-        // real secret material — they're placeholders meant to be
-        // overwritten once, exactly like Cognito's admin bootstrap step.
+        // unsafePlainText is fine here specifically because this isn't real
+        // secret material — a placeholder meant to be overwritten once,
+        // exactly like Cognito's admin bootstrap step.
         secretKey: cdk.SecretValue.unsafePlainText("sk_live_REPLACE_ME"),
-        webhookSecret: cdk.SecretValue.unsafePlainText("whsec_REPLACE_ME"),
       },
     });
-    stripeSecret.grantRead(instanceRole);
+    paystackSecret.grantRead(instanceRole);
 
-    // Same placeholder-then-overwrite pattern as the Stripe secret above: the
-    // backend's Places/Geocoding proxy (src/routes/places.routes.ts) needs a
+    // Same placeholder-then-overwrite pattern as the Paystack secret above:
+    // the backend's Places/Geocoding proxy (src/routes/places.routes.ts) needs a
     // server-side Google Maps Platform key, which CDK can't know and shouldn't
     // carry in plaintext context. Deploy lays down a placeholder that makes the
     // proxy return a clear 5xx (never a silent failure) until you overwrite it:
@@ -259,8 +260,7 @@ export class ApiStack extends cdk.Stack {
             runtimeEnvironmentSecrets: [
               { name: "DB_USERNAME", value: `${dbSecretArn}:username::` },
               { name: "DB_PASSWORD", value: `${dbSecretArn}:password::` },
-              { name: "STRIPE_SECRET_KEY", value: `${stripeSecret.secretArn}:secretKey::` },
-              { name: "STRIPE_WEBHOOK_SECRET", value: `${stripeSecret.secretArn}:webhookSecret::` },
+              { name: "PAYSTACK_SECRET_KEY", value: `${paystackSecret.secretArn}:secretKey::` },
               { name: "GOOGLE_MAPS_SERVER_KEY", value: `${mapsSecret.secretArn}:serverKey::` },
             ],
           },
@@ -353,7 +353,7 @@ export class ApiStack extends cdk.Stack {
     }
 
     new cdk.CfnOutput(this, "EcrRepositoryUri", { value: this.repository.repositoryUri });
-    new cdk.CfnOutput(this, "StripeSecretArn", { value: stripeSecret.secretArn });
+    new cdk.CfnOutput(this, "PaystackSecretArn", { value: paystackSecret.secretArn });
     new cdk.CfnOutput(this, "MapsSecretArn", { value: mapsSecret.secretArn });
   }
 }

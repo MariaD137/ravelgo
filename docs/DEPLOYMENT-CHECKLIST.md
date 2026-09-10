@@ -13,8 +13,8 @@ Quick reference for deploying to AWS. Use this alongside `AWS-DEPLOYMENT.md` for
 - [ ] **Account ID saved** for later use
 - [ ] Node.js 18+: `node --version` ✓
 - [ ] Docker installed: `docker --version` ✓
-- [ ] Stripe account created
-- [ ] Stripe API keys obtained (`sk_live_*` and `whsec_*`)
+- [ ] Paystack account created
+- [ ] Paystack secret key obtained (`sk_live_*`)
 
 ---
 
@@ -59,7 +59,7 @@ npx cdk deploy --all
 **Save all CDK outputs:**
 - [ ] `ServiceUrl` - App Runner endpoint
 - [ ] `EcrRepositoryUri` - Docker image repository
-- [ ] `StripeSecretArn` - Secrets Manager secret ARN
+- [ ] `PaystackSecretArn` - Secrets Manager secret ARN
 - [ ] `UserPoolId` - Cognito user pool ID
 - [ ] `UserPoolClientId` - Cognito app client ID
 - [ ] `GitHubActionsDeployRoleArn` - GitHub Actions IAM role
@@ -69,16 +69,16 @@ npx cdk deploy --all
 
 ## Post-Deployment Configuration (5 minutes)
 
-### Update Stripe Secret
+### Update Paystack Secret
 
 ```bash
 aws secretsmanager put-secret-value \
-  --secret-id <StripeSecretArn> \
-  --secret-string '{"secretKey":"sk_live_xxx","webhookSecret":"whsec_xxx"}'
+  --secret-id <PaystackSecretArn> \
+  --secret-string '{"secretKey":"sk_live_xxx"}'
 ```
 
-- [ ] Real Stripe keys updated (not `REPLACE_ME`)
-- [ ] Verified: `aws secretsmanager get-secret-value --secret-id <StripeSecretArn>`
+- [ ] Real Paystack key updated (not `REPLACE_ME`)
+- [ ] Verified: `aws secretsmanager get-secret-value --secret-id <PaystackSecretArn>`
 
 ---
 
@@ -204,7 +204,7 @@ git add README.md && git commit -m "Test CI/CD" && git push origin main
 ## Final Verification Checklist
 
 - [ ] All 7 stacks deployed (Network, Auth, Storage, Data, Api, Monitoring, CI)
-- [ ] Stripe secret updated with real keys
+- [ ] Paystack secret updated with a real key
 - [ ] Docker image in ECR and running
 - [ ] Database migrations completed
 - [ ] Health check returns 200 OK
@@ -222,7 +222,7 @@ git add README.md && git commit -m "Test CI/CD" && git push origin main
 | Pre-deployment checks | 15 min | ☐ |
 | CDK bootstrap | 5 min | ☐ |
 | Infrastructure deploy | 25-30 min | ☐ |
-| Stripe config | 2 min | ☐ |
+| Paystack config | 2 min | ☐ |
 | Backend image push | 5 min | ☐ |
 | Database setup | 3 min | ☐ |
 | Verification | 5 min | ☐ |

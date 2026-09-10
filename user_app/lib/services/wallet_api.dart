@@ -51,18 +51,18 @@ class WalletApi {
     return list.whereType<Map<String, dynamic>>().map(WalletTransaction.fromJson).toList();
   }
 
-  /// Start a wallet top-up: the backend creates a real Stripe PaymentIntent and
-  /// a PENDING credit, returning the `clientSecret` the app confirms via the
-  /// PaymentSheet. The balance is only credited once Stripe confirms the charge
-  /// on the signed webhook — the client never asserts that money arrived.
-  /// Returns the clientSecret.
+  /// Start a wallet top-up: the backend initializes a real Paystack
+  /// transaction and a PENDING credit, returning the `authorizationUrl` the
+  /// app opens for the rider to pay. The balance is only credited once
+  /// Paystack confirms the charge on the signed webhook — the client never
+  /// asserts that money arrived. Returns the authorizationUrl.
   static Future<String> startTopUp(double amount) async {
     final data = await ApiClient.post('/api/wallet/topup', {'amount': amount});
     final m = data as Map<String, dynamic>;
-    final secret = m['clientSecret'];
-    if (secret == null || '$secret'.isEmpty) {
+    final url = m['authorizationUrl'];
+    if (url == null || '$url'.isEmpty) {
       throw Exception('Top-up could not be started.');
     }
-    return '$secret';
+    return '$url';
   }
 }

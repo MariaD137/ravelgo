@@ -34,17 +34,17 @@ account is wired into this repo.
    ```
    This takes ~15-20 minutes the first time (mostly the RDS instance). Note
    the outputs at the end — you'll need `EcrRepositoryUri`, `ServiceUrl`,
-   `UserPoolId`, `UserPoolClientId`, `StripeSecretArn`, and
+   `UserPoolId`, `UserPoolClientId`, `PaystackSecretArn`, and
    `GitHubActionsDeployRoleArn`.
 
-3a. **Replace the placeholder Stripe secret.** `RavelGo-Api` creates a
-    Secrets Manager secret with dummy `sk_live_REPLACE_ME` /
-    `whsec_REPLACE_ME` values (App Runner needs *something* to reference at
-    deploy time, and CDK can't know your real Stripe keys) — overwrite it
-    once with the real ones from your Stripe dashboard:
+3a. **Replace the placeholder Paystack secret.** `RavelGo-Api` creates a
+    Secrets Manager secret with a dummy `sk_live_REPLACE_ME` value (App
+    Runner needs *something* to reference at deploy time, and CDK can't know
+    your real Paystack key) — overwrite it once with the real one from your
+    Paystack dashboard:
     ```bash
-    aws secretsmanager put-secret-value --secret-id <StripeSecretArn output> \
-      --secret-string '{"secretKey":"sk_live_...","webhookSecret":"whsec_..."}'
+    aws secretsmanager put-secret-value --secret-id <PaystackSecretArn output> \
+      --secret-string '{"secretKey":"sk_live_..."}'
     ```
     Same "one manual step, documented" pattern as bootstrapping the first
     Cognito Admin user — see `../docs/admin-bootstrap.md`.

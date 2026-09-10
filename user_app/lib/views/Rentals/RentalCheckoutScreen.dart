@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/rental_api.dart';
-import 'package:ravelgo_user_app/services/stripe_service.dart';
+import 'package:ravelgo_user_app/services/paystack_service.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:ravelgo_user_app/views/Rentals/RentalConfirmationScreen.dart';
 
 /// Pay for an already-created (PENDING_PAYMENT) rental booking. Mirrors the
-/// ride payment flow: CARD confirms a backend PaymentIntent in the Stripe
-/// PaymentSheet, WALLET settles immediately from the customer's RavelGo Cash
-/// balance. The amount is always the server-side booking.totalPrice.
+/// ride payment flow: CARD opens a backend-issued Paystack checkout page,
+/// WALLET settles immediately from the customer's RavelGo Cash balance. The
+/// amount is always the server-side booking.totalPrice.
 class RentalCheckoutScreen extends StatefulWidget {
   final RentalBooking booking;
   final RentalListing listing;
@@ -26,30 +25,23 @@ class _RentalCheckoutScreenState extends State<RentalCheckoutScreen> {
 
   Future<void> _pay() async {
     if (_paying) return;
-    if (_isCardSelected && !StripeService.isConfigured) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Card payments are not configured yet.')),
-      );
-      return;
-    }
     setState(() => _paying = true);
     try {
       RentalBooking confirmed;
       if (_isCardSelected) {
-        final clientSecret = await RentalApi.payWithCard(widget.booking.id);
-        await StripeService.presentPaymentSheet(clientSecret: clientSecret);
-        // The PaymentSheet confirming doesn't itself flip the booking to
-        // CONFIRMED — that happens on the signed Stripe webhook, which can
-        // land a moment after this call returns. Re-fetch so the confirmation
-        // screen reflects the real, current backend state either way.
+        final authorizationUrl = await RentalApi.payWithCard(widget.booking.id);
+        await PaystackService.openCheckout(authorizationUrl);
+        // Opening the checkout page doesn't itself flip the booking to
+        // CONFIRMED — that happens on the signed Paystack webhook once the
+        // customer completes payment in the browser, which this app has no
+        // way to observe directly. Re-fetch so the confirmation screen
+        // reflects the real, current backend state either way.
         confirmed = await RentalApi.booking(widget.booking.id);
       } else {
         confirmed = await RentalApi.payWithWallet(widget.booking.id);
       }
       if (!mounted) return;
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => RentalConfirmationScreen(booking: confirmed, listing: widget.listing)));
-    } on StripeException catch (_) {
-      // Customer cancelled or the card sheet failed — nothing was charged.
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));

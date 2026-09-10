@@ -3,7 +3,8 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, mockPaystackTransfer, restoreAuth, resetDb } from "../test/helpers";
+import { signWebhookPayloadForTesting } from "../billing/paystack";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -191,6 +192,48 @@ test("POST /payouts/:id/process moves PENDING to PROCESSING without fabricating 
   // any real payment provider. It must stay unset until a real transfer
   // reference exists (see POST /payouts/:id/complete below).
   assert.equal(res.body.transactionId, null);
+});
+
+test("POST /payouts/:id/process initiates a real Paystack transfer when the driver's bank account has a bank code, and finalizes on the transfer.success webhook", async () => {
+  const { user } = await createDriver("driver-sub-process-3");
+  await prisma.driverBankAccount.create({
+    data: { driverId: user.id, accountHolderName: "Driver Three", bankName: "GTBank", bankCode: "058", accountNumber: "0011122233" },
+  });
+  const payout = await prisma.payout.create({
+    data: { driverId: user.id, amount: 5000, period: "2026-03", status: "PENDING" },
+  });
+
+  mockPaystackTransfer();
+  const token = mockAuthAs({ sub: "super-payout-3", groups: ["Admin"] });
+  const res = await request(app).post(`/api/payouts/${payout.id}/process`).set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "PROCESSING");
+  assert.equal(res.body.provider, "PAYSTACK");
+  assert.equal(res.body.transactionId, `ravelgo_payout_${payout.id}`);
+
+  // The transfer recipient is cached on the bank account for the next payout.
+  const account = await prisma.driverBankAccount.findUnique({ where: { driverId: user.id } });
+  assert.equal(account?.paystackRecipientCode, "RCP_test_1");
+
+  // The transfer.success webhook (billing.routes.ts) finalizes it.
+  restoreAuth();
+  const payload = JSON.stringify({ event: "transfer.success", data: { reference: `ravelgo_payout_${payout.id}` } });
+  const signature = signWebhookPayloadForTesting(Buffer.from(payload, "utf8"));
+  const hook = await request(app)
+    .post("/api/billing/webhook")
+    .set("Content-Type", "application/json")
+    .set("x-paystack-signature", signature)
+    .send(payload);
+  assert.equal(hook.status, 200);
+
+  const completed = await prisma.payout.findUniqueOrThrow({ where: { id: payout.id } });
+  assert.equal(completed.status, "COMPLETED");
+  assert.ok(completed.completedAt);
+
+  const notifications = await prisma.notification.findMany({ where: { userId: user.id } });
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].type, "PAYOUT_COMPLETED");
 });
 
 test("POST /payouts/:id/complete records the real transactionId the caller supplies", async () => {

@@ -33,9 +33,10 @@ Before starting, you'll need:
    docker --version
    ```
 
-5. **Stripe Account** with API keys
-   - Sign up at https://stripe.com
-   - Get `sk_live_...` (secret key) and `whsec_...` (webhook secret)
+5. **Paystack Account** with an API key
+   - Sign up at https://paystack.com
+   - Get `sk_live_...` (secret key) — Paystack signs webhooks with this same
+     key, no separate webhook secret to obtain
 
 6. **GitHub Personal Access Token** (for OIDC setup)
    - Create at https://github.com/settings/tokens
@@ -137,7 +138,7 @@ When prompted, type `y` to confirm each deployment.
 Outputs:
 RavelGo-Api.ServiceUrl = https://xxxxx.awsapprunner.com
 RavelGo-Api.EcrRepositoryUri = 123456789012.dkr.ecr.us-east-1.amazonaws.com/ravelgo-backend
-RavelGo-Api.StripeSecretArn = arn:aws:secretsmanager:us-east-1:123456789012:secret:ravelgo-stripe-xxx
+RavelGo-Api.PaystackSecretArn = arn:aws:secretsmanager:us-east-1:123456789012:secret:ravelgo-paystack-xxx
 RavelGo-Auth.UserPoolId = us-east-1_xxxxxxxxx
 RavelGo-Auth.UserPoolClientId = 1234567890abcdefghijklmnop
 RavelGo-Monitoring.AlertTopicArn = arn:aws:sns:us-east-1:123456789012:ravelgo-alerts
@@ -148,20 +149,20 @@ RavelGo-CI.GitHubActionsDeployRoleArn = arn:aws:iam::123456789012:role/ravelgo-g
 
 ---
 
-## Step 5: Update Stripe Secret
+## Step 5: Update Paystack Secret
 
-Replace the placeholder Stripe keys with your real ones.
+Replace the placeholder Paystack key with your real one.
 
 ```bash
-# From the outputs above, use the StripeSecretArn
+# From the outputs above, use the PaystackSecretArn
 aws secretsmanager put-secret-value \
-  --secret-id arn:aws:secretsmanager:us-east-1:123456789012:secret:ravelgo-stripe-xxx \
-  --secret-string '{"secretKey":"sk_live_your_real_key_here","webhookSecret":"whsec_your_real_key_here"}'
+  --secret-id arn:aws:secretsmanager:us-east-1:123456789012:secret:ravelgo-paystack-xxx \
+  --secret-string '{"secretKey":"sk_live_your_real_key_here"}'
 ```
 
 **Verify it worked:**
 ```bash
-aws secretsmanager get-secret-value --secret-id arn:aws:secretsmanager:us-east-1:123456789012:secret:ravelgo-stripe-xxx
+aws secretsmanager get-secret-value --secret-id arn:aws:secretsmanager:us-east-1:123456789012:secret:ravelgo-paystack-xxx
 ```
 
 Should show your real keys (not `REPLACE_ME`).
@@ -328,7 +329,7 @@ Confirm email subscriptions for CloudWatch alerts.
 - [ ] CDK bootstrap completed
 - [ ] `npx cdk synth --all` succeeds
 - [ ] `npx cdk deploy --all` completes (outputs saved)
-- [ ] Stripe secret updated with real keys
+- [ ] Paystack secret updated with a real key
 - [ ] Backend Docker image pushed to ECR
 - [ ] Database migrations ran successfully
 - [ ] `curl https://xxxxx.awsapprunner.com/health` returns 200
@@ -386,7 +387,7 @@ Confirm email subscriptions for CloudWatch alerts.
 **Fix:** Check App Runner logs for startup errors. Common issues:
 - Missing `NODE_ENV=production`
 - Database connection string malformed
-- Stripe keys still say `REPLACE_ME`
+- Paystack key still says `REPLACE_ME`
 
 ### "GitHub Actions deployment fails"
 **Cause:** Repository variables not set correctly.

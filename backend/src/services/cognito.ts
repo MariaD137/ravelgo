@@ -26,7 +26,7 @@ const client = new CognitoIdentityProviderClient({ region: env.AWS_REGION });
  *
  * Exported as an object so tests can stub `addUserToGroup` with
  * `mock.method(cognitoGroups, "addUserToGroup", ...)` — the same pattern used
- * for the Cognito verifier and the Stripe client in the test helpers.
+ * for the Cognito verifier and paystackClient in the test helpers.
  */
 export const cognitoGroups = {
   /**

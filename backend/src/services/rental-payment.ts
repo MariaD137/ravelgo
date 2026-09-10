@@ -1,5 +1,5 @@
 import { prisma } from "../db/prisma";
-import { stripeClient } from "../billing/stripe";
+import { paystackClient } from "../billing/paystack";
 import { MAX_MONEY_AMOUNT, toCents } from "../lib/money";
 import { notifyUser } from "../lib/notifications";
 import { InsufficientFundsError } from "./wallet";
@@ -26,14 +26,16 @@ export interface ChargeableRentalBooking {
 /**
  * Settle a rental booking's payment. Mirrors settleTripPayment: the amount
  * charged is always the server-side booking.totalPrice — never a value from
- * the client. CARD creates a real Stripe PaymentIntent and leaves the booking
- * PENDING_PAYMENT until the signed webhook confirms it; WALLET debits the
- * renter's real balance atomically and confirms immediately.
+ * the client. CARD initializes a real Paystack transaction and leaves the
+ * booking PENDING_PAYMENT until the signed webhook confirms it (unlike
+ * Payment/Trip, a booking may be retried after a failed/abandoned attempt —
+ * see the reference generation below); WALLET debits the renter's real
+ * balance atomically and confirms immediately.
  */
 export async function chargeRentalBooking(
   booking: ChargeableRentalBooking,
   method: RentalPaymentMethod,
-): Promise<{ booking: unknown; clientSecret?: string | null }> {
+): Promise<{ booking: unknown; authorizationUrl?: string | null }> {
   if (booking.status !== "PENDING_PAYMENT" || booking.paymentStatus === "SUCCEEDED") {
     throw new RentalBookingNotChargeableError("This booking has already been paid for or is no longer payable");
   }
@@ -44,16 +46,26 @@ export async function chargeRentalBooking(
   }
 
   if (method === "CARD") {
-    const intent = await stripeClient.paymentIntents.create({
-      amount: toCents(booking.totalPrice),
-      currency: "usd",
+    const renter = await prisma.user.findUnique({ where: { id: booking.renterId }, select: { email: true } });
+    if (!renter) throw new RentalBookingNotChargeableError("Renter profile not found");
+
+    // Unlike Trip/CourierRequest (blocked from a second attempt by an
+    // existing Payment row), a booking may retry after a failed/abandoned
+    // attempt while still PENDING_PAYMENT — Paystack references must be
+    // globally unique, so this can't be deterministic like the trip/delivery
+    // ones are; each attempt gets its own.
+    const reference = `ravelgo_rental_${booking.id}_${Date.now()}`;
+    const { authorizationUrl } = await paystackClient.initializeTransaction({
+      email: renter.email,
+      amountKobo: toCents(booking.totalPrice),
+      reference,
       metadata: { type: "rental_booking", rentalBookingId: booking.id },
     });
     const updated = await prisma.rentalBooking.update({
       where: { id: booking.id },
-      data: { paymentMethod: "CARD", paymentStatus: "PENDING", providerReference: intent.id },
+      data: { paymentMethod: "CARD", paymentStatus: "PENDING", provider: "PAYSTACK", providerReference: reference },
     });
-    return { booking: updated, clientSecret: intent.client_secret };
+    return { booking: updated, authorizationUrl };
   }
 
   // WALLET: settle immediately from the renter's real prepaid balance, in one
@@ -102,8 +114,9 @@ export async function chargeRentalBooking(
 
 /**
  * Cancel a booking. If it was already paid, refund it: a CARD payment is
- * refunded through Stripe, a WALLET payment is credited straight back to the
- * renter's balance — both leave an auditable trail, never a silent write-off.
+ * refunded through Paystack, a WALLET payment is credited straight back to
+ * the renter's balance — both leave an auditable trail, never a silent
+ * write-off.
  */
 export async function cancelRentalBooking(booking: ChargeableRentalBooking & { paymentMethod: string | null; providerReference: string | null }) {
   if (booking.status === "CANCELLED" || booking.status === "COMPLETED") {
@@ -112,7 +125,7 @@ export async function cancelRentalBooking(booking: ChargeableRentalBooking & { p
 
   if (booking.paymentStatus === "SUCCEEDED") {
     if (booking.paymentMethod === "CARD" && booking.providerReference) {
-      await stripeClient.refunds.create({ payment_intent: booking.providerReference });
+      await paystackClient.refundTransaction({ reference: booking.providerReference });
     } else if (booking.paymentMethod === "WALLET") {
       const wallet = await prisma.walletAccount.findUnique({ where: { userId: booking.renterId } });
       if (wallet) {

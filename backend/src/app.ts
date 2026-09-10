@@ -54,7 +54,7 @@ app.use(
   cors({ origin: env.NODE_ENV === "production" ? env.ALLOWED_ORIGINS : true }),
 );
 
-// Mounted at this one exact path, before express.json(): Stripe signs the
+// Mounted at this one exact path, before express.json(): Paystack signs the
 // exact raw request bytes, so parsing the body as JSON first would break
 // the signature check in src/routes/billing.routes.ts. Scoped this
 // narrowly (not the whole "/api" prefix) so express.raw() doesn't consume

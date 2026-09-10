@@ -8,7 +8,7 @@ import { recordAudit } from "../lib/audit";
 import { notifyUser } from "../lib/notifications";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { sensitiveLimiter } from "../middleware/rate-limit";
-import { stripeClient } from "../billing/stripe";
+import { paystackClient } from "../billing/paystack";
 import { moneyAmountSchema, toCents } from "../lib/money";
 import { AlreadyChargedError, InsufficientFundsError } from "../services/wallet";
 import { CashLimitExceededError, settleTripPayment, TripNotChargeableError } from "../services/trip-payment";
@@ -33,7 +33,7 @@ function respondToSettleError(res: import("express").Response, err: unknown, nex
 }
 
 // RavelGo has exactly three payment methods: CASH, CARD and RavelGo CASH
-// (WALLET). CARD (Stripe) and WALLET (the rider's prepaid RavelGo balance)
+// (WALLET). CARD (Paystack) and WALLET (the rider's prepaid RavelGo balance)
 // keep the funds under RavelGo's control end-to-end. CASH changes hands
 // directly between rider and driver and is capped at the configured limit
 // (default ₦15,000, see lib/payment-rules.ts) so RavelGo's exposure on money
@@ -44,10 +44,10 @@ const chargeSchema = z.object({
 });
 
 // Driver or Admin: charge the rider for a completed trip's final (tax-inclusive)
-// fare. CARD creates a real Stripe PaymentIntent and a PENDING Payment whose
-// outcome arrives via POST /billing/webhook. WALLET debits the rider's real
-// prepaid balance atomically and settles immediately (the funds are already
-// held by RavelGo from a prior Stripe top-up).
+// fare. CARD initializes a real Paystack transaction and a PENDING Payment
+// whose outcome arrives via POST /billing/webhook. WALLET debits the rider's
+// real prepaid balance atomically and settles immediately (the funds are
+// already held by RavelGo from a prior Paystack top-up).
 paymentsRouter.post("/trips/:id/charge", sensitiveLimiter, requireAuth, requireRole("Driver", "Admin"), async (req, res, next) => {
   const parsed = chargeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -61,8 +61,8 @@ paymentsRouter.post("/trips/:id/charge", sensitiveLimiter, requireAuth, requireR
   }
 
   try {
-    const { payment, clientSecret } = await settleTripPayment(trip, parsed.data.method);
-    return res.status(201).json(clientSecret ? { ...(payment as object), clientSecret } : payment);
+    const { payment, authorizationUrl } = await settleTripPayment(trip, parsed.data.method);
+    return res.status(201).json(authorizationUrl ? { ...(payment as object), authorizationUrl } : payment);
   } catch (err) {
     return respondToSettleError(res, err, next);
   }
@@ -73,8 +73,8 @@ paymentsRouter.post("/trips/:id/charge", sensitiveLimiter, requireAuth, requireR
 // trip gets settled, this is the other. Same server-authoritative amount
 // (trip.finalFare), same one-Payment-per-trip guarantee, so the two paths can
 // never double-charge: whichever settles first wins and the other gets 409.
-// CARD returns a Stripe clientSecret for the rider to confirm in the app's
-// PaymentSheet; WALLET debits the rider's own prepaid balance immediately.
+// CARD returns a Paystack authorizationUrl for the rider to complete in the
+// app; WALLET debits the rider's own prepaid balance immediately.
 paymentsRouter.post("/trips/:id/pay", sensitiveLimiter, requireAuth, async (req, res, next) => {
   const parsed = chargeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -91,8 +91,8 @@ paymentsRouter.post("/trips/:id/pay", sensitiveLimiter, requireAuth, async (req,
   }
 
   try {
-    const { payment, clientSecret } = await settleTripPayment(trip, parsed.data.method);
-    return res.status(201).json(clientSecret ? { ...(payment as object), clientSecret } : payment);
+    const { payment, authorizationUrl } = await settleTripPayment(trip, parsed.data.method);
+    return res.status(201).json(authorizationUrl ? { ...(payment as object), authorizationUrl } : payment);
   } catch (err) {
     return respondToSettleError(res, err, next);
   }
@@ -116,8 +116,8 @@ paymentsRouter.post("/courier-requests/:id/charge", sensitiveLimiter, requireAut
   }
 
   try {
-    const { payment, clientSecret } = await settleCourierPayment(request, parsed.data.method);
-    return res.status(201).json(clientSecret ? { ...(payment as object), clientSecret } : payment);
+    const { payment, authorizationUrl } = await settleCourierPayment(request, parsed.data.method);
+    return res.status(201).json(authorizationUrl ? { ...(payment as object), authorizationUrl } : payment);
   } catch (err) {
     return respondToSettleError(res, err, next);
   }
@@ -138,8 +138,8 @@ paymentsRouter.post("/courier-requests/:id/pay", sensitiveLimiter, requireAuth, 
   }
 
   try {
-    const { payment, clientSecret } = await settleCourierPayment(request, parsed.data.method);
-    return res.status(201).json(clientSecret ? { ...(payment as object), clientSecret } : payment);
+    const { payment, authorizationUrl } = await settleCourierPayment(request, parsed.data.method);
+    return res.status(201).json(authorizationUrl ? { ...(payment as object), authorizationUrl } : payment);
   } catch (err) {
     return respondToSettleError(res, err, next);
   }
@@ -156,7 +156,7 @@ const refundSchema = z.object({
  * Actually move the money back for a settled Payment, then reverse its
  * commission on the ledger. Shared by the trip and delivery refund routes
  * below — same logic, just parameterized by which Payment/ledger key to use.
- * CARD refunds through Stripe; WALLET credits the payer's balance directly
+ * CARD refunds through Paystack; WALLET credits the payer's balance directly
  * (RavelGo held those funds); CASH never passed through RavelGo at all, so
  * there is nothing to refund through the platform — only the ledger
  * (commission owed) is reversed, and the actual cash return between rider
@@ -169,7 +169,7 @@ async function refundSettledPayment(
   reason: string,
 ): Promise<void> {
   if (payment.method === "CARD" && payment.providerReference) {
-    await stripeClient.refunds.create({ payment_intent: payment.providerReference, amount: toCents(refundAmount) });
+    await paystackClient.refundTransaction({ reference: payment.providerReference, amountKobo: toCents(refundAmount) });
   } else if (payment.method === "WALLET") {
     const wallet = await prisma.walletAccount.findUnique({ where: { userId: payment.userId } });
     if (wallet) {

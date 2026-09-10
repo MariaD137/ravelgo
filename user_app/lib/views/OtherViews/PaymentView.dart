@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
-import 'package:ravelgo_user_app/services/stripe_service.dart';
+import 'package:ravelgo_user_app/services/paystack_service.dart';
 import 'package:ravelgo_user_app/services/wallet_api.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
@@ -55,30 +54,22 @@ class _PaymentScreenState extends State<PaymentView> {
 
   bool _toppingUp = false;
 
-  /// Add funds to the RavelGo wallet: the backend starts a real Stripe
-  /// PaymentIntent, and the rider confirms it in the PaymentSheet. The balance
-  /// is credited by the signed webhook once Stripe settles, so we reload after
-  /// (it may take a moment) rather than assuming the money landed.
+  /// Add funds to the RavelGo wallet: the backend initializes a real Paystack
+  /// transaction, and the rider pays on the checkout page this opens. The
+  /// balance is credited by the signed webhook once Paystack settles, so we
+  /// reload after (it may take a moment) rather than assuming the money landed.
   Future<void> _topUp() async {
-    if (!StripeService.isConfigured) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Card payments are not configured yet.')),
-      );
-      return;
-    }
     final amount = await _askAmount();
     if (amount == null) return;
     setState(() => _toppingUp = true);
     try {
-      final clientSecret = await WalletApi.startTopUp(amount);
-      await StripeService.presentPaymentSheet(clientSecret: clientSecret);
+      final authorizationUrl = await WalletApi.startTopUp(amount);
+      await PaystackService.openCheckout(authorizationUrl);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Payment received. Your balance will update shortly.')),
+        const SnackBar(content: Text('If your payment succeeds, your balance will update shortly.')),
       );
       await _loadWallet();
-    } on StripeException catch (_) {
-      // Rider cancelled or the sheet failed — nothing was charged.
     } catch (e) {
       if (!mounted) return;
       final msg = e is ApiException ? e.message : e.toString();
@@ -206,7 +197,7 @@ class _PaymentScreenState extends State<PaymentView> {
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(Icons.credit_card, color: AppColors.textSecondary),
                       title: Text('Card'),
-                      subtitle: Text('Entered securely at checkout via Stripe, each time.'),
+                      subtitle: Text('Entered securely at checkout via Paystack, each time.'),
                     ),
                     const ListTile(
                       contentPadding: EdgeInsets.zero,

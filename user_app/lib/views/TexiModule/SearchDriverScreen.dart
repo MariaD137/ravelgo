@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter_stripe/flutter_stripe.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
@@ -9,7 +8,7 @@ import 'package:ravelgo_user_app/services/booking_api.dart';
 import 'package:ravelgo_user_app/services/payments_api.dart';
 import 'package:ravelgo_user_app/services/realtime_service.dart';
 import 'package:ravelgo_user_app/services/settings_api.dart';
-import 'package:ravelgo_user_app/services/stripe_service.dart';
+import 'package:ravelgo_user_app/services/paystack_service.dart';
 import 'package:ravelgo_user_app/services/trips_api.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
@@ -93,25 +92,29 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
     }
   }
 
-  /// Pay for the completed trip. CARD confirms a backend PaymentIntent in the
-  /// Stripe PaymentSheet; WALLET settles from the rider's balance; CASH
-  /// settles instantly (handed to the driver) but only below the cash limit —
-  /// the backend rejects it above the limit even if this button were somehow
+  /// Pay for the completed trip. CARD opens a backend-issued Paystack
+  /// checkout page; WALLET settles from the rider's balance; CASH settles
+  /// instantly (handed to the driver) but only below the cash limit — the
+  /// backend rejects it above the limit even if this button were somehow
   /// shown. If the driver already charged the trip the backend returns 409,
   /// which we treat as paid.
   Future<void> _payTrip(String method) async {
     if (_payBusy) return;
-    if (method == 'CARD' && !StripeService.isConfigured) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Card payments are not configured yet.')),
-      );
-      return;
-    }
     setState(() => _payBusy = true);
     try {
       if (method == 'CARD') {
-        final clientSecret = await PaymentsApi.payTripWithCard(trip.id);
-        await StripeService.presentPaymentSheet(clientSecret: clientSecret);
+        final authorizationUrl = await PaymentsApi.payTripWithCard(trip.id);
+        await PaystackService.openCheckout(authorizationUrl);
+        // Opening the checkout page only means the browser launched — unlike
+        // the removed Stripe PaymentSheet, it is not a signal the rider
+        // actually completed payment. The trip only becomes PAID once the
+        // signed Paystack webhook confirms it backend-side, which this app
+        // has no way to observe directly while the browser tab is open.
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Complete your payment in the browser, then return here.')),
+        );
+        return;
       } else if (method == 'CASH') {
         await PaymentsApi.payTripWithCash(trip.id);
       } else {
@@ -120,8 +123,6 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
       if (!mounted) return;
       setState(() => _paid = true);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payment complete.')));
-    } on StripeException catch (_) {
-      // Rider cancelled or the card sheet failed — nothing was charged.
     } on ApiException catch (e) {
       if (!mounted) return;
       if (e.statusCode == 409) {

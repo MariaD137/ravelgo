@@ -31,12 +31,13 @@ const rawEnvSchema = z.object({
   // NODE_ENV is production (enforced below, not by zod, so the message names
   // the real cause instead of a generic schema error).
   ALLOWED_ORIGINS: z.string().optional(),
-  // Optional: unset in dev/test (Stripe-backed routes give a clear 500
-  // instead of silently no-opping — see src/billing/stripe.ts). Required in
+  // Optional: unset in dev/test (Paystack-backed routes give a clear 500
+  // instead of silently no-opping — see src/billing/paystack.ts). Required in
   // production, enforced below rather than by zod so the error names the
-  // real cause.
-  STRIPE_SECRET_KEY: z.string().optional(),
-  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  // real cause. Paystack signs webhooks with this same secret key (HMAC
+  // SHA512 of the raw body) — there is no separate webhook-signing secret
+  // like Stripe's, so only one variable is needed here.
+  PAYSTACK_SECRET_KEY: z.string().optional(),
   // Server-side Google Maps Platform key used by the Places/Geocoding proxy
   // (src/routes/places.routes.ts). Deliberately separate from the browser
   // Maps-JS key the web apps embed: this one is never sent to a client, so it
@@ -66,8 +67,7 @@ export interface Env {
   ASSETS_BUCKET?: string;
   ASSETS_CDN_DOMAIN?: string;
   ALLOWED_ORIGINS: string[];
-  STRIPE_SECRET_KEY?: string;
-  STRIPE_WEBHOOK_SECRET?: string;
+  PAYSTACK_SECRET_KEY?: string;
   GOOGLE_MAPS_SERVER_KEY?: string;
   PINPOINT_APPLICATION_ID?: string;
 }
@@ -116,8 +116,8 @@ function loadEnv(): Env {
   if (data.NODE_ENV === "production" && allowedOrigins.length === 0) {
     throw new Error("ALLOWED_ORIGINS is required in production (comma-separated list of allowed origins)");
   }
-  if (data.NODE_ENV === "production" && (!data.STRIPE_SECRET_KEY || !data.STRIPE_WEBHOOK_SECRET)) {
-    throw new Error("STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required in production");
+  if (data.NODE_ENV === "production" && !data.PAYSTACK_SECRET_KEY) {
+    throw new Error("PAYSTACK_SECRET_KEY is required in production");
   }
 
   return {
@@ -131,8 +131,7 @@ function loadEnv(): Env {
     ASSETS_BUCKET: data.ASSETS_BUCKET,
     ASSETS_CDN_DOMAIN: data.ASSETS_CDN_DOMAIN,
     ALLOWED_ORIGINS: allowedOrigins,
-    STRIPE_SECRET_KEY: data.STRIPE_SECRET_KEY,
-    STRIPE_WEBHOOK_SECRET: data.STRIPE_WEBHOOK_SECRET,
+    PAYSTACK_SECRET_KEY: data.PAYSTACK_SECRET_KEY,
     GOOGLE_MAPS_SERVER_KEY: data.GOOGLE_MAPS_SERVER_KEY,
     PINPOINT_APPLICATION_ID: data.PINPOINT_APPLICATION_ID,
   };

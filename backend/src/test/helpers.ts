@@ -1,7 +1,7 @@
 import { mock } from "node:test";
 import { verifier } from "../middleware/auth";
 import { prisma } from "../db/prisma";
-import { stripeClient } from "../billing/stripe";
+import { paystackClient, type PaystackTransactionStatus } from "../billing/paystack";
 import { cognitoGroups } from "../services/cognito";
 
 export interface MockCognitoUser {
@@ -51,16 +51,56 @@ export function restoreAuth() {
 }
 
 /**
- * Stubs stripeClient.paymentIntents.create so route tests never make a real
- * network call to Stripe — returns a fake PaymentIntent id/clientSecret,
- * same pattern as mockAuthAs() for the Cognito verifier.
+ * Stubs paystackClient.initializeTransaction so route tests never make a
+ * real network call to Paystack — returns a fake authorizationUrl carrying
+ * whatever reference the route itself generated (RavelGo owns the
+ * reference, unlike Stripe's server-generated PaymentIntent id — see
+ * billing/paystack.ts), same pattern as mockAuthAs() for the Cognito verifier.
  */
-export function mockPaymentIntentCreate(id = `pi_test_${Date.now()}`) {
-  mock.method(stripeClient.paymentIntents, "create", async () => ({
-    id,
-    client_secret: `${id}_secret_test`,
+export function mockPaystackInitialize() {
+  return mock.method(paystackClient, "initializeTransaction", async ({ reference }: { reference: string }) => ({
+    authorizationUrl: `https://checkout.paystack.com/test_${reference}`,
+    accessCode: `access_test_${reference}`,
+    reference,
   }));
-  return id;
+}
+
+/**
+ * Stubs paystackClient.verifyTransaction — the webhook handler's trusted
+ * source of truth for a transaction's real outcome AND the metadata that
+ * decides which branch handles it (billing.routes.ts reads type from the
+ * VERIFY response, never the raw webhook payload — see its comment on why).
+ * Defaults to a bare "success" with no metadata (the "trip" branch); pass
+ * `metadata` to simulate a wallet_topup/courier_delivery/rental_booking
+ * transaction, or a different `status` to simulate a failed verification.
+ */
+export function mockPaystackVerify({
+  status = "success" as PaystackTransactionStatus,
+  metadata = null as Record<string, unknown> | null,
+} = {}) {
+  return mock.method(paystackClient, "verifyTransaction", async (reference: string) => ({
+    status,
+    reference,
+    amountKobo: 0,
+    currency: "NGN",
+    metadata,
+    paidAt: status === "success" ? new Date().toISOString() : null,
+  }));
+}
+
+/** Stubs paystackClient.refundTransaction so refund tests never hit the network. */
+export function mockPaystackRefund() {
+  return mock.method(paystackClient, "refundTransaction", async () => ({ status: "success" }));
+}
+
+/** Stubs the driver-payout Paystack Transfer flow (resolve + recipient + transfer). */
+export function mockPaystackTransfer() {
+  mock.method(paystackClient, "resolveAccountNumber", async (accountNumber: string) => ({
+    accountNumber,
+    accountName: "Test Driver",
+  }));
+  mock.method(paystackClient, "createTransferRecipient", async () => ({ recipientCode: "RCP_test_1" }));
+  mock.method(paystackClient, "initiateTransfer", async () => ({ transferCode: "TRF_test_1", status: "pending" as const }));
 }
 
 /**
