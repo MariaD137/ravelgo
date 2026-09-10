@@ -1,6 +1,8 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/LocationService.dart';
+import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/booking_api.dart';
 import 'package:ravelgo_user_app/services/places_api.dart';
@@ -32,8 +34,9 @@ class _SelectRideState extends State<SelectRide> {
 
   // Real trip geometry: pickup defaults to the device's location but the rider
   // can always override it by search (below) — destination is always chosen
-  // via the "Where to?" search (Places proxy). No map is shown on this
-  // screen, so nothing here depends on one being rendered.
+  // via the "Where to?" search (Places proxy). The map renders these same
+  // coordinates as pins (see _markers/_fitCamera below); booking, distance
+  // and fare are computed by the backend from them either way.
   LatLng? _pickupLatLng;
   LatLng? _destLatLng;
   double? _distanceKm;
@@ -47,6 +50,13 @@ class _SelectRideState extends State<SelectRide> {
   // at "Locating you…" forever (P0: booking dead-end when geolocation is
   // denied/unavailable — the only prior way to set pickup at all).
   bool _locatingPickup = true;
+
+  // A real map showing the actual pickup/destination pins the rider has set
+  // — this screen used to intentionally render a plain background instead
+  // (P0: a rider booking a ride had no visual confirmation of where they
+  // were actually going). Nothing here is decorative: markers only ever
+  // appear once the corresponding coordinate is real.
+  GoogleMapController? _mapController;
 
   // The real backend-computed fare per ride category (Swift/Ease/Luxe/Elite),
   // loaded once both pickup and destination coordinates are known. Each entry
@@ -88,6 +98,7 @@ class _SelectRideState extends State<SelectRide> {
       _locatingPickup = false;
       _recomputeAndQuote();
     });
+    _fitCamera();
     _resolvePickupLabel(me);
   }
 
@@ -120,6 +131,52 @@ class _SelectRideState extends State<SelectRide> {
       _pickupLabel = place.address;
       _recomputeAndQuote();
     });
+    _fitCamera();
+  }
+
+  Set<Marker> get _markers {
+    final markers = <Marker>{};
+    final pickup = _pickupLatLng;
+    final dest = _destLatLng;
+    if (pickup != null) {
+      markers.add(Marker(
+        markerId: const MarkerId('pickup'),
+        position: pickup,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+        infoWindow: const InfoWindow(title: 'Pickup'),
+      ));
+    }
+    if (dest != null) {
+      markers.add(Marker(
+        markerId: const MarkerId('destination'),
+        position: dest,
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        infoWindow: const InfoWindow(title: 'Destination'),
+      ));
+    }
+    return markers;
+  }
+
+  /// Recenter the map on whatever real coordinates are currently known:
+  /// both pickup and destination (fit both in view), just one (center on
+  /// it), or neither yet (leave the map wherever it started). Called every
+  /// time pickup/destination actually changes, never on a timer.
+  void _fitCamera() {
+    final controller = _mapController;
+    if (controller == null) return;
+    final pickup = _pickupLatLng;
+    final dest = _destLatLng;
+    if (pickup != null && dest != null) {
+      final bounds = LatLngBounds(
+        southwest: LatLng(math.min(pickup.latitude, dest.latitude), math.min(pickup.longitude, dest.longitude)),
+        northeast: LatLng(math.max(pickup.latitude, dest.latitude), math.max(pickup.longitude, dest.longitude)),
+      );
+      controller.animateCamera(CameraUpdate.newLatLngBounds(bounds, 64));
+    } else if (pickup != null) {
+      controller.animateCamera(CameraUpdate.newLatLng(pickup));
+    } else if (dest != null) {
+      controller.animateCamera(CameraUpdate.newLatLng(dest));
+    }
   }
 
   void _recomputeAndQuote() {
@@ -188,6 +245,7 @@ class _SelectRideState extends State<SelectRide> {
       _destLabel = place.address;
       _recomputeAndQuote();
     });
+    _fitCamera();
   }
 
   /// Refresh pickup from the device's current location (geolocator) — the
@@ -207,6 +265,7 @@ class _SelectRideState extends State<SelectRide> {
       _pickupLatLng = me;
       _recomputeAndQuote();
     });
+    _fitCamera();
     _resolvePickupLabel(me);
   }
 
@@ -242,12 +301,23 @@ class _SelectRideState extends State<SelectRide> {
     return Scaffold(
       body: Stack(
         children: [
-          // The map is intentionally not shown here — pickup is set from the
-          // device's real location (or searched, below) and the destination is
-          // always chosen via the "Where to?" search, so nothing on this
-          // screen depends on a rendered map. Booking, distance and fare are
-          // all computed by the backend from the coordinates either way.
-          Positioned.fill(child: Container(color: AppColors.background)),
+          // A real map with the pickup/destination pins the rider has actually
+          // set — booking, distance and fare are still all computed by the
+          // backend from the coordinates regardless of what's shown here, but
+          // the rider gets visual confirmation of where they're actually going.
+          Positioned.fill(
+            child: SafeGoogleMap(
+              initialCameraPosition: const CameraPosition(target: LatLng(6.5244, 3.3792), zoom: 12),
+              markers: _markers,
+              myLocationEnabled: true,
+              myLocationButtonEnabled: false,
+              zoomControlsEnabled: false,
+              onMapCreated: (controller) {
+                _mapController = controller;
+                _fitCamera();
+              },
+            ),
+          ),
 
           // Top bar with back, location search, and add
           SafeArea(
