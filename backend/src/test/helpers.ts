@@ -89,6 +89,28 @@ export function mockCognitoSetUserEnabled() {
   return mock.method(cognitoGroups, "setUserEnabled", async () => {});
 }
 
+/**
+ * Stubs cognitoGroups.adminUserStatus so admin-user route tests never call a
+ * real Cognito user pool. Defaults to an active, MFA-enabled account so tests
+ * that don't care about status/MFA see the "normal" case; override either
+ * field, or pass null to simulate the Cognito account not existing.
+ */
+export function mockCognitoAdminUserStatus(
+  result: { cognitoStatus?: string; mfaEnabled?: boolean } | null = {},
+) {
+  return mock.method(cognitoGroups, "adminUserStatus", async () =>
+    result === null ? null : { cognitoStatus: result.cognitoStatus ?? "CONFIRMED", mfaEnabled: result.mfaEnabled ?? false },
+  );
+}
+
+export function mockCognitoResendAdminInvitation() {
+  return mock.method(cognitoGroups, "resendAdminInvitation", async () => {});
+}
+
+export function mockCognitoAdminResetUserPassword() {
+  return mock.method(cognitoGroups, "adminResetUserPassword", async () => {});
+}
+
 // Delete in FK-safe order (children before parents).
 export async function resetDb() {
   // AuditLog has no FK dependents; clear it too so audit-writing admin routes

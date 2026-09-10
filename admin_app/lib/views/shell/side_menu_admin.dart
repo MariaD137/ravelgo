@@ -43,13 +43,15 @@ class SideMenuAdmin extends StatelessWidget {
                 children: [
                   const CircleAvatar(radius: 26, backgroundColor: AppColors.surface, child: Icon(Icons.admin_panel_settings_outlined, color: AppColors.textPrimary)),
                   const SizedBox(width: 14),
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("Ops Admin", style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-                        SizedBox(height: 2),
-                        Text("admin@ravelgo.com", style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                        Text(AuthService.name ?? AuthService.email ?? 'Admin',
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                        const SizedBox(height: 2),
+                        if (AuthService.name != null && AuthService.email != null)
+                          Text(AuthService.email!, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                       ],
                     ),
                   ),

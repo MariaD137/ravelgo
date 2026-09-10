@@ -900,27 +900,36 @@ class Promotion {
 }
 
 class AdminUserAccount {
-  final String id;
+  final String? id;
   final String name;
   final String email;
   final String adminRole; // SUPER_ADMIN | OPERATIONS_MANAGER | SUPPORT_AGENT | FINANCE_VIEWER
   final bool suspended;
-  final DateTime createdAt;
+  final String status; // INVITED | ACTIVE | SUSPENDED | UNKNOWN
+  final bool mfaEnabled;
+  final DateTime? createdAt;
+  final DateTime? lastLoginAt;
   AdminUserAccount({
     required this.id,
     required this.name,
     required this.email,
     required this.adminRole,
     required this.suspended,
+    required this.status,
+    required this.mfaEnabled,
     required this.createdAt,
+    required this.lastLoginAt,
   });
   factory AdminUserAccount.fromJson(Map<String, dynamic> j) => AdminUserAccount(
-        id: '${j['id']}',
+        id: j['id']?.toString(),
         name: '${j['name'] ?? ''}',
         email: '${j['email'] ?? ''}',
         adminRole: '${j['adminRole'] ?? 'SUPER_ADMIN'}',
         suspended: j['suspended'] == true,
-        createdAt: _dt(j['createdAt']),
+        status: '${j['status'] ?? 'UNKNOWN'}',
+        mfaEnabled: j['mfaEnabled'] == true,
+        createdAt: j['createdAt'] == null ? null : _dt(j['createdAt']),
+        lastLoginAt: j['lastLoginAt'] == null ? null : _dt(j['lastLoginAt']),
       );
 }
 
@@ -1414,6 +1423,18 @@ class AdminApi {
     return (data as List).whereType<Map<String, dynamic>>().map(AdminUserAccount.fromJson).toList();
   }
 
+  /// The calling admin's own profile — any Admin-group member, not just
+  /// Super Admin. Used by AdminProfileScreen and the post-login MFA gate.
+  static Future<AdminUserAccount> me() async {
+    final data = await ApiClient.get('/api/admin-users/me');
+    return AdminUserAccount.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<AdminUserAccount> adminUser(String id) async {
+    final data = await ApiClient.get('/api/admin-users/$id');
+    return AdminUserAccount.fromJson(data as Map<String, dynamic>);
+  }
+
   static Future<AdminUserAccount> createAdminUser({
     required String email,
     required String firstName,
@@ -1437,6 +1458,22 @@ class AdminApi {
   static Future<AdminUserAccount> setAdminUserSuspended(String id, bool suspended) async {
     final data = await ApiClient.patch('/api/admin-users/$id/status', {'suspended': suspended});
     return AdminUserAccount.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<AdminUserAccount> resendAdminInvitation(String id) async {
+    final data = await ApiClient.post('/api/admin-users/$id/resend-invitation', {});
+    return AdminUserAccount.fromJson(data as Map<String, dynamic>);
+  }
+
+  static Future<AdminUserAccount> requestAdminPasswordReset(String id) async {
+    final data = await ApiClient.post('/api/admin-users/$id/password-reset', {});
+    return AdminUserAccount.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Audit-trail marker called right after the calling admin finishes TOTP
+  /// enrollment directly against Cognito (see AuthService.completeMfaEnrollment).
+  static Future<void> recordMfaEnrolled() async {
+    await ApiClient.post('/api/admin-users/me/mfa-enrolled', {});
   }
 
   // ---- Vehicle inventory (admin, cross-driver) ----

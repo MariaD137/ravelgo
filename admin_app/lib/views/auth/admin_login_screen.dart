@@ -1,10 +1,52 @@
 import 'package:amazon_cognito_identity_dart_2/cognito.dart';
 import 'package:flutter/material.dart';
+import 'package:ravelgo_admin/services/admin_api.dart';
+import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/services/auth_service.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/views/auth/forgot_password_screen.dart';
+import 'package:ravelgo_admin/views/auth/mfa_setup_screen.dart';
+import 'package:ravelgo_admin/views/auth/mfa_verification_screen.dart';
 import 'package:ravelgo_admin/views/auth/set_new_password_screen.dart';
 import 'package:ravelgo_admin/views/shell/admin_shell.dart';
+
+/// After a fully-authenticated sign-in (no NEW_PASSWORD_REQUIRED / MFA
+/// challenge outstanding), routes to mandatory MFA setup if the admin hasn't
+/// enrolled yet, otherwise into the app. Shared by the normal sign-in path,
+/// the first-time "set a new password" path, and the MFA-verification path —
+/// every way an admin can finish authenticating goes through this same gate,
+/// so there's no route into AdminShell that skips it.
+Future<void> continueAfterAuthentication(BuildContext context) async {
+  if (!AuthService.isAdmin) {
+    await AuthService.signOut();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('You are not authorized to access the RavelGo Admin Console.'),
+    ));
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    return;
+  }
+  bool mfaEnabled;
+  try {
+    mfaEnabled = (await AdminApi.me()).mfaEnabled;
+  } on ApiException {
+    // The profile call itself is what proves the caller is a real, active
+    // admin — if the backend rejects it (e.g. suspended mid-session), fail
+    // closed to sign-in rather than assuming MFA is fine.
+    await AuthService.signOut();
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Could not verify your admin account. Please sign in again.'),
+    ));
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    return;
+  }
+  if (!context.mounted) return;
+  Navigator.of(context).pushAndRemoveUntil(
+    MaterialPageRoute(builder: (context) => mfaEnabled ? const AdminShell() : const MfaSetupScreen()),
+    (route) => false,
+  );
+}
 
 /// Admin sign-in, backed by the real RavelGo Cognito user pool.
 ///
@@ -58,25 +100,17 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
-      if (!AuthService.isAdmin) {
-        await AuthService.signOut();
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('You are not authorized to access the RavelGo Admin Console.'),
-        ));
-        return;
-      }
       if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const AdminShell()),
-        (route) => false,
-      );
+      await continueAfterAuthentication(context);
     } on CognitoUserNewPasswordRequiredException {
       if (!mounted) return;
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => SetNewPasswordScreen(email: _emailController.text.trim())),
       );
+    } on CognitoUserTotpRequiredException {
+      if (!mounted) return;
+      Navigator.push(context, MaterialPageRoute(builder: (context) => const MfaVerificationScreen()));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)

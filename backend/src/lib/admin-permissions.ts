@@ -61,6 +61,21 @@ export async function effectiveAdminRole(cognitoSub: string): Promise<AdminRole>
   return user?.adminRole ?? "SUPER_ADMIN";
 }
 
+/**
+ * Whether a caller already known to be in the Cognito "Admin" group is
+ * suspended in Postgres. Suspending an admin also disables their Cognito
+ * account (see PATCH /admin-users/:id/status), but AdminDisableUser only
+ * blocks *issuing new* tokens — an access token issued before the suspension
+ * stays cryptographically valid for up to its full hour-long lifetime (see
+ * accessTokenValidity in infra/lib/auth-stack.ts). This closes that window
+ * at the application layer: a suspended admin's still-live token is rejected
+ * here even though Cognito itself hasn't expired it yet.
+ */
+export async function isSuspendedAdmin(cognitoSub: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { cognitoSub } });
+  return user?.suspended ?? false;
+}
+
 /** Whether an AdminRole preset grants `permission`. */
 export function roleHasPermission(role: AdminRole, permission: AdminPermission): boolean {
   return ADMIN_PERMISSIONS[role].has(permission);
@@ -77,6 +92,10 @@ export function requireAdminPermission(permission: AdminPermission) {
     if (!groups.includes("Admin")) {
       logSecurityEvent("AUTHZ_FAILURE", req, { required: "Admin" });
       return res.status(403).json({ error: "Insufficient permissions" });
+    }
+    if (await isSuspendedAdmin(req.user!.sub)) {
+      logSecurityEvent("AUTHZ_FAILURE", req, { required: "not_suspended" });
+      return res.status(403).json({ error: "This admin account is suspended" });
     }
     const role = await effectiveAdminRole(req.user!.sub);
     if (!roleHasPermission(role, permission)) {
@@ -100,6 +119,11 @@ export async function blockIfAdminLacksPermission(
   res: Response,
   permission: AdminPermission,
 ): Promise<boolean> {
+  if (await isSuspendedAdmin(req.user!.sub)) {
+    logSecurityEvent("AUTHZ_FAILURE", req, { required: "not_suspended" });
+    res.status(403).json({ error: "This admin account is suspended" });
+    return true;
+  }
   const role = await effectiveAdminRole(req.user!.sub);
   if (!roleHasPermission(role, permission)) {
     logSecurityEvent("AUTHZ_FAILURE", req, { required: `admin:${permission}`, adminRole: role });

@@ -196,6 +196,13 @@ model User {
   // Only meaningful when role == ADMIN. Null means "no preset assigned" —
   // see the AdminRole doc comment above for why that means full access.
   adminRole       AdminRole?
+  // Only meaningful when role == ADMIN. There is no discrete "login" event in
+  // a stateless-bearer-token architecture (Cognito auth happens entirely
+  // client-side; the backend only ever sees per-request access tokens) — this
+  // is stamped on every verified admin API call (see requireAuth), so it
+  // reads as "last seen active" rather than a precise sign-in timestamp.
+  // Null until the admin has made their first authenticated call.
+  lastLoginAt     DateTime?
   // Soft-delete marker (P0 #12). Financial relations below are RESTRICT, so a
   // user with payout/wallet/trip history cannot be hard-deleted — deactivate by
   // stamping deletedAt instead, which preserves the ledger and every FK.

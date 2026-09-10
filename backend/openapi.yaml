@@ -832,6 +832,155 @@ paths:
                   onlineDrivers: { type: integer }
                   pendingApprovals: { type: integer }
 
+  /admin-users:
+    get:
+      tags: [AdminUsers]
+      summary: List all admin-group users (Super Admin / manage_admins)
+      responses:
+        "200":
+          description: Admin users
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/AdminUser" } }
+    post:
+      tags: [AdminUsers]
+      summary: Invite a new admin user (Super Admin / manage_admins)
+      description: >
+        Cognito creates the account and emails a temporary password —
+        nothing in this API ever handles, stores, or returns a password.
+        Email is normalized (trimmed + lowercased) before the duplicate
+        check and storage. Rate-limited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminUserInvite" }
+      responses:
+        "201":
+          description: Created admin user (status will be INVITED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "409": { description: "Email already registered (Postgres or Cognito)" }
+  /admin-users/me:
+    get:
+      tags: [AdminUsers]
+      summary: The calling admin's own profile (any Admin-group member)
+      responses:
+        "200":
+          description: Own profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+  /admin-users/me/mfa-enrolled:
+    post:
+      tags: [AdminUsers]
+      summary: Record that the calling admin just completed TOTP MFA enrollment (any Admin-group member)
+      description: >
+        Audit-trail only — the enrollment itself happens directly between
+        the Admin App and Cognito (AssociateSoftwareToken /
+        VerifySoftwareToken / SetUserMFAPreference). Cognito remains the
+        source of truth for mfaEnabled on every AdminUser response.
+      responses:
+        "204": { description: Recorded }
+  /admin-users/{id}:
+    get:
+      tags: [AdminUsers]
+      summary: View one admin's detail (Super Admin / manage_admins)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Admin user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin-users/{id}/role:
+    patch:
+      tags: [AdminUsers]
+      summary: Change an admin's permission preset (Super Admin / manage_admins)
+      description: Rejected with 409 if it would leave zero Super Admins.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [adminRole]
+              properties:
+                adminRole: { $ref: "#/components/schemas/AdminRole" }
+      responses:
+        "200":
+          description: Updated admin user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: "Would leave zero Super Admins" }
+  /admin-users/{id}/status:
+    patch:
+      tags: [AdminUsers]
+      summary: Suspend/reinstate an admin account (Super Admin / manage_admins)
+      description: >
+        Suspending also disables the Cognito account outright. Rejected with
+        400 if the caller targets their own account, and with 409 if it
+        would leave zero active Super Admins.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [suspended]
+              properties:
+                suspended: { type: boolean }
+      responses:
+        "200":
+          description: Updated admin user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "400": { description: "Cannot change your own account status" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: "Would leave zero active Super Admins" }
+  /admin-users/{id}/resend-invitation:
+    post:
+      tags: [AdminUsers]
+      summary: Re-send an admin's invitation email (Super Admin / manage_admins)
+      description: Rejected with 409 once the admin has already signed in and set a password. Rate-limited.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Admin user (still INVITED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: "Admin has already set a password" }
+  /admin-users/{id}/password-reset:
+    post:
+      tags: [AdminUsers]
+      summary: Admin-initiated password reset for another admin (Super Admin / manage_admins)
+      description: >
+        Same underlying Cognito flow as self-service "Forgot password?",
+        triggered by a Super Admin instead of the account owner. Never
+        returns, stores, or logs a password or reset code. Rate-limited.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Admin user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /courier-requests:
     post:
       tags: [Courier]
@@ -1937,6 +2086,53 @@ components:
               type: array
               items: { type: string }
               description: All of this vehicle's public CDN photo URLs. Raw S3 keys are never returned.
+
+    AdminRole:
+      type: string
+      enum: [SUPER_ADMIN, OPERATIONS_MANAGER, SUPPORT_AGENT, FINANCE_VIEWER]
+      description: >
+        Fixed permission presets (see backend/src/lib/admin-permissions.ts).
+        Only SUPER_ADMIN holds manage_admins, so only a Super Admin can ever
+        reach any /admin-users write endpoint.
+
+    AdminUserInvite:
+      type: object
+      required: [email, firstName, lastName, adminRole]
+      properties:
+        email: { type: string, format: email }
+        firstName: { type: string }
+        lastName: { type: string }
+        adminRole: { $ref: "#/components/schemas/AdminRole" }
+
+    AdminUser:
+      type: object
+      properties:
+        id: { type: string, nullable: true, description: "Null only for a legacy admin with no Postgres User row (see GET /admin-users/me)." }
+        name: { type: string }
+        email: { type: string }
+        adminRole: { $ref: "#/components/schemas/AdminRole" }
+        suspended: { type: boolean }
+        status:
+          type: string
+          enum: [INVITED, ACTIVE, SUSPENDED, UNKNOWN]
+          description: >
+            Read live from Cognito, never cached: INVITED means Cognito's
+            FORCE_CHANGE_PASSWORD status (temporary password emailed, first
+            sign-in not completed yet). UNKNOWN means the Cognito account
+            itself could not be found.
+        mfaEnabled:
+          type: boolean
+          description: Whether this admin has a preferred MFA method set in Cognito (TOTP only in this pool).
+        createdAt: { type: string, format: date-time, nullable: true }
+        lastLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Stamped on every verified admin API call (there is no discrete
+            login event in this stateless-bearer-token architecture) — reads
+            as "last seen active" rather than a precise sign-in timestamp.
+            Null until the admin's first authenticated call.
 
     RentalListing:
       type: object

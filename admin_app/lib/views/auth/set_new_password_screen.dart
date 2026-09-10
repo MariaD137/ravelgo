@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/services/auth_service.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
-import 'package:ravelgo_admin/views/shell/admin_shell.dart';
+import 'package:ravelgo_admin/views/auth/admin_login_screen.dart';
 
 /// Shown when signIn() reports Cognito's NEW_PASSWORD_REQUIRED challenge —
 /// every admin invited via POST /admin-users lands here on their first sign-in
@@ -46,20 +46,8 @@ class _SetNewPasswordScreenState extends State<SetNewPasswordScreen> {
     });
     try {
       await AuthService.completeNewPassword(newPassword: password);
-      if (!AuthService.isAdmin) {
-        await AuthService.signOut();
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('You are not authorized to access the RavelGo Admin Console.'),
-        ));
-        Navigator.of(context).pop();
-        return;
-      }
       if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const AdminShell()),
-        (route) => false,
-      );
+      await continueAfterAuthentication(context);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = AuthService.friendlyError(e));

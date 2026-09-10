@@ -4,6 +4,10 @@ import {
   AdminCreateUserCommand,
   AdminDisableUserCommand,
   AdminEnableUserCommand,
+  AdminGetUserCommand,
+  AdminResetUserPasswordCommand,
+  MessageActionType,
+  UserNotFoundException,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { env } from "../config/env";
 
@@ -84,5 +88,69 @@ export const cognitoGroups = {
   async setUserEnabled(username: string, enabled: boolean): Promise<void> {
     const Command = enabled ? AdminEnableUserCommand : AdminDisableUserCommand;
     await client.send(new Command({ UserPoolId: env.COGNITO_USER_POOL_ID, Username: username }));
+  },
+
+  /**
+   * Live Cognito-side status for one admin: their account lifecycle state
+   * (FORCE_CHANGE_PASSWORD means they haven't accepted the invitation yet —
+   * surfaced to the Admin App as "Invited") and whether they have a
+   * preferred MFA method set (TOTP is the only second factor this pool
+   * offers — see infra/lib/auth-stack.ts). Nothing here is cached in
+   * Postgres: Cognito is the single source of truth for both, so the
+   * Admin Users list always reflects the real account state, never a value
+   * that can drift out of sync.
+   *
+   * Returns null if the Cognito account itself is gone (e.g. deleted
+   * directly in the AWS console) — the Postgres row can still exist and the
+   * caller should render that as an anomaly rather than throwing.
+   */
+  async adminUserStatus(username: string): Promise<{ cognitoStatus: string; mfaEnabled: boolean } | null> {
+    try {
+      const result = await client.send(
+        new AdminGetUserCommand({ UserPoolId: env.COGNITO_USER_POOL_ID, Username: username }),
+      );
+      return {
+        cognitoStatus: result.UserStatus ?? "UNKNOWN",
+        mfaEnabled: (result.UserMFASettingList?.length ?? 0) > 0,
+      };
+    } catch (err) {
+      if (err instanceof UserNotFoundException) return null;
+      throw err;
+    }
+  },
+
+  /**
+   * Re-send the invitation email for an admin who never completed their
+   * first sign-in (still in FORCE_CHANGE_PASSWORD). Cognito rejects RESEND
+   * for a user who has already set a real password, so the route handler
+   * checks adminUserStatus() first and this never silently no-ops on an
+   * already-active account.
+   */
+  async resendAdminInvitation(params: { email: string; firstName: string; lastName: string }): Promise<void> {
+    await client.send(
+      new AdminCreateUserCommand({
+        UserPoolId: env.COGNITO_USER_POOL_ID,
+        Username: params.email,
+        UserAttributes: [
+          { Name: "email", Value: params.email },
+          { Name: "email_verified", Value: "true" },
+          { Name: "given_name", Value: params.firstName },
+          { Name: "family_name", Value: params.lastName },
+        ],
+        MessageAction: MessageActionType.RESEND,
+        DesiredDeliveryMediums: ["EMAIL"],
+      }),
+    );
+  },
+
+  /**
+   * Admin-initiated password reset: forces the target back into a
+   * "must set a new password" state and emails them a reset code — the
+   * same Cognito flow as a self-service "Forgot password?", just triggered
+   * by a Super Admin instead of the account owner. Never returns, stores,
+   * or logs the code or a password.
+   */
+  async adminResetUserPassword(username: string): Promise<void> {
+    await client.send(new AdminResetUserPasswordCommand({ UserPoolId: env.COGNITO_USER_POOL_ID, Username: username }));
   },
 };

@@ -2,6 +2,7 @@ import { CognitoJwtVerifier } from "aws-jwt-verify";
 import type { NextFunction, Request, Response } from "express";
 import { env } from "../config/env";
 import { logSecurityEvent } from "../lib/security-log";
+import { prisma } from "../db/prisma";
 
 export interface AuthenticatedUser {
   sub: string;
@@ -34,11 +35,19 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   try {
     const token = header.slice("Bearer ".length);
     const payload = await verifier.verify(token);
+    const groups = Array.isArray(payload["cognito:groups"]) ? (payload["cognito:groups"] as string[]) : [];
     req.user = {
       sub: payload.sub,
       email: typeof payload.email === "string" ? payload.email : undefined,
-      groups: Array.isArray(payload["cognito:groups"]) ? (payload["cognito:groups"] as string[]) : [],
+      groups,
     };
+    // Admin Users' "Last Login" column (see admin-users.routes.ts). There is
+    // no discrete login event in this stateless-bearer-token architecture, so
+    // this stamps "last seen active" on every verified admin API call —
+    // fire-and-forget so it never adds latency to the request it's riding on.
+    if (groups.includes("Admin")) {
+      void prisma.user.updateMany({ where: { cognitoSub: payload.sub }, data: { lastLoginAt: new Date() } });
+    }
     next();
   } catch {
     logSecurityEvent("AUTH_FAILURE", req, { reason: "invalid_token" });

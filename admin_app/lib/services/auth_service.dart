@@ -80,6 +80,10 @@ class AuthService {
   static String? accessToken;
   static String? idToken;
   static String? email;
+  // From the verified ID token's given_name/family_name claims — never
+  // fabricated or hard-coded. Null until a session has been applied at
+  // least once (fresh sign-in or a restored session).
+  static String? name;
   static List<String> groups = const [];
 
   /// Set by signIn() when Cognito responds with the NEW_PASSWORD_REQUIRED
@@ -87,6 +91,11 @@ class AuthService {
   /// state until they set their own password once. Consumed by
   /// completeNewPassword().
   static CognitoUser? _pendingNewPasswordUser;
+
+  /// Set by signIn() when Cognito responds with the SOFTWARE_TOKEN_MFA
+  /// challenge — an admin who has already enrolled TOTP MFA gets this on
+  /// every sign-in. Consumed by submitMfaCode().
+  static CognitoUser? _pendingMfaUser;
 
   static bool get isSignedIn => accessToken != null;
 
@@ -99,9 +108,17 @@ class AuthService {
 
   /// True only when the app was built with real Cognito settings. Lets the UI
   /// give a clear message instead of a cryptic error if config is missing.
-  static bool get isConfigured =>
-      (dotenv.env['COGNITO_USER_POOL_ID'] ?? '').isNotEmpty &&
-      (dotenv.env['COGNITO_CLIENT_ID'] ?? '').isNotEmpty;
+  /// dotenv itself throws if load() was never called (e.g. a widget test
+  /// that never runs main()) — caught here so this getter can never itself
+  /// become the "cryptic error" it exists to prevent.
+  static bool get isConfigured {
+    try {
+      return (dotenv.env['COGNITO_USER_POOL_ID'] ?? '').isNotEmpty &&
+          (dotenv.env['COGNITO_CLIENT_ID'] ?? '').isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
 
   /// Restore a persisted session on startup. Returns true only when a valid
   /// (or successfully refreshed) session exists. getSession() transparently
@@ -146,6 +163,10 @@ class AuthService {
     idToken = s.getIdToken().getJwtToken();
     final claims = s.getIdToken().decodePayload();
     email = claims['email']?.toString() ?? email;
+    final givenName = claims['given_name']?.toString() ?? '';
+    final familyName = claims['family_name']?.toString() ?? '';
+    final fullName = '$givenName $familyName'.trim();
+    if (fullName.isNotEmpty) name = fullName;
     final rawGroups = claims['cognito:groups'];
     groups = rawGroups is List ? rawGroups.map((g) => '$g').toList() : const [];
   }
@@ -215,6 +236,10 @@ class AuthService {
   /// for the first time with the temporary password Cognito emailed them
   /// (see POST /admin-users) — the caller must show a "set a new password"
   /// step and call completeNewPassword() to finish signing in.
+  ///
+  /// Throws CognitoUserTotpRequiredException for an admin who has already
+  /// enrolled TOTP MFA — the caller must show a 6-digit code entry step and
+  /// call submitMfaCode() to finish signing in.
   static Future<void> signIn({required String email, required String password}) async {
     final user = CognitoUser(email, _pool);
     AuthService.email = email;
@@ -228,7 +253,61 @@ class AuthService {
     } on CognitoUserNewPasswordRequiredException {
       _pendingNewPasswordUser = user;
       rethrow;
+    } on CognitoUserTotpRequiredException {
+      _pendingMfaUser = user;
+      rethrow;
     }
+  }
+
+  /// Completes sign-in after signIn() (or completeNewPassword()) threw
+  /// CognitoUserTotpRequiredException, by submitting the 6-digit code from
+  /// the admin's authenticator app.
+  static Future<void> submitMfaCode({required String code}) async {
+    final user = _pendingMfaUser;
+    if (user == null) {
+      throw CognitoClientException('Your session expired — please sign in again.');
+    }
+    final s = await user.sendMFACode(code, 'SOFTWARE_TOKEN_MFA');
+    if (s != null) {
+      _applySession(user, s);
+    }
+    _pendingMfaUser = null;
+  }
+
+  /// Starts TOTP MFA enrollment for the CURRENTLY signed-in admin (called
+  /// after a full sign-in with no outstanding challenge — MFA is optional at
+  /// the Cognito pool level so this is never itself a login-time challenge;
+  /// see infra/lib/auth-stack.ts for why, and the Admin App gates full access
+  /// behind having completed this at least once instead). Returns the shared
+  /// secret so the caller can render it as a QR code (otpauthUri) or as
+  /// manually-typed text.
+  static Future<({String secret, String otpauthUri})> beginMfaEnrollment() async {
+    final user = currentUser;
+    if (user == null) {
+      throw CognitoClientException('Please sign in again to set up MFA.');
+    }
+    final secret = await user.associateSoftwareToken();
+    if (secret == null) {
+      throw CognitoClientException('Could not start MFA setup. Please try again.');
+    }
+    final account = Uri.encodeComponent(email ?? 'admin');
+    final otpauthUri = 'otpauth://totp/RavelGo%20Admin:$account?secret=$secret&issuer=RavelGo%20Admin';
+    return (secret: secret, otpauthUri: otpauthUri);
+  }
+
+  /// Verifies the 6-digit code from the admin's authenticator app against
+  /// the secret from beginMfaEnrollment(), and — only once verified — makes
+  /// TOTP the admin's preferred MFA method so every future sign-in requires
+  /// it. Returns false (does not enable MFA) if the code doesn't verify.
+  static Future<bool> completeMfaEnrollment({required String code}) async {
+    final user = currentUser;
+    if (user == null) {
+      throw CognitoClientException('Please sign in again to set up MFA.');
+    }
+    final verified = await user.verifySoftwareToken(totpCode: code, friendlyDeviceName: 'RavelGo Admin App');
+    if (!verified) return false;
+    await user.setUserMfaPreference(null, IMfaSettings(enabled: true, preferredMfa: true));
+    return true;
   }
 
   /// Completes a first-sign-in password change after signIn() threw
@@ -258,6 +337,7 @@ class AuthService {
     accessToken = null;
     idToken = null;
     email = null;
+    name = null;
     groups = const [];
   }
 

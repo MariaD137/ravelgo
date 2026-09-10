@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_admin/services/admin_api.dart';
+import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/services/auth_service.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/views/auth/admin_login_screen.dart';
+import 'package:ravelgo_admin/views/auth/mfa_setup_screen.dart';
 import 'package:ravelgo_admin/views/shell/admin_shell.dart';
 
 /// Startup gate. Restores a persisted Cognito session (refreshing the access
@@ -43,10 +46,27 @@ class _SplashScreenState extends State<SplashScreen> {
       );
       return;
     }
+    if (!restored) {
+      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const AdminLoginScreen()));
+      return;
+    }
+    // A restored session can already hold valid tokens for an admin who
+    // finished setting their password but never completed MFA enrollment
+    // (completeNewPassword() returns a real session before MFA setup even
+    // starts — see mfa_setup_screen.dart) — re-check here too, not just on a
+    // fresh sign-in, so quitting mid-enrollment can never skip it on relaunch.
+    bool mfaEnabled;
+    try {
+      mfaEnabled = (await AdminApi.me()).mfaEnabled;
+    } on ApiException {
+      await AuthService.signOut();
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const AdminLoginScreen()));
+      return;
+    }
+    if (!mounted) return;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => restored ? const AdminShell() : const AdminLoginScreen(),
-      ),
+      MaterialPageRoute(builder: (_) => mfaEnabled ? const AdminShell() : const MfaSetupScreen()),
     );
   }
 
