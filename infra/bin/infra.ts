@@ -88,6 +88,12 @@ if (deployService && apiService) {
 // production instance below creates it — every other environment's CiStack
 // imports that same provider by its account-scoped ARN (computed inside the
 // stack itself; see ci-stack.ts) rather than creating a second one.
+// Both roles also cover publishing the three Flutter web builds to the
+// environment's assets bucket/CloudFront (staging: staging-deploy.yml;
+// production: the manual production-web-deploy.yml). Database migrations stay
+// a deliberate manual step for both — see scripts/migrate-env.sh and the
+// "check-migrations" job in each workflow, which reminds a human to run it
+// rather than running it unattended.
 if (envName === "production" && apiService) {
   new CiStack(app, stackName("RavelGo-CI"), {
     env,
@@ -96,15 +102,14 @@ if (envName === "production" && apiService) {
     githubOrg,
     githubRepo,
     githubBranch,
+    webAppsConfig: {
+      assetsBucket: storage.assetsBucket,
+      assetsDistribution: storage.assetsDistribution,
+      configStackNames: [stackName("RavelGo-Storage"), stackName("RavelGo-Api"), stackName("RavelGo-Auth")],
+    },
   });
 }
 
-// Staging's role additionally covers publishing the three Flutter web builds
-// (production doesn't auto-deploy its web apps via CI yet, so its role stays
-// narrower). Database migrations stay a deliberate manual step even for
-// staging — see scripts/migrate-staging.sh and .github/workflows/staging-deploy.yml's
-// "check-for-new-migrations" job, which reminds a human to run it rather than
-// running it unattended.
 if (envName === "staging" && apiService) {
   new CiStack(app, stackName("RavelGo-CI"), {
     env,

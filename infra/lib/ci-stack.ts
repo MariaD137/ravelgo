@@ -27,8 +27,8 @@ export interface CiStackProps extends cdk.StackProps {
    * `cloudformation:DescribeStacks` on the named stacks — enough for CI to
    * discover the deployed API URL / Cognito IDs / bucket name / CloudFront
    * domain and publish Flutter web builds, in addition to deploying the
-   * backend. Omitted for production today (its web apps aren't auto-deployed
-   * by CI yet).
+   * backend. Set for both environments — production's web apps deploy via
+   * the manual .github/workflows/production-web-deploy.yml.
    */
   webAppsConfig?: {
     assetsBucket: s3.IBucket;
@@ -129,7 +129,10 @@ export class CiStack extends cdk.Stack {
     this.deployRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "AppRunnerDeploy",
-        actions: ["apprunner:StartDeployment", "apprunner:DescribeService"],
+        // ListOperations lets the workflow wait for the rollout it started
+        // and fail on FAILED/ROLLBACK_* (scripts/ci/apprunner-wait.sh)
+        // instead of reporting success the moment the deploy is queued.
+        actions: ["apprunner:StartDeployment", "apprunner:DescribeService", "apprunner:ListOperations"],
         resources: [props.service.attrServiceArn],
       }),
     );

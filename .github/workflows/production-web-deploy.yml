@@ -1,0 +1,176 @@
+name: Deploy Web Apps to Production
+
+# Manual only, on purpose: production web releases are something you trigger
+# deliberately from the Actions tab ("Run workflow", branch defaults to main).
+# Builds the rider, driver and admin Flutter web apps against the deployed
+# production backend/Cognito config and publishes them to the production
+# assets bucket behind CloudFront — the same steps staging-deploy.yml runs
+# for staging, pointed at the unsuffixed production stacks.
+#
+# One-time setup (docs/DEPLOY-RUNBOOK.md section 9): the RavelGo-CI stack must
+# have been (re)deployed with web-app permissions (infra/: npm run
+# bootstrap-ci), and the AWS_DEPLOY_ROLE_ARN / AWS_REGION repository variables
+# set. The `production` GitHub environment can additionally require a
+# reviewer's approval before this runs.
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Which app to deploy
+        type: choice
+        default: all
+        options: [all, user_app, driver_app, admin_app]
+
+permissions:
+  id-token: write # required to assume the AWS role via OIDC
+  contents: read
+
+concurrency:
+  group: production-web-deploy
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the production deploy configuration
+        env:
+          ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          REGION: ${{ vars.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$ROLE_ARN" || -z "$REGION" ]]; then
+            echo "::error title=Production deploy is not configured::Set the AWS_DEPLOY_ROLE_ARN (GitHubActionsDeployRoleArn output of the RavelGo-CI stack) and AWS_REGION repository variables under GitHub → Settings → Secrets and variables → Actions → Variables. See docs/DEPLOY-RUNBOOK.md section 9."
+            exit 1
+          fi
+
+  web:
+    needs: preflight
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      HAS_MAPS_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY != '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: user_app
+            path: rider-web
+            label: Rider app
+          - app: driver_app
+            path: driver-web
+            label: Driver app
+          - app: admin_app
+            path: admin-web
+            label: Admin app
+    steps:
+      - name: Skip apps not selected for this run
+        id: selected
+        run: |
+          if [[ "${{ github.event.inputs.app }}" == "all" || "${{ github.event.inputs.app }}" == "${{ matrix.app }}" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "${{ matrix.label }} not selected — skipping."
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.selected.outputs.run == 'true'
+
+      - name: Configure AWS credentials via OIDC
+        if: steps.selected.outputs.run == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # Reads the deployed production stack outputs so the web build's
+      # backend/Cognito config can never drift from what is actually running.
+      - name: Discover deployed config
+        if: steps.selected.outputs.run == 'true'
+        id: config
+        run: |
+          set -euo pipefail
+          BUCKET="$(aws cloudformation describe-stacks --stack-name RavelGo-Storage \
+            --query "Stacks[0].Outputs[?OutputKey=='AssetsBucketName'].OutputValue" --output text)"
+          DOMAIN="$(aws cloudformation describe-stacks --stack-name RavelGo-Storage \
+            --query "Stacks[0].Outputs[?OutputKey=='AssetsDistributionDomain'].OutputValue" --output text)"
+          DIST_ID="$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?DomainName=='$DOMAIN'].Id | [0]" --output text)"
+          API_URL="$(aws cloudformation describe-stacks --stack-name RavelGo-Api \
+            --query "Stacks[0].Outputs[?OutputKey=='ServiceUrl'].OutputValue" --output text)"
+          POOL_ID="$(aws cloudformation describe-stacks --stack-name RavelGo-Auth \
+            --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text)"
+          CLIENT_ID="$(aws cloudformation describe-stacks --stack-name RavelGo-Auth \
+            --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" --output text)"
+          for v in BUCKET DOMAIN DIST_ID API_URL POOL_ID CLIENT_ID; do
+            if [[ -z "${!v}" || "${!v}" == "None" ]]; then
+              echo "::error::Could not read $v from the deployed production stacks."; exit 1
+            fi
+          done
+          {
+            echo "bucket=$BUCKET"
+            echo "domain=$DOMAIN"
+            echo "dist_id=$DIST_ID"
+            echo "api_url=$API_URL"
+            echo "pool_id=$POOL_ID"
+            echo "client_id=$CLIENT_ID"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: subosito/flutter-action@v2
+        if: steps.selected.outputs.run == 'true'
+        with:
+          channel: "stable"
+          cache: true
+
+      # GOOGLE_MAPS_API_KEY (optional secret): a browser key that ships in the
+      # web build by design — restrict it to your production domain in the
+      # Google console. Left blank, the apps build and deploy with blank maps.
+      - name: Write .env
+        if: steps.selected.outputs.run == 'true'
+        working-directory: ${{ matrix.app }}
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          cat > .env <<EOT
+          GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY}
+          API_BASE_URL=${{ steps.config.outputs.api_url }}
+          COGNITO_USER_POOL_ID=${{ steps.config.outputs.pool_id }}
+          COGNITO_CLIENT_ID=${{ steps.config.outputs.client_id }}
+          AWS_REGION=${{ vars.AWS_REGION }}
+          EOT
+
+      - name: Install dependencies
+        if: steps.selected.outputs.run == 'true'
+        working-directory: ${{ matrix.app }}
+        run: flutter pub get
+
+      - name: Inject the Google Maps JS SDK into the page
+        if: steps.selected.outputs.run == 'true' && env.HAS_MAPS_KEY == 'true'
+        working-directory: ${{ matrix.app }}
+        env:
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+        run: |
+          set -euo pipefail
+          sed -i "s#</head>#  <script src=\"https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}\"></script>\n  </head>#" web/index.html
+
+      - name: Build web
+        if: steps.selected.outputs.run == 'true'
+        working-directory: ${{ matrix.app }}
+        run: flutter build web --release --base-href "/${{ matrix.path }}/"
+
+      - name: Publish to S3
+        if: steps.selected.outputs.run == 'true'
+        working-directory: ${{ matrix.app }}
+        run: aws s3 sync build/web "s3://${{ steps.config.outputs.bucket }}/${{ matrix.path }}/" --delete
+
+      - name: Invalidate CloudFront cache
+        if: steps.selected.outputs.run == 'true'
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ steps.config.outputs.dist_id }}" --paths "/${{ matrix.path }}/*"
+
+      - name: Print link
+        if: steps.selected.outputs.run == 'true'
+        run: |
+          echo "${{ matrix.label }} -> https://${{ steps.config.outputs.domain }}/${{ matrix.path }}/index.html"

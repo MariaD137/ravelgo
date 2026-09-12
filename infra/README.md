@@ -69,11 +69,18 @@ account is wired into this repo.
    GitHub → Settings → Secrets and variables → Actions → Variables:
    - `AWS_REGION` — e.g. `us-east-1`
    - `AWS_DEPLOY_ROLE_ARN` — the `GitHubActionsDeployRoleArn` output
-   - `ECR_REPOSITORY_URI` — the `EcrRepositoryUri` output
-   - `APP_RUNNER_SERVICE_ARN` — find via `aws apprunner list-services`
+
+   `ECR_REPOSITORY_URI` / `APP_RUNNER_SERVICE_ARN` are optional overrides —
+   `backend-deploy.yml` discovers the `ravelgo-backend` repo/service by name
+   otherwise. Without `AWS_DEPLOY_ROLE_ARN` / `AWS_REGION` set, the workflow's
+   `preflight` job now fails loudly (rather than silently skipping) so a
+   missing setup can't masquerade as a successful deploy.
 
    No AWS access keys are ever stored in GitHub — the workflow authenticates
-   via OIDC (see `RavelGo-CI` stack).
+   via OIDC (see `RavelGo-CI` stack, which also now grants
+   `apprunner:ListOperations` so the workflow can confirm a rollout actually
+   succeeded, and — same as staging — permission to publish the three
+   Flutter web apps via the manual `production-web-deploy.yml`).
 
 6. **Run the first database migration**:
    ```bash

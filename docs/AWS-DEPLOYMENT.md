@@ -286,8 +286,12 @@ In your GitHub repo → Settings → Secrets and variables → Actions → Varia
 |----------|-------|--------|
 | `AWS_REGION` | `us-east-1` | Your region |
 | `AWS_DEPLOY_ROLE_ARN` | `arn:aws:iam::...` | CDK output: `GitHubActionsDeployRoleArn` |
-| `ECR_REPOSITORY_URI` | `123456789012.dkr.ecr.us-east-1...` | CDK output: `EcrRepositoryUri` |
-| `APP_RUNNER_SERVICE_ARN` | `arn:aws:apprunner:us-east-1:...` | Get from `aws apprunner list-services` |
+
+`ECR_REPOSITORY_URI` / `APP_RUNNER_SERVICE_ARN` are optional — the workflow
+discovers the `ravelgo-backend` ECR repo / App Runner service by name
+automatically; set them only to point at something else. Without
+`AWS_REGION` / `AWS_DEPLOY_ROLE_ARN`, `backend-deploy.yml`'s `preflight` job
+now fails the run with an explicit error instead of skipping silently.
 
 ### Find App Runner Service ARN
 

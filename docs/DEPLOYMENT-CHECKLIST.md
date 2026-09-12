@@ -170,8 +170,8 @@ In GitHub → Settings → Secrets and variables → Actions → Variables:
 
 - [ ] `AWS_REGION` = `us-east-1` (your region)
 - [ ] `AWS_DEPLOY_ROLE_ARN` = `arn:aws:iam::...` (from outputs)
-- [ ] `ECR_REPOSITORY_URI` = `123456789012.dkr.ecr...` (from outputs)
-- [ ] `APP_RUNNER_SERVICE_ARN` = `arn:aws:apprunner:...` (get from AWS CLI)
+- [ ] (optional) `ECR_REPOSITORY_URI` / `APP_RUNNER_SERVICE_ARN` — only to
+      override the automatic `ravelgo-backend` repo/service lookup
 
 ### Test Deployment
 

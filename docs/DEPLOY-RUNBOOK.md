@@ -319,21 +319,36 @@ ENVNAME=production bash scripts/set-role.sh you@yourdomain.com Admin
 
 ---
 
-## 9. Enable CI/CD for future backend deploys (optional but recommended)
+## 9. Enable CI/CD for future backend deploys (required for production auto-deploy)
 
 The `backend-deploy.yml` workflow auto-builds and ships the image on pushes to
-`main`, but only once the OIDC role and repo variables exist. The role ARN is a
-CDK output:
+`main`. Its `preflight` job now **fails the run with an explicit error**
+(instead of silently skipping) when the required repository variables are
+missing, so a push to `main` can no longer look "deployed" while production
+never actually changed. Set:
 
 - GitHub → **Settings → Secrets and variables → Actions → Variables**, add:
-  - `AWS_DEPLOY_ROLE_ARN` = `GitHubActionsDeployRoleArn` output
+  - `AWS_DEPLOY_ROLE_ARN` = `GitHubActionsDeployRoleArn` output (redeploy the
+    `RavelGo-CI` stack first — `cd infra && npm run bootstrap-ci` — so the
+    role also has `apprunner:ListOperations`, used to confirm the rollout
+    actually succeeded)
   - `AWS_REGION` = your region
-  - `ECR_REPOSITORY_URI` = `EcrRepositoryUri` output
-  - `APP_RUNNER_SERVICE_ARN` = the App Runner service ARN (App Runner console)
 
-After that, merging backend changes into `main` deploys the image and triggers
-`aws apprunner start-deployment`. (Infra changes still deploy via `cdk deploy`;
-there is intentionally no auto-`cdk deploy` pipeline.)
+  `ECR_REPOSITORY_URI` and `APP_RUNNER_SERVICE_ARN` are optional: the
+  workflow now discovers the `ravelgo-backend` repository/service by name
+  automatically. Set them only to override that lookup.
+
+After that, merging backend changes into `main` deploys the image, waits for
+the App Runner rollout to actually finish (`scripts/ci/apprunner-wait.sh` —
+catches a failed/rolled-back deploy that used to still show green), and
+smoke-tests `/health` and `/health/pricing` on the live service
+(`scripts/ci/backend-smoke.sh`). (Infra changes still deploy via
+`cdk deploy`; there is intentionally no auto-`cdk deploy` pipeline.)
+
+The three Flutter web apps deploy separately and manually, from the Actions
+tab: **Deploy Web Apps to Production** (`production-web-deploy.yml`), the
+same role/variables, builds against the live production API/Cognito config
+and publishes to the production CloudFront distribution.
 
 ---
 

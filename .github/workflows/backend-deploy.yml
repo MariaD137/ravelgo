@@ -1,26 +1,38 @@
 name: Backend Deploy
 
+# Production backend: builds the image and rolls it out to App Runner on every
+# push to main that touches the backend, and can also be run by hand from the
+# Actions tab (to verify the OIDC role / repository variables, or to redeploy
+# the current main without a code change).
 on:
   push:
     branches: [main]
     paths:
       - "backend/**"
+      - "scripts/ci/**"
       - ".github/workflows/backend-deploy.yml"
+  workflow_dispatch: {}
 
 permissions:
   id-token: write # required to assume the AWS role via OIDC
   contents: read
 
+# Never let two production rollouts race; a second push queues behind the
+# first rather than cancelling a deploy already in flight.
+concurrency:
+  group: backend-deploy-production
+  cancel-in-progress: false
+
 jobs:
   # Loudly warn when the commit being auto-deployed adds/changes a Prisma
-  # migration — this workflow (unlike staging-deploy.yml's manual
-  # workflow_dispatch) runs automatically on every push to main, so a schema
-  # change here can silently ship new backend code against an unmigrated
-  # production database (broad `include: { user: true }` / `{ vehicles: true }`
-  # queries fail with a generic "Database operation failed" until someone runs
+  # migration — a schema change here can otherwise silently ship new backend
+  # code against an unmigrated production database (queries fail with
+  # "Database schema is out of date" until someone runs
   # `bash scripts/migrate-production.sh`). This never blocks the deploy — a
   # permanently-red, unblockable gate would be worse than a missed migration —
-  # it just makes sure one is never applied silently.
+  # it just makes sure one is never applied silently. The post-deploy smoke
+  # test below (GET /health/pricing) catches the pricing tables being missing
+  # outright.
   check-migrations:
     runs-on: ubuntu-latest
     steps:
@@ -37,40 +49,109 @@ jobs:
             echo "No migration changes in the commit being deployed."
           fi
 
+  # Fails the run — visibly, with the exact fix — when the one-time AWS/GitHub
+  # setup is missing. This job used to be silently skipped instead, which made
+  # every push to main look "deployed" while production never changed.
+  preflight:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the production deploy configuration
+        env:
+          ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          REGION: ${{ vars.AWS_REGION }}
+        run: |
+          set -euo pipefail
+          missing=0
+          if [[ -z "$ROLE_ARN" ]]; then
+            echo "::error title=Production deploy is not configured::Repository variable AWS_DEPLOY_ROLE_ARN is empty, so this workflow cannot deploy the backend. Set it to the GitHubActionsDeployRoleArn output of the RavelGo-CI stack (infra/: npm run bootstrap-ci) under GitHub → Settings → Secrets and variables → Actions → Variables. See docs/DEPLOY-RUNBOOK.md section 9."
+            missing=1
+          fi
+          if [[ -z "$REGION" ]]; then
+            echo "::error title=Production deploy is not configured::Repository variable AWS_REGION is empty (e.g. us-east-1)."
+            missing=1
+          fi
+          if [[ "$missing" == 1 ]]; then exit 1; fi
+          echo "AWS_DEPLOY_ROLE_ARN and AWS_REGION are set."
+
   build-and-deploy:
-    # Deploy only once the one-time AWS setup has been done (an OIDC deploy
-    # role in AWS plus the AWS_DEPLOY_ROLE_ARN / AWS_REGION /
-    # ECR_REPOSITORY_URI / APP_RUNNER_SERVICE_ARN repository variables in
-    # GitHub → Settings → Secrets and variables → Actions → Variables).
-    # Before that setup exists this job used to fail on every push to main
-    # ("Input required and not supplied: aws-region"); skipping cleanly keeps
-    # main's checks meaningful until production deploys are actually enabled.
-    if: vars.AWS_DEPLOY_ROLE_ARN != ''
+    needs: preflight
     runs-on: ubuntu-latest
     environment: production
     steps:
       - uses: actions/checkout@v4
 
+      # The role trusts the token subject `repo:<org>/<repo>:environment:production`
+      # (infra/lib/ci-stack.ts); a failure here means the role ARN is wrong or
+      # its trust policy doesn't match this repository/environment.
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
+      - name: Verify the assumed role
+        run: aws sts get-caller-identity
+
       - name: Log in to Amazon ECR
-        id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
+
+      # The ECR repository URI and App Runner service ARN are discovered from
+      # AWS by their fixed names (infra/lib/api-stack.ts: "ravelgo-backend"),
+      # so they can never drift from what is deployed. The older
+      # ECR_REPOSITORY_URI / APP_RUNNER_SERVICE_ARN repository variables still
+      # win when set, for anyone who already configured them.
+      - name: Discover the production ECR repository and App Runner service
+        id: target
+        env:
+          ECR_OVERRIDE: ${{ vars.ECR_REPOSITORY_URI }}
+          SERVICE_OVERRIDE: ${{ vars.APP_RUNNER_SERVICE_ARN }}
+        run: |
+          set -euo pipefail
+          URI="${ECR_OVERRIDE:-$(aws ecr describe-repositories --repository-names ravelgo-backend \
+            --query 'repositories[0].repositoryUri' --output text)}"
+          SERVICE_ARN="${SERVICE_OVERRIDE:-$(aws apprunner list-services \
+            --query "ServiceSummaryList[?ServiceName=='ravelgo-backend'].ServiceArn | [0]" --output text)}"
+          if [[ -z "$URI" || "$URI" == "None" ]]; then
+            echo "::error::Could not find the ECR repository 'ravelgo-backend' — has the RavelGo-Api stack been deployed?"; exit 1
+          fi
+          if [[ -z "$SERVICE_ARN" || "$SERVICE_ARN" == "None" ]]; then
+            echo "::error::Could not find the App Runner service 'ravelgo-backend' — has the RavelGo-Api stack been deployed with the service enabled?"; exit 1
+          fi
+          echo "uri=$URI" >> "$GITHUB_OUTPUT"
+          echo "service_arn=$SERVICE_ARN" >> "$GITHUB_OUTPUT"
 
       - name: Build, tag, and push image
         working-directory: backend
         env:
-          REPOSITORY_URI: ${{ vars.ECR_REPOSITORY_URI }}
+          REPOSITORY_URI: ${{ steps.target.outputs.uri }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          set -euo pipefail
           docker build -t "$REPOSITORY_URI:$IMAGE_TAG" -t "$REPOSITORY_URI:latest" .
           docker push "$REPOSITORY_URI:$IMAGE_TAG"
           docker push "$REPOSITORY_URI:latest"
 
       - name: Trigger App Runner deployment
+        id: deploy
         run: |
-          aws apprunner start-deployment --service-arn "${{ vars.APP_RUNNER_SERVICE_ARN }}"
+          set -euo pipefail
+          OPERATION_ID="$(aws apprunner start-deployment --service-arn "${{ steps.target.outputs.service_arn }}" \
+            --query OperationId --output text)"
+          echo "operation_id=$OPERATION_ID" >> "$GITHUB_OUTPUT"
+
+      # start-deployment only *queues* the rollout — without waiting, a deploy
+      # App Runner then fails or rolls back still shows as a green run while
+      # production keeps serving the previous build.
+      - name: Wait for the App Runner deployment to finish
+        run: bash scripts/ci/apprunner-wait.sh "${{ steps.target.outputs.service_arn }}" "${{ steps.deploy.outputs.operation_id }}"
+
+      # /health (DB reachable, Paystack configured?), /health/pricing (the
+      # tables the fare endpoint needs exist — 503 means a Prisma migration
+      # was never applied: run scripts/migrate-production.sh) and the fare
+      # endpoint itself (401 = present; 404 = stale image).
+      - name: Smoke-test the deployed backend
+        run: |
+          set -euo pipefail
+          API_URL="$(aws apprunner describe-service --service-arn "${{ steps.target.outputs.service_arn }}" \
+            --query Service.ServiceUrl --output text)"
+          bash scripts/ci/backend-smoke.sh "https://$API_URL"
