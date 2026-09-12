@@ -10,6 +10,7 @@ import 'package:ravelgo_user_app/views/Login/login.dart';
 import 'package:ravelgo_user_app/views/OtherViews/AboutView.dart';
 import 'package:ravelgo_user_app/views/OtherViews/AddressSearch.dart';
 import 'package:ravelgo_user_app/views/OtherViews/DeleteAccountScreen.dart';
+import 'package:ravelgo_user_app/views/Loyalty/LoyaltyScreen.dart';
 import 'package:ravelgo_user_app/views/OtherViews/LoginSecurityScreen.dart';
 import 'package:ravelgo_user_app/views/OtherViews/PaymentView.dart';
 import 'package:ravelgo_user_app/views/OtherViews/PersonalInfo.dart';
@@ -175,6 +176,17 @@ class _AccountviewState extends State<Accountview> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => const WorkProfileView()),
+                    );
+                  }
+                ),
+                _divider(),
+                _menuRow(
+                  icon: Icons.emoji_events_outlined,
+                  label: 'Loyalty & promotions',
+                  onTap: (){
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const LoyaltyScreen()),
                     );
                   }
                 ),

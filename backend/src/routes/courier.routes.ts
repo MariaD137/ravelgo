@@ -478,22 +478,33 @@ courierRouter.post("/courier-requests/:id/cancel", requireAuth, requireRole("Rid
 courierRouter.get("/courier-requests/:id", requireAuth, async (req, res) => {
   const request = await prisma.courierRequest.findUnique({
     where: { id: req.params.id },
-    include: { sender: true, driver: { include: { user: true, vehicles: { where: { isPrimary: true }, take: 1 } } } },
+    include: {
+      sender: true,
+      driver: { include: { user: true, vehicles: { where: { isPrimary: true }, take: 1 } } },
+      payment: true,
+    },
   });
   if (!request) return res.status(404).json({ error: "Courier request not found" });
 
   const groups = req.user!.groups;
+  const isAdmin = groups.includes("Admin");
   const isOwner =
     request.sender.cognitoSub === req.user!.sub || request.driver?.user.cognitoSub === req.user!.sub;
   let isEligibleToBrowse = false;
-  if (!isOwner && !groups.includes("Admin") && groups.includes("Driver") && request.status === "REQUESTED" && !request.driverId) {
+  if (!isOwner && !isAdmin && groups.includes("Driver") && request.status === "REQUESTED" && !request.driverId) {
     const driver = await findOwnDriver(req.user!.sub);
     isEligibleToBrowse = driver?.status === "ACTIVE";
   }
-  if (!isOwner && !isEligibleToBrowse && !groups.includes("Admin")) {
+  if (!isOwner && !isEligibleToBrowse && !isAdmin) {
     return res.status(403).json({ error: "Not authorized to view this request" });
   }
-  res.json(serializeCourierRequest(withCourierLocation(await withProofUrls(request))));
+  const body = serializeCourierRequest(withCourierLocation(await withProofUrls(request)));
+  // Payment state (method/status/amount/paidAt) only for the request's own
+  // sender/driver or Admin — mirrors trips.routes.ts's GET /trips/:id. This
+  // is what tells the sender's DeliveryTrackingScreen whether POST
+  // /courier-requests/:id/pay still needs to be offered, or the delivery is
+  // already settled (charged by the driver, or paid another way).
+  res.json(isOwner || isAdmin ? { ...body, payment: request.payment ?? null } : body);
 });
 
 // Admin: monitor all courier requests

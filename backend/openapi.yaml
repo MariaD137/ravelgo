@@ -2376,6 +2376,10 @@ components:
               nullable: true
               enum: [LIVE, STALE]
               description: Null when no location has been reported yet.
+            payment:
+              allOf: [{ $ref: "#/components/schemas/Payment" }]
+              nullable: true
+              description: Only on GET /courier-requests/{id}, for the request's own sender/driver or Admin.
 
     EmergencyAlert:
       type: object

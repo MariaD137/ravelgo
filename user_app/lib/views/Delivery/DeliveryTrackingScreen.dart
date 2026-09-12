@@ -5,6 +5,8 @@ import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/courier_api.dart';
+import 'package:ravelgo_user_app/services/paystack_service.dart';
+import 'package:ravelgo_user_app/services/settings_api.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 // Statuses where a courier is actually assigned and could be reporting a
@@ -44,11 +46,67 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
   String? _error;
   CourierRequest? _request;
 
+  // Payment for the delivered package (mirrors SearchDriverScreen's trip
+  // payment section exactly — same three methods, same backend contract).
+  bool _payBusy = false;
+  PaymentSettings _paymentSettings = PaymentSettings.fallback();
+
   @override
   void initState() {
     super.initState();
     _load();
+    _loadPaymentSettings();
     _poll = Timer.periodic(const Duration(seconds: 10), (_) => _load(silent: true));
+  }
+
+  Future<void> _loadPaymentSettings() async {
+    try {
+      final settings = await SettingsApi.paymentSettings();
+      if (mounted) setState(() => _paymentSettings = settings);
+    } catch (_) {
+      // Keep the conservative fallback — the backend still enforces the real
+      // rule regardless of what this screen shows.
+    }
+  }
+
+  /// Pay for the delivered package. CARD opens a backend-issued Paystack
+  /// checkout page; WALLET settles from the sender's balance; CASH settles
+  /// instantly (handed to the driver) but only below the cash limit. If the
+  /// driver already charged the delivery the backend returns 409, treated as
+  /// paid.
+  Future<void> _payDelivery(String method) async {
+    if (_payBusy) return;
+    setState(() => _payBusy = true);
+    try {
+      if (method == 'CARD') {
+        final authorizationUrl = await CourierApi.payWithCard(widget.deliveryId);
+        await PaystackService.openCheckout(authorizationUrl);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Complete your payment in the browser, then return here.')),
+        );
+        return;
+      } else if (method == 'CASH') {
+        await CourierApi.payWithCash(widget.deliveryId);
+      } else {
+        await CourierApi.payWithWallet(widget.deliveryId);
+      }
+      await _load(silent: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payment complete.')));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.statusCode == 409) {
+        await _load(silent: true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => _payBusy = false);
+    }
   }
 
   @override
@@ -123,6 +181,10 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
           _row('Package', r.packageDescription.isEmpty ? r.packageSize : r.packageDescription),
           const Divider(height: 24),
           _row('Price', Currency.format(r.finalFare ?? r.estimatedFare, decimals: 0), bold: true),
+          if (r.status == 'DELIVERED' && !r.isPaid) ...[
+            const SizedBox(height: 16),
+            _paymentSection(r),
+          ],
           if (r.status == 'DELIVERED' && (r.deliveryPhotoUrl != null || r.recipientSignatureUrl != null)) ...[
             const Divider(height: 24),
             const Text('Proof of delivery', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
@@ -316,6 +378,69 @@ class _DeliveryTrackingScreenState extends State<DeliveryTrackingScreen> {
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _paymentSection(CourierRequest r) {
+    final fare = r.finalFare ?? r.estimatedFare;
+    final cashAllowed = _paymentSettings.allowsCash(fare);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Pay for this delivery', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+        const SizedBox(height: 10),
+        if (!cashAllowed) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: AppColors.warning.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+            child: Text(
+              'Cash payment isn\'t available for fares above ${Currency.format(_paymentSettings.cashPaymentLimit, decimals: 0)}.',
+              style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
+        if (_payBusy)
+          const Padding(padding: EdgeInsets.all(8), child: Center(child: CircularProgressIndicator()))
+        else
+          Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _payDelivery('WALLET'),
+                      icon: const Icon(Icons.account_balance_wallet_outlined),
+                      label: const Text('Pay with wallet'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () => _payDelivery('CARD'),
+                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+                      icon: const Icon(Icons.credit_card),
+                      label: const Text('Pay by card'),
+                    ),
+                  ),
+                ],
+              ),
+              if (cashAllowed) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _payDelivery('CASH'),
+                    style: OutlinedButton.styleFrom(foregroundColor: AppColors.success, side: const BorderSide(color: AppColors.success)),
+                    icon: const Icon(Icons.payments_outlined),
+                    label: const Text('Pay with cash'),
+                  ),
+                ),
+              ],
+            ],
+          ),
       ],
     );
   }

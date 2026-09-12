@@ -459,6 +459,50 @@ test("POST /api/courier-requests stores real pickup/dropoff coordinates when pro
   assert.equal(detail.body.courierPresence, "LIVE");
 });
 
+test("GET /api/courier-requests/:id includes real payment state for the sender/driver/admin after a cash payment, and never for an unrelated party", async () => {
+  await createRider("rider-pay-view");
+  const driver = await createDriver("driver-pay-view");
+  const senderToken = mockAuthAs({ sub: "rider-pay-view", groups: ["Rider"] });
+
+  const created = await request(app)
+    .post("/api/courier-requests")
+    .set("Authorization", `Bearer ${senderToken}`)
+    .send({ pickupAddress: "A", dropoffAddress: "B", packageDescription: "Box", recipientName: "X", recipientPhone: "555-1" });
+  assert.equal(created.status, 201);
+
+  await prisma.courierRequest.update({
+    where: { id: created.body.id },
+    data: { driverId: driver.id, status: "DELIVERED", finalFare: created.body.estimatedFare, deliveredAt: new Date() },
+  });
+
+  const pay = await request(app)
+    .post(`/api/courier-requests/${created.body.id}/pay`)
+    .set("Authorization", `Bearer ${senderToken}`)
+    .send({ method: "CASH" });
+  assert.equal(pay.status, 201);
+
+  // The sender sees the real payment.
+  const senderView = await request(app).get(`/api/courier-requests/${created.body.id}`).set("Authorization", `Bearer ${senderToken}`);
+  assert.equal(senderView.status, 200);
+  assert.equal(senderView.body.payment.method, "CASH");
+  assert.equal(senderView.body.payment.status, "SUCCEEDED");
+  assert.ok(senderView.body.payment.paidAt);
+
+  // The assigned driver sees it too.
+  restoreAuth();
+  const driverToken = mockAuthAs({ sub: "driver-pay-view", groups: ["Driver"] });
+  const driverView = await request(app).get(`/api/courier-requests/${created.body.id}`).set("Authorization", `Bearer ${driverToken}`);
+  assert.equal(driverView.status, 200);
+  assert.equal(driverView.body.payment.status, "SUCCEEDED");
+
+  // An unrelated Admin also sees it.
+  restoreAuth();
+  const adminToken = mockAuthAs({ sub: "admin-pay-view", groups: ["Admin"] });
+  const adminView = await request(app).get(`/api/courier-requests/${created.body.id}`).set("Authorization", `Bearer ${adminToken}`);
+  assert.equal(adminView.status, 200);
+  assert.equal(adminView.body.payment.status, "SUCCEEDED");
+});
+
 test("PATCH /api/courier-requests/:id/status rejects a driver not assigned to the request", async () => {
   const sender = await createRider("rider-sub-4");
   const assignedDriver = await createDriver("driver-sub-3");

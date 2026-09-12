@@ -77,6 +77,12 @@ class CourierRequest {
   // backend priced this off the real DeliveryVehicleRate rate card — null for
   // a request that fell back to the legacy flat packageSize table.
   final String? deliveryVehicleClass;
+  // Real payment state — only present on GET /courier-requests/:id (never on
+  // list endpoints), and only for the request's own sender/driver or Admin.
+  // Same flattened-from-`payment` pattern as trips_api.dart's Trip.
+  final String? paymentMethod; // CARD | CASH | WALLET
+  final String? paymentStatus; // PENDING | SUCCEEDED | FAILED | REFUNDED
+  final DateTime? paidAt;
 
   CourierRequest({
     required this.id,
@@ -103,7 +109,15 @@ class CourierRequest {
     this.courierLocationUpdatedAt,
     this.courierPresence,
     this.deliveryVehicleClass,
+    this.paymentMethod,
+    this.paymentStatus,
+    this.paidAt,
   });
+
+  /// True once a Payment exists and has actually settled — the only state
+  /// that should hide the "pay now" section (a PENDING CARD payment, e.g. a
+  /// checkout the rider opened but hasn't finished, still needs it shown).
+  bool get isPaid => paymentStatus == 'SUCCEEDED';
 
   static double? _dOrNull(dynamic v) => v == null ? null : _d(v);
 
@@ -146,12 +160,45 @@ class CourierRequest {
     deliveryVehicleClass: (j['deliveryVehicleClass'] as String?)?.isNotEmpty == true
         ? j['deliveryVehicleClass'] as String
         : null,
+    paymentMethod: (j['payment'] is Map) ? (j['payment'] as Map)['method']?.toString() : null,
+    paymentStatus: (j['payment'] is Map) ? (j['payment'] as Map)['status']?.toString() : null,
+    paidAt: (j['payment'] is Map && (j['payment'] as Map)['paidAt'] != null)
+        ? DateTime.tryParse('${(j['payment'] as Map)['paidAt']}')?.toLocal()
+        : null,
   );
 }
 
 /// Package delivery, proxied through the RavelGo backend. Backed by the same
 /// POST /api/courier-requests a driver later browses and accepts.
 class CourierApi {
+  /// Pay for my OWN delivered package by CARD — POST
+  /// /courier-requests/:id/pay, mirroring PaymentsApi.payTripWithCard exactly.
+  /// The backend initializes a Paystack transaction and returns its
+  /// authorizationUrl for the app to open; the delivery isn't marked paid
+  /// until the signed webhook confirms it.
+  static Future<String> payWithCard(String deliveryId) async {
+    final data = await ApiClient.post('/api/courier-requests/$deliveryId/pay', {'method': 'CARD'});
+    final url = (data as Map<String, dynamic>)['authorizationUrl'];
+    if (url == null || '$url'.isEmpty) {
+      throw Exception('Card payment could not be started.');
+    }
+    return '$url';
+  }
+
+  /// Pay from the sender's RavelGo wallet balance. Settles immediately
+  /// (atomic debit); throws on insufficient funds (402) or if already
+  /// charged (409).
+  static Future<void> payWithWallet(String deliveryId) async {
+    await ApiClient.post('/api/courier-requests/$deliveryId/pay', {'method': 'WALLET'});
+  }
+
+  /// Pay in cash, handed directly to the driver. Settles immediately, but
+  /// only below the configured cash limit — the backend rejects it above
+  /// the limit regardless of what the client sends.
+  static Future<void> payWithCash(String deliveryId) async {
+    await ApiClient.post('/api/courier-requests/$deliveryId/pay', {'method': 'CASH'});
+  }
+
   /// Real per-vehicle-class delivery quotes (GET /api/pricing/delivery-quote)
   /// — one entry per active vehicle class (Bike/Car/SUV/Van today). Requires
   /// a real distance; never call this with a guessed/placeholder one.
