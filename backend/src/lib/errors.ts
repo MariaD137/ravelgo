@@ -41,6 +41,10 @@ export const ErrorCodes = {
   RATE_LIMIT_EXCEEDED: "RATE_LIMIT_EXCEEDED",
   BAD_REQUEST: "BAD_REQUEST",
   PAYMENT_ERROR: "PAYMENT_ERROR",
+  // The payment provider (Paystack) itself refused or couldn't be reached,
+  // or isn't configured on this server — distinct from PAYMENT_ERROR, which
+  // is a business-rule rejection RavelGo made deliberately.
+  PAYMENT_PROVIDER_ERROR: "PAYMENT_PROVIDER_ERROR",
   DATABASE_ERROR: "DATABASE_ERROR",
 } as const;
 

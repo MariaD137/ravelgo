@@ -9,6 +9,41 @@ import { env } from "../config/env";
 const PAYSTACK_SECRET_KEY = env.PAYSTACK_SECRET_KEY ?? "sk_test_dummy_for_local_dev_and_tests";
 const PAYSTACK_BASE_URL = "https://api.paystack.co";
 
+export interface PaystackConfigStatus {
+  configured: boolean;
+  /** Only set when not configured: why the key is unusable. Never contains the key itself. */
+  reason?: "unset" | "placeholder" | "malformed";
+  /** "test" | "live" when configured — safe to log and to show on /health. */
+  mode?: "test" | "live";
+}
+
+/**
+ * Decide whether a PAYSTACK_SECRET_KEY value can possibly work, WITHOUT
+ * calling Paystack. Pure so it's unit-testable. Catches the two real-world
+ * failure modes seen on staging: the CDK-created Secrets Manager placeholder
+ * ("sk_live_REPLACE_ME", infra/lib/api-stack.ts) was never overwritten, and
+ * a value that isn't a Paystack secret key at all (e.g. a public "pk_" key
+ * pasted by mistake). A bad key would otherwise surface only as a 401 from
+ * Paystack, flattened by the error handler into a generic 500.
+ */
+export function evaluatePaystackKey(key: string | undefined): PaystackConfigStatus {
+  const trimmed = key?.trim() ?? "";
+  if (!trimmed) return { configured: false, reason: "unset" };
+  if (/REPLACE_ME/i.test(trimmed) || trimmed === "sk_test_dummy_for_local_dev_and_tests") {
+    return { configured: false, reason: "placeholder" };
+  }
+  const match = /^sk_(test|live)_[A-Za-z0-9]+$/.exec(trimmed);
+  if (!match) return { configured: false, reason: "malformed" };
+  return { configured: true, mode: match[1] as "test" | "live" };
+}
+
+export const paystackConfig: PaystackConfigStatus = evaluatePaystackKey(env.PAYSTACK_SECRET_KEY);
+
+export const PAYSTACK_UNCONFIGURED_MESSAGE =
+  "Paystack is not configured on this server: PAYSTACK_SECRET_KEY is " +
+  `${paystackConfig.reason ?? "unusable"}. Set the real secret key (Secrets Manager 'secretKey', ` +
+  "see infra/lib/api-stack.ts) and redeploy the service.";
+
 export class PaystackApiError extends Error {
   constructor(
     message: string,
@@ -32,6 +67,15 @@ interface PaystackEnvelope<T> {
 }
 
 async function paystackRequest<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  // Refuse before touching the network when the key can't possibly work, so
+  // a misconfigured deploy fails with one unambiguous, greppable reason
+  // (status 503 -> error-handler maps it to PAYMENT_PROVIDER_ERROR) instead
+  // of Paystack's 401 "Invalid key" buried under a generic 500.
+  if (!paystackConfig.configured) {
+    console.error(`[paystack] ${method} ${path} refused: ${PAYSTACK_UNCONFIGURED_MESSAGE}`);
+    throw new PaystackApiError(PAYSTACK_UNCONFIGURED_MESSAGE, 503);
+  }
+
   const res = await fetch(`${PAYSTACK_BASE_URL}${path}`, {
     method,
     headers: {
@@ -49,7 +93,12 @@ async function paystackRequest<T>(method: "GET" | "POST", path: string, body?: u
   }
 
   if (!res.ok || !parsed?.status) {
-    throw new PaystackApiError(parsed?.message ?? `Paystack request failed (${res.status})`, res.status);
+    const message = parsed?.message ?? `Paystack request failed (${res.status})`;
+    // Paystack's own message ("Invalid key", "Insufficient balance", ...) is
+    // the single most useful line for diagnosing a failed payment from App
+    // Runner logs. The key itself is never logged.
+    console.error(`[paystack] ${method} ${path} -> HTTP ${res.status}: ${message}`);
+    throw new PaystackApiError(message, res.status);
   }
   return parsed.data;
 }

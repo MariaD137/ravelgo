@@ -76,6 +76,28 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
     return res.status(500).json(response);
   }
 
+  // Paystack refused the request, was unreachable, or isn't configured on
+  // this server (src/billing/paystack.ts throws with status 503 for the
+  // latter before any network call). Surface it as a distinct, safe error
+  // instead of a generic 500: the client can tell "payments are down" apart
+  // from "the app crashed", and the full Paystack message is already in the
+  // server log above. Duck-typed on name (like the Prisma branch) so this
+  // middleware doesn't import the billing module.
+  if (err.name === "PaystackApiError") {
+    const providerStatus = (err as { status?: number }).status;
+    const unconfigured = providerStatus === 503;
+    const response: ErrorResponse = {
+      error: {
+        code: ErrorCodes.PAYMENT_PROVIDER_ERROR,
+        message: unconfigured
+          ? "Payments are not configured on this server yet"
+          : "The payment provider could not process this request",
+        timestamp: new Date().toISOString(),
+      },
+    };
+    return res.status(unconfigured ? 503 : 502).json(response);
+  }
+
   // Default 500 error
   const response: ErrorResponse = {
     error: {

@@ -166,3 +166,35 @@ test("wallet top-up rejects a malformed amount", async () => {
     assert.equal(res.status, 400, `expected 400 for amount ${amount}`);
   }
 });
+
+test("wallet top-up surfaces a Paystack rejection as 502 PAYMENT_PROVIDER_ERROR and records no PENDING top-up", async (t) => {
+  await createRider("rider-w-badkey");
+  const token = mockAuthAs({ sub: "rider-w-badkey", groups: ["Rider"] });
+  // Exactly what Paystack returns for a wrong/placeholder secret key.
+  const { PaystackApiError, paystackClient } = await import("../billing/paystack");
+  t.mock.method(paystackClient, "initializeTransaction", async () => {
+    throw new PaystackApiError("Invalid key", 401);
+  });
+
+  const res = await request(app).post("/api/wallet/topup").set("Authorization", `Bearer ${token}`).send({ amount: 30 });
+
+  assert.equal(res.status, 502);
+  assert.equal(res.body.error.code, "PAYMENT_PROVIDER_ERROR");
+  assert.doesNotMatch(JSON.stringify(res.body), /Invalid key/);
+  // The route initializes with Paystack BEFORE persisting, so a failed
+  // initialization must leave no dangling PENDING transaction behind.
+  assert.equal(await prisma.walletTransaction.count({ where: { type: "TOPUP" } }), 0);
+});
+
+test("wallet top-up on a server with no Paystack key configured returns 503 payments-not-configured", async () => {
+  await createRider("rider-w-nokey");
+  const token = mockAuthAs({ sub: "rider-w-nokey", groups: ["Rider"] });
+  // No mockPaystackInitialize(): the real client runs, and because the test
+  // environment sets no PAYSTACK_SECRET_KEY it refuses before any network I/O.
+  const res = await request(app).post("/api/wallet/topup").set("Authorization", `Bearer ${token}`).send({ amount: 30 });
+
+  assert.equal(res.status, 503);
+  assert.equal(res.body.error.code, "PAYMENT_PROVIDER_ERROR");
+  assert.equal(res.body.error.message, "Payments are not configured on this server yet");
+  assert.equal(await prisma.walletTransaction.count({ where: { type: "TOPUP" } }), 0);
+});

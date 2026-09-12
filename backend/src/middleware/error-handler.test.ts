@@ -36,6 +36,29 @@ test("a deliberate ApiError keeps its intended status and safe message", async (
   assert.equal(res.body.error.message, "Trip has already been charged");
 });
 
+test("a Paystack rejection becomes a 502 PAYMENT_PROVIDER_ERROR with a safe message", async () => {
+  const providerErr = Object.assign(new Error("Invalid key"), { name: "PaystackApiError", status: 401 });
+  const res = await request(appThatThrows(providerErr)).get("/boom");
+
+  assert.equal(res.status, 502);
+  assert.equal(res.body.error.code, "PAYMENT_PROVIDER_ERROR");
+  assert.equal(res.body.error.message, "The payment provider could not process this request");
+  // Paystack's raw message stays in the server log, never in the response.
+  assert.doesNotMatch(JSON.stringify(res.body), /Invalid key/);
+});
+
+test("an unconfigured Paystack key (status 503) is reported as payments-not-configured, not a generic 500", async () => {
+  const unconfigured = Object.assign(new Error("PAYSTACK_SECRET_KEY is placeholder ..."), {
+    name: "PaystackApiError",
+    status: 503,
+  });
+  const res = await request(appThatThrows(unconfigured)).get("/boom");
+
+  assert.equal(res.status, 503);
+  assert.equal(res.body.error.code, "PAYMENT_PROVIDER_ERROR");
+  assert.equal(res.body.error.message, "Payments are not configured on this server yet");
+});
+
 test("a simulated Prisma known-request error returns a safe generic message, not the raw DB error", async () => {
   const prismaLike = Object.assign(new Error("Invalid `prisma.user.update()` invocation: internal column detail"), {
     name: "PrismaClientKnownRequestError",
