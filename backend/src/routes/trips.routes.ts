@@ -180,7 +180,11 @@ tripsRouter.post("/trips/:id/rating", requireAuth, requireRole("Rider"), async (
 
   const updated = await prisma.trip.update({
     where: { id: trip.id },
-    data: { riderRating: parsed.data.rating },
+    // The request schema has accepted an optional `comment` since this route
+    // was written, but it was never persisted — silently discarding input a
+    // rider explicitly submitted. Stored now so the driver's My Ratings
+    // screen can show real feedback instead of nothing.
+    data: { riderRating: parsed.data.rating, riderComment: parsed.data.comment ?? null },
   });
 
   // Recompute the driver's average rating from all their rated trips.

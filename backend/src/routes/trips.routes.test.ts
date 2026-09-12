@@ -582,6 +582,49 @@ test("POST /api/trips/:id/rating records the rating and updates the driver's ave
   assert.equal(updatedDriver?.rating, 4);
 });
 
+test("POST /api/trips/:id/rating stores the optional comment (previously accepted by the schema but silently dropped)", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-rate-comment", role: "RIDER", firstName: "R", lastName: "A", email: "ratecomment@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-rate-comment", role: "DRIVER", firstName: "D", lastName: "R", email: "dratecomment@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, rating: 5 } });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "COMPLETED" },
+  });
+
+  const token = mockAuthAs({ sub: "rider-rate-comment", groups: ["Rider"] });
+  const res = await request(app)
+    .post(`/api/trips/${trip.id}/rating`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ rating: 5, comment: "Great driver, very punctual" });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.riderComment, "Great driver, very punctual");
+
+  // GET /trips/mine (what the driver's My Ratings screen reads) must return
+  // the same comment via serializeTrip, not just the raw update response.
+  restoreAuth();
+  const driverToken = mockAuthAs({ sub: "driver-rate-comment", groups: ["Driver"] });
+  const mine = await request(app).get("/api/trips/mine").set("Authorization", `Bearer ${driverToken}`);
+  assert.equal(mine.status, 200);
+  assert.equal(mine.body.data[0].riderComment, "Great driver, very punctual");
+
+  // Omitting the comment must not leave a stale value from some other write —
+  // it should be explicitly null, never undefined/missing.
+  restoreAuth();
+  const trip2 = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "COMPLETED" },
+  });
+  const token2 = mockAuthAs({ sub: "rider-rate-comment", groups: ["Rider"] });
+  const res2 = await request(app)
+    .post(`/api/trips/${trip2.id}/rating`)
+    .set("Authorization", `Bearer ${token2}`)
+    .send({ rating: 3 });
+  assert.equal(res2.status, 200);
+  assert.equal(res2.body.riderComment, null);
+});
+
 test("POST /api/trips/:id/rating rejects a non-owner and an uncompleted trip", async () => {
   const rider = await prisma.user.create({
     data: { cognitoSub: "rider-rate-2", role: "RIDER", firstName: "R", lastName: "A", email: "rate2@example.com" },

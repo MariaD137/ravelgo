@@ -318,6 +318,7 @@ model Trip {
   rideCategoryKey   String?
   pickupNote        String?
   riderRating       Float? // 1–5 rating the rider gave the driver for this trip
+  riderComment      String? // Optional free-text feedback the rider left with the rating
   requestedAt       DateTime   @default(now())
   completedAt       DateTime?
   // Set once, by the driver, when they physically reach the pickup point —

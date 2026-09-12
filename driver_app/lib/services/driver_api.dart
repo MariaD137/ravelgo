@@ -51,6 +51,7 @@ class DriverTrip {
   final String? riderName;
   final double? distanceKm;
   final double? riderRating;
+  final String? riderComment;
   final String? pickupNote;
   // Resolved by the rider's Places-backed address search at request time —
   // null for a trip whose address never resolved. Never fabricated.
@@ -82,6 +83,7 @@ class DriverTrip {
     required this.riderName,
     this.distanceKm,
     this.riderRating,
+    this.riderComment,
     this.pickupNote,
     this.pickupLat,
     this.pickupLng,
@@ -120,6 +122,7 @@ class DriverTrip {
       riderName: riderName,
       distanceKm: j['distanceKm'] == null ? null : _d(j['distanceKm']),
       riderRating: j['riderRating'] == null ? null : _d(j['riderRating']),
+      riderComment: j['riderComment'] as String?,
       pickupNote: (j['pickupNote'] == null || '${j['pickupNote']}'.isEmpty) ? null : '${j['pickupNote']}',
       pickupLat: j['pickupLat'] == null ? null : _d(j['pickupLat']),
       pickupLng: j['pickupLng'] == null ? null : _d(j['pickupLng']),

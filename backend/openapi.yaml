@@ -1864,6 +1864,37 @@ paths:
                 properties:
                   refunded: { type: number }
 
+  /trips/{id}/rating:
+    post:
+      tags: [Trips]
+      summary: Rider rates the driver for a completed trip they own (Rider)
+      description: >-
+        Recomputes the driver's average rating (Driver.rating) across every
+        trip that has a riderRating. Only the trip's own rider may call this,
+        and only once it is COMPLETED.
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rating]
+              properties:
+                rating: { type: integer, minimum: 1, maximum: 5 }
+                comment: { type: string, maxLength: 1000, description: Optional feedback shown to the driver on their My Ratings screen }
+      responses:
+        "200":
+          description: The updated trip
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Trip" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Trip isn't COMPLETED, or had no assigned driver
+
   /courier-requests/{id}/charge:
     post:
       tags: [Payments]
@@ -2214,6 +2245,8 @@ components:
         driverEarnings: { type: number, nullable: true }
         waitingCharge: { type: number, nullable: true, description: 100% driver-compensation, not commissioned }
         cancellationFee: { type: number, nullable: true, description: 100% driver-compensation, not commissioned }
+        riderRating: { type: number, nullable: true, description: 1-5 rating the rider gave the driver for this trip }
+        riderComment: { type: string, nullable: true, description: Optional free-text feedback the rider left with the rating }
         payment:
           allOf: [{ $ref: "#/components/schemas/Payment" }]
           nullable: true

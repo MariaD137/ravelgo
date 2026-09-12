@@ -67,7 +67,7 @@ class SideMenuDriver extends StatelessWidget {
             _item(context, Icons.alt_route_outlined, "Driver Assistance Mode", () => const DriverAssistanceScreen()),
             _item(context, Icons.emoji_events_outlined, "Incentives & Badges", () => const IncentivesScreen()),
             _item(context, Icons.tune_outlined, "Ride Preferences", () => const DriverPreferencesScreen()),
-            _item(context, Icons.star_outline, "My Ratings", () => const MyRatingsScreen()),
+            _item(context, Icons.star_outline, "My Ratings", () => MyRatingsScreen(profile: profile)),
             _item(context, Icons.shield_outlined, "Safety & Emergency", () => const EmergencyScreen()),
             AppComponents.divider(),
             _item(context, Icons.help_outline, "FAQ", () => const FAQScreen()),

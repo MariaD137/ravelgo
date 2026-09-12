@@ -46,6 +46,7 @@ interface TripRel {
   rideCategoryKey?: string | null;
   pickupNote?: string | null;
   riderRating?: number | null;
+  riderComment?: string | null;
   requestedAt: Date;
   completedAt?: Date | null;
   arrivedAt?: Date | null;
@@ -79,6 +80,7 @@ export function serializeTrip(trip: TripRel) {
     rideCategoryKey: trip.rideCategoryKey ?? null,
     pickupNote: trip.pickupNote ?? null,
     riderRating: trip.riderRating ?? null,
+    riderComment: trip.riderComment ?? null,
     requestedAt: trip.requestedAt,
     completedAt: trip.completedAt ?? null,
     arrivedAt: trip.arrivedAt ?? null,
