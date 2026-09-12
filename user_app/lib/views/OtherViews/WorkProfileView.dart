@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/services/auth_service.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 /// Rider business/work profile settings.
@@ -13,7 +14,12 @@ class WorkProfileView extends StatefulWidget {
 
 class _WorkProfileViewState extends State<WorkProfileView> {
   String? _companyName;
-  String _workEmail = 'thelmaibeh2@gmail.com';
+  // Was a hardcoded, real-looking stranger's email address
+  // ('thelmaibeh2@gmail.com') shown to every rider by default — this is a
+  // local-only field with no backend "work profile" model, so the only
+  // honest default is either empty or the signed-in rider's own account
+  // email, never someone else's.
+  String? _workEmail = AuthService.email;
   String _paymentMethod = 'Card';
 
   Future<void> _editText({
@@ -104,8 +110,9 @@ class _WorkProfileViewState extends State<WorkProfileView> {
             const Divider(height: 1),
             _SettingsTile(
               icon: Icons.email_outlined,
-              title: 'Work email',
+              title: _workEmail == null ? 'Add work email' : 'Work email',
               value: _workEmail,
+              showValue: _workEmail != null,
               onTap: () => _editText(
                 title: 'Work email',
                 current: _workEmail,

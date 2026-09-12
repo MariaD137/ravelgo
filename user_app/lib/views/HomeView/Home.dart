@@ -10,7 +10,6 @@ import 'package:ravelgo_user_app/views/TexiModule/SelectRide.dart';
 import 'package:ravelgo_user_app/views/Services/CarRentalScreen.dart';
 import 'package:ravelgo_user_app/views/Delivery/SendPackageScreen.dart';
 import 'package:ravelgo_user_app/views/Stays/StaysScreen.dart';
-import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:ravelgo_user_app/views/OtherViews/NotificationsScreen.dart';
 import 'package:ravelgo_user_app/views/OtherViews/SafetyScreen.dart';
@@ -341,11 +340,15 @@ class _HomePageState extends State<HomePage> {
                   contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   leading: const Icon(Icons.card_giftcard_outlined),
-                  title: Text(
-                    "Earn ${Currency.symbol}5,000",
-                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  title: const Text(
+                    "Invite friends",
+                    style: TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  subtitle: const Text("Invite 5 friends who each book 2 rides"),
+                  // No referral/rewards program exists on the backend today —
+                  // this used to promise "Earn ₦5,000" backed by a hardcoded
+                  // fake referral code. Sharing the app is real; the reward
+                  // claim wasn't.
+                  subtitle: const Text("Share RavelGo with people you know"),
                   trailing:
                   const Icon(Icons.chevron_right, color: AppColors.textMuted),
                   onTap: () {

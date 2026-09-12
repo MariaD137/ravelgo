@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:flutter/services.dart';
-import 'package:dotted_border/dotted_border.dart';
-import 'package:ravelgo_user_app/config/currency.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
+/// Invite friends to try RavelGo via the real platform share sheet
+/// (share_plus). This used to promise "Earn ₦5,000" for 5 referred friends
+/// completing 2 rides each, backed by a hardcoded fake referral code
+/// ("HKPY8HGC5DET2" on screen, but a different made-up one, "RAVEL20", in the
+/// actual share text) — there is no referral/rewards model anywhere in the
+/// backend, so neither the code nor the reward was ever real. Removed rather
+/// than reworded: sharing the app is a genuine, working feature on its own
+/// and doesn't need an invented incentive to justify the screen.
 class InviteFriendsView extends StatelessWidget {
   const InviteFriendsView({Key? key}) : super(key: key);
-
-  final String referralCode = "HKPY8HGC5DET2";
 
   @override
   Widget build(BuildContext context) {
@@ -16,63 +19,55 @@ class InviteFriendsView extends StatelessWidget {
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
-
-          /// 🔹 BLACK HEADER
-          ///
-
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child:Container(
-            height: 200,
-            width: double.infinity,
-            color: AppColors.textPrimary,
-            child: SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                child:Column(
-                  children: [
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: GestureDetector(
-                            onTap: () => Navigator.pop(context),
-                            child: const CircleAvatar(
-                              radius: 20,
-                              backgroundColor: AppColors.surface,
-                              child: Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              height: 200,
+              width: double.infinity,
+              color: AppColors.textPrimary,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                  child: Column(
+                    children: [
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: GestureDetector(
+                              onTap: () => Navigator.pop(context),
+                              child: const CircleAvatar(
+                                radius: 20,
+                                backgroundColor: AppColors.surface,
+                                child: Icon(Icons.arrow_back, color: AppColors.textPrimary),
+                              ),
                             ),
                           ),
-                        ),
-                        const Text(
-                          "Invite Friends",
-                          style: TextStyle(
-                            color: AppColors.surface,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w500,
+                          const Text(
+                            "Invite Friends",
+                            style: TextStyle(
+                              color: AppColors.surface,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                    SizedBox(height: 80,),
-                  ],
+                        ],
+                      ),
+                      const SizedBox(height: 80),
+                    ],
+                  ),
                 ),
-
               ),
             ),
           ),
-        ),
-
-          /// 🔹 WHITE CARD CONTENT
           Positioned(
             top: 140,
             left: 20,
             right: 20,
-
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 30),
               decoration: BoxDecoration(
@@ -80,7 +75,7 @@ class InviteFriendsView extends StatelessWidget {
                 borderRadius: BorderRadius.circular(22),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.textPrimary.withOpacity(0.3),
+                    color: AppColors.textPrimary.withValues(alpha: 0.3),
                     blurRadius: 12,
                     offset: const Offset(1, 6),
                   ),
@@ -90,173 +85,42 @@ class InviteFriendsView extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text(
-                    "Refer Friends",
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    "Tell your friends",
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 12),
-                  Text(
-                    "Invite 5 friends to RavelGo — once each of them\n"
-                        "completes 2 rides, you earn ${Currency.symbol}5,000 in RavelGo Cash!",
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 40),
-
-                   Image.asset('assets/invite_a_refer.png',width: 110,height: 110,fit: BoxFit.fill,),
-                  // const Icon(
-                  //   Icons.groups_rounded,
-                  //   size: 110,
-                  //   color: AppColors.primaryDark,
-                  // ),
-
-                  const SizedBox(height: 40),
-
                   const Text(
-                    "Your code invite",
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textSecondary,
-                    ),
+                    "Know someone who'd like RavelGo? Share it with them below.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 15, color: AppColors.textSecondary),
                   ),
-
-                  const SizedBox(height: 30),
-
-                    DottedBorder(
-                      options: RectDottedBorderOptions(
-                        dashPattern: [4, 5],
-                        strokeWidth: 1,
-                        color: Colors.blueAccent,
-                        padding: EdgeInsets.all(16),
-                      ),
-                      child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 2),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        color: AppColors.surface,
-                      ),
-                      child: Row(
-                        mainAxisAlignment:
-                        MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            referralCode,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: AppColors.primary,
-                              borderRadius:
-                              BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              "Copy",
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                          )
-                        ],
-                      ),
-                    ),
-                    ),
-                  // DottedBorder(
-                  //   borderType: BorderType.RRect,
-                  //   radius: const Radius.circular(16),
-                  //   dashPattern: const [4, 4],
-                  //   color: Colors.blueAccent,
-                  //   strokeWidth: 1.5,
-                  //   child: Container(
-                  //     padding: const EdgeInsets.symmetric(
-                  //         horizontal: 16, vertical: 2),
-                  //     decoration: BoxDecoration(
-                  //       borderRadius: BorderRadius.circular(16),
-                  //       color: AppColors.surface,
-                  //     ),
-                  //     child: Row(
-                  //       mainAxisAlignment:
-                  //       MainAxisAlignment.spaceBetween,
-                  //       children: [
-                  //         Text(
-                  //           referralCode,
-                  //           style: const TextStyle(
-                  //             fontSize: 16,
-                  //             fontWeight: FontWeight.w600,
-                  //           ),
-                  //         ),
-                  //         Container(
-                  //           padding: const EdgeInsets.symmetric(
-                  //               horizontal: 16, vertical: 8),
-                  //           decoration: BoxDecoration(
-                  //             color: AppColors.primary,
-                  //             borderRadius:
-                  //             BorderRadius.circular(8),
-                  //           ),
-                  //           child: const Text(
-                  //             "Copy",
-                  //             style: TextStyle(
-                  //               fontWeight: FontWeight.w600,
-                  //               color: AppColors.textPrimary,
-                  //             ),
-                  //           ),
-                  //         )
-                  //       ],
-                  //     ),
-                  //   ),
-                  // ),
-
-                  const SizedBox(height: 15),
+                  const SizedBox(height: 40),
+                  Image.asset('assets/invite_a_refer.png', width: 110, height: 110, fit: BoxFit.fill),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
           ),
         ],
       ),
-
-      /// 🔹 SHARE BUTTON
       bottomNavigationBar: Padding(
-        padding:
-        const EdgeInsets.fromLTRB(20, 0, 20, 25),
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 25),
         child: SizedBox(
           height: 55,
           child: ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor:
-              AppColors.primary,
-              shape: RoundedRectangleBorder(
-                borderRadius:
-                BorderRadius.circular(14),
-              ),
+              backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
             onPressed: () {
-              // Real platform share sheet via share_plus.
               SharePlus.instance.share(ShareParams(
-                text: 'Join me on RavelGo and get your first ride discounted! '
-                    'Use my invite code RAVEL20 when you sign up.',
+                text: 'I use RavelGo to get around — you might like it too. Check it out!',
               ));
             },
-            icon: const Icon(Icons.share,
-                color: AppColors.surface),
+            icon: const Icon(Icons.share, color: AppColors.surface),
             label: const Text(
               "Share",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppColors.surface,
-              ),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.surface),
             ),
           ),
         ),
