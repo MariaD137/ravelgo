@@ -7,6 +7,7 @@ import 'package:ravelgo_driver_app/views/account/profile_screen.dart';
 import 'package:ravelgo_driver_app/views/assistance/driver_assistance_screen.dart';
 import 'package:ravelgo_driver_app/views/auth/login_screen.dart';
 import 'package:ravelgo_driver_app/views/carpaddy/car_paddy_screen.dart';
+import 'package:ravelgo_driver_app/views/account/login_security_screen.dart';
 import 'package:ravelgo_driver_app/views/documents/my_documents_screen.dart';
 import 'package:ravelgo_driver_app/views/incentives/incentives_screen.dart';
 import 'package:ravelgo_driver_app/views/preferences/driver_preferences_screen.dart';
@@ -90,6 +91,12 @@ class AccountScreen extends StatelessWidget {
                 AppComponents.tile(title: "My Ratings", leading: Icons.star_outline, onTap: () => _go(context, const MyRatingsScreen())),
                 AppComponents.divider(),
                 AppComponents.tile(title: "Safety & Emergency", leading: Icons.shield_outlined, onTap: () => _go(context, const EmergencyScreen())),
+                AppComponents.divider(),
+                AppComponents.tile(
+                  title: "Login & Security",
+                  leading: Icons.lock_outline,
+                  onTap: () => _go(context, LoginSecurityScreen(profile: profile)),
+                ),
               ],
             ),
           ),

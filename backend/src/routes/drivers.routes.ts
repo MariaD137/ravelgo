@@ -142,7 +142,7 @@ driversRouter.post("/drivers/me", requireAuth, requireRole("Driver"), async (req
 driversRouter.get("/drivers/me", requireAuth, requireRole("Driver"), async (req, res) => {
   const driver = await prisma.driver.findFirst({
     where: { user: { cognitoSub: req.user!.sub } },
-    include: { vehicles: true, documents: true },
+    include: { vehicles: true, documents: true, user: { select: { phoneNumber: true } } },
   });
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
   res.json(driver);

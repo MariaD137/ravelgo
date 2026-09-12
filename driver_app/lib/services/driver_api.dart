@@ -11,6 +11,7 @@ class DriverRecord {
   final double rating;
   final int totalTrips;
   final String preferredLanguage;
+  final String phoneNumber;
 
   DriverRecord({
     required this.id,
@@ -19,6 +20,7 @@ class DriverRecord {
     required this.rating,
     required this.totalTrips,
     required this.preferredLanguage,
+    required this.phoneNumber,
   });
 
   bool get isApproved => status == 'ACTIVE';
@@ -30,6 +32,7 @@ class DriverRecord {
         rating: (j['rating'] is num) ? (j['rating'] as num).toDouble() : 5.0,
         totalTrips: (j['totalTrips'] is num) ? (j['totalTrips'] as num).toInt() : 0,
         preferredLanguage: '${j['preferredLanguage'] ?? 'English'}',
+        phoneNumber: '${(j['user'] as Map?)?['phoneNumber'] ?? ''}',
       );
 }
 

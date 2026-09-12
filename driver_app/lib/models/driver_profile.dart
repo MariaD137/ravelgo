@@ -36,6 +36,7 @@ class DriverProfile {
         firstName: AuthService.givenName ?? "Driver",
         lastName: AuthService.familyName ?? "",
         email: AuthService.email ?? "",
+        phoneNumber: r.phoneNumber,
         rating: r.rating,
         totalTrips: r.totalTrips,
         preferredLanguage: r.preferredLanguage,
