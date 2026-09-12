@@ -65,6 +65,29 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
       return res.status(409).json(response);
     }
 
+    if (prismaErr.code === "P2021" || prismaErr.code === "P2022") {
+      // A table (P2021) or column (P2022) the code expects doesn't exist:
+      // the deployed database is behind the deployed code because a Prisma
+      // migration was never applied (scripts/migrate-staging.sh /
+      // migrate-production.sh). This is an operator problem, not a client
+      // one, and the single most likely cause of a whole feature 500-ing
+      // after a deploy — so name it in the log AND the response, so a
+      // rider-facing "Could not get fare estimates" can be traced to it
+      // without App Runner log access. The raw table/column name stays in
+      // the server log only.
+      console.error(
+        `[schema] ${prismaErr.code}: the database is missing a table/column the code expects — pending Prisma migrations have not been applied to this environment. Run scripts/migrate-<env>.sh.`,
+      );
+      const response: ErrorResponse = {
+        error: {
+          code: ErrorCodes.DATABASE_ERROR,
+          message: "Database schema is out of date on this server (pending migrations not applied)",
+          timestamp: new Date().toISOString(),
+        },
+      };
+      return res.status(500).json(response);
+    }
+
     // Other Prisma errors
     const response: ErrorResponse = {
       error: {

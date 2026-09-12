@@ -229,3 +229,26 @@ export async function quoteAllCategories(
     }),
   );
 }
+
+export interface PricingDiagnostics {
+  rideCategories: { total: number; active: number };
+  activePricingRules: number;
+  commissionConfigRows: number;
+}
+
+/**
+ * Row counts for the tables GET /pricing/categories depends on — what
+ * GET /health/pricing reports. Counts only (never a rate card), so it is
+ * safe to expose unauthenticated. Throws the raw Prisma error (e.g. P2021
+ * when the pricing migration was never applied to an environment) so the
+ * caller can name the cause.
+ */
+export async function pricingDiagnostics(): Promise<PricingDiagnostics> {
+  const [total, active, activePricingRules, commissionConfigRows] = await Promise.all([
+    prisma.rideCategory.count(),
+    prisma.rideCategory.count({ where: { active: true } }),
+    prisma.pricingRule.count({ where: { active: true } }),
+    prisma.commissionConfig.count(),
+  ]);
+  return { rideCategories: { total, active }, activePricingRules, commissionConfigRows };
+}

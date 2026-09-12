@@ -70,3 +70,16 @@ test("a simulated Prisma known-request error returns a safe generic message, not
   assert.equal(res.body.error.message, "Record not found");
   assert.doesNotMatch(JSON.stringify(res.body), /prisma\.user\.update|internal column detail/);
 });
+
+test("a Prisma 'table does not exist' error (unapplied migration) is named as a schema problem, not a generic DB failure", async () => {
+  const schemaDrift = Object.assign(new Error('The table `public.RideCategory` does not exist in the current database.'), {
+    name: "PrismaClientKnownRequestError",
+    code: "P2021",
+  });
+  const res = await request(appThatThrows(schemaDrift)).get("/boom");
+
+  assert.equal(res.status, 500);
+  assert.equal(res.body.error.code, "DATABASE_ERROR");
+  assert.match(res.body.error.message, /schema is out of date/);
+  assert.doesNotMatch(JSON.stringify(res.body), /public\.RideCategory/);
+});

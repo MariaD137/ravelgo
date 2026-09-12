@@ -223,11 +223,20 @@ class _SelectRideState extends State<SelectRide> {
         }
       });
     } catch (e) {
+      // Keep the HTTP status and the server's own (already sanitised) message
+      // in what the rider sees: "Fares unavailable" with no reason was
+      // impossible to diagnose from a screenshot. Nothing here fabricates a
+      // fare — on any failure the rider simply cannot proceed.
+      debugPrint('[pricing] GET /api/pricing/categories failed: $e');
       if (!mounted) return;
       setState(() {
-        _categoriesError = e is ApiException && e.statusCode == 409
-            ? 'Pricing isn\'t set up yet — please try later.'
-            : 'Could not get fare estimates.';
+        if (e is ApiException && e.statusCode == 409) {
+          _categoriesError = 'Pricing isn\'t set up yet — please try later.';
+        } else if (e is ApiException) {
+          _categoriesError = 'Could not get fare estimates (HTTP ${e.statusCode}: ${e.message}).';
+        } else {
+          _categoriesError = 'Could not get fare estimates — check your connection and try again.';
+        }
         _categoriesLoading = false;
       });
     }

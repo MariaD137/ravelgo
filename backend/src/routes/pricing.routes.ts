@@ -139,7 +139,19 @@ pricingRouter.get("/pricing/categories", requireAuth, async (req, res) => {
   const parsed = categoryQuoteSchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { pickupLat, pickupLng, distanceKm, durationMinutes, zone } = parsed.data;
-  const quotes = await quoteAllCategories({ lat: pickupLat, lng: pickupLng }, distanceKm, durationMinutes, zone);
+  let quotes;
+  try {
+    quotes = await quoteAllCategories({ lat: pickupLat, lng: pickupLng }, distanceKm, durationMinutes, zone);
+  } catch (err) {
+    // One greppable line naming the request (no coordinates — they're the
+    // rider's location) before errorHandler logs and maps the error, so a
+    // "Fares unavailable" report can be matched to its cause in the logs.
+    const e = err as { name?: string; code?: string };
+    console.error(
+      `[pricing] GET /pricing/categories failed: ${e.name ?? "Error"}${e.code ? ` (${e.code})` : ""} distanceKm=${distanceKm} durationMinutes=${durationMinutes} zone=${zone ?? "-"}`,
+    );
+    throw err;
+  }
   res.json(quotes);
 });
 

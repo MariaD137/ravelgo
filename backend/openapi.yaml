@@ -58,6 +58,36 @@ paths:
         "503":
           description: Database unreachable
 
+  /health/pricing:
+    get:
+      tags: [Health]
+      summary: Ride-pricing diagnostics (row counts only; no auth, no rates, no PII)
+      description: >
+        Lets "Fares unavailable" in the rider app be traced without log access.
+        503 with the Prisma error code when the pricing tables cannot be read —
+        typically because pending migrations were never applied to this
+        environment.
+      security: []
+      responses:
+        "200":
+          description: Pricing tables readable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  rideCategories:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      active: { type: integer }
+                  activePricingRules: { type: integer }
+                  commissionConfigRows: { type: integer }
+                  timestamp: { type: string, format: date-time }
+        "503":
+          description: Pricing tables unreadable (schema out of date or database error)
+
   /riders:
     get:
       tags: [Riders]

@@ -86,11 +86,68 @@ jobs:
           docker push "$REPOSITORY_URI:latest"
 
       - name: Trigger App Runner deployment
+        id: deploy
         run: |
           set -euo pipefail
           SERVICE_ARN="$(aws apprunner list-services \
             --query "ServiceSummaryList[?ServiceName=='ravelgo-backend-staging'].ServiceArn | [0]" --output text)"
-          aws apprunner start-deployment --service-arn "$SERVICE_ARN"
+          OPERATION_ID="$(aws apprunner start-deployment --service-arn "$SERVICE_ARN" --query OperationId --output text)"
+          echo "service_arn=$SERVICE_ARN" >> "$GITHUB_OUTPUT"
+          echo "operation_id=$OPERATION_ID" >> "$GITHUB_OUTPUT"
+
+      # start-deployment only *queues* the rollout. Without this step a
+      # deploy that App Runner then fails or rolls back (bad image, crashed
+      # on boot, failed health check) still shows as a green run here while
+      # staging keeps serving the previous build. Waits for the operation
+      # and fails the job if it did not succeed.
+      - name: Wait for the App Runner deployment to finish
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 60); do
+            STATUS="$(aws apprunner list-operations --service-arn "${{ steps.deploy.outputs.service_arn }}" \
+              --query "OperationSummaryList[?Id=='${{ steps.deploy.outputs.operation_id }}'].Status | [0]" --output text)"
+            echo "App Runner deployment status: $STATUS"
+            case "$STATUS" in
+              SUCCEEDED) exit 0 ;;
+              FAILED|ROLLBACK_IN_PROGRESS|ROLLBACK_SUCCEEDED|ROLLBACK_FAILED)
+                echo "::error::App Runner deployment ended in $STATUS — staging is still running the previous build. Check the service's deployment/application logs in the App Runner console."
+                exit 1 ;;
+            esac
+            sleep 20
+          done
+          echo "::error::Timed out after 20 minutes waiting for the App Runner deployment."
+          exit 1
+
+      # Prove the deployed backend actually works, not just that it started:
+      # /health (DB reachable, Paystack configured?) and /health/pricing (the
+      # tables GET /api/pricing/categories needs are present — a 503 here
+      # means a Prisma migration was never applied to staging; run
+      # scripts/migrate-staging.sh). Both are read-only and need no auth.
+      - name: Smoke-test the deployed backend
+        run: |
+          set -euo pipefail
+          API_URL="$(aws cloudformation describe-stacks --stack-name RavelGo-Api-staging \
+            --query "Stacks[0].Outputs[?OutputKey=='ServiceUrl'].OutputValue" --output text)"
+          API_URL="${API_URL%/}"
+          check() { # <path> <expected HTTP status>
+            local body code
+            body="$(curl -sS --max-time 20 -o /tmp/resp.json -w '%{http_code}' "$API_URL$1" || true)"
+            code="$body"
+            echo "GET $1 -> HTTP $code: $(head -c 600 /tmp/resp.json 2>/dev/null)"
+            if [[ "$code" != "$2" ]]; then
+              echo "::error::GET $1 returned HTTP $code (expected $2)."
+              return 1
+            fi
+          }
+          check /health 200
+          check /health/pricing 200
+          # The rider fare endpoint must exist (401 = present but needs a
+          # token; 404 would mean the deployed image is stale).
+          check "/api/pricing/categories?pickupLat=6.5&pickupLng=3.4&distanceKm=1&durationMinutes=5" 401
+          PAYSTACK="$(curl -sS --max-time 20 "$API_URL/health" | sed -n 's/.*"paystack":"\([^"]*\)".*/\1/p')"
+          if [[ "$PAYSTACK" == unconfigured* ]]; then
+            echo "::warning::Paystack is $PAYSTACK on staging — card payments, wallet top-ups and payouts will fail until the real secret key is set in Secrets Manager and the service is redeployed (see infra/lib/api-stack.ts)."
+          fi
 
   web:
     needs: backend
