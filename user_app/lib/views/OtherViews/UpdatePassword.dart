@@ -74,10 +74,9 @@ class _UpdatePasswordState extends State<UpdatePassword> {
     );
   }
 
-  /// Validates locally, then hits the auth boundary.
-  /// AUTH BOUNDARY: no authentication backend is connected, so the password
-  /// cannot actually be changed; the user is told so instead of a fake
-  /// success message. This method is the integration point.
+  /// Validates locally, then changes the password on the signed-in Cognito
+  /// user (AuthService.changePassword). Cognito errors are shown via
+  /// AuthService.friendlyError — never a fake success message.
   Future<void> _save() async {
     setState(() {
       _currentError = _currentPasswordController.text.isEmpty ? 'Enter your current password' : null;

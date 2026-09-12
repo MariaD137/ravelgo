@@ -8,10 +8,10 @@ import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 /// Rider account verification (OTP entry).
 ///
-/// AUTH BOUNDARY: no verification backend is connected yet, so no code is
-/// actually sent. Input is validated locally (6 digits) and "Resend code" is
-/// rate-limited UI only - both hooks are the integration points for the
-/// future auth/OTP service. This screen never claims a code was delivered.
+/// Confirms the Cognito sign-up with the 6-digit code Cognito emailed
+/// (AuthService.confirm) and can ask for a fresh one (AuthService.resendCode).
+/// Input is validated locally first; "Resend code" is additionally throttled
+/// in the UI so a tap-happy user does not trip Cognito's LimitExceeded.
 class VerifyAccountScreen extends StatefulWidget {
   final String? email;
   final String? password;

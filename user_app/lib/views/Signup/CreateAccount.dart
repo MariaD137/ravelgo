@@ -6,9 +6,9 @@ import 'package:ravelgo_user_app/theme/app_theme.dart';
 /// Rider account creation. Collects rider details only - driver onboarding
 /// (license, vehicle) lives exclusively in driver_app.
 ///
-/// AUTH BOUNDARY: no authentication backend is connected yet. This screen
-/// validates input locally and passes the details forward; account creation
-/// itself is the integration point for the future auth service.
+/// Validates input locally, then creates the account in the Cognito user
+/// pool (AuthService.signUp) and hands off to VerifyAccountScreen for the
+/// emailed confirmation code.
 class CreateAccountScreen extends StatefulWidget {
   const CreateAccountScreen({super.key});
 

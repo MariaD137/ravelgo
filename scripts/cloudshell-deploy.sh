@@ -25,6 +25,10 @@ AWS_REGION="${AWS_REGION:-us-east-1}"
 ENVNAME="${ENVNAME:-production}"
 # Cognito sends via SES when this is set to a VERIFIED sender (P0 #13).
 SES_FROM_EMAIL="${SES_FROM_EMAIL:-}"
+# Set only when the whole domain is verified in SES (see infra/lib/auth-stack.ts).
+SES_VERIFIED_DOMAIN="${SES_VERIFIED_DOMAIN:-}"
+SES_FROM_NAME="${SES_FROM_NAME:-}"
+SES_REPLY_TO="${SES_REPLY_TO:-}"
 # Comma-separated browser origins allowed to call the API (CORS). Required in
 # production — the backend refuses to boot with an empty list.
 ALLOWED_ORIGINS="${ALLOWED_ORIGINS:-}"
@@ -44,6 +48,9 @@ die()  { printf '\033[31mXX %s\033[0m\n' "$*" >&2; exit 1; }
 ctx_args() {
   local args=(-c "envName=$ENVNAME")
   [[ -n "$SES_FROM_EMAIL" ]]  && args+=(-c "sesFromEmail=$SES_FROM_EMAIL")
+  [[ -n "$SES_VERIFIED_DOMAIN" ]] && args+=(-c "sesVerifiedDomain=$SES_VERIFIED_DOMAIN")
+  [[ -n "$SES_FROM_NAME" ]]   && args+=(-c "sesFromName=$SES_FROM_NAME")
+  [[ -n "$SES_REPLY_TO" ]]    && args+=(-c "sesReplyTo=$SES_REPLY_TO")
   [[ -n "$ALLOWED_ORIGINS" ]] && args+=(-c "allowedOrigins=$ALLOWED_ORIGINS")
   [[ -n "$ALERT_EMAIL" ]]     && args+=(-c "alertEmail=$ALERT_EMAIL")
   printf '%s\n' "${args[@]}"

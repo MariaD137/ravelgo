@@ -35,6 +35,11 @@ ENVNAME="${ENVNAME:-staging}"
 # Cognito sends via SES instead of its 50-email/day default sender when this
 # is set to a SES-VERIFIED address (P0 #13). Leave unset to make no change.
 SES_FROM_EMAIL="${SES_FROM_EMAIL:-}"
+# Only when the *domain* (not just one address) is verified in SES: lets any
+# address at the domain send. Leave unset when a single address is verified.
+SES_VERIFIED_DOMAIN="${SES_VERIFIED_DOMAIN:-}"
+SES_FROM_NAME="${SES_FROM_NAME:-}"
+SES_REPLY_TO="${SES_REPLY_TO:-}"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
@@ -45,6 +50,9 @@ warn() { printf '\033[33m!! %s\033[0m\n' "$*" >&2; }
 CTX_ARGS=(--context "envName=$ENVNAME")
 if [[ -n "$SES_FROM_EMAIL" ]]; then
   CTX_ARGS+=(--context "sesFromEmail=$SES_FROM_EMAIL")
+  [[ -n "$SES_VERIFIED_DOMAIN" ]] && CTX_ARGS+=(--context "sesVerifiedDomain=$SES_VERIFIED_DOMAIN")
+  [[ -n "$SES_FROM_NAME" ]]       && CTX_ARGS+=(--context "sesFromName=$SES_FROM_NAME")
+  [[ -n "$SES_REPLY_TO" ]]        && CTX_ARGS+=(--context "sesReplyTo=$SES_REPLY_TO")
 else
   warn "SES_FROM_EMAIL not set — Cognito stays on its capped default sender."
 fi

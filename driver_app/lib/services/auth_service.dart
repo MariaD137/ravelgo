@@ -1,4 +1,5 @@
 import 'package:amazon_cognito_identity_dart_2/cognito.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -229,6 +230,10 @@ class AuthService {
       return 'Login isn\'t configured in this build yet.';
     }
     final msg = (e is CognitoClientException ? e.message : e.toString()) ?? e.toString();
+    // Log only the Cognito error *class* (never the message, code, email or
+    // password) so a delivery/config failure can be told apart from a user
+    // typo in the browser console. debugPrint is a no-op in release builds.
+    debugPrint('[auth] ${(e is CognitoClientException ? e.code : null) ?? e.runtimeType}');
     if (msg.contains('UsernameExistsException') || msg.contains('already exists')) {
       return 'An account with this email already exists. Try signing in.';
     }
@@ -239,6 +244,17 @@ class AuthService {
     if (msg.contains('UserNotFound')) return 'Incorrect email or password.'; // uniform message avoids account enumeration
     if (msg.contains('InvalidPassword') || msg.contains('Password did not conform')) {
       return 'Password must be 8+ characters with an uppercase, a lowercase, and a number.';
+    }
+    if (msg.contains('LimitExceeded') || msg.contains('TooManyRequests') || msg.contains('Attempt limit exceeded')) {
+      return 'Too many attempts. Please wait a few minutes and try again.';
+    }
+    if (msg.contains('CodeDeliveryFailure') || msg.contains('Failed to deliver')) {
+      // Cognito could not hand the email to its sender (default sender cap
+      // hit, or SES identity/sandbox not set up — see infra/lib/auth-stack.ts).
+      return 'We couldn\'t send the email code right now. Try again shortly or contact support.';
+    }
+    if (msg.contains('InvalidParameter')) {
+      return 'Some of the details entered are not valid. Check them and try again.';
     }
     return msg;
   }
