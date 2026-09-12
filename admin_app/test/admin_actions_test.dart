@@ -6,6 +6,7 @@ import 'package:ravelgo_admin/views/auth/forgot_password_screen.dart';
 import 'package:ravelgo_admin/views/auth/mfa_setup_screen.dart';
 import 'package:ravelgo_admin/views/carpaddy/car_paddy_requests_screen.dart';
 import 'package:ravelgo_admin/views/payouts/payouts_screen.dart';
+import 'package:ravelgo_admin/views/pricing/pricing_policy_screen.dart';
 import 'package:ravelgo_admin/views/rentals/rental_listings_screen.dart';
 import 'package:ravelgo_admin/views/safety/fraud_alerts_screen.dart';
 import 'package:ravelgo_admin/views/settings/admin_profile_screen.dart';
@@ -59,6 +60,11 @@ void main() {
   testWidgets('car paddy requests screen renders its scaffold', (WidgetTester tester) async {
     await tester.pumpWidget(const MaterialApp(home: CarPaddyRequestsScreen()));
     expect(find.text('Car Paddy Requests'), findsOneWidget);
+  });
+
+  testWidgets('pricing policy screen renders its scaffold', (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: PricingPolicyScreen()));
+    expect(find.text('Pricing Policy'), findsOneWidget);
   });
 
   testWidgets('fraud alerts screen renders its scaffold', (WidgetTester tester) async {

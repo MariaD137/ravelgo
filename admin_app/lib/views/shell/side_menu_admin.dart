@@ -9,6 +9,7 @@ import 'package:ravelgo_admin/views/payments/payments_cash_screen.dart';
 import 'package:ravelgo_admin/views/payouts/payouts_screen.dart';
 import 'package:ravelgo_admin/views/pricing/commission_config_screen.dart';
 import 'package:ravelgo_admin/views/pricing/delivery_vehicle_rates_screen.dart';
+import 'package:ravelgo_admin/views/pricing/pricing_policy_screen.dart';
 import 'package:ravelgo_admin/views/pricing/pricing_surge_screen.dart';
 import 'package:ravelgo_admin/views/pricing/ride_categories_screen.dart';
 import 'package:ravelgo_admin/views/promotions/loyalty_program_screen.dart';
@@ -65,6 +66,7 @@ class SideMenuAdmin extends StatelessWidget {
             _item(context, Icons.villa_outlined, "Short Stays", () => const StaysManagementScreen()),
             _item(context, Icons.directions_car_outlined, "Vehicle Inventory", () => const VehicleInventoryScreen()),
             _item(context, Icons.tune_outlined, "Pricing & Surge", () => const PricingSurgeScreen()),
+            _item(context, Icons.rule_outlined, "Pricing Policy", () => const PricingPolicyScreen()),
             _item(context, Icons.category_outlined, "Ride Categories", () => const RideCategoriesScreen()),
             _item(context, Icons.local_shipping_outlined, "Delivery Vehicle Rates", () => const DeliveryVehicleRatesScreen()),
             _item(context, Icons.percent, "Commission Config", () => const CommissionConfigScreen()),

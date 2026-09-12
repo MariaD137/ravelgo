@@ -589,6 +589,53 @@ class SurgeZone {
 /// table) — the DB-driven replacement for the old hardcoded
 /// PLATFORM_COMMISSION_RATE constant. Writable by a Super Admin only
 /// ("settings:write"); every Admin preset can read it.
+/// Cancellation/waiting/surge-band/package-surcharge policy — the single
+/// PricingPolicy row (backend/src/lib/pricing-policy.ts). Read is open to
+/// any Admin preset; PATCH /admin/pricing-policy is Super Admin only
+/// ("settings:write"), same as commission config.
+class PricingPolicy {
+  final int rideCancellationGraceSec;
+  final double rideCancellationFee;
+  final int rideWaitingFreeSec;
+  final double rideWaitingPerMinute;
+  final double rideWaitingMaxFee;
+  final int deliveryCancellationGraceSec;
+  final double deliveryCancellationFee;
+  final double additionalStopFee;
+  final double surgeMinMultiplier;
+  final double surgeMaxMultiplier;
+  final Map<String, double> packageSizeSurcharge;
+
+  PricingPolicy({
+    required this.rideCancellationGraceSec,
+    required this.rideCancellationFee,
+    required this.rideWaitingFreeSec,
+    required this.rideWaitingPerMinute,
+    required this.rideWaitingMaxFee,
+    required this.deliveryCancellationGraceSec,
+    required this.deliveryCancellationFee,
+    required this.additionalStopFee,
+    required this.surgeMinMultiplier,
+    required this.surgeMaxMultiplier,
+    required this.packageSizeSurcharge,
+  });
+
+  factory PricingPolicy.fromJson(Map<String, dynamic> j) => PricingPolicy(
+        rideCancellationGraceSec: (j['rideCancellationGraceSec'] as num?)?.toInt() ?? 0,
+        rideCancellationFee: _d(j['rideCancellationFee']),
+        rideWaitingFreeSec: (j['rideWaitingFreeSec'] as num?)?.toInt() ?? 0,
+        rideWaitingPerMinute: _d(j['rideWaitingPerMinute']),
+        rideWaitingMaxFee: _d(j['rideWaitingMaxFee']),
+        deliveryCancellationGraceSec: (j['deliveryCancellationGraceSec'] as num?)?.toInt() ?? 0,
+        deliveryCancellationFee: _d(j['deliveryCancellationFee']),
+        additionalStopFee: _d(j['additionalStopFee']),
+        surgeMinMultiplier: _d(j['surgeMinMultiplier'] ?? 1),
+        surgeMaxMultiplier: _d(j['surgeMaxMultiplier'] ?? 1),
+        packageSizeSurcharge: ((j['packageSizeSurcharge'] as Map?) ?? const {})
+            .map((k, v) => MapEntry('$k', _d(v))),
+      );
+}
+
 class CommissionConfigRow {
   final String service; // RIDE | DELIVERY
   final double rate; // 0-1
@@ -1630,6 +1677,42 @@ class AdminApi {
   static Future<CommissionConfigRow> updateCommissionRate(String service, double rate) async {
     final data = await ApiClient.patch('/api/admin/commission-config/$service', {'rate': rate});
     return CommissionConfigRow.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ---- Pricing policy (Super Admin write; every Admin preset can read) ----
+  static Future<PricingPolicy> pricingPolicy() async {
+    final data = await ApiClient.get('/api/admin/pricing-policy');
+    return PricingPolicy.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Pass only the fields being changed; omit the rest.
+  static Future<PricingPolicy> updatePricingPolicy({
+    int? rideCancellationGraceSec,
+    double? rideCancellationFee,
+    int? rideWaitingFreeSec,
+    double? rideWaitingPerMinute,
+    double? rideWaitingMaxFee,
+    int? deliveryCancellationGraceSec,
+    double? deliveryCancellationFee,
+    double? additionalStopFee,
+    double? surgeMinMultiplier,
+    double? surgeMaxMultiplier,
+    Map<String, double>? packageSizeSurcharge,
+  }) async {
+    final data = await ApiClient.patch('/api/admin/pricing-policy', {
+      if (rideCancellationGraceSec != null) 'rideCancellationGraceSec': rideCancellationGraceSec,
+      if (rideCancellationFee != null) 'rideCancellationFee': rideCancellationFee,
+      if (rideWaitingFreeSec != null) 'rideWaitingFreeSec': rideWaitingFreeSec,
+      if (rideWaitingPerMinute != null) 'rideWaitingPerMinute': rideWaitingPerMinute,
+      if (rideWaitingMaxFee != null) 'rideWaitingMaxFee': rideWaitingMaxFee,
+      if (deliveryCancellationGraceSec != null) 'deliveryCancellationGraceSec': deliveryCancellationGraceSec,
+      if (deliveryCancellationFee != null) 'deliveryCancellationFee': deliveryCancellationFee,
+      if (additionalStopFee != null) 'additionalStopFee': additionalStopFee,
+      if (surgeMinMultiplier != null) 'surgeMinMultiplier': surgeMinMultiplier,
+      if (surgeMaxMultiplier != null) 'surgeMaxMultiplier': surgeMaxMultiplier,
+      if (packageSizeSurcharge != null) 'packageSizeSurcharge': packageSizeSurcharge,
+    });
+    return PricingPolicy.fromJson(data as Map<String, dynamic>);
   }
 
   // ---- Ride categories (pricing:write to write; reads open to any Admin) ----
