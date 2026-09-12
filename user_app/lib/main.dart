@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/Model/app_state.dart';
 import 'package:ravelgo_user_app/services/auth_service.dart';
 import 'package:ravelgo_user_app/services/notification_navigation.dart';
 import 'package:ravelgo_user_app/services/push_notification_service.dart';
@@ -21,6 +22,10 @@ void main() async {
   // Build the persistent-storage-backed Cognito pool before the first frame so
   // a stored session can be restored on startup (survives browser refresh).
   await AuthService.init();
+  // Loads saved addresses/language/notification toggles from disk before the
+  // first frame, so Account screens show real persisted values immediately
+  // instead of a moment of defaults (see Model/app_state.dart).
+  await RiderAppState.instance.load();
   // Best-effort, and a genuine no-op when push isn't configured for this
   // build — covers the "already signed in from a restored session" case;
   // login.dart also calls this after a fresh sign-in.
