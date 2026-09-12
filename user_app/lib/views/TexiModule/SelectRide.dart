@@ -314,7 +314,15 @@ class _SelectRideState extends State<SelectRide> {
               zoomControlsEnabled: false,
               onMapCreated: (controller) {
                 _mapController = controller;
-                _fitCamera();
+                // On Flutter Web the map's platform view hasn't finished
+                // sizing itself in the DOM the instant onMapCreated fires —
+                // calling fitBounds against that not-yet-sized viewport
+                // produces a wildly wrong (whole-region) zoom level. Deferring
+                // past the first frame plus a short delay lets it settle
+                // before the initial fit runs.
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  Future.delayed(const Duration(milliseconds: 300), _fitCamera);
+                });
               },
             ),
           ),
