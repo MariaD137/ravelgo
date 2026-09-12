@@ -40,7 +40,7 @@ class WalletApi {
     final m = data as Map<String, dynamic>;
     return WalletBalance(
       (m['balance'] is num) ? (m['balance'] as num).toDouble() : double.tryParse('${m['balance']}') ?? 0,
-      '${m['currency'] ?? 'USD'}',
+      '${m['currency'] ?? 'NGN'}',
     );
   }
 

@@ -4,6 +4,7 @@ import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/paystack_service.dart';
 import 'package:ravelgo_user_app/services/wallet_api.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
+import 'package:ravelgo_user_app/views/OtherViews/WalletHistoryScreen.dart';
 
 /// Payment settings: trip profile and the RavelGo Cash wallet.
 /// (Communication preferences and Work profile were removed from this screen -
@@ -286,7 +287,23 @@ class _PaymentScreenState extends State<PaymentView> {
               ),
             ),
             const Divider(color: Colors.white24, height: 28),
-            const Text('Recent activity', style: TextStyle(color: Colors.white70, fontSize: 13)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Recent activity', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                if (_txns.isNotEmpty)
+                  GestureDetector(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const WalletHistoryScreen()),
+                    ),
+                    child: const Text(
+                      'View all',
+                      style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 6),
             if (_txns.isEmpty)
               const Text('No transactions yet.', style: TextStyle(color: Colors.white70, fontSize: 13))

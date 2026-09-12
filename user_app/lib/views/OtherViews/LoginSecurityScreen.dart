@@ -1,9 +1,40 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/services/rider_api.dart';
 import 'package:ravelgo_user_app/views/OtherViews/UpdatePassword.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
-class LoginSecurityScreen extends StatelessWidget {
+class LoginSecurityScreen extends StatefulWidget {
   const LoginSecurityScreen({super.key});
+
+  @override
+  State<LoginSecurityScreen> createState() => _LoginSecurityScreenState();
+}
+
+class _LoginSecurityScreenState extends State<LoginSecurityScreen> {
+  bool _loading = true;
+  String? _email;
+  String? _phoneNumber;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final me = await RiderApi.getMe();
+      if (!mounted) return;
+      setState(() {
+        _email = me?['email']?.toString();
+        _phoneNumber = me?['phoneNumber']?.toString();
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,6 +70,31 @@ class LoginSecurityScreen extends StatelessWidget {
             const Divider(),
             const SizedBox(height: 20),
             const Text(
+              "Verification",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 8),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else ...[
+              _verificationRow(
+                icon: Icons.email_outlined,
+                label: _email?.isNotEmpty == true ? _email! : 'Email',
+                verified: _email?.isNotEmpty == true,
+              ),
+              const Divider(),
+              _verificationRow(
+                icon: Icons.phone_outlined,
+                label: _phoneNumber?.isNotEmpty == true ? _phoneNumber! : 'Phone number',
+                verified: false,
+              ),
+            ],
+            const Divider(),
+            const SizedBox(height: 20),
+            const Text(
               "Linking a social account enables you to sign in to Ravel Go without using your phone number. "
                   "Your social account will only be used for login purposes, and we will not access or share any information without your consent.",
               style: TextStyle(color: AppColors.textPrimary, height: 1.5),
@@ -51,6 +107,22 @@ class LoginSecurityScreen extends StatelessWidget {
             _buildSocialRow(context, 'Facebook', 'assets/facebook_icon.png'),
             const Divider(),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _verificationRow({required IconData icon, required String label, required bool verified}) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icon, color: AppColors.textSecondary),
+      title: Text(label, style: const TextStyle(fontSize: 16)),
+      trailing: Text(
+        verified ? 'Verified' : 'Not verified',
+        style: TextStyle(
+          color: verified ? AppColors.success : AppColors.textSecondary,
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
         ),
       ),
     );
