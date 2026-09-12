@@ -60,9 +60,22 @@ class ApiClient {
     }
     if (res.statusCode >= 200 && res.statusCode < 300) return decoded;
 
-    final msg = (decoded is Map && decoded['error'] != null)
-        ? decoded['error'].toString()
-        : 'Request failed (${res.statusCode})';
+    // The backend's error envelope is {error: {code, message, ...}}
+    // (backend/src/lib/errors.ts); zod validation failures and a few legacy
+    // routes send {error: "text"} or {error: {formErrors, fieldErrors}}. Pull
+    // out the human message so a screen can show it verbatim instead of a
+    // stringified map.
+    String msg = 'Request failed (${res.statusCode})';
+    if (decoded is Map && decoded['error'] != null) {
+      final err = decoded['error'];
+      if (err is Map && err['message'] is String) {
+        msg = err['message'] as String;
+      } else if (err is String) {
+        msg = err;
+      } else {
+        msg = err.toString();
+      }
+    }
     throw ApiException(res.statusCode, msg);
   }
 }
