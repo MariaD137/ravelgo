@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:ravelgo_user_app/components/LocationService.dart';
+import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/components/ride_controller.dart';
 import 'package:ravelgo_user_app/views/AppDrawer/AppDrawer.dart';
 import 'package:ravelgo_user_app/views/HomeView/ride_view_popup.dart';
@@ -22,6 +25,17 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
+  // Lagos — same default center used elsewhere in the app until a real GPS
+  // fix comes in; never shown as if it were the rider's actual location.
+  static const _defaultCenter = LatLng(6.5244, 3.3792);
+  GoogleMapController? _mapController;
+
+  Future<void> _centerOnDeviceLocation() async {
+    final pos = await LocationService.getCurrentLocation();
+    if (pos == null || !mounted) return;
+    _mapController?.animateCamera(CameraUpdate.newLatLng(LatLng(pos.latitude, pos.longitude)));
+  }
+
   @override
   Widget build(BuildContext context) {
 
@@ -36,9 +50,22 @@ class _HomePageState extends State<HomePage> {
             builder: (context, isRideActive, _) {
               return Stack(
                 children: [
-                  // Plain background behind the top icons and the home sheet
-                  // below — purely decorative, so nothing here depends on it.
-                  Positioned.fill(child: Container(color: AppColors.background)),
+                  // A real map showing this device's actual GPS position via
+                  // the native "my location" layer — the same GoogleMap the
+                  // driver home screen and active-trip screen use, not a
+                  // decorative static image. No fabricated markers.
+                  Positioned.fill(
+                    child: SafeGoogleMap(
+                      initialCameraPosition: const CameraPosition(target: _defaultCenter, zoom: 15),
+                      myLocationEnabled: true,
+                      myLocationButtonEnabled: false,
+                      zoomControlsEnabled: false,
+                      onMapCreated: (controller) {
+                        _mapController = controller;
+                        _centerOnDeviceLocation();
+                      },
+                    ),
+                  ),
 
 
                   // Top-left menu button (circular)
@@ -82,13 +109,12 @@ class _HomePageState extends State<HomePage> {
                   /// HOME SHEET
                   if (!isRideActive)
                     DraggableScrollableSheet(
-                      // With the decorative map gone, there's no background
-                      // left worth revealing by dragging the sheet down — so
-                      // it now opens filling almost the whole screen instead
-                      // of leaving a large empty gap above it.
-                      initialChildSize: 0.88,
-                      minChildSize: 0.55,
-                      maxChildSize: 0.95,
+                      // Opens leaving the real map visible above it; drag up
+                      // for the full sheet, or down toward minChildSize to
+                      // see more of the map.
+                      initialChildSize: 0.55,
+                      minChildSize: 0.35,
+                      maxChildSize: 0.92,
                       builder: (context, scrollController) {
                         return _buildHomeSheet(scrollController);
                       },
