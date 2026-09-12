@@ -108,9 +108,66 @@ class _PayoutHistoryScreenState extends State<PayoutHistoryScreen> {
               style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
             ),
             trailing: AppComponents.badge(_pretty(p.status), color: _statusColor(p.status)),
+            onTap: () => _showTrace(context, p),
           );
         },
       ),
     );
   }
+
+  /// Real trace detail for one payout — provider, reference, and (for a
+  /// FAILED payout) why, all straight from the backend's own Payout row
+  /// (schema.prisma). Nothing here is inferred or fabricated: a field shows
+  /// only when the backend actually set it.
+  void _showTrace(BuildContext context, Payout p) {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(Currency.format(p.amount), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                const Spacer(),
+                AppComponents.badge(_pretty(p.status), color: _statusColor(p.status)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (p.period.isNotEmpty) _traceRow('Period', p.period),
+            _traceRow('Requested', formatFriendlyDate(p.createdAt)),
+            if (p.completedAt != null) _traceRow('Completed', formatFriendlyDate(p.completedAt!)),
+            _traceRow(
+              'Method',
+              p.provider == 'PAYSTACK' ? 'Automatic bank transfer (Paystack)' : 'Manual transfer by the RavelGo team',
+            ),
+            if (p.transactionId != null && p.transactionId!.isNotEmpty) _traceRow('Reference', p.transactionId!),
+            if (p.status == 'FAILED') ...[
+              const SizedBox(height: 4),
+              Text(
+                p.failureReason?.isNotEmpty == true
+                    ? p.failureReason!
+                    : 'This payout failed. Contact support with the reference above if you need help.',
+                style: const TextStyle(color: AppColors.danger, fontSize: 13),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _traceRow(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(width: 90, child: Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13))),
+            Expanded(child: Text(value, style: const TextStyle(fontSize: 13), textAlign: TextAlign.right)),
+          ],
+        ),
+      );
 }

@@ -140,6 +140,15 @@ class Payout {
   final double amount;
   final String period;
   final DateTime createdAt;
+  // Real trace fields the backend already stores on Payout (schema.prisma) —
+  // previously fetched but never parsed, so a driver whose payout FAILED had
+  // no way to see why, or tell an automated Paystack transfer apart from a
+  // manual bank-wire confirmation. Never fabricated: null means the backend
+  // itself has nothing to say yet (e.g. still PENDING).
+  final String? provider; // "PAYSTACK" when processPayout() sent a real Transfer; null = manual/legacy
+  final String? transactionId; // Paystack transfer reference or manual wire reference
+  final String? failureReason;
+  final DateTime? completedAt;
 
   Payout({
     required this.id,
@@ -147,6 +156,10 @@ class Payout {
     required this.amount,
     required this.period,
     required this.createdAt,
+    this.provider,
+    this.transactionId,
+    this.failureReason,
+    this.completedAt,
   });
 
   factory Payout.fromJson(Map<String, dynamic> j) => Payout(
@@ -155,7 +168,21 @@ class Payout {
         amount: (j['amount'] is num) ? (j['amount'] as num).toDouble() : double.tryParse('${j['amount']}') ?? 0,
         period: '${j['period'] ?? ''}',
         createdAt: DateTime.tryParse('${j['createdAt']}')?.toLocal() ?? DateTime.now(),
+        provider: j['provider'] as String?,
+        transactionId: j['transactionId'] as String?,
+        failureReason: j['failureReason'] as String?,
+        completedAt: j['completedAt'] == null ? null : DateTime.tryParse('${j['completedAt']}')?.toLocal(),
       );
+}
+
+/// One bank Paystack can transfer to (GET /api/payouts/banks) — [code] is
+/// what a real automated transfer keys off (services/payouts.ts); a
+/// free-text bank name can never do that.
+class PayoutBank {
+  final String name;
+  final String code;
+  PayoutBank({required this.name, required this.code});
+  factory PayoutBank.fromJson(Map<String, dynamic> j) => PayoutBank(name: '${j['name'] ?? ''}', code: '${j['code'] ?? ''}');
 }
 
 class DriverDocument {
@@ -720,18 +747,31 @@ class DriverApi {
     }
   }
 
-  /// Save / update the driver's payout bank account.
+  /// The banks Paystack can transfer to, for the payout-account bank picker.
+  static Future<List<PayoutBank>> listBanks() async {
+    final data = await ApiClient.get('/api/payouts/banks');
+    final list = data is List ? data : const [];
+    return list.whereType<Map<String, dynamic>>().map(PayoutBank.fromJson).toList();
+  }
+
+  /// Save / update the driver's payout bank account. [bankCode] (from
+  /// [listBanks]) is what an automated Paystack transfer actually keys off —
+  /// omitting it leaves the account on the manual-payout fallback
+  /// (services/payouts.ts#processPayout). [routingNumber] is a US-ABA-style
+  /// field with no Nigerian equivalent and is optional server-side.
   static Future<void> saveBankAccount({
     required String accountHolderName,
     required String bankName,
     required String accountNumber,
-    required String routingNumber,
+    String? bankCode,
+    String? routingNumber,
   }) async {
     await ApiClient.post('/api/payouts/bank-account', {
       'accountHolderName': accountHolderName,
       'bankName': bankName,
       'accountNumber': accountNumber,
-      'routingNumber': routingNumber,
+      if (bankCode != null && bankCode.isNotEmpty) 'bankCode': bankCode,
+      if (routingNumber != null && routingNumber.isNotEmpty) 'routingNumber': routingNumber,
     });
   }
 
