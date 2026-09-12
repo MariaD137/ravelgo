@@ -20,14 +20,29 @@ API_URL="${API_URL%/}"
 RESP="$(mktemp)"
 FAILED=0
 
+# App Runner's own Service.Status can report RUNNING (the health check on
+# the configured health-check path passed) a few seconds before its edge
+# routing has finished cutting every path over to the new instances —
+# observed in practice as /health succeeding immediately while every other
+# route still 404s for a short window. Retries here, not a longer sleep
+# before the first probe, so a genuinely broken deploy still fails fast on
+# repeat wrong-status responses rather than only on a timeout.
 check() { # <path> <expected HTTP status>
-  local code
-  code="$(curl -sS --max-time 20 -o "$RESP" -w '%{http_code}' "$API_URL$1" || echo "000")"
+  local code attempt
+  for attempt in 1 2 3 4 5; do
+    code="$(curl -sS --max-time 20 -o "$RESP" -w '%{http_code}' "$API_URL$1" || echo "000")"
+    if [[ "$code" == "$2" ]]; then
+      echo "GET $1 -> HTTP $code: $(head -c 600 "$RESP" 2>/dev/null; echo)"
+      return 0
+    fi
+    if [[ "$attempt" -lt 5 ]]; then
+      echo "GET $1 -> HTTP $code (expected $2), retrying in 6s (attempt $attempt/5)..."
+      sleep 6
+    fi
+  done
   echo "GET $1 -> HTTP $code: $(head -c 600 "$RESP" 2>/dev/null; echo)"
-  if [[ "$code" != "$2" ]]; then
-    echo "::error::GET $1 returned HTTP $code (expected $2)."
-    FAILED=1
-  fi
+  echo "::error::GET $1 returned HTTP $code (expected $2) after 5 attempts."
+  FAILED=1
 }
 
 check /health 200
