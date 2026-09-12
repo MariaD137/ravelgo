@@ -40,6 +40,7 @@ class DriverProfile {
         rating: r.rating,
         totalTrips: r.totalTrips,
         preferredLanguage: r.preferredLanguage,
+        quietModePreferred: r.quietModePreferred,
         isOnline: r.isOnline,
         status: r.status,
       );

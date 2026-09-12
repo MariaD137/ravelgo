@@ -157,6 +157,67 @@ test("PATCH /api/drivers/:id/status rejects a Support Agent admin preset", async
   assert.equal(res.status, 403);
 });
 
+test("PATCH /api/drivers/me updates the calling driver's own phone number", async () => {
+  const user = await prisma.user.create({
+    data: { cognitoSub: "drv-phone-1", role: "DRIVER", firstName: "P", lastName: "H", email: "ph1@example.com", phoneNumber: "0800000000" },
+  });
+  await prisma.driver.create({ data: { userId: user.id } });
+  const token = mockAuthAs({ sub: "drv-phone-1", groups: ["Driver"] });
+
+  const res = await request(app)
+    .patch("/api/drivers/me")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ phoneNumber: "0801234567" });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.phoneNumber, "0801234567");
+
+  const updated = await prisma.user.findUnique({ where: { id: user.id } });
+  assert.equal(updated?.phoneNumber, "0801234567");
+});
+
+test("PATCH /api/drivers/me/preferences persists language and quiet mode, and a non-driver user is rejected", async () => {
+  const user = await prisma.user.create({
+    data: { cognitoSub: "drv-prefs-1", role: "DRIVER", firstName: "P", lastName: "F", email: "pf1@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: user.id, preferredLanguage: "English", quietModePreferred: false } });
+  const token = mockAuthAs({ sub: "drv-prefs-1", groups: ["Driver"] });
+
+  const res = await request(app)
+    .patch("/api/drivers/me/preferences")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ preferredLanguage: "Yoruba", quietModePreferred: true });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.preferredLanguage, "Yoruba");
+  assert.equal(res.body.quietModePreferred, true);
+
+  const updated = await prisma.driver.findUnique({ where: { id: driver.id } });
+  assert.equal(updated?.preferredLanguage, "Yoruba");
+  assert.equal(updated?.quietModePreferred, true);
+
+  // A caller with no driver profile at all.
+  restoreAuth();
+  const strangerToken = mockAuthAs({ sub: "not-a-driver-yet", groups: ["Driver"] });
+  const missing = await request(app)
+    .patch("/api/drivers/me/preferences")
+    .set("Authorization", `Bearer ${strangerToken}`)
+    .send({ quietModePreferred: true });
+  assert.equal(missing.status, 404);
+});
+
+test("PATCH /api/drivers/me/preferences rejects an empty body", async () => {
+  const user = await prisma.user.create({
+    data: { cognitoSub: "drv-prefs-empty", role: "DRIVER", firstName: "P", lastName: "E", email: "pfe@example.com" },
+  });
+  await prisma.driver.create({ data: { userId: user.id } });
+  const token = mockAuthAs({ sub: "drv-prefs-empty", groups: ["Driver"] });
+
+  const res = await request(app)
+    .patch("/api/drivers/me/preferences")
+    .set("Authorization", `Bearer ${token}`)
+    .send({});
+  assert.equal(res.status, 400);
+});
+
 test("PATCH /api/drivers/me/availability lets an ACTIVE driver go online, blocks a pending one", async () => {
   // A pending driver cannot go online.
   const pendingUser = await prisma.user.create({

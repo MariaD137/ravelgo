@@ -11,6 +11,7 @@ class DriverRecord {
   final double rating;
   final int totalTrips;
   final String preferredLanguage;
+  final bool quietModePreferred;
   final String phoneNumber;
 
   DriverRecord({
@@ -20,6 +21,7 @@ class DriverRecord {
     required this.rating,
     required this.totalTrips,
     required this.preferredLanguage,
+    required this.quietModePreferred,
     required this.phoneNumber,
   });
 
@@ -32,6 +34,7 @@ class DriverRecord {
         rating: (j['rating'] is num) ? (j['rating'] as num).toDouble() : 5.0,
         totalTrips: (j['totalTrips'] is num) ? (j['totalTrips'] as num).toInt() : 0,
         preferredLanguage: '${j['preferredLanguage'] ?? 'English'}',
+        quietModePreferred: j['quietModePreferred'] == true,
         phoneNumber: '${(j['user'] as Map?)?['phoneNumber'] ?? ''}',
       );
 }
@@ -175,6 +178,36 @@ class Payout {
         transactionId: j['transactionId'] as String?,
         failureReason: j['failureReason'] as String?,
         completedAt: j['completedAt'] == null ? null : DateTime.tryParse('${j['completedAt']}')?.toLocal(),
+      );
+}
+
+/// A subscription plan an Admin has published (GET /api/subscription-plans).
+/// Every plan bills `priceMonthly` on a fixed 30-day cycle — there is no
+/// weekly/quarterly tier on the backend today.
+class SubscriptionPlan {
+  final String id;
+  final String name;
+  final String description;
+  final double priceMonthly;
+  SubscriptionPlan({required this.id, required this.name, required this.description, required this.priceMonthly});
+  factory SubscriptionPlan.fromJson(Map<String, dynamic> j) => SubscriptionPlan(
+        id: '${j['id']}',
+        name: '${j['name'] ?? ''}',
+        description: '${j['description'] ?? ''}',
+        priceMonthly: j['priceMonthly'] is num ? (j['priceMonthly'] as num).toDouble() : double.tryParse('${j['priceMonthly']}') ?? 0,
+      );
+}
+
+/// This driver's own subscription (GET /api/drivers/me/subscription).
+class DriverSubscriptionStatus {
+  final String status; // ACTIVE | CANCELLED
+  final DateTime currentPeriodEnd;
+  final SubscriptionPlan plan;
+  DriverSubscriptionStatus({required this.status, required this.currentPeriodEnd, required this.plan});
+  factory DriverSubscriptionStatus.fromJson(Map<String, dynamic> j) => DriverSubscriptionStatus(
+        status: '${j['status'] ?? ''}',
+        currentPeriodEnd: DateTime.tryParse('${j['currentPeriodEnd']}')?.toLocal() ?? DateTime.now(),
+        plan: SubscriptionPlan.fromJson((j['plan'] as Map?)?.cast<String, dynamic>() ?? const {}),
       );
 }
 
@@ -748,6 +781,53 @@ class DriverApi {
       if (e.statusCode == 404) return null;
       rethrow;
     }
+  }
+
+  /// Update the calling driver's own phone number (PATCH /api/drivers/me;
+  /// mirrors riders.routes.ts's PATCH /riders/me).
+  static Future<void> updatePhoneNumber(String phoneNumber) async {
+    await ApiClient.patch('/api/drivers/me', {'phoneNumber': phoneNumber});
+  }
+
+  /// Persist ride preferences (PATCH /api/drivers/me/preferences). Pass only
+  /// the fields being changed.
+  static Future<void> updatePreferences({String? preferredLanguage, bool? quietModePreferred}) async {
+    await ApiClient.patch('/api/drivers/me/preferences', {
+      if (preferredLanguage != null) 'preferredLanguage': preferredLanguage,
+      if (quietModePreferred != null) 'quietModePreferred': quietModePreferred,
+    });
+  }
+
+  /// Active subscription plans an Admin has published.
+  static Future<List<SubscriptionPlan>> subscriptionPlans() async {
+    final data = await ApiClient.get('/api/subscription-plans');
+    final list = data is List ? data : const [];
+    return list.whereType<Map<String, dynamic>>().map(SubscriptionPlan.fromJson).toList();
+  }
+
+  /// This driver's own subscription, or null if never subscribed / cancelled
+  /// and not resubscribed (GET returns 404 in that case — not an error to
+  /// surface, just "no subscription").
+  static Future<DriverSubscriptionStatus?> mySubscription() async {
+    try {
+      final data = await ApiClient.get('/api/drivers/me/subscription');
+      return data is Map<String, dynamic> ? DriverSubscriptionStatus.fromJson(data) : null;
+    } on ApiException catch (e) {
+      if (e.statusCode == 404) return null;
+      rethrow;
+    }
+  }
+
+  /// Subscribe (or switch plans). The renewal date is computed server-side
+  /// (subscriptions.routes.ts) — this app never asserts its own period end.
+  static Future<DriverSubscriptionStatus> subscribe(String planId) async {
+    final data = await ApiClient.post('/api/drivers/me/subscription', {'planId': planId});
+    return DriverSubscriptionStatus.fromJson(data as Map<String, dynamic>);
+  }
+
+  /// Cancel the current subscription.
+  static Future<void> cancelSubscription() async {
+    await ApiClient.delete('/api/drivers/me/subscription');
   }
 
   /// The banks Paystack can transfer to, for the payout-account bank picker.

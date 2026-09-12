@@ -77,13 +77,37 @@ test("POST /api/drivers/me/subscription subscribes the calling driver and flips 
   const res = await request(app)
     .post("/api/drivers/me/subscription")
     .set("Authorization", `Bearer ${token}`)
-    .send({ planId: plan.id, currentPeriodEnd: new Date(Date.now() + 30 * 86400000).toISOString() });
+    .send({ planId: plan.id });
 
   assert.equal(res.status, 201);
   assert.equal(res.body.status, "ACTIVE");
+  // Server-computed ~30-day period, never trusted from the client.
+  const daysUntilEnd = (new Date(res.body.currentPeriodEnd).getTime() - Date.now()) / 86400000;
+  assert.ok(daysUntilEnd > 29 && daysUntilEnd < 31, `expected ~30 days, got ${daysUntilEnd}`);
 
   const updatedDriver = await prisma.driver.findUnique({ where: { id: driver.id } });
   assert.equal(updatedDriver?.subscriptionActive, true);
+});
+
+test("POST /api/drivers/me/subscription ignores a client-supplied currentPeriodEnd rather than trusting it", async () => {
+  await createDriver("driver-sub-trust");
+  const plan = await prisma.subscriptionPlan.create({
+    data: { name: "Trust", description: "Standard", priceMonthly: 9 },
+  });
+
+  const token = mockAuthAs({ sub: "driver-sub-trust", groups: ["Driver"] });
+  const farFuture = new Date(Date.now() + 365 * 86400000).toISOString();
+  const res = await request(app)
+    .post("/api/drivers/me/subscription")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ planId: plan.id, currentPeriodEnd: farFuture });
+
+  assert.equal(res.status, 201);
+  assert.notEqual(res.body.currentPeriodEnd, farFuture);
+  const daysUntilEnd = (new Date(res.body.currentPeriodEnd).getTime() - Date.now()) / 86400000;
+  assert.ok(daysUntilEnd > 29 && daysUntilEnd < 31, `expected ~30 days despite the client's request, got ${daysUntilEnd}`);
+
+  await request(app).delete("/api/drivers/me/subscription").set("Authorization", `Bearer ${token}`);
 });
 
 test("DELETE /api/drivers/me/subscription cancels it and flips subscriptionActive off", async () => {

@@ -41,10 +41,25 @@ subscriptionsRouter.post("/subscription-plans", requireAuth, requireAdminPermiss
 
 const subscribeSchema = z.object({
   planId: z.string().min(1),
-  currentPeriodEnd: z.coerce.date(),
 });
 
-// Driver: subscribe (or switch) to a plan
+// Every SubscriptionPlan is priced `priceMonthly` — a fixed 30-day billing
+// cycle for every plan today. Computed here, never accepted from the client:
+// a caller-supplied currentPeriodEnd would let a driver simply assert their
+// own (arbitrarily distant) renewal date with nothing to actually back it.
+const SUBSCRIPTION_PERIOD_DAYS = 30;
+
+// Driver: subscribe (or switch) to a plan.
+//
+// KNOWN GAP (not fixed here — this route's job is wiring/validation, not
+// billing): this does not charge the driver anything, and Driver.subscriptionActive
+// is not read anywhere in services/commission.ts or pricing.ts — subscribing
+// currently has no effect on the commission a driver actually pays, despite
+// SubscriptionPlan.description marketing lower fees. A real implementation
+// needs a Paystack charge (like wallet top-ups; see billing/paystack.ts)
+// gating activation, a renewal/expiry sweep (like services/matching.ts's
+// startOfferExpirySweep), and resolveCommissionRate() actually reading
+// subscriptionActive. Flagged rather than silently building a fake discount.
 subscriptionsRouter.post("/drivers/me/subscription", requireAuth, requireRole("Driver"), async (req, res) => {
   const parsed = subscribeSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -55,18 +70,19 @@ subscriptionsRouter.post("/drivers/me/subscription", requireAuth, requireRole("D
   const plan = await prisma.subscriptionPlan.findUnique({ where: { id: parsed.data.planId } });
   if (!plan || !plan.active) return res.status(404).json({ error: "Plan not found" });
 
+  const currentPeriodEnd = new Date(Date.now() + SUBSCRIPTION_PERIOD_DAYS * 86400000);
   const subscription = await prisma.driverSubscription.upsert({
     where: { driverId: driver.id },
     update: {
       planId: plan.id,
       status: "ACTIVE",
       startedAt: new Date(),
-      currentPeriodEnd: parsed.data.currentPeriodEnd,
+      currentPeriodEnd,
     },
     create: {
       driverId: driver.id,
       planId: plan.id,
-      currentPeriodEnd: parsed.data.currentPeriodEnd,
+      currentPeriodEnd,
     },
   });
   await prisma.driver.update({ where: { id: driver.id }, data: { subscriptionActive: true } });

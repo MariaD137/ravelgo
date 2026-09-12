@@ -238,20 +238,72 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Driver" }
         "404": { $ref: "#/components/responses/NotFound" }
-  /drivers/me/subscription:
-    post:
-      tags: [Subscriptions]
-      summary: Subscribe (or switch) to a plan (Driver)
+    patch:
+      tags: [Drivers]
+      summary: Update my own contact details (Driver)
+      description: phoneNumber lives on User, not Driver. Mirrors PATCH /riders/me.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [planId, currentPeriodEnd]
+              required: [phoneNumber]
+              properties:
+                phoneNumber: { type: string }
+      responses:
+        "200":
+          description: Updated phone number
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  phoneNumber: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+  /drivers/me/preferences:
+    patch:
+      tags: [Drivers]
+      summary: Update my ride preferences (Driver)
+      description: >-
+        Not yet used by matching (services/matching.ts) — persisted for the
+        driver's own reference only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                preferredLanguage: { type: string }
+                quietModePreferred: { type: boolean }
+      responses:
+        "200":
+          description: Updated driver profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Driver" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /drivers/me/subscription:
+    post:
+      tags: [Subscriptions]
+      summary: Subscribe (or switch) to a plan (Driver)
+      description: >-
+        currentPeriodEnd is always computed server-side (a fixed 30-day cycle
+        from now, matching every plan's priceMonthly billing unit) — it is
+        never accepted from the client. Note: this does not currently collect
+        any payment, and Driver.subscriptionActive has no effect on the
+        commission a driver is charged (see subscriptions.routes.ts).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [planId]
               properties:
                 planId: { type: string }
-                currentPeriodEnd: { type: string, format: date-time }
       responses:
         "201":
           description: Subscription

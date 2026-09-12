@@ -86,7 +86,7 @@ class AccountScreen extends StatelessWidget {
                 AppComponents.divider(),
                 AppComponents.tile(title: "Incentives & Badges", leading: Icons.emoji_events_outlined, onTap: () => _go(context, const IncentivesScreen())),
                 AppComponents.divider(),
-                AppComponents.tile(title: "Ride Preferences", leading: Icons.tune_outlined, onTap: () => _go(context, const DriverPreferencesScreen())),
+                AppComponents.tile(title: "Ride Preferences", leading: Icons.tune_outlined, onTap: () => _go(context, DriverPreferencesScreen(profile: profile))),
                 AppComponents.divider(),
                 AppComponents.tile(title: "My Ratings", leading: Icons.star_outline, onTap: () => _go(context, MyRatingsScreen(profile: profile))),
                 AppComponents.divider(),

@@ -138,6 +138,48 @@ driversRouter.post("/drivers/me", requireAuth, requireRole("Driver"), async (req
   res.status(201).json(driver);
 });
 
+const updateDriverMeSchema = z
+  .object({ phoneNumber: z.string().min(1) })
+  .refine((data) => Object.keys(data).length > 0, "At least one field is required");
+
+// Driver: update my own contact details. Mirrors riders.routes.ts's
+// PATCH /riders/me — phoneNumber lives on User, not Driver, so this updates
+// the User row via the driver's own Cognito sub. Only phoneNumber for now;
+// name/email stay tied to the Cognito identity used to sign in.
+driversRouter.patch("/drivers/me", requireAuth, requireRole("Driver"), async (req, res) => {
+  const parsed = updateDriverMeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const user = await prisma.user.update({
+    where: { cognitoSub: req.user!.sub },
+    data: parsed.data,
+  });
+  res.json({ phoneNumber: user.phoneNumber });
+});
+
+const updateDriverPreferencesSchema = z
+  .object({
+    preferredLanguage: z.string().min(1),
+    quietModePreferred: z.boolean(),
+  })
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, "At least one field is required");
+
+// Driver: update my ride preferences. Both fields already existed on the
+// Driver model (preferredLanguage set once at onboarding/application;
+// quietModePreferred was written by neither route — a dead column until
+// now) but there was no way to change either after onboarding.
+driversRouter.patch("/drivers/me/preferences", requireAuth, requireRole("Driver"), async (req, res) => {
+  const parsed = updateDriverPreferencesSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+
+  const updated = await prisma.driver.update({ where: { id: driver.id }, data: parsed.data });
+  res.json(updated);
+});
+
 // Driver: get my own profile
 driversRouter.get("/drivers/me", requireAuth, requireRole("Driver"), async (req, res) => {
   const driver = await prisma.driver.findFirst({
