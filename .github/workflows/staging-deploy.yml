@@ -81,7 +81,7 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           set -euo pipefail
-          docker build -t "$REPOSITORY_URI:$IMAGE_TAG" -t "$REPOSITORY_URI:latest" .
+          docker build --build-arg GIT_SHA="$IMAGE_TAG" -t "$REPOSITORY_URI:$IMAGE_TAG" -t "$REPOSITORY_URI:latest" .
           docker push "$REPOSITORY_URI:$IMAGE_TAG"
           docker push "$REPOSITORY_URI:latest"
 
@@ -101,16 +101,17 @@ jobs:
       - name: Wait for the App Runner deployment to finish
         run: bash scripts/ci/apprunner-wait.sh "${{ steps.deploy.outputs.service_arn }}" "${{ steps.deploy.outputs.operation_id }}"
 
-      # /health (DB reachable, Paystack configured?), /health/pricing (the
-      # tables the fare endpoint needs exist — 503 means a Prisma migration
-      # was never applied: run scripts/migrate-staging.sh) and the fare
-      # endpoint itself (401 = present; 404 = stale image).
+      # /health (DB reachable, Paystack configured?, running the commit just
+      # deployed?), /health/pricing (the tables the fare endpoint needs
+      # exist — 503 means a Prisma migration was never applied: run
+      # scripts/migrate-staging.sh) and the fare endpoint itself (401 =
+      # present; 404 = stale image).
       - name: Smoke-test the deployed backend
         run: |
           set -euo pipefail
           API_URL="$(aws apprunner describe-service --service-arn "${{ steps.deploy.outputs.service_arn }}" \
             --query Service.ServiceUrl --output text)"
-          bash scripts/ci/backend-smoke.sh "https://$API_URL"
+          bash scripts/ci/backend-smoke.sh "https://$API_URL" "${{ github.sha }}"
 
   web:
     needs: backend

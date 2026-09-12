@@ -2,11 +2,18 @@
 #
 # Prove a freshly deployed backend actually works, not just that it started.
 #
-#   bash scripts/ci/backend-smoke.sh <api-base-url>
+#   bash scripts/ci/backend-smoke.sh <api-base-url> [expected-git-sha]
 #
 # All probes are read-only and unauthenticated:
 #   GET /health            200 — database reachable; also reports whether
-#                                Paystack is configured (warning if not)
+#                                Paystack is configured (warning if not) and,
+#                                if [expected-git-sha] is passed, HARD FAILS
+#                                when the running image's gitSha doesn't
+#                                match the commit this workflow just deployed
+#                                — the deploy/start-deployment/wait sequence
+#                                can all report success while App Runner is
+#                                still serving a previous image; this is the
+#                                one check that actually proves otherwise.
 #   GET /health/pricing    200 — the tables GET /api/pricing/categories needs
 #                                exist; 503 here means a Prisma migration was
 #                                never applied to this environment
@@ -15,8 +22,9 @@
 #                                would mean a stale image is still serving)
 set -euo pipefail
 
-API_URL="${1:?usage: backend-smoke.sh <api-base-url>}"
+API_URL="${1:?usage: backend-smoke.sh <api-base-url> [expected-git-sha]}"
 API_URL="${API_URL%/}"
+EXPECTED_SHA="${2:-}"
 RESP="$(mktemp)"
 FAILED=0
 
@@ -48,6 +56,15 @@ check() { # <path> <expected HTTP status>
 check /health 200
 if grep -q '"paystack":"unconfigured' "$RESP" 2>/dev/null; then
   echo "::warning::Paystack is unconfigured on this backend — card payments, wallet top-ups and payouts will fail until the real secret key is set in Secrets Manager and the service is redeployed (see infra/lib/api-stack.ts)."
+fi
+if [[ -n "$EXPECTED_SHA" ]]; then
+  DEPLOYED_SHA="$(grep -o '"gitSha":"[^"]*"' "$RESP" 2>/dev/null | head -1 | sed -E 's/.*:"([^"]*)"/\1/')"
+  if [[ "$DEPLOYED_SHA" != "$EXPECTED_SHA" ]]; then
+    echo "::error::App Runner reports deployment succeeded, but /health's gitSha ('${DEPLOYED_SHA:-<missing>}') does not match the commit just deployed ('$EXPECTED_SHA'). The service is still serving a stale image — check the App Runner console's Operations tab and the ECR repository's :latest digest; a retry of this workflow will not fix a genuine App Runner-side caching/pinning issue."
+    FAILED=1
+  else
+    echo "Deployed gitSha matches: $DEPLOYED_SHA"
+  fi
 fi
 check /health/pricing 200
 check "/api/pricing/categories?pickupLat=6.5&pickupLng=3.4&distanceKm=1&durationMinutes=5" 401

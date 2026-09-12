@@ -22,6 +22,13 @@ RUN npm run prisma:generate && npm run build
 FROM public.ecr.aws/docker/library/node:22-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# Stamped by CI (`--build-arg GIT_SHA=$GITHUB_SHA`) so a running container can
+# report exactly which commit it was built from via GET /health — the only
+# way to tell "deploy reported success" apart from "the new code is actually
+# serving" without App Runner console/log access. Defaults to "unknown" for a
+# local `docker build` with no arg, which is expected and harmless.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
 # Same OpenSSL requirement in the runtime image — this is the one that
 # actually runs the app, so the shared library must be present here too.
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*

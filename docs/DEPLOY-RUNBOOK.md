@@ -383,7 +383,65 @@ each app against staging before release.**
 
 ---
 
-## 12. Rollback & teardown
+## 12. A deploy reported success but the app still looks stale
+
+Symptoms: `staging-deploy.yml`/`backend-deploy.yml` are green (image pushed
+with a fresh digest, `start-deployment` succeeded, `apprunner-wait.sh`
+confirmed `RUNNING`), yet the app behaves like an old build — a field added
+weeks ago is missing from a response, or a whole route 404s. This has
+happened in practice: two independent, fully green staging deploys in a row
+still served code that predated the deployed commit.
+
+Every deploy since this was found stamps the image with the exact commit it
+was built from (`GIT_SHA` build arg → `GET /health`'s `gitSha` field — see
+`backend/Dockerfile` and `backend/src/routes/health.routes.ts`), and
+`scripts/ci/backend-smoke.sh` now takes the commit SHA as a second argument
+and **hard-fails the workflow** if the deployed `gitSha` doesn't match. So
+going forward this class of bug fails CI loudly instead of shipping quietly
+— if you're reading this because a run failed with `gitSha does not match`,
+the workflow's own image push and `start-deployment` call are not the
+problem; App Runner is not actually serving what it says it deployed. To
+diagnose with AWS CLI/console access:
+
+```bash
+# What does the service currently say it deployed?
+curl -s https://<ServiceUrl>/health | grep -o '"gitSha":"[^"]*"'
+
+# What image tag/digest is the service actually configured with?
+aws apprunner describe-service --service-arn <arn> \
+  --query 'Service.SourceConfiguration.ImageRepository.ImageIdentifier'
+
+# What digest does :latest in ECR actually point at right now?
+aws ecr describe-images --repository-name ravelgo-backend-staging \
+  --image-ids imageTag=latest --query 'imageDetails[0].imageDigest'
+
+# The last several deployment operations — timestamps, status, and whether
+# more than one was in flight at once (autoDeploymentsEnabled: true means an
+# ECR push can trigger App Runner's own auto-deploy at roughly the same time
+# the workflow's explicit `aws apprunner start-deployment` call does; if two
+# operations raced, the "successful" one this workflow waited on may not be
+# the one that actually won):
+aws apprunner list-operations --service-arn <arn> \
+  --query 'OperationSummaryList[:5].[Id,Type,Status,StartedAt,EndedAt]' --output table
+
+# Confirm actual container start time / any crash-and-fallback-to-old-task
+# behavior in the runtime logs:
+aws logs tail /aws/apprunner/ravelgo-backend-staging/<service-id>/application --since 1h
+```
+
+If `list-operations` shows two `DEPLOYMENT` operations started within
+seconds of each other (one from the ECR push's own auto-deploy trigger, one
+from the workflow's explicit `start-deployment`), that race is the likely
+root cause — App Runner does not document a guaranteed ordering for that
+case. A forced, unambiguous fix: `aws apprunner start-deployment` once more
+by hand after confirming no other operation is `IN_PROGRESS`
+(`aws apprunner list-operations` again), then re-run
+`scripts/ci/backend-smoke.sh <url> <sha>` directly against the result before
+trusting it.
+
+---
+
+## 13. Rollback & teardown
 
 - **Bad image:** push a known-good tag and `aws apprunner start-deployment`, or
   roll the App Runner service back to a previous deployment in the console.

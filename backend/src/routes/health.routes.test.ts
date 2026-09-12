@@ -16,6 +16,15 @@ test("GET /health reports ok when the database is reachable", async () => {
   assert.equal(res.body.database, "connected");
 });
 
+test("GET /health reports the build's gitSha, defaulting to 'unknown' with no GIT_SHA env var", async () => {
+  // No GIT_SHA is set in the test environment, matching a local `docker
+  // build` with no --build-arg — the Dockerfile's ARG default. CI always
+  // passes one (see .github/workflows/*-deploy.yml), so a real deploy's
+  // /health never actually reports "unknown".
+  const res = await request(app).get("/health");
+  assert.equal(res.body.gitSha, "unknown");
+});
+
 test("GET /health/pricing reports pricing-table row counts without auth (and without any rate or PII)", async () => {
   const res = await request(app).get("/health/pricing");
   assert.equal(res.status, 200);

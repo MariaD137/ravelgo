@@ -11,13 +11,22 @@ export const healthRouter = Router();
 // logs. It deliberately does NOT affect the HTTP status: a service with
 // payments unconfigured is degraded, not down, and App Runner's health check
 // (infra/lib/api-stack.ts) would otherwise recycle instances for a config gap.
+// `gitSha` is baked into the image at build time (Dockerfile's GIT_SHA build
+// arg, set by CI to $GITHUB_SHA) — it's the only way to tell "the deploy
+// reported success" apart from "the new code is actually running" from
+// outside App Runner. A stale value here after a deploy that reported
+// success means the service is still serving an old image; see
+// docs/DEPLOY-RUNBOOK.md's "deploy succeeded but staging looks stale"
+// section.
+const gitSha = process.env.GIT_SHA ?? "unknown";
+
 healthRouter.get("/health", async (_req, res) => {
   const paystack = paystackConfig.configured ? `configured (${paystackConfig.mode})` : `unconfigured (${paystackConfig.reason})`;
   try {
     await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: "ok", database: "connected", paystack, timestamp: new Date().toISOString() });
+    res.json({ status: "ok", database: "connected", paystack, gitSha, timestamp: new Date().toISOString() });
   } catch {
-    res.status(503).json({ status: "degraded", database: "unreachable", paystack, timestamp: new Date().toISOString() });
+    res.status(503).json({ status: "degraded", database: "unreachable", paystack, gitSha, timestamp: new Date().toISOString() });
   }
 });
 
