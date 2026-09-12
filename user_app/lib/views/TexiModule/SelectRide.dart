@@ -603,6 +603,26 @@ class _SelectRideState extends State<SelectRide> {
     );
   }
 
+  /// Each ride tier maps to a real backend RideVehicleClass (ECONOMY/COMFORT/
+  /// PREMIUM/LUXURY) — a distinct icon per class so the rider can tell them
+  /// apart at a glance, the same convention every ride-hailing app uses.
+  /// Falls back to a plain car icon for any category key not in this fixed
+  /// set (e.g. one an admin adds later).
+  IconData _iconForCategory(String categoryKey) {
+    switch (categoryKey) {
+      case 'SWIFT':
+        return Icons.directions_car_outlined;
+      case 'EASE':
+        return Icons.directions_car;
+      case 'LUXE':
+        return Icons.airport_shuttle;
+      case 'ELITE':
+        return Icons.workspace_premium;
+      default:
+        return Icons.directions_car;
+    }
+  }
+
   Widget _buildCategoryCard(RideCategoryQuote cat) {
     final selected = cat.categoryKey == _selectedCategoryKey;
     final unavailable = cat.isUnavailable;
@@ -621,7 +641,7 @@ class _SelectRideState extends State<SelectRide> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.directions_car),
+              Icon(_iconForCategory(cat.categoryKey), size: 26),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
