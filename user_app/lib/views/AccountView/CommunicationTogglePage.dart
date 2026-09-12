@@ -24,7 +24,8 @@ class _CommunicationTogglePageState
     "Whatsapp": false,
   };
 
-  // LOCAL STATE ONLY: saved into RiderAppState for this session. There's no
+  // Saved into RiderAppState, which persists to on-device storage (see
+  // Model/app_state.dart) — it survives an app restart. There's no
   // backend concept of per-channel notification preferences yet, so this
   // isn't sent anywhere - the point is that Save actually persists the
   // choice instead of silently discarding it.

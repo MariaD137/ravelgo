@@ -5,9 +5,12 @@ import 'package:ravelgo_user_app/theme/app_theme.dart';
 
 /// Search and pick a saved address (Home / Work).
 ///
-/// Selecting a result saves it into RiderAppState (LOCAL STATE ONLY) and
-/// returns it to the calling screen via Navigator.pop. The suggestion list
-/// is demo data until a places/geocoding backend is connected.
+/// Selecting a result saves it into RiderAppState, which persists it
+/// on-device (see Model/app_state.dart) and returns it to the calling
+/// screen via Navigator.pop. The suggestion list is demo data — a
+/// different, real Places-backed search already exists for booking a ride
+/// (PlaceSearchScreen/PlacesApi) but this saved-address flow doesn't use it
+/// yet.
 ///
 /// LOCATION: "use current location" retrieves real device coordinates via
 /// LocationService (geolocator). No geocoding service is connected, so the

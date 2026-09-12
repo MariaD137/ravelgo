@@ -11,8 +11,8 @@ class SurgeNotificationPage extends StatefulWidget {
 }
 
 class _SurgeNotificationPageState extends State<SurgeNotificationPage> {
-  // LOCAL STATE ONLY: saved into RiderAppState for this session — there's no
-  // backend concept of this preference yet.
+  // Saved into RiderAppState, which persists to on-device storage (see
+  // Model/app_state.dart) — there's no backend concept of this preference yet.
   late bool isPushEnabled = RiderAppState.instance.surgeNotificationsEnabled;
 
   void _save() {

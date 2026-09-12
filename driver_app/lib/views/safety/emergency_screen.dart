@@ -6,10 +6,12 @@ import 'package:ravelgo_driver_app/theme/app_theme.dart';
 
 /// Safety & Emergency hub.
 ///
-/// BACKEND BOUNDARY: no safety/alerting backend is connected, so nothing
-/// here claims an alert was delivered. Emergency numbers copy to the
-/// clipboard (no dialer plugin in this build), trusted contacts are kept
-/// in local session state, and backend-dependent features say so.
+/// "Alert RavelGo safety team" and "Fraud & suspicious activity" call the
+/// real POST /api/emergency-alerts backend (DriverApi.raiseSos /
+/// reportFraud) — an alert really does reach the admin safety queue.
+/// Emergency numbers copy to the clipboard (no dialer plugin in this
+/// build); trusted contacts are local-only (no backend model for them);
+/// live location sharing with a contact is not built, and says so.
 class EmergencyScreen extends StatefulWidget {
   const EmergencyScreen({super.key});
 
@@ -51,9 +53,8 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-                'RavelGo\'s live SOS alerting is not connected in this build. '
-                'For immediate help use the national emergency lines:'),
+            const Text('For immediate help, use the national emergency lines below, '
+                'or use "Alert RavelGo safety team" on the previous screen to notify us directly.'),
             const SizedBox(height: 12),
             ListTile(
               contentPadding: EdgeInsets.zero,
@@ -104,7 +105,7 @@ class _EmergencyScreenState extends State<EmergencyScreen> {
                   style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
               const SizedBox(height: 4),
               const Text(
-                'Saved for this session. Automatic trip sharing starts working once the trips service is connected.',
+                'Saved on this device only. Automatically sharing your live location with a contact during a trip is not built yet.',
                 style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 12),
