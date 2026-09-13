@@ -137,6 +137,29 @@ export class CiStack extends cdk.Stack {
       }),
     );
 
+    // Read-only. When apprunner-wait.sh sees FAILED/ROLLBACK_* it prints the
+    // service's own recent CloudWatch logs — the only way to see *why* a
+    // deployment failed to pass its health check (bad env/secret, crash on
+    // boot, ...) directly in the workflow log, instead of a bare status name
+    // that sends someone to hunt for console access. App Runner's log group
+    // names embed a service ID this stack has no handle on
+    // (/aws/apprunner/<name>/<id>/service|application), so this is scoped by
+    // name prefix rather than pinned exactly.
+    this.deployRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "AppRunnerLogsReadOnly",
+        actions: ["logs:DescribeLogStreams", "logs:GetLogEvents", "logs:FilterLogEvents"],
+        resources: [
+          this.formatArn({
+            service: "logs",
+            resource: "log-group",
+            arnFormat: cdk.ArnFormat.COLON_RESOURCE_NAME,
+            resourceName: `/aws/apprunner/${props.service.serviceName!}*:*`,
+          }),
+        ],
+      }),
+    );
+
     if (props.webAppsConfig) {
       props.webAppsConfig.assetsBucket.grantReadWrite(this.deployRole);
 

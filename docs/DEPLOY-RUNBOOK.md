@@ -411,6 +411,20 @@ curl -s https://<ServiceUrl>/health | grep -o '"gitSha":"[^"]*"'
 aws apprunner describe-service --service-arn <arn> \
   --query 'Service.SourceConfiguration.ImageRepository.ImageIdentifier'
 
+# If the workflow itself already reported a FAILED/ROLLBACK_* deployment
+# status (as opposed to a false "success"), scripts/ci/apprunner-wait.sh
+# now prints the service's own last 15 minutes of CloudWatch logs right in
+# the workflow log automatically — check that first, it's usually the
+# fastest path to the actual crash/health-check reason (missing env var or
+# secret, unhandled exception on boot, etc). This needs the CI stack's
+# deploy role to have been redeployed at least once after the
+# AppRunnerLogsReadOnly IAM statement was added (infra/lib/ci-stack.ts) —
+# `cd infra && npm run bootstrap-ci-staging` (or `bootstrap-ci` for
+# production) if the workflow log instead shows "no logs:FilterLogEvents
+# permission yet". The same logs are always readable directly:
+aws logs tail /aws/apprunner/ravelgo-backend-staging/<service-id>/service --since 30m
+aws logs tail /aws/apprunner/ravelgo-backend-staging/<service-id>/application --since 30m
+
 # What digest does :latest in ECR actually point at right now?
 aws ecr describe-images --repository-name ravelgo-backend-staging \
   --image-ids imageTag=latest --query 'imageDetails[0].imageDigest'

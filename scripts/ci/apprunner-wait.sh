@@ -25,6 +25,31 @@ OPERATION_ID="${2:?usage: apprunner-wait.sh <service-arn> <operation-id>}"
 MAX_POLLS="${MAX_POLLS:-60}"
 POLL_SECONDS="${POLL_SECONDS:-20}"
 
+# Service ARNs look like arn:aws:apprunner:<region>:<account>:service/<name>/<id> —
+# App Runner's own CloudWatch log groups are named /aws/apprunner/<name>/<id>/{service,application}.
+APPRUNNER_SERVICE_NAME="$(cut -d/ -f2 <<<"$SERVICE_ARN")"
+APPRUNNER_SERVICE_ID="$(cut -d/ -f3 <<<"$SERVICE_ARN")"
+
+# Best-effort: print the deployment's own recent logs on a genuine failure so
+# the actual crash/health-check reason (bad env var or secret, unhandled
+# exception on boot, ...) shows up right in the workflow log instead of a
+# bare status name. Needs logs:FilterLogEvents on the deploy role
+# (infra/lib/ci-stack.ts's AppRunnerLogsReadOnly statement) — degrades to a
+# one-line notice if that hasn't been granted yet (redeploy the CI stack).
+dump_logs_on_failure() {
+  for suffix in service application; do
+    local group="/aws/apprunner/$APPRUNNER_SERVICE_NAME/$APPRUNNER_SERVICE_ID/$suffix"
+    echo "--- last 15 minutes of $group ---"
+    if ! aws logs tail "$group" --since 15m 2>/tmp/apprunner-logs.err; then
+      if grep -q "AccessDenied" /tmp/apprunner-logs.err; then
+        echo "(no logs:FilterLogEvents permission yet — redeploy the CI stack: infra/ npm run bootstrap-ci or bootstrap-ci-staging)"
+      else
+        cat /tmp/apprunner-logs.err
+      fi
+    fi
+  done
+}
+
 use_operations=true
 for ((i = 1; i <= MAX_POLLS; i++)); do
   if [[ "$use_operations" == true ]]; then
@@ -34,7 +59,8 @@ for ((i = 1; i <= MAX_POLLS; i++)); do
       case "$STATUS" in
         SUCCEEDED) exit 0 ;;
         FAILED|ROLLBACK_IN_PROGRESS|ROLLBACK_SUCCEEDED|ROLLBACK_FAILED)
-          echo "::error::App Runner deployment ended in $STATUS — the service is still running the previous build. Open the service in the App Runner console and read the deployment + application logs."
+          echo "::error::App Runner deployment ended in $STATUS — the service is still running the previous build."
+          dump_logs_on_failure
           exit 1 ;;
       esac
     elif grep -q "AccessDenied" /tmp/apprunner-wait.err; then
@@ -53,6 +79,7 @@ for ((i = 1; i <= MAX_POLLS; i++)); do
       OPERATION_IN_PROGRESS) ;;
       *)
         echo "::error::App Runner service is $SERVICE_STATUS after the deployment."
+        dump_logs_on_failure
         exit 1 ;;
     esac
   fi
