@@ -386,6 +386,11 @@ model CarPaddyRequest {
   reviewedAt  DateTime?
 }
 
+// A vehicle can have at most one PENDING_APPROVAL/APPROVED listing at a time
+// — enforced by a partial unique index Prisma's schema syntax can't express
+// (zz09_rental_listing_active_uniqueness/migration.sql), the same way
+// RentalBooking's no-overlapping-bookings exclusion constraint isn't modeled
+// here either.
 model RentalListing {
   id        String              @id @default(uuid())
   driverId  String

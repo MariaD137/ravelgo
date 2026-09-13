@@ -432,6 +432,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/RentalListing" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
     get:
       tags: [Rentals]
       summary: Browse rental listings (approved only, unless Admin)

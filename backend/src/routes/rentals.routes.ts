@@ -71,6 +71,19 @@ rentalsRouter.post("/rentals", requireAuth, requireRole("Driver"), async (req, r
     return res.status(404).json({ error: "Vehicle not found" });
   }
 
+  // Friendly message for the common (non-racing) case — double-tapping
+  // Submit, a network retry, or the app reopening and resubmitting. The
+  // zz09_rental_listing_active_uniqueness partial unique index is the real
+  // backstop for two concurrent requests that both pass this check before
+  // either commits; that race surfaces as a generic-but-still-safe 409 from
+  // the global error handler instead of a second listing being created.
+  const existingActive = await prisma.rentalListing.findFirst({
+    where: { vehicleId: vehicle.id, status: { in: ["PENDING_APPROVAL", "APPROVED"] } },
+  });
+  if (existingActive) {
+    return res.status(409).json({ error: "This vehicle already has an active rental listing." });
+  }
+
   const listing = await prisma.rentalListing.create({
     data: { ...parsed.data, driverId: driver.id },
   });
@@ -290,6 +303,15 @@ rentalsRouter.patch("/rentals/:id/status", requireAuth, requireAdminPermission("
   const listing = await prisma.rentalListing.update({
     where: { id: req.params.id },
     data: { status: parsed.data.status },
+  });
+  // Vehicle.listedForRental was only ever set true by POST /rentals and never
+  // updated again, so a rejected vehicle looked permanently "listed" (wrong
+  // display everywhere that flag is read) and — combined with the active-
+  // listing uniqueness check above — could never be resubmitted at all.
+  // Keep it in sync with the listing's own current status instead.
+  await prisma.vehicle.update({
+    where: { id: listing.vehicleId },
+    data: { listedForRental: parsed.data.status === "APPROVED" },
   });
   // Awaited (unlike most recordAudit call sites) so a caller can never
   // observe a 200 for this admin action before the audit row actually

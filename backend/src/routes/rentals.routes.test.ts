@@ -180,6 +180,81 @@ test("PATCH /api/rentals/:id/status rejects a Finance Viewer admin and records a
 
   const audit = await prisma.auditLog.findFirst({ where: { action: "RENTAL_LISTING_REVIEWED", entityId: listing.id } });
   assert.ok(audit);
+
+  const vehicleAfterApproval = await prisma.vehicle.findUnique({ where: { id: listing.vehicleId } });
+  assert.equal(vehicleAfterApproval?.listedForRental, true);
+});
+
+test("PATCH /api/rentals/:id/status clears listedForRental on rejection, and the vehicle can then be resubmitted", async () => {
+  const { vehicle } = await createDriverWithVehicle("driver-sub-reject-1");
+  const driverToken = mockAuthAs({ sub: "driver-sub-reject-1", groups: ["Driver"] });
+
+  const created = await request(app)
+    .post("/api/rentals")
+    .set("Authorization", `Bearer ${driverToken}`)
+    .send({ vehicleId: vehicle.id, dailyRate: 60, location: "Kano" });
+  assert.equal(created.status, 201);
+
+  restoreAuth();
+  const adminToken = mockAuthAs({ sub: "super-rentals-reject", groups: ["Admin"] });
+  const rejected = await request(app)
+    .patch(`/api/rentals/${created.body.id}/status`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ status: "REJECTED" });
+  assert.equal(rejected.status, 200);
+
+  const vehicleAfterRejection = await prisma.vehicle.findUnique({ where: { id: vehicle.id } });
+  assert.equal(vehicleAfterRejection?.listedForRental, false);
+
+  // The whole point: a rejected vehicle must not be stuck "already listed"
+  // forever — the driver can fix whatever was wrong and resubmit.
+  restoreAuth();
+  mockAuthAs({ sub: "driver-sub-reject-1", groups: ["Driver"] });
+  const resubmitted = await request(app)
+    .post("/api/rentals")
+    .set("Authorization", `Bearer ${driverToken}`)
+    .send({ vehicleId: vehicle.id, dailyRate: 65, location: "Kano" });
+  assert.equal(resubmitted.status, 201);
+});
+
+test("POST /api/rentals rejects listing the same vehicle twice while a listing is already active", async () => {
+  const { vehicle } = await createDriverWithVehicle("driver-sub-dup-1");
+  const token = mockAuthAs({ sub: "driver-sub-dup-1", groups: ["Driver"] });
+
+  const first = await request(app)
+    .post("/api/rentals")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ vehicleId: vehicle.id, dailyRate: 60, location: "Abuja" });
+  assert.equal(first.status, 201);
+
+  // Simulates a double-tap on Submit, a network retry, or the app reopening
+  // and resubmitting — all the scenarios task item #12 calls out.
+  const second = await request(app)
+    .post("/api/rentals")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ vehicleId: vehicle.id, dailyRate: 60, location: "Abuja" });
+  assert.equal(second.status, 409);
+
+  const listings = await prisma.rentalListing.findMany({ where: { vehicleId: vehicle.id } });
+  assert.equal(listings.length, 1);
+});
+
+test("the RentalListing table itself rejects a second active listing for one vehicle, independent of the application-layer check", async () => {
+  // Same style as AA-4's RentalBooking exclusion-constraint test: prove the
+  // zz09 partial unique index — not just the pre-check above — is what
+  // actually stops two concurrent requests that both raced past it.
+  const { driver, vehicle } = await createDriverWithVehicle("driver-sub-dup-2");
+  await prisma.rentalListing.create({
+    data: { driverId: driver.id, vehicleId: vehicle.id, dailyRate: 50, location: "Ibadan" },
+  });
+
+  await assert.rejects(
+    () =>
+      prisma.rentalListing.create({
+        data: { driverId: driver.id, vehicleId: vehicle.id, dailyRate: 50, location: "Ibadan" },
+      }),
+    (err: { code?: string }) => err.code === "P2002",
+  );
 });
 
 async function createRider(cognitoSub: string) {
