@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, mockAuthAsMany, mockPaystackInitialize, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, mockAuthAsMany, mockPaystackInitialize, mockPaystackRefund, restoreAuth, resetDb } from "../test/helpers";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -431,6 +431,99 @@ test("GET /api/payments rejects a non-Admin caller", async () => {
   const token = mockAuthAs({ sub: "rider-sub-2", groups: ["Rider"] });
   const res = await request(app).get("/api/payments").set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 403);
+});
+
+// --- Finding 3 (security audit): refund cumulative-overage / race ----------
+// POST /trips/:id/refund and /courier-requests/:id/refund previously only
+// checked that a single call's amount didn't exceed payment.amount — with no
+// tracking of prior refunds, a second partial refund (or two concurrent
+// refund requests) could push total refunds past what was actually paid.
+// claimRefund() in payments.routes.ts now tracks Payment.refundedAmount and
+// atomically rejects any refund that would exceed it.
+
+test("a second partial refund that would push cumulative refunds past the original amount is rejected", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 100, finalFare: 100, status: "COMPLETED" },
+  });
+  const payment = await prisma.payment.create({
+    data: { tripId: trip.id, userId: rider.id, amount: 100, status: "SUCCEEDED", method: "CARD", providerReference: "ref-1", paidAt: new Date() },
+  });
+  mockPaystackRefund();
+  const token = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+
+  const first = await request(app)
+    .post(`/api/trips/${trip.id}/refund`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ amount: 60, reason: "Partial refund 1" });
+  assert.equal(first.status, 200);
+  assert.equal(first.body.refunded, 60);
+
+  // Only ₦40 remains refundable (100 - 60) — a second ₦60 refund must be
+  // rejected outright, not silently accepted and pushed to ₦120 total.
+  const second = await request(app)
+    .post(`/api/trips/${trip.id}/refund`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ amount: 60, reason: "Partial refund 2" });
+  assert.equal(second.status, 400);
+
+  const updated = await prisma.payment.findUnique({ where: { id: payment.id } });
+  assert.equal(updated?.refundedAmount, 60);
+  assert.equal(updated?.status, "SUCCEEDED");
+});
+
+test("omitting the amount refunds only what remains unrefunded, not the full original amount again", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 100, finalFare: 100, status: "COMPLETED" },
+  });
+  await prisma.payment.create({
+    data: { tripId: trip.id, userId: rider.id, amount: 100, status: "SUCCEEDED", method: "CARD", providerReference: "ref-2", paidAt: new Date() },
+  });
+  mockPaystackRefund();
+  const token = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+
+  const partial = await request(app)
+    .post(`/api/trips/${trip.id}/refund`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ amount: 30, reason: "Partial" });
+  assert.equal(partial.status, 200);
+
+  const rest = await request(app)
+    .post(`/api/trips/${trip.id}/refund`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ reason: "Refund the rest" });
+  assert.equal(rest.status, 200);
+  assert.equal(rest.body.refunded, 70); // 100 - 30, not another 100
+
+  const final = await prisma.payment.findUnique({ where: { tripId: trip.id } });
+  assert.equal(final?.refundedAmount, 100);
+  assert.equal(final?.status, "REFUNDED");
+});
+
+test("two concurrent full-refund requests for the same payment settle exactly once", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const wallet = await prisma.walletAccount.create({ data: { userId: rider.id, balanceCents: 0 } });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 50, finalFare: 50, status: "COMPLETED" },
+  });
+  await prisma.payment.create({
+    data: { tripId: trip.id, userId: rider.id, amount: 50, status: "SUCCEEDED", method: "WALLET", paidAt: new Date() },
+  });
+  const token = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+  const fire = () =>
+    request(app).post(`/api/trips/${trip.id}/refund`).set("Authorization", `Bearer ${token}`).send({ reason: "Race" });
+
+  const [a, b] = await Promise.all([fire(), fire()]);
+  const statuses = [a.status, b.status].sort();
+  assert.deepEqual(statuses, [200, 409]); // one refunds, the other is rejected as already claimed
+
+  // The wallet was credited exactly once: 0 + 50 = 50, never 100.
+  const after = await prisma.walletAccount.findUnique({ where: { id: wallet.id } });
+  assert.equal(after?.balanceCents, 5000);
+  const payment = await prisma.payment.findUnique({ where: { tripId: trip.id } });
+  assert.equal(payment?.refundedAmount, 50);
+  assert.equal(payment?.status, "REFUNDED");
 });
 
 test("GET /api/payments/:id/receipt is visible to the paying rider, denied to a stranger", async () => {

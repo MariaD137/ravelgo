@@ -108,6 +108,46 @@ test("POST /api/admin-users rejects a duplicate email", async () => {
   assert.equal(res.status, 409);
 });
 
+// --- Finding 2 (security audit): MFA enforcement bypass ---------------------
+// Previously, MFA was only enforced by the Admin App's client-side navigation
+// (splash_screen.dart routing to MfaSetupScreen) — nothing server-side ever
+// checked it, so a valid Admin-group access token with no MFA enrolled could
+// call any privileged admin API directly, skipping the app UI entirely.
+// requireAdminPermission (lib/admin-permissions.ts) now rejects such callers.
+
+test("POST /api/admin-users rejects a Super Admin whose Cognito account has no MFA enrolled", async () => {
+  await seedAdmin("super-sub-no-mfa", "super-no-mfa@example.com", "SUPER_ADMIN");
+  const token = mockAuthAs({ sub: "super-sub-no-mfa", groups: ["Admin"] });
+  // Overrides the default MFA-enrolled state mockAuthAs sets for Admin
+  // callers, simulating the real attack: a valid token belonging to an admin
+  // who never completed MFA enrollment.
+  mockCognitoAdminUserStatus({ cognitoStatus: "CONFIRMED", mfaEnabled: false }, "super-sub-no-mfa");
+
+  const res = await request(app)
+    .post("/api/admin-users")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ email: "blocked-by-mfa@example.com", firstName: "New", lastName: "Admin", adminRole: "SUPPORT_AGENT" });
+
+  assert.equal(res.status, 403);
+  assert.match(res.body.error, /multi-factor/i);
+  assert.equal(await prisma.user.findUnique({ where: { email: "blocked-by-mfa@example.com" } }), null);
+});
+
+test("POST /api/admin-users succeeds once the same Super Admin has MFA enrolled", async () => {
+  await seedAdmin("super-sub-with-mfa", "super-with-mfa@example.com", "SUPER_ADMIN");
+  const token = mockAuthAs({ sub: "super-sub-with-mfa", groups: ["Admin"] });
+  mockCognitoCreateAdminUser("cognito-new-user-mfa-ok");
+  mockCognitoAddToGroup();
+  mockCognitoAdminUserStatus({ cognitoStatus: "CONFIRMED", mfaEnabled: true }, "super-sub-with-mfa");
+
+  const res = await request(app)
+    .post("/api/admin-users")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ email: "allowed-with-mfa@example.com", firstName: "New", lastName: "Admin", adminRole: "SUPPORT_AGENT" });
+
+  assert.equal(res.status, 201);
+});
+
 test("GET /api/admin-users lists admin users for a Super Admin and rejects a restricted preset", async () => {
   await seedAdmin("super-sub-2", "super2@example.com", "SUPER_ADMIN");
   await seedAdmin("finance-sub-1", "finance1@example.com", "FINANCE_VIEWER");

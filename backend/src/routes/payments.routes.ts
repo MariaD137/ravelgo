@@ -9,7 +9,7 @@ import { notifyUser } from "../lib/notifications";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { sensitiveLimiter } from "../middleware/rate-limit";
 import { paystackClient } from "../billing/paystack";
-import { moneyAmountSchema, toCents } from "../lib/money";
+import { moneyAmountSchema, roundMoney, toCents } from "../lib/money";
 import { AlreadyChargedError, InsufficientFundsError } from "../services/wallet";
 import { CashLimitExceededError, settleTripPayment, TripNotChargeableError } from "../services/trip-payment";
 import {
@@ -153,6 +153,51 @@ const refundSchema = z.object({
 });
 
 /**
+ * Atomically "claims" `refundAmount` against a payment before any real money
+ * moves: increments refundedAmount only if doing so would not exceed the
+ * original amount, in one conditional UPDATE. This is the same
+ * updateMany-then-check-count idempotency pattern already used for webhook
+ * handling and payout uniqueness elsewhere in this codebase (see
+ * billing.routes.ts / services/payouts.ts) — the WHERE clause is
+ * re-evaluated against the row's current, post-lock value in Postgres, so
+ * two concurrent refund requests (or a second partial refund that would push
+ * cumulative refunds over the original amount) can never both succeed.
+ * Returns false if the claim is rejected (payment not SUCCEEDED, or this
+ * would exceed what remains refundable) — the caller must not move any money
+ * in that case. Must be called BEFORE the actual Paystack/wallet refund, and
+ * released (via releaseRefundClaim) if that external step then fails, so a
+ * failed refund never leaves money permanently "claimed" but never returned.
+ */
+async function claimRefund(paymentId: string, amount: number, refundAmount: number): Promise<boolean> {
+  const claim = await prisma.payment.updateMany({
+    where: {
+      id: paymentId,
+      status: "SUCCEEDED",
+      refundedAmount: { lte: roundMoney(amount - refundAmount + 0.005) },
+    },
+    data: { refundedAmount: { increment: refundAmount } },
+  });
+  if (claim.count !== 1) return false;
+
+  // The claim only ever increments refundedAmount, so once it succeeds this
+  // read reflects at least our own claim (plus, harmlessly, any other
+  // refund that has landed since) — safe to use for the full/partial status.
+  const current = await prisma.payment.findUniqueOrThrow({ where: { id: paymentId } });
+  if (current.refundedAmount >= amount - 0.005 && current.status !== "REFUNDED") {
+    await prisma.payment.update({ where: { id: paymentId }, data: { status: "REFUNDED" } });
+  }
+  return true;
+}
+
+/** Undoes claimRefund() when the external refund step fails after the claim succeeded. */
+async function releaseRefundClaim(paymentId: string, refundAmount: number): Promise<void> {
+  await prisma.payment.update({
+    where: { id: paymentId },
+    data: { refundedAmount: { decrement: refundAmount }, status: "SUCCEEDED" },
+  });
+}
+
+/**
  * Actually move the money back for a settled Payment, then reverse its
  * commission on the ledger. Shared by the trip and delivery refund routes
  * below — same logic, just parameterized by which Payment/ledger key to use.
@@ -161,6 +206,8 @@ const refundSchema = z.object({
  * there is nothing to refund through the platform — only the ledger
  * (commission owed) is reversed, and the actual cash return between rider
  * and driver happens outside the app, same as a cash charge itself does.
+ * Must only be called after claimRefund() has already succeeded for this
+ * exact amount.
  */
 async function refundSettledPayment(
   payment: { id: string; amount: number; method: PaymentMethod; providerReference: string | null; userId: string; status: PaymentStatus },
@@ -190,8 +237,6 @@ async function refundSettledPayment(
   }
   // CASH: nothing moves through RavelGo — see doc comment above.
 
-  const isFull = refundAmount >= payment.amount - 0.005;
-  await prisma.payment.update({ where: { id: payment.id }, data: { status: isFull ? "REFUNDED" : payment.status } });
   await reverseCommission({ ...ledgerKey, refundAmount, reason });
 }
 
@@ -208,12 +253,22 @@ paymentsRouter.post("/trips/:id/refund", sensitiveLimiter, requireAuth, requireA
   if (!payment || payment.status !== "SUCCEEDED") {
     return res.status(409).json({ error: "This trip has no successful payment to refund" });
   }
-  const refundAmount = parsed.data.amount ?? payment.amount;
-  if (refundAmount > payment.amount) {
-    return res.status(400).json({ error: "Refund amount cannot exceed the original payment" });
+  // No amount specified = refund whatever hasn't already been refunded, not
+  // the full original amount again (that was the cumulative-overage bug).
+  const refundAmount = parsed.data.amount ?? roundMoney(payment.amount - payment.refundedAmount);
+  if (refundAmount <= 0 || payment.refundedAmount + refundAmount > payment.amount + 0.005) {
+    return res.status(400).json({ error: "Refund amount cannot exceed what remains unrefunded on the original payment" });
   }
 
-  await refundSettledPayment(payment, refundAmount, { tripId: trip.id }, parsed.data.reason);
+  if (!(await claimRefund(payment.id, payment.amount, refundAmount))) {
+    return res.status(409).json({ error: "This refund could not be claimed — it may already have been refunded" });
+  }
+  try {
+    await refundSettledPayment(payment, refundAmount, { tripId: trip.id }, parsed.data.reason);
+  } catch (err) {
+    await releaseRefundClaim(payment.id, refundAmount);
+    throw err;
+  }
   await recordAudit({
     actorSub: req.user!.sub,
     action: "TRIP_PAYMENT_REFUNDED",
@@ -240,12 +295,22 @@ paymentsRouter.post("/courier-requests/:id/refund", sensitiveLimiter, requireAut
   if (!payment || payment.status !== "SUCCEEDED") {
     return res.status(409).json({ error: "This delivery has no successful payment to refund" });
   }
-  const refundAmount = parsed.data.amount ?? payment.amount;
-  if (refundAmount > payment.amount) {
-    return res.status(400).json({ error: "Refund amount cannot exceed the original payment" });
+  // No amount specified = refund whatever hasn't already been refunded, not
+  // the full original amount again (that was the cumulative-overage bug).
+  const refundAmount = parsed.data.amount ?? roundMoney(payment.amount - payment.refundedAmount);
+  if (refundAmount <= 0 || payment.refundedAmount + refundAmount > payment.amount + 0.005) {
+    return res.status(400).json({ error: "Refund amount cannot exceed what remains unrefunded on the original payment" });
   }
 
-  await refundSettledPayment(payment, refundAmount, { courierRequestId: request.id }, parsed.data.reason);
+  if (!(await claimRefund(payment.id, payment.amount, refundAmount))) {
+    return res.status(409).json({ error: "This refund could not be claimed — it may already have been refunded" });
+  }
+  try {
+    await refundSettledPayment(payment, refundAmount, { courierRequestId: request.id }, parsed.data.reason);
+  } catch (err) {
+    await releaseRefundClaim(payment.id, refundAmount);
+    throw err;
+  }
   await recordAudit({
     actorSub: req.user!.sub,
     action: "DELIVERY_PAYMENT_REFUNDED",

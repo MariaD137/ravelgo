@@ -153,3 +153,50 @@ WAF rate limiting and the single-instance App Runner configuration are cost-cons
 - Actual production `User` table contents (which admin rows, if any, currently have `adminRole = null`).
 - Live penetration testing against a running staging/production instance (this session had no working AWS credentials or reachable staging endpoint at time of audit — see prior session notes on the ongoing staging deployment issue).
 - CVE-level confirmation for `amazon_cognito_identity_dart_2` 3.8.2 against pub.dev's advisory database (no outbound advisory lookup performed).
+
+---
+
+## Phase 2 Remediation Log — the two NO-GO findings
+
+Scope of this pass, per explicit instruction: close only Finding 2 and Finding 3 (the two findings that trigger the NO-GO verdict above). Findings 1, 4, 5, 6 and all Medium/Low findings are **unchanged** and remain open.
+
+### Finding 2 — Admin MFA enforcement bypass — CLOSED
+
+**Vulnerability:** MFA was enforced only by the Admin App's client-side navigation (`admin_app/lib/views/splash/splash_screen.dart:58-70` routed an unenrolled admin to `MfaSetupScreen`). No backend middleware ever checked MFA status. A valid Admin-group Cognito access token belonging to an admin who never completed MFA enrollment could call any privileged admin API directly — `curl` with a stolen/phished/reused token, skipping the Flutter UI entirely — with no second factor at all, despite the pool nominally supporting TOTP MFA.
+
+**Fix (smallest necessary change):** Added `isAdminMfaEnrolled(cognitoSub)` to `backend/src/lib/admin-permissions.ts`, calling the existing `cognitoGroups.adminUserStatus()` (already the live Cognito source of truth used for display in the Admin Users screen — no new Cognito call type introduced). Wired it into both existing admin authorization gates — `requireAdminPermission()` and `blockIfAdminLacksPermission()` — so every mutating/privileged admin action now requires: Admin group membership → not suspended → **MFA enrolled** → role preset grants the permission. Plain `requireRole("Admin")`-only routes (`GET /admin-users/me`, `POST /admin-users/me/mfa-enrolled`) were deliberately left ungated so an admin who hasn't finished enrollment can still sign in and complete it — closing the bypass without breaking the legitimate bootstrap path.
+
+**Files changed:** `backend/src/lib/admin-permissions.ts`, `backend/src/test/helpers.ts` (test-mock support), `backend/src/routes/admin-users.routes.test.ts` (new tests).
+
+**Regression tests added** (`admin-users.routes.test.ts`):
+- `POST /api/admin-users rejects a Super Admin whose Cognito account has no MFA enrolled` — simulates the exact attack (valid token, `mfaEnabled: false`) and asserts 403 + no side effect (no user created).
+- `POST /api/admin-users succeeds once the same Super Admin has MFA enrolled` — proves the legitimate path still works.
+
+**Verification:**
+- Ran the new tests: both pass.
+- Re-ran the full existing suite for every route file that authenticates as an Admin (21 files, 263 tests covering `payments`, `payouts`, `drivers`, `pricing`, `settings`, `vehicles`, `rentals`, `alerts`, `courier`, `subscriptions`, `riders`, `stays`, `carpaddy`, `support`, `trips`, `documents`, `admin-users`): all pass unmodified in behavior — the default test identity is now MFA-enrolled (matching the real production expectation for an active admin), so no unrelated test needed rewriting.
+- `tsc --noEmit`: clean. `eslint`: clean.
+- **Re-tested the attack scenario directly:** an Admin-group token with `mfaEnabled: false` calling a `payouts:write`/`manage_admins`-gated endpoint now receives `403 { error: "Multi-factor authentication must be enabled on your admin account before you can do this" }` instead of succeeding — confirmed via the new regression test's assertion and via `SECURITY_EVENT AUTHZ_FAILURE ... required=mfa_enrolled` log line observed in the test run.
+
+**Residual/out of scope:** The Cognito pool itself remains `Mfa.OPTIONAL` (`infra/lib/auth-stack.ts:94-95`) — this fix is backend enforcement, not an infra change forcing Cognito-level MFA, deliberately avoided here since flipping that pool-wide could lock out real, already-provisioned admins with no enrolled MFA (including the operator's own accounts) without a coordinated rollout. Finding 1 (silent SUPER_ADMIN default) is unrelated and still open.
+
+### Finding 3 — Refund cumulative-overage / race — CLOSED
+
+**Vulnerability:** `POST /trips/:id/refund` and `POST /courier-requests/:id/refund` (`backend/src/routes/payments.routes.ts`) checked only that a single refund call's amount didn't exceed `payment.amount`, with no tracking of refunds already issued. Two concrete exploits: (a) two sequential partial refunds (e.g. ₦60 + ₦60 against a ₦100 payment) together exceed the original amount, since each call is checked in isolation; (b) two concurrent full-refund requests both read `payment.status === "SUCCEEDED"` before either commits, so both could pass the check and both trigger a real Paystack/wallet refund — a real, uncapped payment-manipulation path for anyone with `payouts:write`.
+
+**Fix (smallest necessary change):** Added `Payment.refundedAmount` (migration `zz10_payment_refunded_amount`, `Float @default(0)`, plus a DB-level `CHECK (refundedAmount >= 0 AND refundedAmount <= amount + 0.005)` as defense in depth). Introduced `claimRefund()` in `payments.routes.ts`, using this codebase's existing atomic `updateMany`-then-check-`count` idempotency pattern (the same one already used for webhook handling and payout uniqueness): it increments `refundedAmount` in one conditional `UPDATE ... WHERE id = ? AND status = 'SUCCEEDED' AND refundedAmount <= (amount - requestedAmount)`, which Postgres re-evaluates against the row's current committed value under its row lock — so two concurrent claims against the same payment can never both succeed. The claim happens **before** any real money moves (Paystack/wallet); if the subsequent external refund call then fails, `releaseRefundClaim()` reverts the claim so a failed refund never leaves money "phantom-claimed." Omitting `amount` in the request now refunds the actual remaining balance (`amount - refundedAmount`), not the full original amount again.
+
+**Files changed:** `backend/prisma/schema.prisma`, `backend/prisma/migrations/zz10_payment_refunded_amount/migration.sql`, `backend/src/routes/payments.routes.ts`, `backend/src/routes/payments.routes.test.ts` (new tests).
+
+**Regression tests added** (`payments.routes.test.ts`):
+- `a second partial refund that would push cumulative refunds past the original amount is rejected` — ₦60 refund succeeds, a second ₦60 refund against the same ₦100 payment is rejected with 400, and `refundedAmount` stays at 60 (never 120).
+- `omitting the amount refunds only what remains unrefunded, not the full original amount again` — proves the default-amount fix: ₦30 then omitted-amount refunds exactly ₦70, total lands at exactly ₦100/`REFUNDED`.
+- `two concurrent full-refund requests for the same payment settle exactly once` — fires two simultaneous full-refund requests via `Promise.all`; exactly one succeeds (200) and one is rejected (409); the wallet is credited exactly once (not twice).
+
+**Verification:**
+- All 3 new tests pass, plus all pre-existing `payments.routes.test.ts` tests (24/24).
+- Full backend suite (445 tests) re-run: 445/445 pass (one unrelated flake on a fire-and-forget audit-log write, reproduced as pre-existing and unrelated to this change, passed clean on immediate re-run).
+- `tsc --noEmit`: clean. `eslint`: clean.
+- **Re-tested the attack scenario directly:** the exact cumulative-overage and concurrent-double-refund scenarios described above are now the regression tests themselves and both are blocked — confirmed by direct assertion on HTTP status codes, final `refundedAmount`, and the actual wallet balance (proving money moved exactly once).
+
+**Residual/out of scope:** Finding 4 (wallet top-up webhook TOCTOU race) is a related-looking but distinct code path (`services/wallet.ts`, top-up crediting, not refunds) and is intentionally untouched by this pass.

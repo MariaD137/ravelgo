@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import type { AdminRole } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { logSecurityEvent } from "./security-log";
+import { cognitoGroups } from "../services/cognito";
 
 /**
  * Coarse, module-level permissions checked on top of the base
@@ -82,9 +83,25 @@ export function roleHasPermission(role: AdminRole, permission: AdminPermission):
 }
 
 /**
- * Requires the caller to be in the Cognito "Admin" group AND hold a preset
- * that grants `permission`. Must be chained after requireAuth (needs
- * req.user) — it does not itself verify the JWT.
+ * Whether a caller already known to be in the Cognito "Admin" group has TOTP
+ * MFA enrolled. Cognito is the single source of truth (same as
+ * cognitoGroups.adminUserStatus's other caller, serializeAdminUser) — there is
+ * no Postgres flag to drift out of sync. The Admin App's own UI already
+ * funnels an unenrolled admin to MfaSetupScreen before letting them into the
+ * rest of the app, but that is a client-side redirect only: nothing server-side
+ * previously stopped a request that skipped the app UI and called a
+ * privileged admin API directly with a valid-but-unenrolled Admin token. This
+ * is the backend enforcement that closes that gap.
+ */
+export async function isAdminMfaEnrolled(cognitoSub: string): Promise<boolean> {
+  const status = await cognitoGroups.adminUserStatus(cognitoSub);
+  return status?.mfaEnabled ?? false;
+}
+
+/**
+ * Requires the caller to be in the Cognito "Admin" group, have MFA enrolled,
+ * AND hold a preset that grants `permission`. Must be chained after
+ * requireAuth (needs req.user) — it does not itself verify the JWT.
  */
 export function requireAdminPermission(permission: AdminPermission) {
   return async (req: Request, res: Response, next: NextFunction) => {
@@ -96,6 +113,10 @@ export function requireAdminPermission(permission: AdminPermission) {
     if (await isSuspendedAdmin(req.user!.sub)) {
       logSecurityEvent("AUTHZ_FAILURE", req, { required: "not_suspended" });
       return res.status(403).json({ error: "This admin account is suspended" });
+    }
+    if (!(await isAdminMfaEnrolled(req.user!.sub))) {
+      logSecurityEvent("AUTHZ_FAILURE", req, { required: "mfa_enrolled" });
+      return res.status(403).json({ error: "Multi-factor authentication must be enabled on your admin account before you can do this" });
     }
     const role = await effectiveAdminRole(req.user!.sub);
     if (!roleHasPermission(role, permission)) {
@@ -111,8 +132,8 @@ export function requireAdminPermission(permission: AdminPermission) {
  * courier request's status) where requireAdminPermission can't sit in the
  * middleware chain without also rejecting the Driver caller: call this from
  * inside the handler, only on the branch where the caller is actually in the
- * Admin group, to enforce the same preset check requireAdminPermission would.
- * Returns true (and writes the 403) if the caller is blocked.
+ * Admin group, to enforce the same preset + MFA check requireAdminPermission
+ * would. Returns true (and writes the 403) if the caller is blocked.
  */
 export async function blockIfAdminLacksPermission(
   req: Request,
@@ -122,6 +143,11 @@ export async function blockIfAdminLacksPermission(
   if (await isSuspendedAdmin(req.user!.sub)) {
     logSecurityEvent("AUTHZ_FAILURE", req, { required: "not_suspended" });
     res.status(403).json({ error: "This admin account is suspended" });
+    return true;
+  }
+  if (!(await isAdminMfaEnrolled(req.user!.sub))) {
+    logSecurityEvent("AUTHZ_FAILURE", req, { required: "mfa_enrolled" });
+    res.status(403).json({ error: "Multi-factor authentication must be enabled on your admin account before you can do this" });
     return true;
   }
   const role = await effectiveAdminRole(req.user!.sub);

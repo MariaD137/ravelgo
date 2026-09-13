@@ -10,10 +10,46 @@ export interface MockCognitoUser {
   groups?: string[];
 }
 
+type AdminStatus = { cognitoStatus: string; mfaEnabled: boolean } | null;
+
+const DEFAULT_ADMIN_STATUS: AdminStatus = { cognitoStatus: "CONFIRMED", mfaEnabled: true };
+
+// Keyed by cognitoSub. requireAdminPermission/blockIfAdminLacksPermission
+// (lib/admin-permissions.ts) now call cognitoGroups.adminUserStatus to
+// enforce MFA — every test that authenticates as an Admin via mockAuthAs
+// below gets an entry here so that enforcement doesn't break tests that have
+// nothing to do with MFA. mockCognitoAdminUserStatus (used by
+// admin-users.routes.test.ts to control what a *target* admin's status looks
+// like in a response body) sets `adminStatusDefault` instead of this map, so
+// it never overwrites the calling admin's own MFA-enrolled status set here.
+let adminStatusOverrides = new Map<string, AdminStatus>();
+let adminStatusDefault: AdminStatus = DEFAULT_ADMIN_STATUS;
+let adminStatusMockInstalled = false;
+
+function installAdminUserStatusMock() {
+  if (adminStatusMockInstalled) return;
+  adminStatusMockInstalled = true;
+  mock.method(cognitoGroups, "adminUserStatus", async (username: string) =>
+    adminStatusOverrides.has(username) ? adminStatusOverrides.get(username)! : adminStatusDefault,
+  );
+}
+
+function registerAdminCaller(user: MockCognitoUser) {
+  if ((user.groups ?? []).includes("Admin")) {
+    adminStatusOverrides.set(user.sub, DEFAULT_ADMIN_STATUS);
+  }
+  installAdminUserStatusMock();
+}
+
 /**
  * Stubs the shared Cognito verifier singleton so route tests can authenticate
  * as an arbitrary user/role without a real Cognito user pool or JWT. Returns
  * the bearer token string to send as `Authorization: Bearer <token>`.
+ *
+ * Also, if `user` is in the "Admin" group, defaults them to MFA-enrolled (see
+ * adminStatusOverrides above) so tests unrelated to MFA aren't affected by
+ * requireAdminPermission's MFA gate — use mockCognitoAdminUserStatus to
+ * exercise the not-enrolled rejection path explicitly.
  */
 export function mockAuthAs(user: MockCognitoUser): string {
   const token = `mock.${user.sub}`;
@@ -27,6 +63,7 @@ export function mockAuthAs(user: MockCognitoUser): string {
       "cognito:groups": user.groups ?? [],
     } as never;
   });
+  registerAdminCaller(user);
   return token;
 }
 
@@ -43,11 +80,15 @@ export function mockAuthAsMany(users: MockCognitoUser[]): Record<string, string>
     if (!user) throw new Error("invalid token");
     return { sub: user.sub, email: user.email, "cognito:groups": user.groups ?? [] } as never;
   });
+  users.forEach(registerAdminCaller);
   return Object.fromEntries(users.map((u) => [u.sub, `mock.${u.sub}`]));
 }
 
 export function restoreAuth() {
   mock.restoreAll();
+  adminStatusOverrides = new Map();
+  adminStatusDefault = DEFAULT_ADMIN_STATUS;
+  adminStatusMockInstalled = false;
 }
 
 /**
@@ -130,17 +171,28 @@ export function mockCognitoSetUserEnabled() {
 }
 
 /**
- * Stubs cognitoGroups.adminUserStatus so admin-user route tests never call a
- * real Cognito user pool. Defaults to an active, MFA-enabled account so tests
- * that don't care about status/MFA see the "normal" case; override either
- * field, or pass null to simulate the Cognito account not existing.
+ * Controls what cognitoGroups.adminUserStatus reports for admin-user route
+ * tests, without ever calling a real Cognito user pool. With no `username`,
+ * sets the fallback used for any sub that mockAuthAs hasn't already
+ * registered (e.g. a *target* admin being viewed/listed, as opposed to the
+ * caller) — defaults to CONFIRMED/mfaEnabled:false so tests that don't care
+ * about status/MFA see a plausible "normal" case. Pass `username` to instead
+ * override one specific sub — e.g. the calling admin, to exercise the
+ * MFA-not-enrolled rejection path mockAuthAs otherwise defaults away from (see
+ * adminStatusOverrides). Pass `null` to simulate the Cognito account not
+ * existing at all.
  */
 export function mockCognitoAdminUserStatus(
   result: { cognitoStatus?: string; mfaEnabled?: boolean } | null = {},
+  username?: string,
 ) {
-  return mock.method(cognitoGroups, "adminUserStatus", async () =>
-    result === null ? null : { cognitoStatus: result.cognitoStatus ?? "CONFIRMED", mfaEnabled: result.mfaEnabled ?? false },
-  );
+  installAdminUserStatusMock();
+  const value: AdminStatus = result === null ? null : { cognitoStatus: result.cognitoStatus ?? "CONFIRMED", mfaEnabled: result.mfaEnabled ?? false };
+  if (username) {
+    adminStatusOverrides.set(username, value);
+  } else {
+    adminStatusDefault = value;
+  }
 }
 
 export function mockCognitoResendAdminInvitation() {

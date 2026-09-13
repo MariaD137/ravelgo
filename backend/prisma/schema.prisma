@@ -646,6 +646,11 @@ model Payment {
   providerReference String?
   createdAt         DateTime        @default(now())
   paidAt            DateTime?
+  // Cumulative amount already refunded against this payment. Tracked so a
+  // second partial refund — or two concurrent refund requests racing each
+  // other — can never push total refunds past `amount`; see
+  // routes/payments.routes.ts's atomic claimRefund().
+  refundedAmount    Float           @default(0)
 }
 
 // Single-row app-wide configuration. Read/written through lib/payment-rules.ts
