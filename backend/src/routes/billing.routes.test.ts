@@ -141,6 +141,87 @@ test("an event for an unknown reference is accepted but updates nothing", async 
   assert.equal(res.status, 200);
 });
 
+// --- Finding 4 (security audit): wallet top-up webhook race ----------------
+// creditWalletFromTopup previously read a WalletTransaction's status, checked
+// it was PENDING, then issued a plain (unconditional) update — a TOCTOU race:
+// two concurrent/redelivered webhooks for the same reference could both read
+// "PENDING" before either committed, and both would go on to credit the
+// wallet. It's fixed to claim the PENDING -> COMPLETED transition with a
+// conditional updateMany (same pattern the other three branches of this
+// webhook already use), so only one caller's claim can ever succeed.
+
+async function seedPendingTopup(providerReference: string, amountCents: number) {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-topup-1", role: "RIDER", firstName: "A", lastName: "B", email: "topup@example.com" },
+  });
+  const wallet = await prisma.walletAccount.create({ data: { userId: rider.id, balanceCents: 0 } });
+  await prisma.walletTransaction.create({
+    data: { walletId: wallet.id, type: "TOPUP", status: "PENDING", amountCents, providerReference },
+  });
+  return wallet;
+}
+
+test("wallet_topup charge.success credits the wallet balance", async () => {
+  const wallet = await seedPendingTopup("ravelgo_topup_1", 5000);
+  mockPaystackVerify({ status: "success", metadata: { type: "wallet_topup" } });
+  const { body, signature } = signedWebhookRequest({
+    event: "charge.success",
+    data: { reference: "ravelgo_topup_1", status: "success" },
+  });
+
+  const res = await request(app)
+    .post("/api/billing/webhook")
+    .set("Content-Type", "application/json")
+    .set("x-paystack-signature", signature)
+    .send(body);
+
+  assert.equal(res.status, 200);
+  const updated = await prisma.walletAccount.findUnique({ where: { id: wallet.id } });
+  assert.equal(updated?.balanceCents, 5000);
+  const txn = await prisma.walletTransaction.findUnique({ where: { providerReference: "ravelgo_topup_1" } });
+  assert.equal(txn?.status, "COMPLETED");
+});
+
+test("a redelivered wallet_topup webhook does not double-credit the balance", async () => {
+  const wallet = await seedPendingTopup("ravelgo_topup_2", 5000);
+  mockPaystackVerify({ status: "success", metadata: { type: "wallet_topup" } });
+  const { body, signature } = signedWebhookRequest({
+    event: "charge.success",
+    data: { reference: "ravelgo_topup_2", status: "success" },
+  });
+
+  await request(app).post("/api/billing/webhook").set("Content-Type", "application/json").set("x-paystack-signature", signature).send(body);
+  const second = await request(app)
+    .post("/api/billing/webhook")
+    .set("Content-Type", "application/json")
+    .set("x-paystack-signature", signature)
+    .send(body);
+
+  assert.equal(second.status, 200);
+  const updated = await prisma.walletAccount.findUnique({ where: { id: wallet.id } });
+  assert.equal(updated?.balanceCents, 5000); // credited once, not 10000
+});
+
+test("two concurrent (redelivered) wallet_topup webhooks for the same reference credit the balance exactly once", async () => {
+  const wallet = await seedPendingTopup("ravelgo_topup_3", 7500);
+  mockPaystackVerify({ status: "success", metadata: { type: "wallet_topup" } });
+  const { body, signature } = signedWebhookRequest({
+    event: "charge.success",
+    data: { reference: "ravelgo_topup_3", status: "success" },
+  });
+  const fire = () =>
+    request(app).post("/api/billing/webhook").set("Content-Type", "application/json").set("x-paystack-signature", signature).send(body);
+
+  const [a, b] = await Promise.all([fire(), fire()]);
+  assert.equal(a.status, 200);
+  assert.equal(b.status, 200);
+
+  // The race this closes: both requests reading PENDING before either
+  // committed would previously both credit the wallet, landing on 15000.
+  const updated = await prisma.walletAccount.findUnique({ where: { id: wallet.id } });
+  assert.equal(updated?.balanceCents, 7500);
+});
+
 test("mockAuthAs/restoreAuth still work normally for other routes after webhook tests run", async () => {
   const token = mockAuthAs({ sub: "rider-sub-9", groups: ["Rider"] });
   const res = await request(app).get("/api/riders/me").set("Authorization", `Bearer ${token}`);

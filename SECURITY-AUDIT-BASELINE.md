@@ -199,4 +199,25 @@ Scope of this pass, per explicit instruction: close only Finding 2 and Finding 3
 - `tsc --noEmit`: clean. `eslint`: clean.
 - **Re-tested the attack scenario directly:** the exact cumulative-overage and concurrent-double-refund scenarios described above are now the regression tests themselves and both are blocked — confirmed by direct assertion on HTTP status codes, final `refundedAmount`, and the actual wallet balance (proving money moved exactly once).
 
-**Residual/out of scope:** Finding 4 (wallet top-up webhook TOCTOU race) is a related-looking but distinct code path (`services/wallet.ts`, top-up crediting, not refunds) and is intentionally untouched by this pass.
+**Residual/out of scope:** Finding 4 (wallet top-up webhook TOCTOU race) is a related-looking but distinct code path (`services/wallet.ts`, top-up crediting, not refunds) and was intentionally untouched by this pass — closed separately below.
+
+### Finding 4 — Wallet top-up webhook race condition — CLOSED
+
+**Vulnerability:** `creditWalletFromTopup()` (`backend/src/services/wallet.ts`) read a `WalletTransaction`'s status, checked it was `PENDING` in application code, then issued a plain `update({where: {id}})` to mark it `COMPLETED` and credit the balance — all still correctly wrapped in a `prisma.$transaction`, but the check-then-act was not atomic: Prisma's `update({where: {id}})` succeeds regardless of the row's current status, so it never re-verified the PENDING condition at write time. Paystack's webhook delivery is at-least-once by design (documented and already relied on elsewhere in this same handler), so two concurrent or redelivered `charge.success` webhooks for the same top-up reference could both read `status: "PENDING"` before either committed, and both would then credit the wallet — a real double-credit path requiring nothing more than Paystack (or an attacker who can trigger a webhook redelivery, e.g. by replaying a captured signed payload within its validity window) firing the same event twice. This was the one branch of `billing.routes.ts`'s webhook handler that didn't follow the codebase's own documented idempotency pattern — the handler's own comment says every branch is idempotent "by only acting when the row is still PENDING (a conditional updateMany whose count says whether THIS call won the race)," which was true for the trip/courier/rental branches but not this one.
+
+**Fix (smallest necessary change):** Changed the `PENDING -> COMPLETED` transition in `creditWalletFromTopup()` from a plain `update()` to a conditional `updateMany({where: {id, status: "PENDING"}})`, checking `count === 1` before crediting the balance — the exact pattern already used by every other branch of this same webhook handler (`billing.routes.ts`) and by `chargeWalletForRide`/`chargeWalletForDelivery` in the same file. Postgres re-evaluates that `WHERE status = 'PENDING'` clause against the row's current, post-lock value, so a second concurrent caller's claim matches zero rows and is a no-op. No route, schema, or caller-facing behavior changed — this is a one-function internal fix.
+
+**Files changed:** `backend/src/services/wallet.ts`, `backend/src/routes/billing.routes.test.ts` (new tests).
+
+**Regression tests added** (`billing.routes.test.ts`):
+- `wallet_topup charge.success credits the wallet balance` — baseline correctness.
+- `a redelivered wallet_topup webhook does not double-credit the balance` — sequential redelivery.
+- `two concurrent (redelivered) wallet_topup webhooks for the same reference credit the balance exactly once` — fires two simultaneous webhook deliveries via `Promise.all`; reproduces the exact TOCTOU window and proves the balance lands at the single top-up amount, not double it.
+
+**Verification:**
+- All 3 new tests pass, plus all 7 pre-existing `billing.routes.test.ts` tests (10/10 total).
+- Full backend suite re-run: 448/448 pass (one unrelated pre-existing flake on a fire-and-forget audit-log write, reproduced as pre-existing across 3 clean re-runs of that file alone, unrelated to this change).
+- `tsc --noEmit`: clean. `eslint`: clean.
+- **Re-tested the attack scenario directly:** two concurrent webhook deliveries for the same top-up reference — the exact race described above — now credit the wallet exactly once instead of twice, confirmed by asserting the final `balanceCents` equals the single top-up amount.
+
+**Residual/out of scope:** Findings 1 (silent SUPER_ADMIN default), 5 (`trust proxy` unset), and 6 (`prisma`/`deepmerge-ts` npm advisories) remain open and untouched by this pass.

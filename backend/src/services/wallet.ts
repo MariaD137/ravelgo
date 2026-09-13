@@ -3,14 +3,33 @@ import { prisma } from "../db/prisma";
 /**
  * Credit a wallet for a confirmed Paystack top-up. Called from the signed
  * webhook only, never from a client path. Idempotent: Paystack can deliver
- * the same event more than once, so a top-up already marked COMPLETED is a
- * no-op and the balance is never double-credited.
+ * the same event more than once (its own docs describe at-least-once
+ * delivery), so a top-up already marked COMPLETED is a no-op and the balance
+ * is never double-credited.
+ *
+ * The PENDING -> COMPLETED transition itself is the atomic claim: a plain
+ * `findUnique` read followed by an unconditional `update` (the previous
+ * implementation) is a TOCTOU race — two concurrent/redelivered webhooks for
+ * the same reference can both read status "PENDING" before either commits,
+ * and Prisma's `update({where: {id}})` succeeds regardless of the row's
+ * current status, so both would go on to credit the balance. Using
+ * `updateMany({where: {id, status: "PENDING"}})` instead re-evaluates that
+ * status condition against Postgres's current, post-lock row value — a
+ * second caller's conditional update then matches zero rows and does
+ * nothing. Same conditional-updateMany-then-check-count pattern this
+ * webhook handler already uses for every other transaction type (see
+ * billing.routes.ts).
  */
 export async function creditWalletFromTopup(providerReference: string): Promise<void> {
+  const txn = await prisma.walletTransaction.findUnique({ where: { providerReference } });
+  if (!txn || txn.type !== "TOPUP") return; // not a top-up this function is responsible for
+
   await prisma.$transaction(async (tx) => {
-    const txn = await tx.walletTransaction.findUnique({ where: { providerReference } });
-    if (!txn || txn.type !== "TOPUP" || txn.status !== "PENDING") return; // unknown or already handled
-    await tx.walletTransaction.update({ where: { id: txn.id }, data: { status: "COMPLETED" } });
+    const claim = await tx.walletTransaction.updateMany({
+      where: { id: txn.id, status: "PENDING" },
+      data: { status: "COMPLETED" },
+    });
+    if (claim.count !== 1) return; // already credited by a concurrent or earlier delivery
     await tx.walletAccount.update({
       where: { id: txn.walletId },
       data: { balanceCents: { increment: txn.amountCents } },
