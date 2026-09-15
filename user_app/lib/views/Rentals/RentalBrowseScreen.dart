@@ -108,11 +108,9 @@ class _RentalBrowseScreenState extends State<RentalBrowseScreen> {
               ),
               child: Row(
                 children: [
-                  Container(
-                    width: 64,
-                    height: 64,
-                    decoration: BoxDecoration(color: AppColors.surfaceElevated, borderRadius: BorderRadius.circular(10)),
-                    child: const Icon(Icons.directions_car, color: AppColors.primaryDark, size: 30),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: _thumbnail(l.vehicle?.photoUrl),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -135,6 +133,29 @@ class _RentalBrowseScreenState extends State<RentalBrowseScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _thumbnail(String? url) {
+    if (url == null || url.isEmpty) {
+      return Container(
+        width: 64,
+        height: 64,
+        color: AppColors.surfaceElevated,
+        child: const Icon(Icons.directions_car, color: AppColors.primaryDark, size: 30),
+      );
+    }
+    return Image.network(
+      url,
+      width: 64,
+      height: 64,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => Container(
+        width: 64,
+        height: 64,
+        color: AppColors.surfaceElevated,
+        child: const Icon(Icons.directions_car, color: AppColors.primaryDark, size: 30),
       ),
     );
   }

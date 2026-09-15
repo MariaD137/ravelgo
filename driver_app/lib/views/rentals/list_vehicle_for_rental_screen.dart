@@ -213,15 +213,34 @@ class _ListVehicleForRentalScreenState extends State<ListVehicleForRentalScreen>
         break;
       }
     }
-    if (selected?.photoUrl != null) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Image.network(
-          selected!.photoUrl!,
-          height: 160,
-          width: double.infinity,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+    if (selected != null && selected.photoUrls.isNotEmpty) {
+      if (selected.photoUrls.length == 1) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.network(
+            selected.photoUrls.first,
+            height: 160,
+            width: double.infinity,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+        );
+      }
+      return SizedBox(
+        height: 160,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: selected.photoUrls.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (context, i) => ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(
+              selected!.photoUrls[i],
+              width: 220,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          ),
         ),
       );
     }

@@ -21,11 +21,19 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
   DateTime? _startDate;
   DateTime? _endDate;
   bool _booking = false;
+  final _photoController = PageController();
+  int _photoIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _photoController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -135,12 +143,7 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: double.infinity,
-            height: 160,
-            decoration: BoxDecoration(color: AppColors.surfaceElevated, borderRadius: BorderRadius.circular(14)),
-            child: const Icon(Icons.directions_car, size: 64, color: AppColors.primaryDark),
-          ),
+          _photoGallery(vehicle?.photoUrls ?? const []),
           const SizedBox(height: 16),
           Text(vehicle?.label.isNotEmpty == true ? vehicle!.label : 'Vehicle', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
@@ -180,6 +183,60 @@ class _RentalDetailScreenState extends State<RentalDetailScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Swipeable photo gallery for the vehicle's real, uploaded photos (never
+  /// mock/placeholder images). Falls back to a plain icon tile only when the
+  /// vehicle has no photos yet.
+  Widget _photoGallery(List<String> photoUrls) {
+    if (photoUrls.isEmpty) {
+      return Container(
+        width: double.infinity,
+        height: 200,
+        decoration: BoxDecoration(color: AppColors.surfaceElevated, borderRadius: BorderRadius.circular(14)),
+        child: const Icon(Icons.directions_car, size: 64, color: AppColors.primaryDark),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: SizedBox(
+        height: 200,
+        child: Stack(
+          children: [
+            PageView.builder(
+              controller: _photoController,
+              itemCount: photoUrls.length,
+              onPageChanged: (i) => setState(() => _photoIndex = i),
+              itemBuilder: (context, i) => Image.network(
+                photoUrls[i],
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  color: AppColors.surfaceElevated,
+                  child: const Icon(Icons.directions_car, size: 64, color: AppColors.primaryDark),
+                ),
+              ),
+            ),
+            if (photoUrls.length > 1)
+              Positioned(
+                right: 10,
+                bottom: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${_photoIndex + 1} / ${photoUrls.length}',
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

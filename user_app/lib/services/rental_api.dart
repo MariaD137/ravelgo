@@ -9,10 +9,23 @@ class RentalVehicle {
   final String colour;
   final String plateNumber;
   final String year;
+  // Publicly viewable CDN URLs served by the backend from the assets bucket
+  // (see backend/src/lib/vehicle-view.ts#serializeVehicle) — empty until the
+  // owning driver has uploaded at least one photo.
+  final List<String> photoUrls;
 
-  RentalVehicle({required this.brand, required this.model, required this.colour, required this.plateNumber, required this.year});
+  RentalVehicle({
+    required this.brand,
+    required this.model,
+    required this.colour,
+    required this.plateNumber,
+    required this.year,
+    this.photoUrls = const [],
+  });
 
   String get label => '$brand $model'.trim();
+
+  String? get photoUrl => photoUrls.isNotEmpty ? photoUrls.first : null;
 
   factory RentalVehicle.fromJson(Map<String, dynamic> j) => RentalVehicle(
         brand: '${j['brand'] ?? ''}',
@@ -20,6 +33,10 @@ class RentalVehicle {
         colour: '${j['colour'] ?? ''}',
         plateNumber: '${j['plateNumber'] ?? ''}',
         year: '${j['year'] ?? ''}',
+        photoUrls: ((j['photoUrls'] as List?) ?? const [])
+            .whereType<String>()
+            .where((u) => u.isNotEmpty)
+            .toList(),
       );
 }
 
