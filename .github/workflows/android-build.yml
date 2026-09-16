@@ -27,6 +27,10 @@ on:
       - "driver_app/**"
       - ".github/workflows/android-build.yml"
 
+permissions:
+  id-token: write # required to assume the AWS role via OIDC, to discover the live API URL
+  contents: read
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
@@ -39,6 +43,30 @@ jobs:
         working-directory: ${{ matrix.app }}
     steps:
       - uses: actions/checkout@v4
+
+      # Same OIDC role staging-deploy.yml uses — already granted read-only
+      # cloudformation:DescribeStacks on RavelGo-Api-staging (see
+      # infra/lib/ci-stack.ts's webAppsConfig). Skips cleanly (falling back to
+      # an empty API_BASE_URL, same graceful-degradation behavior as a missing
+      # Cognito secret below) if staging CI hasn't been bootstrapped yet.
+      - name: Configure AWS credentials via OIDC
+        if: vars.AWS_STAGING_DEPLOY_ROLE_ARN != ''
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_STAGING_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # Reads the live App Runner URL from the deployed stack instead of a
+      # hardcoded value, which goes stale the moment that service is ever
+      # recreated (its URL is random and changes every time).
+      - name: Discover the current staging API URL
+        id: api
+        if: vars.AWS_STAGING_DEPLOY_ROLE_ARN != ''
+        run: |
+          set -euo pipefail
+          URL="$(aws cloudformation describe-stacks --stack-name RavelGo-Api-staging \
+            --query "Stacks[0].Outputs[?OutputKey=='ServiceUrl'].OutputValue" --output text)"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
 
       - name: Set up Java (needed for the Android build)
         uses: actions/setup-java@v4
@@ -55,6 +83,7 @@ jobs:
       - name: Create .env (real staging config, from repo secrets)
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          API_BASE_URL: ${{ steps.api.outputs.url }}
           COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
           COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
           PINPOINT_APPLICATION_ID: ${{ secrets.PINPOINT_APPLICATION_ID }}
@@ -62,7 +91,7 @@ jobs:
         run: |
           {
             echo "GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY"
-            echo "API_BASE_URL=https://gpgg9ykamj.us-east-1.awsapprunner.com"
+            echo "API_BASE_URL=$API_BASE_URL"
             echo "COGNITO_USER_POOL_ID=$COGNITO_USER_POOL_ID"
             echo "COGNITO_CLIENT_ID=$COGNITO_CLIENT_ID"
             echo "AWS_REGION=us-east-1"
