@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, restoreAuth, resetDb, mockCognitoAdminUserStatus } from "../test/helpers";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -59,6 +59,7 @@ test("PATCH /api/emergency-alerts/:id/status lets an Admin resolve an alert and 
   const alert = await prisma.emergencyAlert.create({ data: { userId: user.id, type: "SOS" } });
 
   const token = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch(`/api/emergency-alerts/${alert.id}/status`)
     .set("Authorization", `Bearer ${token}`)
@@ -78,6 +79,7 @@ test("PATCH /api/emergency-alerts/:id/status lets a Support Agent admin preset r
     data: { cognitoSub: "support-agent-3", role: "ADMIN", firstName: "S", lastName: "A", email: "sa3@example.com", adminRole: "SUPPORT_AGENT" },
   });
   const token = mockAuthAs({ sub: "support-agent-3", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
 
   const res = await request(app)
     .patch(`/api/emergency-alerts/${alert.id}/status`)
@@ -96,6 +98,7 @@ test("PATCH /api/emergency-alerts/:id/status rejects a Finance Viewer admin pres
     data: { cognitoSub: "finance-viewer-3", role: "ADMIN", firstName: "F", lastName: "V", email: "fv3@example.com", adminRole: "FINANCE_VIEWER" },
   });
   const token = mockAuthAs({ sub: "finance-viewer-3", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
 
   const res = await request(app)
     .patch(`/api/emergency-alerts/${alert.id}/status`)

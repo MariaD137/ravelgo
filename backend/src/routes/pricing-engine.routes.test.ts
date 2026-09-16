@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, restoreAuth, resetDb, mockCognitoAdminUserStatus } from "../test/helpers";
 import { resetRealtimeState } from "../realtime/hub";
 
 beforeEach(async () => {
@@ -76,6 +76,7 @@ test("PATCH /api/admin/ride-categories/:id rejects a non-Admin caller", async ()
 
 test("Admin can deactivate a ride category, then it drops out of the customer-facing quote", async () => {
   const token = mockAuthAs({ sub: "admin-cat-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const list = await request(app).get("/api/admin/ride-categories").set("Authorization", `Bearer ${token}`);
   assert.equal(list.status, 200);
   const swift = list.body.find((c: { key: string }) => c.key === "SWIFT");
@@ -97,6 +98,7 @@ test("Admin can deactivate a ride category, then it drops out of the customer-fa
 
 test("Admin can create a custom ride category with its own commission override", async () => {
   const token = mockAuthAs({ sub: "admin-cat-2", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .post("/api/admin/ride-categories")
     .set("Authorization", `Bearer ${token}`)
@@ -136,6 +138,7 @@ test("GET /api/pricing/delivery-quote returns the four reference vehicle classes
 
 test("PATCH /api/admin/delivery-vehicle-rates/:vehicleClass lets Admin change a rate; it's reflected in the next quote", async () => {
   const token = mockAuthAs({ sub: "admin-dq-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const patch = await request(app)
     .patch("/api/admin/delivery-vehicle-rates/bike")
     .set("Authorization", `Bearer ${token}`)
@@ -157,6 +160,7 @@ test("PATCH /api/admin/delivery-vehicle-rates/:vehicleClass lets Admin change a 
 
 test("GET /api/admin/commission-config seeds RIDE and DELIVERY at the 20% platform default", async () => {
   const token = mockAuthAs({ sub: "admin-cc-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app).get("/api/admin/commission-config").set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 200);
   const ride = res.body.find((c: { service: string }) => c.service === "RIDE");
@@ -170,6 +174,7 @@ test("PATCH /api/admin/commission-config/:service rejects a caller without setti
     data: { cognitoSub: "ops-cc-1", role: "ADMIN", firstName: "O", lastName: "M", email: "opscc1@example.com", adminRole: "OPERATIONS_MANAGER" },
   });
   const token = mockAuthAs({ sub: "ops-cc-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch("/api/admin/commission-config/RIDE")
     .set("Authorization", `Bearer ${token}`)
@@ -188,6 +193,7 @@ test("PATCH /api/admin/commission-config/:service rejects a non-Admin caller ent
 
 test("PATCH /api/admin/commission-config/:service lets a Super Admin change the rate and writes an audit row", async () => {
   const token = mockAuthAs({ sub: "admin-cc-2", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch("/api/admin/commission-config/RIDE")
     .set("Authorization", `Bearer ${token}`)
@@ -202,6 +208,7 @@ test("PATCH /api/admin/commission-config/:service lets a Super Admin change the 
 
 test("PATCH /api/admin/commission-config/:service rejects an out-of-range rate", async () => {
   const token = mockAuthAs({ sub: "admin-cc-3", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch("/api/admin/commission-config/RIDE")
     .set("Authorization", `Bearer ${token}`)
@@ -249,6 +256,7 @@ test("GET /api/admin/financial-dashboard aggregates real ledger rows, not fabric
   });
 
   const token = mockAuthAs({ sub: "admin-fd-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app).get("/api/admin/financial-dashboard").set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 200);
   assert.equal(res.body.grossMarketplaceVolume, 15000);
@@ -271,6 +279,7 @@ test("GET /api/admin/financial-dashboard rejects a non-Admin caller", async () =
 
 test("GET /api/admin/pricing-policy returns the reference defaults from the spec on first read", async () => {
   const token = mockAuthAs({ sub: "admin-pp-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app).get("/api/admin/pricing-policy").set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 200);
   assert.equal(res.body.rideWaitingFreeSec, 120);
@@ -284,6 +293,7 @@ test("PATCH /api/admin/pricing-policy rejects a caller without settings:write", 
     data: { cognitoSub: "ops-pp-1", role: "ADMIN", firstName: "O", lastName: "P", email: "opspp1@example.com", adminRole: "OPERATIONS_MANAGER" },
   });
   const token = mockAuthAs({ sub: "ops-pp-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch("/api/admin/pricing-policy")
     .set("Authorization", `Bearer ${token}`)
@@ -293,6 +303,7 @@ test("PATCH /api/admin/pricing-policy rejects a caller without settings:write", 
 
 test("PATCH /api/admin/pricing-policy lets a Super Admin change the waiting/cancellation policy", async () => {
   const token = mockAuthAs({ sub: "admin-pp-2", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch("/api/admin/pricing-policy")
     .set("Authorization", `Bearer ${token}`)

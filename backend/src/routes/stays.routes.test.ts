@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, restoreAuth, resetDb, mockCognitoAdminUserStatus } from "../test/helpers";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -66,6 +66,7 @@ test("GET /stays shows every listing to an admin", async () => {
   await seedListing(host.id, { status: "APPROVED" });
   await seedListing(host.id, { status: "PENDING_APPROVAL" });
   const token = mockAuthAs({ sub: "stays-admin-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
 
   const res = await request(app).get("/api/stays").set("Authorization", `Bearer ${token}`);
 
@@ -128,6 +129,7 @@ test("PATCH /stays/:id/status lets an admin approve a listing and records an aud
   const host = await seedUser("stays-host-1", "host1@example.com");
   const listing = await seedListing(host.id, { status: "PENDING_APPROVAL" });
   const token = mockAuthAs({ sub: "stays-admin-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
 
   const res = await request(app)
     .patch(`/api/stays/${listing.id}/status`)
@@ -148,6 +150,7 @@ test("PATCH /stays/:id/status rejects a Finance Viewer admin", async () => {
     data: { cognitoSub: "finance-stays", role: "ADMIN", adminRole: "FINANCE_VIEWER", firstName: "F", lastName: "V", email: "fv-stays@example.com" },
   });
   const token = mockAuthAs({ sub: "finance-stays", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
 
   const res = await request(app)
     .patch(`/api/stays/${listing.id}/status`)
@@ -173,6 +176,7 @@ test("GET /stays exposes host email and booking count to an admin but not to a g
 
   restoreAuth();
   const adminToken = mockAuthAs({ sub: "stays-admin-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const adminView = await request(app).get("/api/stays").set("Authorization", `Bearer ${adminToken}`);
   const seen = adminView.body.data.find((l: { id: string }) => l.id === listing.id);
   assert.equal(seen.host.email, "host1@example.com");
@@ -191,6 +195,7 @@ test("GET /stays/:id/bookings lets an admin see who booked a listing", async () 
 
   restoreAuth();
   const adminToken = mockAuthAs({ sub: "stays-admin-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app).get(`/api/stays/${listing.id}/bookings`).set("Authorization", `Bearer ${adminToken}`);
 
   assert.equal(res.status, 200);

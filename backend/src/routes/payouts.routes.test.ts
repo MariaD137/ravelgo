@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, mockPaystackTransfer, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, mockPaystackTransfer, restoreAuth, resetDb, mockCognitoAdminUserStatus } from "../test/helpers";
 import { signWebhookPayloadForTesting } from "../billing/paystack";
 
 beforeEach(resetDb);
@@ -57,6 +57,7 @@ test("GET /payouts/history only returns the calling driver's own payouts, includ
   const { user: userB } = await createDriver("driver-sub-3");
 
   const adminToken = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const createRes = await request(app)
     .post("/api/payouts/create")
     .set("Authorization", `Bearer ${adminToken}`)
@@ -131,6 +132,7 @@ test("POST /payouts/calculate computes a real amount from the driver's completed
   });
 
   const token = mockAuthAs({ sub: "admin-sub-2", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .post("/api/payouts/calculate")
     .set("Authorization", `Bearer ${token}`)
@@ -165,6 +167,7 @@ test("a Finance Viewer admin can list payouts but cannot process one", async () 
     data: { cognitoSub: "finance-viewer-1", role: "ADMIN", firstName: "Fin", lastName: "V", email: "fv1@example.com", adminRole: "FINANCE_VIEWER" },
   });
   const token = mockAuthAs({ sub: "finance-viewer-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
 
   const list = await request(app).get("/api/payouts").set("Authorization", `Bearer ${token}`);
   assert.equal(list.status, 200);
@@ -183,6 +186,7 @@ test("POST /payouts/:id/process moves PENDING to PROCESSING without fabricating 
   });
 
   const token = mockAuthAs({ sub: "super-payout-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app).post(`/api/payouts/${payout.id}/process`).set("Authorization", `Bearer ${token}`);
 
   assert.equal(res.status, 200);
@@ -205,6 +209,7 @@ test("POST /payouts/:id/process initiates a real Paystack transfer when the driv
 
   mockPaystackTransfer();
   const token = mockAuthAs({ sub: "super-payout-3", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app).post(`/api/payouts/${payout.id}/process`).set("Authorization", `Bearer ${token}`);
 
   assert.equal(res.status, 200);
@@ -243,6 +248,7 @@ test("POST /payouts/:id/complete records the real transactionId the caller suppl
   });
 
   const token = mockAuthAs({ sub: "super-payout-2", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .post(`/api/payouts/${payout.id}/complete`)
     .set("Authorization", `Bearer ${token}`)
@@ -262,6 +268,7 @@ test("POST /payouts/:id/complete rejects a missing or blank transactionId", asyn
     data: { driverId: user.id, amount: 5000, period: "2026-03", status: "PROCESSING" },
   });
   const token = mockAuthAs({ sub: "super-payout-3", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
 
   const missing = await request(app)
     .post(`/api/payouts/${payout.id}/complete`)
@@ -292,6 +299,7 @@ test("POST /payouts/:id/complete rejects a transactionId already used by another
     data: { driverId: userB.id, amount: 7000, period: "2026-04", status: "PROCESSING" },
   });
   const token = mockAuthAs({ sub: "super-payout-4", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
 
   const first = await request(app)
     .post(`/api/payouts/${payoutA.id}/complete`)
@@ -308,6 +316,7 @@ test("POST /payouts/:id/complete rejects a transactionId already used by another
 
 test("GET /payouts (Admin) filters by a validated status enum, rejecting garbage", async () => {
   const token = mockAuthAs({ sub: "admin-sub-3", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .get("/api/payouts")
     .query({ status: "NOT_A_REAL_STATUS" })

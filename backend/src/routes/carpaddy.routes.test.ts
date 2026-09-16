@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, restoreAuth, resetDb, mockCognitoAdminUserStatus } from "../test/helpers";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -57,6 +57,7 @@ test("PATCH /api/car-paddy/:id lets an Admin approve and stamps reviewedAt", asy
   const req = await prisma.carPaddyRequest.create({ data: { driverId: driver.id, plateNumber: "AAA-1" } });
 
   const token = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch(`/api/car-paddy/${req.id}`)
     .set("Authorization", `Bearer ${token}`)
@@ -75,6 +76,7 @@ test("PATCH /api/car-paddy/:id rejects a Support Agent admin and records an audi
   });
 
   const supportToken = mockAuthAs({ sub: "support-carpaddy", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const denied = await request(app)
     .patch(`/api/car-paddy/${req.id}`)
     .set("Authorization", `Bearer ${supportToken}`)
@@ -83,6 +85,7 @@ test("PATCH /api/car-paddy/:id rejects a Support Agent admin and records an audi
 
   restoreAuth();
   const superToken = mockAuthAs({ sub: "super-carpaddy", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const approved = await request(app)
     .patch(`/api/car-paddy/${req.id}`)
     .set("Authorization", `Bearer ${superToken}`)

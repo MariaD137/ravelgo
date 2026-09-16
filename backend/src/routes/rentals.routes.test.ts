@@ -4,7 +4,7 @@ import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
 import { signWebhookPayloadForTesting } from "../billing/paystack";
-import { mockAuthAs, mockPaystackInitialize, mockPaystackVerify, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, mockPaystackInitialize, mockPaystackVerify, restoreAuth, resetDb, mockCognitoAdminUserStatus } from "../test/helpers";
 import { reconcileExpiredRentalBookings } from "../services/rental-payment";
 
 // Build a signed rental-booking webhook the same way Paystack would, and
@@ -164,6 +164,7 @@ test("PATCH /api/rentals/:id/status rejects a Finance Viewer admin and records a
   });
 
   const financeToken = mockAuthAs({ sub: "finance-rentals", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const denied = await request(app)
     .patch(`/api/rentals/${listing.id}/status`)
     .set("Authorization", `Bearer ${financeToken}`)
@@ -172,6 +173,7 @@ test("PATCH /api/rentals/:id/status rejects a Finance Viewer admin and records a
 
   restoreAuth();
   const superToken = mockAuthAs({ sub: "super-rentals", groups: ["Admin"] }); // no User row -> SUPER_ADMIN
+  mockCognitoAdminUserStatus();
   const approved = await request(app)
     .patch(`/api/rentals/${listing.id}/status`)
     .set("Authorization", `Bearer ${superToken}`)

@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, restoreAuth, resetDb, mockCognitoAdminUserStatus } from "../test/helpers";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -83,6 +83,7 @@ test("PATCH /api/support-tickets/:id/status lets an Admin resolve a ticket", asy
   const ticket = await prisma.supportTicket.create({ data: { userId: user.id, subject: "Issue", category: "App" } });
 
   const token = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch(`/api/support-tickets/${ticket.id}/status`)
     .set("Authorization", `Bearer ${token}`)

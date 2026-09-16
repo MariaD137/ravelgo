@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, restoreAuth, resetDb, mockCognitoAdminUserStatus } from "../test/helpers";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -81,6 +81,7 @@ test("PATCH /api/documents/:id/review lets an Admin approve a document", async (
   const doc = await prisma.driverDocument.create({ data: { driverId: driver.id, title: "Doc", fileKey: "k4" } });
 
   const token = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch(`/api/documents/${doc.id}/review`)
     .set("Authorization", `Bearer ${token}`)
@@ -96,6 +97,7 @@ test("PATCH /api/documents/:id/review rejects a REJECTED status with no rejectio
   const doc = await prisma.driverDocument.create({ data: { driverId: driver.id, title: "Doc", fileKey: "k5" } });
 
   const token = mockAuthAs({ sub: "admin-sub-2", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch(`/api/documents/${doc.id}/review`)
     .set("Authorization", `Bearer ${token}`)
@@ -111,6 +113,7 @@ test("PATCH /api/documents/:id/review rejects a REJECTED status with a blank rej
   const doc = await prisma.driverDocument.create({ data: { driverId: driver.id, title: "Doc", fileKey: "k6" } });
 
   const token = mockAuthAs({ sub: "admin-sub-3", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch(`/api/documents/${doc.id}/review`)
     .set("Authorization", `Bearer ${token}`)
@@ -124,6 +127,7 @@ test("PATCH /api/documents/:id/review persists and returns the rejectionReason",
   const doc = await prisma.driverDocument.create({ data: { driverId: driver.id, title: "Doc", fileKey: "k7" } });
 
   const token = mockAuthAs({ sub: "admin-sub-4", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch(`/api/documents/${doc.id}/review`)
     .set("Authorization", `Bearer ${token}`)
@@ -144,6 +148,7 @@ test("PATCH /api/documents/:id/review clears a prior rejectionReason on approval
   });
 
   const token = mockAuthAs({ sub: "admin-sub-5", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch(`/api/documents/${doc.id}/review`)
     .set("Authorization", `Bearer ${token}`)
@@ -155,6 +160,7 @@ test("PATCH /api/documents/:id/review clears a prior rejectionReason on approval
 
 test("PATCH /api/documents/:id/review returns 404 for a document that doesn't exist", async () => {
   const token = mockAuthAs({ sub: "admin-sub-6", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch(`/api/documents/does-not-exist/review`)
     .set("Authorization", `Bearer ${token}`)
@@ -178,6 +184,7 @@ test("PATCH /api/documents/:id/review rejects an admin whose role lacks drivers:
   });
 
   const token = mockAuthAs({ sub: "finance-docs", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch(`/api/documents/${doc.id}/review`)
     .set("Authorization", `Bearer ${token}`)

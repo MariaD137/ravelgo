@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, restoreAuth, resetDb, mockCognitoAdminUserStatus } from "../test/helpers";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -34,6 +34,7 @@ test("GET /api/riders lists riders for an Admin caller", async () => {
   });
 
   const token = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app).get("/api/riders").set("Authorization", `Bearer ${token}`);
 
   assert.equal(res.status, 200);
@@ -118,6 +119,7 @@ test("PATCH /api/riders/:id/status lets an Admin suspend a rider", async () => {
   });
 
   const token = mockAuthAs({ sub: "admin-sub-2", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch(`/api/riders/${rider.id}/status`)
     .set("Authorization", `Bearer ${token}`)
@@ -135,6 +137,7 @@ test("PATCH /api/riders/:id/status rejects a Finance Viewer admin preset", async
     data: { cognitoSub: "finance-viewer-2", role: "ADMIN", firstName: "F", lastName: "V", email: "fv2@example.com", adminRole: "FINANCE_VIEWER" },
   });
   const token = mockAuthAs({ sub: "finance-viewer-2", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
 
   const res = await request(app)
     .patch(`/api/riders/${rider.id}/status`)

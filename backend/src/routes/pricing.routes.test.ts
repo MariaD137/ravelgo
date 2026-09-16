@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, restoreAuth, resetDb, mockCognitoAdminUserStatus } from "../test/helpers";
 
 beforeEach(async () => {
   await resetDb();
@@ -31,6 +31,7 @@ test("POST /api/pricing-rules rejects a non-Admin caller", async () => {
 
 test("POST /api/pricing-rules lets an Admin create a rule, then it's listed", async () => {
   const token = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const create = await request(app)
     .post("/api/pricing-rules")
     .set("Authorization", `Bearer ${token}`)
@@ -47,6 +48,7 @@ test("a Support Agent admin preset cannot create a pricing rule", async () => {
     data: { cognitoSub: "support-agent-1", role: "ADMIN", firstName: "S", lastName: "A", email: "sa1@example.com", adminRole: "SUPPORT_AGENT" },
   });
   const token = mockAuthAs({ sub: "support-agent-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .post("/api/pricing-rules")
     .set("Authorization", `Bearer ${token}`)
@@ -59,6 +61,7 @@ test("an Operations Manager admin preset can create a pricing rule", async () =>
     data: { cognitoSub: "ops-manager-1", role: "ADMIN", firstName: "O", lastName: "M", email: "om1@example.com", adminRole: "OPERATIONS_MANAGER" },
   });
   const token = mockAuthAs({ sub: "ops-manager-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .post("/api/pricing-rules")
     .set("Authorization", `Bearer ${token}`)
@@ -69,6 +72,7 @@ test("an Operations Manager admin preset can create a pricing rule", async () =>
 test("PATCH /api/pricing-rules/:id lets an Admin deactivate a rule", async () => {
   const rule = await prisma.pricingRule.create({ data: { name: "Standard", baseFare: 2, perKm: 1, perMinute: 0.2 } });
   const token = mockAuthAs({ sub: "admin-sub-2", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch(`/api/pricing-rules/${rule.id}`)
     .set("Authorization", `Bearer ${token}`)
@@ -79,6 +83,7 @@ test("PATCH /api/pricing-rules/:id lets an Admin deactivate a rule", async () =>
 
 test("POST /api/surge-zones lets an Admin create a zone, then it's listed", async () => {
   const token = mockAuthAs({ sub: "admin-sub-3", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const create = await request(app)
     .post("/api/surge-zones")
     .set("Authorization", `Bearer ${token}`)

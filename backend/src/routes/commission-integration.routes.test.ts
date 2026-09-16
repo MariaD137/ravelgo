@@ -4,7 +4,14 @@ import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
 import { signWebhookPayloadForTesting } from "../billing/paystack";
-import { mockAuthAs, mockPaystackInitialize, mockPaystackVerify, restoreAuth, resetDb } from "../test/helpers";
+import {
+  mockAuthAs,
+  mockPaystackInitialize,
+  mockPaystackVerify,
+  mockCognitoAdminUserStatus,
+  restoreAuth,
+  resetDb,
+} from "../test/helpers";
 import { resetRealtimeState } from "../realtime/hub";
 import { calculatePayoutForPeriod } from "../services/payouts";
 
@@ -144,6 +151,7 @@ test("POST /api/trips/:id/refund (full) reverses the commission and zeroes the t
   await request(app).post(`/api/trips/${trip.id}/charge`).set("Authorization", `Bearer ${driverToken}`).send({ method: "CASH" });
   restoreAuth();
 
+  mockCognitoAdminUserStatus();
   const adminToken = mockAuthAs({ sub: "ci-admin", groups: ["Admin"] });
   const refund = await request(app)
     .post(`/api/trips/${trip.id}/refund`)

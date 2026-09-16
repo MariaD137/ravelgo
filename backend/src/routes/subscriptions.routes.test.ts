@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, restoreAuth, resetDb, mockCognitoAdminUserStatus } from "../test/helpers";
 
 beforeEach(async () => {
   await resetDb();
@@ -38,6 +38,7 @@ test("POST /api/subscription-plans rejects a non-Admin caller", async () => {
 
 test("POST /api/subscription-plans lets an Admin create a plan, then it's listed publicly", async () => {
   const adminToken = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const create = await request(app)
     .post("/api/subscription-plans")
     .set("Authorization", `Bearer ${adminToken}`)
@@ -60,6 +61,7 @@ test("POST /api/subscription-plans rejects a Finance Viewer admin", async () => 
     data: { cognitoSub: "finance-plans", role: "ADMIN", adminRole: "FINANCE_VIEWER", firstName: "F", lastName: "V", email: "fv-plans@example.com" },
   });
   const token = mockAuthAs({ sub: "finance-plans", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .post("/api/subscription-plans")
     .set("Authorization", `Bearer ${token}`)

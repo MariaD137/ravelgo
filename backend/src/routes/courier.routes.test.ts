@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, restoreAuth, resetDb, mockCognitoAdminUserStatus } from "../test/helpers";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -498,6 +498,7 @@ test("GET /api/courier-requests/:id includes real payment state for the sender/d
   // An unrelated Admin also sees it.
   restoreAuth();
   const adminToken = mockAuthAs({ sub: "admin-pay-view", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const adminView = await request(app).get(`/api/courier-requests/${created.body.id}`).set("Authorization", `Bearer ${adminToken}`);
   assert.equal(adminView.status, 200);
   assert.equal(adminView.body.payment.status, "SUCCEEDED");
@@ -617,6 +618,7 @@ test("PATCH /api/courier-requests/:id/status rejects a Finance Viewer admin, but
   });
 
   const financeToken = mockAuthAs({ sub: "finance-courier", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const denied = await request(app)
     .patch(`/api/courier-requests/${req.id}/status`)
     .set("Authorization", `Bearer ${financeToken}`)
@@ -625,6 +627,7 @@ test("PATCH /api/courier-requests/:id/status rejects a Finance Viewer admin, but
 
   restoreAuth();
   const superToken = mockAuthAs({ sub: "super-courier", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const overridden = await request(app)
     .patch(`/api/courier-requests/${req.id}/status`)
     .set("Authorization", `Bearer ${superToken}`)
@@ -877,6 +880,7 @@ test("PATCH /api/courier-requests/:id/status notifies the assigned driver (not j
   });
 
   const superToken = mockAuthAs({ sub: "super-notify-driver", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch(`/api/courier-requests/${req.id}/status`)
     .set("Authorization", `Bearer ${superToken}`)

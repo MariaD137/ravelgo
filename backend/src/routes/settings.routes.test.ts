@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, restoreAuth, resetDb, mockCognitoAdminUserStatus } from "../test/helpers";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -37,6 +37,7 @@ test("PATCH /api/admin/settings/payment is rejected for a Finance admin (Super A
     data: { cognitoSub: "finance-1", role: "ADMIN", adminRole: "FINANCE_VIEWER", firstName: "F", lastName: "V", email: "f@example.com" },
   });
   const token = mockAuthAs({ sub: "finance-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch("/api/admin/settings/payment")
     .set("Authorization", `Bearer ${token}`)
@@ -46,6 +47,7 @@ test("PATCH /api/admin/settings/payment is rejected for a Finance admin (Super A
 
 test("PATCH /api/admin/settings/payment lets a Super Admin change the cash limit and records an audit entry", async () => {
   const token = mockAuthAs({ sub: "super-1", groups: ["Admin"] }); // no User row -> defaults to SUPER_ADMIN
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch("/api/admin/settings/payment")
     .set("Authorization", `Bearer ${token}`)
@@ -68,6 +70,7 @@ test("PATCH /api/admin/settings/payment lets a Super Admin change the cash limit
 
 test("disabling cash entirely blocks it even for a fare under the limit", async () => {
   const superToken = mockAuthAs({ sub: "super-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const disable = await request(app)
     .patch("/api/admin/settings/payment")
     .set("Authorization", `Bearer ${superToken}`)
@@ -105,6 +108,7 @@ test("POST /api/admin/cash-remittances is allowed for Finance and audited", asyn
   });
 
   const token = mockAuthAs({ sub: "finance-2", email: "f2@example.com", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .post("/api/admin/cash-remittances")
     .set("Authorization", `Bearer ${token}`)
@@ -128,6 +132,7 @@ test("POST /api/admin/cash-remittances is rejected for an Operations admin", asy
   });
 
   const token = mockAuthAs({ sub: "ops-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .post("/api/admin/cash-remittances")
     .set("Authorization", `Bearer ${token}`)

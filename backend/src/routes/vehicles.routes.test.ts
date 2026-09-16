@@ -4,7 +4,7 @@ import request from "supertest";
 import { app } from "../app";
 import { env } from "../config/env";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, restoreAuth, resetDb, mockCognitoAdminUserStatus } from "../test/helpers";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -33,6 +33,7 @@ test("GET /api/vehicles lets an admin see every driver's vehicles with owner inf
   });
 
   const token = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app).get("/api/vehicles").set("Authorization", `Bearer ${token}`);
 
   assert.equal(res.status, 200);
