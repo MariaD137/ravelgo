@@ -41,7 +41,9 @@ or, once any working SUPER_ADMIN session exists, `GET /api/admin-users` from the
 
 ## New Super Admins — how to create them (not yet done)
 
-**⚠️ Confirm the exact email spelling first** — `mtabiowo57@gmail.com` vs `matabiowo57@gmail.com` were both used across this conversation. Only proceed with the address you've verified is correct.
+Confirmed target accounts:
+1. `mtabiowo57@gmail.com`
+2. `lacadiagroup@gmail.com`
 
 ### Preferred: through the app itself (fully audited, no raw Cognito calls)
 
@@ -51,8 +53,8 @@ Requires an existing, working `SUPER_ADMIN` session (now that staging is reachab
 curl -X POST "https://<current-staging-api-url>/api/admin-users" \
   -H "Authorization: Bearer <your admin access token>" \
   -H "Content-Type: application/json" \
-  -d '{"email":"<verified-email-1>","firstName":"<first>","lastName":"<last>","adminRole":"SUPER_ADMIN"}'
-# repeat for the second email
+  -d '{"email":"mtabiowo57@gmail.com","firstName":"<first>","lastName":"<last>","adminRole":"SUPER_ADMIN"}'
+# repeat with lacadiagroup@gmail.com
 ```
 
 This single call: creates the Cognito user via `AdminCreateUser` (Cognito auto-generates and emails a temporary password — this command never sees, stores, or logs it), adds them to the `Admin` group, creates the linked Postgres `User` row with `adminRole: "SUPER_ADMIN"` in the same request, and writes an `ADMIN_USER_CREATED` audit log entry. The caller's own admin session must have MFA enrolled, or this call is rejected server-side.
@@ -64,7 +66,7 @@ export ENVNAME=staging   # confirm this is correct first
 POOL="$(aws cloudformation describe-stacks --stack-name "RavelGo-Auth-${ENVNAME}" \
   --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text)"
 
-for EMAIL in <verified-email-1> <verified-email-2>; do
+for EMAIL in mtabiowo57@gmail.com lacadiagroup@gmail.com; do
   aws cognito-idp admin-create-user \
     --user-pool-id "$POOL" \
     --username "$EMAIL" \
@@ -111,5 +113,4 @@ TOTP only (`infra/lib/auth-stack.ts`), Cognito pool-level setting is `Mfa.OPTION
 1. Staging backend is now confirmed working (this session fixed the App Runner drift and redeployed) — the infrastructure blocker from the earlier discovery pass is resolved.
 2. **The replacement accounts have not been created** — commands above are prepared, not run. Requires a verified operator with real AWS credentials.
 3. **The old superuser(s) have not been touched.** Do this only after the replacement accounts are created and independently confirmed working (login + MFA + a real admin action succeeds).
-4. **The email address for one target account is ambiguous** (`mtabiowo57@gmail.com` vs `matabiowo57@gmail.com`) — resolve before running anything.
-5. Finding: the no-row-defaults-to-SUPER_ADMIN loophole (see Root Cause #4) is still open — worth closing in a follow-up so future admin provisioning can't silently over-grant.
+4. Finding: the no-row-defaults-to-SUPER_ADMIN loophole (see Root Cause #4) is still open — worth closing in a follow-up so future admin provisioning can't silently over-grant.
