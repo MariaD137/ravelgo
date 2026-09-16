@@ -93,6 +93,17 @@ export class AuthStack extends cdk.Stack {
       // apps.
       mfa: cognito.Mfa.OPTIONAL,
       mfaSecondFactor: { otp: true, sms: false },
+      // Security audit Finding P1: this pool previously had no compromised-
+      // credential checking or risk-based sign-in monitoring at all — neither
+      // WAF in this repo sits in front of Cognito's own hosted endpoints, so
+      // this was the only place to add it. AUDIT (not ENFORCED) is
+      // deliberately non-disruptive: it logs risk events and flags
+      // known-compromised credentials without blocking or challenging any
+      // sign-in, so it ships with zero behavior change for real users.
+      // Moving to ENFORCED (which can trigger adaptive MFA/blocking on risky
+      // sign-ins) is a follow-up product decision, not made here. Note this
+      // does add a small per-MAU cost in Cognito's pricing.
+      advancedSecurityMode: cognito.AdvancedSecurityMode.AUDIT,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
