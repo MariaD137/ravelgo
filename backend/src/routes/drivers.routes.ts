@@ -344,7 +344,22 @@ driversRouter.patch("/drivers/:id/status", requireAuth, requireAdminPermission("
   const driver = await prisma.driver.update({
     where: { id: req.params.id },
     data: { status: parsed.data.status },
+    include: { user: true },
   });
+  if (parsed.data.status === "SUSPENDED") {
+    // Being suspended previously only changed a Postgres flag — the driver's
+    // Cognito group membership and any refresh token already in their hands
+    // kept working until natural expiry (up to 30 days). Revoking here forces
+    // re-authentication everywhere, bounding a suspended driver's remaining
+    // access to their current access token's ~1h TTL instead (audit Finding
+    // D2/T2). Best-effort: a suspension should still take effect in Postgres
+    // even if this call fails (e.g. the account has never signed in yet).
+    try {
+      await cognitoGroups.globalSignOut(driver.user.cognitoSub);
+    } catch (err) {
+      console.error("Failed to revoke driver's Cognito sessions after suspension", err);
+    }
+  }
   void recordAudit({
     actorSub: req.user!.sub,
     action: "DRIVER_STATUS_CHANGED",

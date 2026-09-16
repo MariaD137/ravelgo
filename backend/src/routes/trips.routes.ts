@@ -237,6 +237,17 @@ tripsRouter.post("/trips/:id/arrived", requireAuth, requireRole("Driver"), async
   if (!driver || existing.driverId !== driver.id) {
     return res.status(403).json({ error: "Not authorized to update this trip" });
   }
+  // Ownership alone isn't enough: if this driver was suspended after being
+  // matched to the trip, being in the Cognito "Driver" group still passes
+  // requireRole, but they shouldn't be able to keep acting on a live trip
+  // (audit Finding D1/AZ1). Scoped to SUSPENDED specifically, not "not
+  // ACTIVE" broadly — a still-PENDING_REVIEW driver already assigned to a
+  // trip (e.g. by an admin) legitimately continues it; matching.ts already
+  // restricts new offers to ACTIVE drivers, so PENDING_REVIEW never gets a
+  // trip this way in practice, but suspension is the actual safety concern.
+  if (driver.status === "SUSPENDED") {
+    return res.status(403).json({ error: "Your driver account is suspended" });
+  }
   if (existing.status !== "MATCHED") {
     return res.status(409).json({ error: "Can only report arrival for a matched trip" });
   }
@@ -269,6 +280,9 @@ tripsRouter.post("/trips/:id/arrived", requireAuth, requireRole("Driver"), async
 tripsRouter.post("/trips/:id/accept", requireAuth, requireRole("Driver"), async (req, res) => {
   const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
+  if (driver.status !== "ACTIVE") {
+    return res.status(403).json({ error: "Your driver account isn't active" });
+  }
 
   if (await driverHasActiveDelivery(driver.id)) {
     return res.status(409).json({
@@ -328,6 +342,9 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
     const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
     if (!driver || existing.driverId !== driver.id) {
       return res.status(403).json({ error: "Not authorized to update this trip" });
+    }
+    if (driver.status === "SUSPENDED") {
+      return res.status(403).json({ error: "Your driver account is suspended" });
     }
   } else if (await blockIfAdminLacksPermission(req, res, "drivers:write")) {
     return; // 403 already written

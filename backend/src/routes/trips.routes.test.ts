@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { mockAuthAs, restoreAuth, resetDb, mockCognitoAdminUserStatus } from "../test/helpers";
 import { estimateDurationMinutes, haversineKm } from "../lib/geo";
 import { computeFare } from "../services/pricing";
 import { getRiderLocation, resetRealtimeState } from "../realtime/hub";
@@ -385,6 +385,37 @@ test("PATCH /api/trips/:id/status lets the assigned Driver or an Admin advance t
   assert.equal(auditEntries[0].actorSub, "driver-sub-2");
 });
 
+test("audit Finding D1/AZ1: a suspended driver cannot report arrival or advance a trip they're already assigned to", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-suspended-driver", role: "RIDER", firstName: "S", lastName: "D", email: "sd@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "driver-suspended-1", role: "DRIVER", firstName: "S", lastName: "U", email: "su@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "SUSPENDED" } });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "X", destination: "Y", estimatedFare: 12, status: "MATCHED" },
+  });
+
+  const token = mockAuthAs({ sub: "driver-suspended-1", groups: ["Driver"] });
+
+  // requireRole("Driver") still passes — the account remains in the Cognito
+  // Driver group — so ownership alone previously let a suspended driver keep
+  // acting on a trip they were assigned before the suspension.
+  const arrived = await request(app).post(`/api/trips/${trip.id}/arrived`).set("Authorization", `Bearer ${token}`);
+  assert.equal(arrived.status, 403);
+
+  const status = await request(app)
+    .patch(`/api/trips/${trip.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "IN_PROGRESS" });
+  assert.equal(status.status, 403);
+
+  const unchanged = await prisma.trip.findUniqueOrThrow({ where: { id: trip.id } });
+  assert.equal(unchanged.status, "MATCHED");
+  assert.equal(unchanged.arrivedAt, null);
+});
+
 test("PATCH /api/trips/:id/status rejects a Driver who isn't assigned to the trip", async () => {
   const rider = await prisma.user.create({
     data: { cognitoSub: "rider-sub-10", role: "RIDER", firstName: "Q", lastName: "R", email: "q@example.com" },
@@ -473,6 +504,7 @@ test("PATCH /api/trips/:id/status lets an Admin override the fare band (dispute 
   });
 
   const token = mockAuthAs({ sub: "admin-fare", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch(`/api/trips/${trip.id}/status`)
     .set("Authorization", `Bearer ${token}`)
@@ -497,6 +529,7 @@ test("PATCH /api/trips/:id/status rejects a Finance Viewer admin, but a Super Ad
   });
 
   const financeToken = mockAuthAs({ sub: "finance-trips", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const denied = await request(app)
     .patch(`/api/trips/${trip.id}/status`)
     .set("Authorization", `Bearer ${financeToken}`)
@@ -505,6 +538,7 @@ test("PATCH /api/trips/:id/status rejects a Finance Viewer admin, but a Super Ad
 
   restoreAuth();
   const superToken = mockAuthAs({ sub: "super-trips", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const overridden = await request(app)
     .patch(`/api/trips/${trip.id}/status`)
     .set("Authorization", `Bearer ${superToken}`)
@@ -755,6 +789,7 @@ test("state machine rejects REQUESTED->COMPLETED (billing a trip never driven)",
 test("state machine rejects reviving a COMPLETED trip to IN_PROGRESS", async () => {
   const trip = await seedAssignedTrip("rider-sm2", "driver-sm2", "COMPLETED");
   const token = mockAuthAs({ sub: "admin-sm", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch(`/api/trips/${trip.id}/status`)
     .set("Authorization", `Bearer ${token}`)

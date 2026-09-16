@@ -3,7 +3,14 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb, mockCognitoAddToGroup } from "../test/helpers";
+import {
+  mockAuthAs,
+  restoreAuth,
+  resetDb,
+  mockCognitoAddToGroup,
+  mockCognitoAdminUserStatus,
+  mockCognitoGlobalSignOut,
+} from "../test/helpers";
 import { getLatestDriverLocation, resetRealtimeState } from "../realtime/hub";
 
 beforeEach(() => {
@@ -124,6 +131,7 @@ test("PATCH /api/drivers/:id/status lets an Admin suspend a driver", async () =>
   const driver = await prisma.driver.create({ data: { userId: user.id } });
 
   const token = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .patch(`/api/drivers/${driver.id}/status`)
     .set("Authorization", `Bearer ${token}`)
@@ -139,6 +147,45 @@ test("PATCH /api/drivers/:id/status lets an Admin suspend a driver", async () =>
   assert.equal(notifications[0].type, "DRIVER_ACCOUNT_STATUS_CHANGED");
 });
 
+test("audit Finding D2/T2: suspending a driver revokes their existing Cognito refresh token", async () => {
+  const user = await prisma.user.create({
+    data: { cognitoSub: "driver-sub-globalsignout", role: "DRIVER", firstName: "Gl", lastName: "S", email: "gl@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: user.id, status: "ACTIVE" } });
+
+  const token = mockAuthAs({ sub: "admin-sub-gso", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
+  const globalSignOut = mockCognitoGlobalSignOut();
+
+  const res = await request(app)
+    .patch(`/api/drivers/${driver.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "SUSPENDED" });
+
+  assert.equal(res.status, 200);
+  assert.equal(globalSignOut.mock.calls.length, 1);
+  assert.equal(globalSignOut.mock.calls[0].arguments[0], "driver-sub-globalsignout");
+});
+
+test("audit Finding D2/T2: reactivating a driver does not call globalSignOut", async () => {
+  const user = await prisma.user.create({
+    data: { cognitoSub: "driver-sub-reactivate", role: "DRIVER", firstName: "Re", lastName: "A", email: "re@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: user.id, status: "SUSPENDED" } });
+
+  const token = mockAuthAs({ sub: "admin-sub-reactivate", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
+  const globalSignOut = mockCognitoGlobalSignOut();
+
+  const res = await request(app)
+    .patch(`/api/drivers/${driver.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "ACTIVE" });
+
+  assert.equal(res.status, 200);
+  assert.equal(globalSignOut.mock.calls.length, 0);
+});
+
 test("PATCH /api/drivers/:id/status rejects a Support Agent admin preset", async () => {
   const user = await prisma.user.create({
     data: { cognitoSub: "driver-sub-5", role: "DRIVER", firstName: "Mo", lastName: "P", email: "mo@example.com" },
@@ -148,6 +195,7 @@ test("PATCH /api/drivers/:id/status rejects a Support Agent admin preset", async
     data: { cognitoSub: "support-agent-2", role: "ADMIN", firstName: "S", lastName: "A", email: "sa2@example.com", adminRole: "SUPPORT_AGENT" },
   });
   const token = mockAuthAs({ sub: "support-agent-2", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
 
   const res = await request(app)
     .patch(`/api/drivers/${driver.id}/status`)
@@ -345,6 +393,7 @@ test("GET /api/drivers/:driverId/documents/:documentId/url returns a signed URL 
   });
 
   const token = mockAuthAs({ sub: "admin-doc-1", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .get(`/api/drivers/${driver.id}/documents/${doc.id}/url`)
     .set("Authorization", `Bearer ${token}`);
@@ -394,6 +443,7 @@ test("GET /api/drivers/:driverId/documents/:documentId/url rejects an admin whos
   });
 
   const token = mockAuthAs({ sub: "finance-doc-url", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .get(`/api/drivers/${driver.id}/documents/${doc.id}/url`)
     .set("Authorization", `Bearer ${token}`);
@@ -403,6 +453,7 @@ test("GET /api/drivers/:driverId/documents/:documentId/url rejects an admin whos
 
 test("GET /api/drivers/:driverId/documents/:documentId/url 404s for a driver that doesn't exist", async () => {
   const token = mockAuthAs({ sub: "admin-doc-2", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .get(`/api/drivers/does-not-exist/documents/also-missing/url`)
     .set("Authorization", `Bearer ${token}`);
@@ -417,6 +468,7 @@ test("GET /api/drivers/:driverId/documents/:documentId/url 404s for a document t
   const driver = await prisma.driver.create({ data: { userId: user.id } });
 
   const token = mockAuthAs({ sub: "admin-doc-3", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .get(`/api/drivers/${driver.id}/documents/does-not-exist/url`)
     .set("Authorization", `Bearer ${token}`);
@@ -438,6 +490,7 @@ test("GET /api/drivers/:driverId/documents/:documentId/url 404s when the documen
   });
 
   const token = mockAuthAs({ sub: "admin-doc-4", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .get(`/api/drivers/${driverA.id}/documents/${docB.id}/url`)
     .set("Authorization", `Bearer ${token}`);
@@ -455,6 +508,7 @@ test("GET /api/drivers/:driverId/documents/:documentId/url 404s when the documen
   });
 
   const token = mockAuthAs({ sub: "admin-doc-5", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app)
     .get(`/api/drivers/${driver.id}/documents/${doc.id}/url`)
     .set("Authorization", `Bearer ${token}`);
@@ -476,6 +530,7 @@ test("GET /api/drivers/:id includes the driver's phoneNumber (or null) for the a
   const driver = await prisma.driver.create({ data: { userId: user.id } });
 
   const token = mockAuthAs({ sub: "admin-doc-6", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
   const res = await request(app).get(`/api/drivers/${driver.id}`).set("Authorization", `Bearer ${token}`);
 
   assert.equal(res.status, 200);
