@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'package:amazon_cognito_identity_dart_2/cognito.dart';
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/services/auth_service.dart';
 import 'package:ravelgo_driver_app/services/push_notification_service.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/auth/create_account_screen.dart';
 import 'package:ravelgo_driver_app/views/auth/forgot_password_screen.dart';
+import 'package:ravelgo_driver_app/views/auth/set_new_password_screen.dart';
 import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
 
 /// Driver sign-in, wired to the RavelGo Cognito user pool via [AuthService].
@@ -44,6 +46,12 @@ class _LoginScreenState extends State<LoginScreen> {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (context) => const DriverShell()),
         (route) => false,
+      );
+    } on CognitoUserNewPasswordRequiredException {
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => SetNewPasswordScreen(email: _emailController.text.trim())),
       );
     } catch (e) {
       if (!mounted) return;

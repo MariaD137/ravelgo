@@ -84,6 +84,13 @@ class AuthService {
   static String? givenName;
   static String? familyName;
 
+  /// Set by signIn() when Cognito responds with the NEW_PASSWORD_REQUIRED
+  /// challenge — e.g. an operator-created driver account signing in for the
+  /// first time with a temporary password. Consumed by completeNewPassword().
+  /// (Audit Finding D3: previously this app had no screen to handle this
+  /// challenge at all, so such a driver could never actually sign in.)
+  static CognitoUser? _pendingNewPasswordUser;
+
   static bool get isSignedIn => accessToken != null;
 
   /// True only when the app was built with real Cognito settings. Lets the UI
@@ -199,15 +206,39 @@ class AuthService {
 
   /// Sign in and persist the resulting tokens (via the pool's storage) for
   /// API calls and across reloads.
+  ///
+  /// Throws CognitoUserNewPasswordRequiredException for a driver signing in
+  /// for the first time with a temporary password — the caller must show a
+  /// "set a new password" step and call completeNewPassword() to finish.
   static Future<void> signIn({required String email, required String password}) async {
     final user = CognitoUser(email, _pool);
-    final s = await user.authenticateUser(
-      AuthenticationDetails(username: email, password: password),
-    );
+    AuthService.email = email;
+    try {
+      final s = await user.authenticateUser(
+        AuthenticationDetails(username: email, password: password),
+      );
+      if (s != null) {
+        _applySession(user, s);
+      }
+    } on CognitoUserNewPasswordRequiredException {
+      _pendingNewPasswordUser = user;
+      rethrow;
+    }
+  }
+
+  /// Completes a first-sign-in password change after signIn() threw
+  /// CognitoUserNewPasswordRequiredException. Sets the caller's chosen
+  /// password as their real one and finishes signing them in.
+  static Future<void> completeNewPassword({required String newPassword}) async {
+    final user = _pendingNewPasswordUser;
+    if (user == null) {
+      throw CognitoClientException('Your session expired — please sign in again.');
+    }
+    final s = await user.sendNewPasswordRequiredAnswer(newPassword);
     if (s != null) {
       _applySession(user, s);
     }
-    AuthService.email = email;
+    _pendingNewPasswordUser = null;
   }
 
   /// Clear the session locally and from persistent storage.
