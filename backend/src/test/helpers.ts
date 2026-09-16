@@ -118,28 +118,38 @@ export function mockCognitoAddToGroup({ shouldThrow = false } = {}) {
 /**
  * Stubs cognitoGroups.createAdminUser so admin-user-invite tests never call a
  * real Cognito user pool. Returns the mock so a test can inspect call args;
- * the stubbed username defaults to a synthetic value distinct from the real
- * email, catching any code that wrongly assumes email === Username.
+ * the stubbed sub defaults to a synthetic value distinct from the real
+ * email, catching any code that wrongly assumes email === sub/Username
+ * (see the security audit's Finding A1 — this used to return the Cognito
+ * Username, which for this route is the email, not the JWT `sub`).
  */
-export function mockCognitoCreateAdminUser(username = "cognito-generated-username") {
-  return mock.method(cognitoGroups, "createAdminUser", async () => ({ username }));
+export function mockCognitoCreateAdminUser(sub = "cognito-generated-sub") {
+  return mock.method(cognitoGroups, "createAdminUser", async () => ({ sub }));
 }
 
 export function mockCognitoSetUserEnabled() {
   return mock.method(cognitoGroups, "setUserEnabled", async () => {});
 }
 
+/** Stubs cognitoGroups.globalSignOut so suspension tests never call a real Cognito user pool. */
+export function mockCognitoGlobalSignOut() {
+  return mock.method(cognitoGroups, "globalSignOut", async () => {});
+}
+
 /**
  * Stubs cognitoGroups.adminUserStatus so admin-user route tests never call a
  * real Cognito user pool. Defaults to an active, MFA-enabled account so tests
- * that don't care about status/MFA see the "normal" case; override either
- * field, or pass null to simulate the Cognito account not existing.
+ * that don't care about status/MFA see the "normal" case — this is now also
+ * what every requireAdminPermission-gated route checks before anything else
+ * (isAdminMfaEnrolled), so any test exercising such a route must mock this,
+ * or the real AWS SDK client gets called. Override either field, or pass
+ * null to simulate the Cognito account not existing.
  */
 export function mockCognitoAdminUserStatus(
   result: { cognitoStatus?: string; mfaEnabled?: boolean } | null = {},
 ) {
   return mock.method(cognitoGroups, "adminUserStatus", async () =>
-    result === null ? null : { cognitoStatus: result.cognitoStatus ?? "CONFIRMED", mfaEnabled: result.mfaEnabled ?? false },
+    result === null ? null : { cognitoStatus: result.cognitoStatus ?? "CONFIRMED", mfaEnabled: result.mfaEnabled ?? true },
   );
 }
 

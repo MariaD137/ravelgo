@@ -148,9 +148,9 @@ adminUsersRouter.post(
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return res.status(409).json({ error: "A user with this email already exists" });
 
-    let username: string;
+    let sub: string;
     try {
-      ({ username } = await cognitoGroups.createAdminUser({ email, firstName, lastName }));
+      ({ sub } = await cognitoGroups.createAdminUser({ email, firstName, lastName }));
     } catch (err) {
       // A Cognito account with this email already exists even though our own
       // Postgres row doesn't (e.g. a previous invite that failed after the
@@ -161,10 +161,10 @@ adminUsersRouter.post(
       }
       throw err;
     }
-    await cognitoGroups.addUserToGroup(username, "Admin");
+    await cognitoGroups.addUserToGroup(sub, "Admin");
 
     const created = await prisma.user.create({
-      data: { cognitoSub: username, role: "ADMIN", firstName, lastName, email, adminRole },
+      data: { cognitoSub: sub, role: "ADMIN", firstName, lastName, email, adminRole },
     });
     void recordAudit({
       actorSub: req.user!.sub,
@@ -299,6 +299,13 @@ adminUsersRouter.patch("/admin-users/:id/status", requireAuth, requireAdminPermi
 
   const updated = await prisma.user.update({ where: { id: target.id }, data: { suspended: parsed.data.suspended } });
   await cognitoGroups.setUserEnabled(target.cognitoSub, !parsed.data.suspended);
+  if (parsed.data.suspended) {
+    // Disabling blocks *new* sign-ins, but a refresh token issued before this
+    // moment would otherwise keep minting fresh access tokens for up to its
+    // full 30-day lifetime — revoke it outright so suspension actually ends
+    // the admin's live session, not just future ones (audit Finding T2).
+    await cognitoGroups.globalSignOut(target.cognitoSub);
+  }
   void recordAudit({
     actorSub: req.user!.sub,
     action: parsed.data.suspended ? "ADMIN_USER_DISABLED" : "ADMIN_USER_ENABLED",

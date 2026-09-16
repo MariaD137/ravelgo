@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { after, afterEach, beforeEach, test } from "node:test";
+import { after, afterEach, beforeEach, mock, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
+import { cognitoGroups } from "../services/cognito";
 import {
   mockAuthAs,
   restoreAuth,
@@ -10,6 +11,7 @@ import {
   mockCognitoCreateAdminUser,
   mockCognitoAddToGroup,
   mockCognitoSetUserEnabled,
+  mockCognitoGlobalSignOut,
   mockCognitoAdminUserStatus,
   mockCognitoResendAdminInvitation,
   mockCognitoAdminResetUserPassword,
@@ -32,6 +34,7 @@ async function seedAdmin(cognitoSub: string, email: string, adminRole: "SUPER_AD
 
 test("POST /api/admin-users rejects a caller without a Super Admin preset", async () => {
   await seedAdmin("ops-sub-1", "ops1@example.com", "OPERATIONS_MANAGER");
+  mockCognitoAdminUserStatus();
   const token = mockAuthAs({ sub: "ops-sub-1", groups: ["Admin"] });
 
   const res = await request(app)
@@ -71,6 +74,7 @@ test("POST /api/admin-users lets an admin with no preset (legacy full access) in
 
 test("POST /api/admin-users normalizes email case for the duplicate check", async () => {
   await seedAdmin("super-sub-norm", "already@Example.com".toLowerCase(), "SUPER_ADMIN");
+  mockCognitoAdminUserStatus();
   const token = mockAuthAs({ sub: "super-sub-norm", groups: ["Admin"] });
 
   const res = await request(app)
@@ -98,6 +102,7 @@ test("POST /api/admin-users stores a lowercased, trimmed email", async () => {
 
 test("POST /api/admin-users rejects a duplicate email", async () => {
   await seedAdmin("super-sub-1", "dupe@example.com", "SUPER_ADMIN");
+  mockCognitoAdminUserStatus();
   const token = mockAuthAs({ sub: "super-sub-1", groups: ["Admin"] });
 
   const res = await request(app)
@@ -121,15 +126,86 @@ test("GET /api/admin-users lists admin users for a Super Admin and rejects a res
   assert.equal(ok.body[0].mfaEnabled, true);
 
   restoreAuth();
+  // restoreAuth() (mock.restoreAll()) un-stubs adminUserStatus too, so it
+  // must be re-mocked before the next request or requireAdminPermission's
+  // MFA check would call the real (unavailable) AWS SDK client.
+  mockCognitoAdminUserStatus();
   const financeToken = mockAuthAs({ sub: "finance-sub-1", groups: ["Admin"] });
   const denied = await request(app).get("/api/admin-users").set("Authorization", `Bearer ${financeToken}`);
   assert.equal(denied.status, 403);
 });
 
+test("audit Finding A1: a newly-invited admin's cognitoSub is the real sub, so GET /admin-users/me finds their row instead of falling back to the legacy no-row default", async () => {
+  const inviter = await seedAdmin("super-sub-a1", "super-a1@example.com", "SUPER_ADMIN");
+  void inviter;
+  mockCognitoAdminUserStatus();
+  mockCognitoAddToGroup();
+  // Deliberately distinct from the invited email — this is what Cognito
+  // actually returns for AdminCreateUser's `sub` attribute, as opposed to
+  // the Username we asked it to use (the email). Before the fix, the route
+  // stored the Username (effectively the email) as cognitoSub, so a lookup
+  // by the real `sub` (what every verified JWT actually carries) could
+  // never find this row.
+  mockCognitoCreateAdminUser("11111111-aaaa-bbbb-cccc-222222222222");
+  const inviterToken = mockAuthAs({ sub: "super-sub-a1", groups: ["Admin"] });
+
+  const create = await request(app)
+    .post("/api/admin-users")
+    .set("Authorization", `Bearer ${inviterToken}`)
+    .send({ email: "restricted-a1@example.com", firstName: "R", lastName: "A1", adminRole: "SUPPORT_AGENT" });
+  assert.equal(create.status, 201);
+
+  const stored = await prisma.user.findUnique({ where: { email: "restricted-a1@example.com" } });
+  assert.equal(stored?.cognitoSub, "11111111-aaaa-bbbb-cccc-222222222222");
+
+  restoreAuth();
+  mockCognitoAdminUserStatus({ cognitoStatus: "CONFIRMED", mfaEnabled: true });
+  const newAdminToken = mockAuthAs({ sub: "11111111-aaaa-bbbb-cccc-222222222222", groups: ["Admin"] });
+  const me = await request(app).get("/api/admin-users/me").set("Authorization", `Bearer ${newAdminToken}`);
+
+  assert.equal(me.status, 200);
+  // The row-found value (SUPPORT_AGENT), not the no-row fallback (SUPER_ADMIN)
+  // — this is exactly the distinction Finding A1's bug erased.
+  assert.equal(me.body.adminRole, "SUPPORT_AGENT");
+  assert.equal(me.body.id, stored?.id);
+});
+
+test("audit Finding A2: a mutating admin action is rejected until the caller has TOTP MFA enrolled", async () => {
+  await seedAdmin("super-sub-a2", "super-a2@example.com", "SUPER_ADMIN");
+  mockCognitoAdminUserStatus({ cognitoStatus: "CONFIRMED", mfaEnabled: false });
+  const token = mockAuthAs({ sub: "super-sub-a2", groups: ["Admin"] });
+
+  const notEnrolled = await request(app).get("/api/admin-users").set("Authorization", `Bearer ${token}`);
+  assert.equal(notEnrolled.status, 403);
+  assert.match(notEnrolled.body.error, /two-factor/i);
+
+  restoreAuth();
+  mockCognitoAdminUserStatus({ cognitoStatus: "CONFIRMED", mfaEnabled: true });
+  const token2 = mockAuthAs({ sub: "super-sub-a2", groups: ["Admin"] });
+  const enrolled = await request(app).get("/api/admin-users").set("Authorization", `Bearer ${token2}`);
+  assert.equal(enrolled.status, 200);
+});
+
+test("audit Finding A2: GET /admin-users/me stays reachable without MFA enrolled, so the app can show the enrollment screen in the first place", async () => {
+  await seedAdmin("ops-sub-a2-me", "ops-a2-me@example.com", "OPERATIONS_MANAGER");
+  mockCognitoAdminUserStatus({ cognitoStatus: "CONFIRMED", mfaEnabled: false });
+  const token = mockAuthAs({ sub: "ops-sub-a2-me", groups: ["Admin"] });
+
+  const res = await request(app).get("/api/admin-users/me").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.mfaEnabled, false);
+});
+
 test("GET /api/admin-users/:id returns one admin's detail", async () => {
   await seedAdmin("super-sub-detail", "super-detail@example.com", "SUPER_ADMIN");
   const target = await seedAdmin("ops-sub-detail", "ops-detail@example.com", "OPERATIONS_MANAGER");
-  mockCognitoAdminUserStatus({ cognitoStatus: "CONFIRMED", mfaEnabled: false });
+  // The caller (super-sub-detail) must itself be MFA-enrolled to pass
+  // requireAdminPermission's MFA gate; the *target*'s mfaEnabled is what
+  // this test is actually asserting on, so the stub must distinguish them.
+  mock.method(cognitoGroups, "adminUserStatus", async (username: string) => ({
+    cognitoStatus: "CONFIRMED",
+    mfaEnabled: username !== "ops-sub-detail",
+  }));
   const token = mockAuthAs({ sub: "super-sub-detail", groups: ["Admin"] });
 
   const res = await request(app).get(`/api/admin-users/${target.id}`).set("Authorization", `Bearer ${token}`);
@@ -145,6 +221,7 @@ test("GET /api/admin-users/:id 404s for a non-admin user id", async () => {
     data: { cognitoSub: "rider-sub-1", role: "RIDER", firstName: "R", lastName: "I", email: "rider1@example.com" },
   });
   void superAdmin;
+  mockCognitoAdminUserStatus();
   const token = mockAuthAs({ sub: "super-sub-detail-2", groups: ["Admin"] });
 
   const res = await request(app).get(`/api/admin-users/${rider.id}`).set("Authorization", `Bearer ${token}`);
@@ -243,6 +320,7 @@ test("POST /api/admin-users/:id/password-reset triggers a Cognito reset and neve
 
 test("POST /api/admin-users/:id/password-reset rejects a caller without manage_admins", async () => {
   const target = await seedAdmin("target-sub-reset-2", "target-reset-2@example.com", "SUPPORT_AGENT");
+  mockCognitoAdminUserStatus();
   const token = mockAuthAs({ sub: "ops-sub-reset-denied", groups: ["Admin"] });
   await seedAdmin("ops-sub-reset-denied", "ops-reset-denied@example.com", "OPERATIONS_MANAGER");
 
@@ -255,6 +333,7 @@ test("POST /api/admin-users/:id/password-reset rejects a caller without manage_a
 
 test("PATCH /api/admin-users/:id/role blocks demoting the last Super Admin", async () => {
   const onlySuperAdmin = await seedAdmin("super-sub-3", "super3@example.com", "SUPER_ADMIN");
+  mockCognitoAdminUserStatus();
   const token = mockAuthAs({ sub: "super-sub-3", groups: ["Admin"] });
 
   const res = await request(app)
@@ -287,6 +366,7 @@ test("PATCH /api/admin-users/:id/status suspends an admin and disables their Cog
   mockCognitoAdminUserStatus({ cognitoStatus: "CONFIRMED" });
   const token = mockAuthAs({ sub: "super-sub-6", groups: ["Admin"] });
   const setEnabled = mockCognitoSetUserEnabled();
+  const globalSignOut = mockCognitoGlobalSignOut();
 
   const res = await request(app)
     .patch(`/api/admin-users/${target.id}/status`)
@@ -297,6 +377,10 @@ test("PATCH /api/admin-users/:id/status suspends an admin and disables their Cog
   assert.equal(res.body.suspended, true);
   assert.equal(res.body.status, "SUSPENDED");
   assert.equal(setEnabled.mock.calls.length, 1);
+  // Audit Finding T2: suspension must also revoke the target's existing
+  // refresh token, not just disable future sign-ins.
+  assert.equal(globalSignOut.mock.calls.length, 1);
+  assert.equal(globalSignOut.mock.calls[0].arguments[0], "ops-sub-2");
   const entry = await prisma.auditLog.findFirst({ where: { action: "ADMIN_USER_DISABLED" } });
   assert.equal(entry?.entityId, target.id);
   void superA;
@@ -306,6 +390,7 @@ test("PATCH /api/admin-users/:id/status blocks an admin from suspending their ow
   await seedAdmin("super-sub-self", "super-self@example.com", "SUPER_ADMIN");
   await seedAdmin("super-sub-self-2", "super-self-2@example.com", "SUPER_ADMIN");
   const self = await prisma.user.findUniqueOrThrow({ where: { cognitoSub: "super-sub-self" } });
+  mockCognitoAdminUserStatus();
   const token = mockAuthAs({ sub: "super-sub-self", groups: ["Admin"] });
   mockCognitoSetUserEnabled();
 

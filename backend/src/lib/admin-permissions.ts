@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import type { AdminRole } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { logSecurityEvent } from "./security-log";
+import { cognitoGroups } from "../services/cognito";
 
 /**
  * Coarse, module-level permissions checked on top of the base
@@ -76,6 +77,23 @@ export async function isSuspendedAdmin(cognitoSub: string): Promise<boolean> {
   return user?.suspended ?? false;
 }
 
+/**
+ * Whether the admin has TOTP MFA enrolled, read live from Cognito (the only
+ * source of truth — see cognitoGroups.adminUserStatus). Previously nothing
+ * server-side checked this at all: the Admin App's "mandatory" MFA-setup
+ * screen was a client-side navigation gate only, so a fully-authenticated
+ * admin who simply never completed enrollment (or called the API directly
+ * with a valid token, bypassing the Flutter UI entirely) could perform any
+ * mutating admin action with password-only auth. requireAdminPermission and
+ * blockIfAdminLacksPermission now call this the same way they already call
+ * isSuspendedAdmin, so MFA enrollment is an actual precondition for
+ * privileged actions, not just a screen the app happens to show first.
+ */
+export async function isAdminMfaEnrolled(cognitoSub: string): Promise<boolean> {
+  const status = await cognitoGroups.adminUserStatus(cognitoSub);
+  return status?.mfaEnabled ?? false;
+}
+
 /** Whether an AdminRole preset grants `permission`. */
 export function roleHasPermission(role: AdminRole, permission: AdminPermission): boolean {
   return ADMIN_PERMISSIONS[role].has(permission);
@@ -96,6 +114,10 @@ export function requireAdminPermission(permission: AdminPermission) {
     if (await isSuspendedAdmin(req.user!.sub)) {
       logSecurityEvent("AUTHZ_FAILURE", req, { required: "not_suspended" });
       return res.status(403).json({ error: "This admin account is suspended" });
+    }
+    if (!(await isAdminMfaEnrolled(req.user!.sub))) {
+      logSecurityEvent("AUTHZ_FAILURE", req, { required: "mfa_enrolled" });
+      return res.status(403).json({ error: "Two-factor authentication must be enabled before you can do this" });
     }
     const role = await effectiveAdminRole(req.user!.sub);
     if (!roleHasPermission(role, permission)) {
@@ -122,6 +144,11 @@ export async function blockIfAdminLacksPermission(
   if (await isSuspendedAdmin(req.user!.sub)) {
     logSecurityEvent("AUTHZ_FAILURE", req, { required: "not_suspended" });
     res.status(403).json({ error: "This admin account is suspended" });
+    return true;
+  }
+  if (!(await isAdminMfaEnrolled(req.user!.sub))) {
+    logSecurityEvent("AUTHZ_FAILURE", req, { required: "mfa_enrolled" });
+    res.status(403).json({ error: "Two-factor authentication must be enabled before you can do this" });
     return true;
   }
   const role = await effectiveAdminRole(req.user!.sub);

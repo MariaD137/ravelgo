@@ -6,6 +6,7 @@ import {
   AdminEnableUserCommand,
   AdminGetUserCommand,
   AdminResetUserPasswordCommand,
+  AdminUserGlobalSignOutCommand,
   MessageActionType,
   UserNotFoundException,
 } from "@aws-sdk/client-cognito-identity-provider";
@@ -55,13 +56,18 @@ export const cognitoGroups = {
    * own permanent password on first sign-in. Only ever called from the
    * Admin-Users management routes, themselves Super-Admin-only.
    *
-   * Returns the pool's actual Username for this account. We pass `email` as
-   * the requested Username (valid since the pool's only sign-in alias is
-   * email), but read back whatever Cognito actually assigned rather than
-   * assuming — that returned value is what every other admin API in this
-   * file addresses the user by, and it's what we store as cognitoSub.
+   * Returns the account's immutable `sub` — NOT `result.User.Username` (that's
+   * the literal string we passed as Username, i.e. the email, which Cognito
+   * accepts as a valid identifier for this pool's alias config but which is a
+   * *different* value from the `sub` claim every verified JWT carries). Every
+   * other lookup in this codebase (requireAuth, effectiveAdminRole,
+   * isSuspendedAdmin, GET /admin-users/me) keys off `req.user.sub`, so
+   * `cognitoSub` must be the `sub`, not the Username, or those lookups can
+   * never find this row. (Previously this returned `Username`, which silently
+   * broke role-preset enforcement and suspension for every admin created
+   * through this route — see the security audit's Finding A1.)
    */
-  async createAdminUser(params: { email: string; firstName: string; lastName: string }): Promise<{ username: string }> {
+  async createAdminUser(params: { email: string; firstName: string; lastName: string }): Promise<{ sub: string }> {
     const result = await client.send(
       new AdminCreateUserCommand({
         UserPoolId: env.COGNITO_USER_POOL_ID,
@@ -75,9 +81,9 @@ export const cognitoGroups = {
         DesiredDeliveryMediums: ["EMAIL"],
       }),
     );
-    const username = result.User?.Username;
-    if (!username) throw new Error("Cognito did not return a Username for the new admin user");
-    return { username };
+    const sub = result.User?.Attributes?.find((a) => a.Name === "sub")?.Value;
+    if (!sub) throw new Error("Cognito did not return a sub attribute for the new admin user");
+    return { sub };
   },
 
   /**
@@ -152,5 +158,20 @@ export const cognitoGroups = {
    */
   async adminResetUserPassword(username: string): Promise<void> {
     await client.send(new AdminResetUserPasswordCommand({ UserPoolId: env.COGNITO_USER_POOL_ID, Username: username }));
+  },
+
+  /**
+   * Revoke every refresh token already issued to this user, forcing
+   * re-authentication on every device. Used when suspending an Admin or
+   * Driver so a still-live session can't simply refresh its way past the
+   * suspension. Note this does NOT invalidate an access token already in a
+   * client's hands — those are stateless JWTs and remain valid until their
+   * own ~1h expiry regardless (see accessTokenValidity in
+   * infra/lib/auth-stack.ts) — so suspension still isn't instantaneous, but
+   * this bounds the exposure window to that TTL instead of up to the
+   * refresh token's full 30-day lifetime.
+   */
+  async globalSignOut(username: string): Promise<void> {
+    await client.send(new AdminUserGlobalSignOutCommand({ UserPoolId: env.COGNITO_USER_POOL_ID, Username: username }));
   },
 };
