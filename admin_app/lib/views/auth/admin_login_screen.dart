@@ -30,16 +30,29 @@ Future<void> continueAfterAuthentication(BuildContext context) async {
   try {
     mfaEnabled = (await AdminApi.me()).mfaEnabled;
   } on ApiException {
-    // The profile call itself is what proves the caller is a real, active
-    // admin — if the backend rejects it (e.g. suspended mid-session), fail
-    // closed to sign-in rather than assuming MFA is fine.
-    await AuthService.signOut();
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Could not verify your admin account. Please sign in again.'),
-    ));
-    Navigator.of(context).popUntil((route) => route.isFirst);
-    return;
+    // Security audit Finding A1: an admin account created before the
+    // identity-mismatch fix (or one that predates the admin-invite system
+    // entirely) has a Postgres row keyed by the wrong Cognito identifier, so
+    // this call fails even with a fully valid, freshly-authenticated
+    // session. Try the narrow self-repair (it only ever touches the
+    // caller's own row) once, then retry — this makes a normal sign-in
+    // self-healing instead of requiring a manual fix for every such
+    // account.
+    try {
+      await AdminApi.repairCognitoSub();
+      mfaEnabled = (await AdminApi.me()).mfaEnabled;
+    } on ApiException {
+      // The profile call itself is what proves the caller is a real, active
+      // admin — if it's still failing after the repair attempt, fail closed
+      // to sign-in rather than assuming MFA is fine.
+      await AuthService.signOut();
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Could not verify your admin account. Please sign in again.'),
+      ));
+      Navigator.of(context).popUntil((route) => route.isFirst);
+      return;
+    }
   }
   if (!context.mounted) return;
   Navigator.of(context).pushAndRemoveUntil(

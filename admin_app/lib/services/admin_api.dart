@@ -1523,6 +1523,16 @@ class AdminApi {
     await ApiClient.post('/api/admin-users/me/mfa-enrolled', {});
   }
 
+  /// Self-repair for a legacy admin row whose cognitoSub predates the
+  /// identity-mismatch fix (security audit Finding A1) — see the matching
+  /// backend route's doc comment. Only ever affects the caller's own row;
+  /// safe to call speculatively. continueAfterAuthentication() calls this
+  /// automatically, once, if me() fails, so an affected admin never needs a
+  /// manual repair step — a normal sign-in retry fixes it on its own.
+  static Future<void> repairCognitoSub() async {
+    await ApiClient.post('/api/admin-users/me/repair-cognito-sub', {});
+  }
+
   // ---- Vehicle inventory (admin, cross-driver) ----
   static Future<List<AdminVehicle>> vehicles() async {
     final data = await ApiClient.get('/api/vehicles?pageSize=100');
