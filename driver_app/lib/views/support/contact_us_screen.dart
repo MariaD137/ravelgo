@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:ravelgo_driver_app/services/api_client.dart';
+import 'package:ravelgo_driver_app/services/support_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 
 /// Driver support contacts and issue reporting.
 ///
 /// No dialer/mail/WhatsApp launcher plugin is configured in this build, so
 /// contact rows copy the address with a clear message. Submitting an issue
-/// validates the text and records it locally - the support-ticket service is
-/// the integration point, and the confirmation says the report is local.
+/// creates a real support ticket via the backend (POST /support-tickets, the
+/// same endpoint the Support screen uses), so a driver's report reaches the
+/// support team instead of being dropped.
 class ContactUsScreen extends StatefulWidget {
   const ContactUsScreen({super.key});
 
@@ -18,6 +21,7 @@ class ContactUsScreen extends StatefulWidget {
 class _ContactUsScreenState extends State<ContactUsScreen> {
   final _issueController = TextEditingController();
   String? _error;
+  bool _submitting = false;
 
   @override
   void dispose() {
@@ -38,26 +42,39 @@ class _ContactUsScreenState extends State<ContactUsScreen> {
     ));
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     final text = _issueController.text.trim();
     if (text.length < 10) {
       setState(() => _error = 'Describe your issue in at least 10 characters');
       return;
     }
-    setState(() => _error = null);
-    // Integration point: create a ticket in the support service here.
-    _issueController.clear();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Report recorded'),
-        content: const Text(
-            'Your report was recorded on this device. It will be submitted to the support '
-            'team once the ticketing service is connected. For urgent issues use the phone '
-            'or email contacts above.'),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
-      ),
-    );
+    setState(() {
+      _error = null;
+      _submitting = true;
+    });
+    try {
+      // The SupportTicket model has no separate body field (subject +
+      // category only — see backend schema), so the driver's description is
+      // the subject. Same endpoint the Support screen uses.
+      await SupportApi.createTicket(subject: text, category: 'Driver-reported issue');
+      if (!mounted) return;
+      _issueController.clear();
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Report submitted'),
+          content: const Text(
+              'Your report has been sent to our support team. You can track it under '
+              'Support. For urgent issues use the phone or email contacts above.'),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e is ApiException ? e.message : 'Could not submit your report. Please try again.');
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   @override
@@ -110,7 +127,9 @@ class _ContactUsScreenState extends State<ContactUsScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          AppComponents.primaryButton(text: "Submit", onPressed: _submit),
+          AppComponents.primaryButton(
+              text: _submitting ? "Submitting…" : "Submit",
+              onPressed: _submitting ? null : _submit),
         ],
       ),
     );
