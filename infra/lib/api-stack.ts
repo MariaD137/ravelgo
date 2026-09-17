@@ -154,14 +154,26 @@ export class ApiStack extends cdk.Stack {
       }),
     );
 
-    // Server-authoritative driver onboarding (P0 #2): the backend adds a user
-    // to the Cognito "Driver" group on its own IAM role — the client never
-    // touches group membership. Scope this to AdminAddUserToGroup on THIS pool
-    // only (not a wildcard), so a compromised container can grant the Driver
-    // role but cannot create/delete users, reset passwords, or touch any other
-    // pool. Approving a driver to ACTIVE (the step that enables earning) is a
-    // separate admin action, so this permission alone confers no ability to pay
-    // out to a self-created account.
+    // Server-authoritative user management on THIS pool only (never a
+    // wildcard), so a compromised container can manage users in this one pool
+    // but cannot touch any other pool. Two groups of actions:
+    //
+    //   1. Driver onboarding (P0 #2): the backend adds a user to the Cognito
+    //      "Driver" group on its own IAM role — the client never touches group
+    //      membership. Approving a driver to ACTIVE (the step that enables
+    //      earning) is a separate admin action, so AdminAddUserToGroup alone
+    //      confers no ability to pay out to a self-created account.
+    //
+    //   2. Admin-user lifecycle + admin sign-in (see services/cognito.ts and
+    //      routes/admin-users.routes.ts). AdminGetUser in particular is called
+    //      on EVERY admin sign-in (GET /admin-users/me -> adminUserStatus reads
+    //      the account's live status/MFA) and on every mutating admin action
+    //      (isAdminMfaEnrolled). Without it the instance role could only add to
+    //      groups, so adminUserStatus() threw AccessDenied at runtime — which
+    //      only UserNotFoundException is caught for, so it surfaced as an
+    //      uncaught 500 ("could not verify your admin account") that blocked
+    //      admin login entirely. These are all admin-only, pool-scoped
+    //      operations the backend already gates behind requireAdminPermission.
     const userPoolArn = cdk.Stack.of(this).formatArn({
       service: "cognito-idp",
       resource: "userpool",
@@ -169,7 +181,15 @@ export class ApiStack extends cdk.Stack {
     });
     instanceRole.addToPolicy(
       new iam.PolicyStatement({
-        actions: ["cognito-idp:AdminAddUserToGroup"],
+        actions: [
+          "cognito-idp:AdminAddUserToGroup",
+          "cognito-idp:AdminGetUser",
+          "cognito-idp:AdminCreateUser",
+          "cognito-idp:AdminDisableUser",
+          "cognito-idp:AdminEnableUser",
+          "cognito-idp:AdminResetUserPassword",
+          "cognito-idp:AdminUserGlobalSignOut",
+        ],
         resources: [userPoolArn],
       }),
     );
