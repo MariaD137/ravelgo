@@ -37,4 +37,12 @@ class RiderApi {
     final data = await ApiClient.patch('/api/riders/me', body);
     return data is Map<String, dynamic> ? data : null;
   }
+
+  /// Permanently delete the signed-in rider's own account (DELETE /riders/me).
+  /// The backend soft-deletes the account and disables the Cognito login, so
+  /// the caller must sign out locally afterwards. Only ever affects the
+  /// caller's own account (keyed server-side by the verified Cognito sub).
+  static Future<void> deleteMyAccount() async {
+    await ApiClient.delete('/api/riders/me');
+  }
 }

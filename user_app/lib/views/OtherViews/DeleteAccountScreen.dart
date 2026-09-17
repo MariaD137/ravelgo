@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/services/api_client.dart';
+import 'package:ravelgo_user_app/services/auth_service.dart';
+import 'package:ravelgo_user_app/services/rider_api.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
+import 'package:ravelgo_user_app/views/Login/login.dart';
 
 class DeleteAccountScreen extends StatefulWidget {
   const DeleteAccountScreen({super.key});
@@ -10,6 +14,7 @@ class DeleteAccountScreen extends StatefulWidget {
 
 class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   int? _selectedReasonIndex;
+  bool _deleting = false;
 
   final List<String> _reasons = [
     "I am no longer using my account",
@@ -19,11 +24,10 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     "Other",
   ];
 
-  /// Destructive action: always confirm first.
-  /// BACKEND BOUNDARY: account deletion requires the accounts service, which
-  /// is not connected in this build - after confirming, the user is told the
-  /// request could not be processed rather than being shown a fake
-  /// "account deleted" message.
+  /// Destructive action: always confirm first, then call the real backend
+  /// deletion endpoint (DELETE /riders/me), sign out locally, and return to
+  /// the login screen. The backend soft-deletes the account and disables the
+  /// Cognito login so it can't be used again.
   Future<void> _confirmDelete() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -41,17 +45,33 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    // Integration point: call the account-deletion endpoint here.
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Not available yet'),
-        content: const Text(
-            'Account deletion requires the accounts service, which is not connected in '
-            'this build. Your account has NOT been deleted. Please contact support.'),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
-      ),
-    );
+
+    setState(() => _deleting = true);
+    try {
+      await RiderApi.deleteMyAccount();
+      await AuthService.signOut();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const Login()),
+        (route) => false,
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Your account has been deleted.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _deleting = false);
+      showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Couldn't delete your account"),
+          content: Text(e is ApiException
+              ? '${e.message}\n\nYour account has NOT been deleted.'
+              : 'Something went wrong and your account has NOT been deleted. Please try again or contact support.'),
+          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+        ),
+      );
+    }
   }
 
   @override
@@ -100,7 +120,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                onPressed: _selectedReasonIndex == null ? null : _confirmDelete,
+                onPressed: (_selectedReasonIndex == null || _deleting) ? null : _confirmDelete,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
@@ -110,7 +130,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                   disabledBackgroundColor: AppColors.border,
                   disabledForegroundColor: AppColors.textMuted,
                 ),
-                child: const Text("Delete Account"),
+                child: Text(_deleting ? "Deleting…" : "Delete Account"),
               ),
             ),
             const SizedBox(height: 20),

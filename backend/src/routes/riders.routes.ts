@@ -7,6 +7,7 @@ import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { validate } from "../lib/validate";
 import { Errors } from "../lib/errors";
 import { recordAudit } from "../lib/audit";
+import { cognitoGroups } from "../services/cognito";
 
 export const ridersRouter = Router();
 
@@ -88,6 +89,41 @@ ridersRouter.patch("/riders/me", requireAuth, requireRole("Rider"), async (req, 
 
     const rider = await prisma.user.update({ where: { id: existing.id }, data });
     res.json(rider);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Rider: permanently delete my own account (self-service, required by app
+// stores / privacy law). Soft-delete — stamp deletedAt, which the User model
+// is explicitly designed for so the ledger and every financial FK survive
+// (see schema.prisma) — then disable the Cognito account and revoke its
+// refresh tokens, the same enforcement model as admin suspension: no new
+// token can be minted, and any access token already issued expires within its
+// ~1h TTL. Reversible by support if ever needed (clear deletedAt + re-enable
+// in Cognito). Only ever touches the caller's own row, keyed by the verified
+// sub — never a client-supplied id.
+ridersRouter.delete("/riders/me", requireAuth, requireRole("Rider"), async (req, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
+    if (!user) throw Errors.notFound("Rider profile");
+
+    if (!user.deletedAt) {
+      await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date() } });
+    }
+    // Best-effort account lockout; a failure here shouldn't leave the caller
+    // thinking deletion failed when the row is already soft-deleted.
+    await cognitoGroups.setUserEnabled(req.user!.sub, false);
+    await cognitoGroups.globalSignOut(req.user!.sub);
+
+    void recordAudit({
+      actorSub: req.user!.sub,
+      action: "RIDER_ACCOUNT_DELETED",
+      entityType: "User",
+      entityId: user.id,
+      metadata: {},
+    });
+    res.status(204).send();
   } catch (err) {
     next(err);
   }

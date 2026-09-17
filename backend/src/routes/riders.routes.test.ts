@@ -3,7 +3,14 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb, mockCognitoAdminUserStatus } from "../test/helpers";
+import {
+  mockAuthAs,
+  restoreAuth,
+  resetDb,
+  mockCognitoAdminUserStatus,
+  mockCognitoSetUserEnabled,
+  mockCognitoGlobalSignOut,
+} from "../test/helpers";
 
 beforeEach(resetDb);
 afterEach(() => {
@@ -145,4 +152,38 @@ test("PATCH /api/riders/:id/status rejects a Finance Viewer admin preset", async
     .send({ suspended: true });
 
   assert.equal(res.status, 403);
+});
+
+test("DELETE /api/riders/me soft-deletes the caller's own account and disables Cognito", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-del-1", role: "RIDER", firstName: "Del", lastName: "Me", email: "del@example.com" },
+  });
+  const disabled = mockCognitoSetUserEnabled();
+  const signedOut = mockCognitoGlobalSignOut();
+  const token = mockAuthAs({ sub: "rider-del-1", groups: ["Rider"] });
+
+  const res = await request(app).delete("/api/riders/me").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 204);
+
+  const row = await prisma.user.findUnique({ where: { cognitoSub: "rider-del-1" } });
+  assert.ok(row?.deletedAt, "deletedAt should be stamped");
+  assert.equal(disabled.mock.callCount(), 1);
+  assert.equal(signedOut.mock.callCount(), 1);
+
+  const entry = await prisma.auditLog.findFirst({ where: { action: "RIDER_ACCOUNT_DELETED" } });
+  assert.equal(entry?.entityId, row?.id);
+});
+
+test("DELETE /api/riders/me rejects a non-rider caller", async () => {
+  const token = mockAuthAs({ sub: "not-a-rider", groups: ["Driver"] });
+  const res = await request(app).delete("/api/riders/me").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 403);
+});
+
+test("DELETE /api/riders/me 404s when the caller has no rider row", async () => {
+  mockCognitoSetUserEnabled();
+  mockCognitoGlobalSignOut();
+  const token = mockAuthAs({ sub: "ghost-rider", groups: ["Rider"] });
+  const res = await request(app).delete("/api/riders/me").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 404);
 });
