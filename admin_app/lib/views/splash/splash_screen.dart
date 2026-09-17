@@ -59,10 +59,24 @@ class _SplashScreenState extends State<SplashScreen> {
     try {
       mfaEnabled = (await AdminApi.me()).mfaEnabled;
     } on ApiException {
-      await AuthService.signOut();
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const AdminLoginScreen()));
-      return;
+      // A restored session for a legacy admin whose Postgres row is keyed by
+      // the wrong cognitoSub (audit Finding A1): attempt the narrow, self-only
+      // repair once and retry, same as the fresh sign-in path, so a page
+      // refresh is self-healing too. Fail closed to login (carrying the status
+      // code so a persistent failure is diagnosable) if it still can't verify.
+      try {
+        await AdminApi.repairCognitoSub();
+        mfaEnabled = (await AdminApi.me()).mfaEnabled;
+      } on ApiException catch (e) {
+        await AuthService.signOut();
+        if (!mounted) return;
+        Navigator.of(context).pushReplacement(MaterialPageRoute(
+          builder: (_) => AdminLoginScreen(
+            initialError: 'Could not verify your admin account (error ${e.statusCode}). Please sign in again.',
+          ),
+        ));
+        return;
+      }
     }
     if (!mounted) return;
     Navigator.of(context).pushReplacement(

@@ -41,14 +41,17 @@ Future<void> continueAfterAuthentication(BuildContext context) async {
     try {
       await AdminApi.repairCognitoSub();
       mfaEnabled = (await AdminApi.me()).mfaEnabled;
-    } on ApiException {
+    } on ApiException catch (e) {
       // The profile call itself is what proves the caller is a real, active
       // admin — if it's still failing after the repair attempt, fail closed
-      // to sign-in rather than assuming MFA is fine.
+      // to sign-in rather than assuming MFA is fine. Surface the HTTP status
+      // so a persistent failure is diagnosable (403 = not in the Admin group,
+      // 500 = a server/Cognito error) instead of an opaque dead end — the
+      // status code is not sensitive.
       await AuthService.signOut();
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Could not verify your admin account. Please sign in again.'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Could not verify your admin account (error ${e.statusCode}). Please sign in again.'),
       ));
       Navigator.of(context).popUntil((route) => route.isFirst);
       return;

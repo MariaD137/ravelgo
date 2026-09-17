@@ -146,10 +146,18 @@ export function mockCognitoGlobalSignOut() {
  * null to simulate the Cognito account not existing.
  */
 export function mockCognitoAdminUserStatus(
-  result: { cognitoStatus?: string; mfaEnabled?: boolean } | null = {},
+  result: { cognitoStatus?: string; mfaEnabled?: boolean; email?: string; firstName?: string; lastName?: string } | null = {},
 ) {
   return mock.method(cognitoGroups, "adminUserStatus", async () =>
-    result === null ? null : { cognitoStatus: result.cognitoStatus ?? "CONFIRMED", mfaEnabled: result.mfaEnabled ?? true },
+    result === null
+      ? null
+      : {
+          cognitoStatus: result.cognitoStatus ?? "CONFIRMED",
+          mfaEnabled: result.mfaEnabled ?? true,
+          email: result.email,
+          firstName: result.firstName,
+          lastName: result.lastName,
+        },
   );
 }
 

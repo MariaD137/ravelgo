@@ -110,14 +110,27 @@ export const cognitoGroups = {
    * directly in the AWS console) — the Postgres row can still exist and the
    * caller should render that as an anomaly rather than throwing.
    */
-  async adminUserStatus(username: string): Promise<{ cognitoStatus: string; mfaEnabled: boolean } | null> {
+  async adminUserStatus(
+    username: string,
+  ): Promise<{ cognitoStatus: string; mfaEnabled: boolean; email?: string; firstName?: string; lastName?: string } | null> {
     try {
       const result = await client.send(
         new AdminGetUserCommand({ UserPoolId: env.COGNITO_USER_POOL_ID, Username: username }),
       );
+      const attr = (name: string) => result.UserAttributes?.find((a) => a.Name === name)?.Value;
       return {
         cognitoStatus: result.UserStatus ?? "UNKNOWN",
         mfaEnabled: (result.UserMFASettingList?.length ?? 0) > 0,
+        // Sourced from Cognito keyed by the verified sub — the authoritative
+        // identity for this account. The Cognito ACCESS token the backend
+        // verifies carries no `email`/name claims (those live on the ID token,
+        // and no pre-token-generation trigger adds them here — see
+        // infra/lib/auth-stack.ts), so req.user.email is undefined in
+        // production. Anything that needs the admin's email/name server-side
+        // must read it from here, not from the token.
+        email: attr("email"),
+        firstName: attr("given_name"),
+        lastName: attr("family_name"),
       };
     } catch (err) {
       if (err instanceof UserNotFoundException) return null;

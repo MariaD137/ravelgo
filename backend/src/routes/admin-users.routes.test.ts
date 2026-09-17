@@ -213,6 +213,48 @@ test("audit Finding A1 self-repair: fixes a legacy admin row keyed by the wrong 
   assert.equal(entry?.metadata && (entry.metadata as { previousCognitoSub?: string }).previousCognitoSub, "legacy-username-not-sub");
 });
 
+test("audit Finding A1 self-repair: repairs a legacy row when the access token has NO email claim (production reality), sourcing the email from Cognito", async () => {
+  // A real Cognito ACCESS token carries no `email` claim (only the ID token
+  // does, and no pre-token-generation trigger adds it — see
+  // infra/lib/auth-stack.ts), so req.user.email is undefined in production.
+  // The repair must still work by reading the account's email from Cognito
+  // keyed by the verified sub. This is the case the earlier tests missed by
+  // injecting an email into the mock token.
+  const legacy = await seedAdmin("legacy-username-noemail", "legacy-noemail@example.com", "SUPER_ADMIN");
+  const token = mockAuthAs({ sub: "real-sub-noemail", groups: ["Admin"] }); // no email in the token
+  mockCognitoAdminUserStatus({ email: "legacy-noemail@example.com" });
+
+  const res = await request(app).post("/api/admin-users/me/repair-cognito-sub").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "repaired");
+  assert.equal(res.body.id, legacy.id);
+
+  const updated = await prisma.user.findUnique({ where: { id: legacy.id } });
+  assert.equal(updated?.cognitoSub, "real-sub-noemail");
+});
+
+test("audit Finding A1 self-repair: 400s only when neither the token nor Cognito can supply an email", async () => {
+  const token = mockAuthAs({ sub: "no-email-anywhere-sub", groups: ["Admin"] });
+  mockCognitoAdminUserStatus({}); // Cognito returns a status but no email attribute
+
+  const res = await request(app).post("/api/admin-users/me/repair-cognito-sub").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 400);
+});
+
+test("GET /api/admin-users/me fills a legacy no-row admin's name/email from Cognito, not the (absent) token email", async () => {
+  // No Postgres row for this sub → the fallback branch. The access token has
+  // no email/name claims, so those must come from Cognito or the profile
+  // renders blank.
+  const token = mockAuthAs({ sub: "legacy-norow-sub", groups: ["Admin"] });
+  mockCognitoAdminUserStatus({ email: "norow@example.com", firstName: "No", lastName: "Row", mfaEnabled: true });
+
+  const res = await request(app).get("/api/admin-users/me").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.email, "norow@example.com");
+  assert.equal(res.body.name, "No Row");
+  assert.equal(res.body.adminRole, "SUPER_ADMIN");
+});
+
 test("audit Finding A1 self-repair: no-ops when the row is already correct", async () => {
   await seedAdmin("already-correct-sub", "already-correct@example.com", "SUPER_ADMIN");
   const token = mockAuthAs({ sub: "already-correct-sub", email: "already-correct@example.com", groups: ["Admin"] });

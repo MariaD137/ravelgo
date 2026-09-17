@@ -81,13 +81,17 @@ adminUsersRouter.get("/admin-users/me", requireAuth, requireRole("Admin"), async
   if (!me) {
     // A Cognito "Admin"-group member with no Postgres User row at all — the
     // same legacy shape effectiveAdminRole() treats as full access (see
-    // lib/admin-permissions.ts). Profile data falls back to the verified
-    // token claims since there's no User row to read from.
+    // lib/admin-permissions.ts). Profile data comes from Cognito (keyed by the
+    // verified sub), NOT req.user.email: the access token this backend verifies
+    // carries no email/name claims, so those would otherwise render blank —
+    // see cognitoGroups.adminUserStatus.
     const cognitoStatus = await cognitoGroups.adminUserStatus(req.user!.sub);
+    const fullName = [cognitoStatus?.firstName, cognitoStatus?.lastName].filter(Boolean).join(" ").trim();
+    const emailFromCognito = cognitoStatus?.email ?? req.user!.email ?? "";
     return res.json({
       id: null,
-      name: req.user!.email ?? "",
-      email: req.user!.email ?? "",
+      name: fullName || emailFromCognito,
+      email: emailFromCognito,
       adminRole: "SUPER_ADMIN",
       suspended: false,
       status: "ACTIVE",
@@ -138,8 +142,15 @@ adminUsersRouter.post(
     const alreadyCorrect = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
     if (alreadyCorrect) return res.json({ status: "already-correct", id: alreadyCorrect.id });
 
-    const email = req.user!.email;
-    if (!email) return res.status(400).json({ error: "Your token has no email claim to look up a legacy row by" });
+    // The email to match the legacy row by comes from Cognito, keyed by the
+    // verified sub — NOT req.user.email, which is undefined here because the
+    // Cognito access token this backend verifies carries no email claim (see
+    // cognitoGroups.adminUserStatus). Reading it from the token instead meant
+    // this "self-heal" returned 400 on its first line for every real caller,
+    // so no legacy admin could ever be repaired in production even though the
+    // tests (which inject an email into the mock token) passed.
+    const email = req.user!.email ?? (await cognitoGroups.adminUserStatus(req.user!.sub))?.email;
+    if (!email) return res.status(400).json({ error: "Could not determine your account email to look up a legacy row by" });
 
     const legacy = await prisma.user.findUnique({ where: { email } });
     if (!legacy) {
