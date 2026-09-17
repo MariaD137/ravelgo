@@ -196,6 +196,62 @@ test("audit Finding A2: GET /admin-users/me stays reachable without MFA enrolled
   assert.equal(res.body.mfaEnabled, false);
 });
 
+test("audit Finding A1 self-repair: fixes a legacy admin row keyed by the wrong cognitoSub", async () => {
+  const legacy = await seedAdmin("legacy-username-not-sub", "legacy-repair@example.com", "SUPER_ADMIN");
+  const token = mockAuthAs({ sub: "real-sub-value", email: "legacy-repair@example.com", groups: ["Admin"] });
+
+  const res = await request(app).post("/api/admin-users/me/repair-cognito-sub").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "repaired");
+  assert.equal(res.body.id, legacy.id);
+
+  const updated = await prisma.user.findUnique({ where: { id: legacy.id } });
+  assert.equal(updated?.cognitoSub, "real-sub-value");
+
+  const entry = await prisma.auditLog.findFirst({ where: { action: "ADMIN_USER_COGNITO_SUB_REPAIRED" } });
+  assert.equal(entry?.entityId, legacy.id);
+  assert.equal(entry?.metadata && (entry.metadata as { previousCognitoSub?: string }).previousCognitoSub, "legacy-username-not-sub");
+});
+
+test("audit Finding A1 self-repair: no-ops when the row is already correct", async () => {
+  await seedAdmin("already-correct-sub", "already-correct@example.com", "SUPER_ADMIN");
+  const token = mockAuthAs({ sub: "already-correct-sub", email: "already-correct@example.com", groups: ["Admin"] });
+
+  const res = await request(app).post("/api/admin-users/me/repair-cognito-sub").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.status, "already-correct");
+});
+
+test("audit Finding A1 self-repair: 404s when no row exists for the caller's email either", async () => {
+  const token = mockAuthAs({ sub: "brand-new-sub", email: "never-seen@example.com", groups: ["Admin"] });
+
+  const res = await request(app).post("/api/admin-users/me/repair-cognito-sub").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 404);
+});
+
+test("audit Finding A1 self-repair: rejects a caller whose email matches a non-admin row", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-sub-repair", role: "RIDER", firstName: "R", lastName: "I", email: "rider-repair@example.com" },
+  });
+  const token = mockAuthAs({ sub: "rider-sub-repair-jwt", email: "rider-repair@example.com", groups: ["Admin"] });
+
+  const res = await request(app).post("/api/admin-users/me/repair-cognito-sub").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 403);
+});
+
+test("audit Finding A1 self-repair: cannot be used to affect another admin's row", async () => {
+  const other = await seedAdmin("other-admin-sub", "other-admin@example.com", "SUPER_ADMIN");
+  // Caller's own email doesn't match any row — only their own identity is
+  // ever looked up, so another admin's row is untouched regardless.
+  const token = mockAuthAs({ sub: "attacker-sub", email: "attacker@example.com", groups: ["Admin"] });
+
+  const res = await request(app).post("/api/admin-users/me/repair-cognito-sub").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 404);
+
+  const unchanged = await prisma.user.findUnique({ where: { id: other.id } });
+  assert.equal(unchanged?.cognitoSub, "other-admin-sub");
+});
+
 test("GET /api/admin-users/:id returns one admin's detail", async () => {
   await seedAdmin("super-sub-detail", "super-detail@example.com", "SUPER_ADMIN");
   const target = await seedAdmin("ops-sub-detail", "ops-detail@example.com", "OPERATIONS_MANAGER");

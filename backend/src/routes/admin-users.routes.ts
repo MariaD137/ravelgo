@@ -117,6 +117,59 @@ adminUsersRouter.post("/admin-users/me/mfa-enrolled", requireAuth, requireRole("
   res.status(204).send();
 });
 
+// Self-service, temporary: repairs a legacy admin's own cognitoSub.
+//
+// Security audit Finding A1: rows created before the identity-mismatch fix
+// (or accounts that predate the admin-invite system entirely) can have a
+// cognitoSub that doesn't match the JWT `sub` every verified request now
+// carries — so every sub-keyed lookup (effectiveAdminRole, isSuspendedAdmin,
+// GET /admin-users/me) fails to find the row. This lets an affected admin
+// fix their OWN row without needing direct database access: it only ever
+// reads/writes the row matching the CALLER's own verified sub/email from
+// requireAuth, never a client-supplied id, so it cannot be used to affect
+// anyone else's account or grant access to a non-admin. Meant to be removed
+// once the known affected accounts are fixed — see ADMIN-ACCESS-RECOVERY.md.
+adminUsersRouter.post(
+  "/admin-users/me/repair-cognito-sub",
+  requireAuth,
+  requireRole("Admin"),
+  sensitiveLimiter,
+  async (req, res) => {
+    const alreadyCorrect = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
+    if (alreadyCorrect) return res.json({ status: "already-correct", id: alreadyCorrect.id });
+
+    const email = req.user!.email;
+    if (!email) return res.status(400).json({ error: "Your token has no email claim to look up a legacy row by" });
+
+    const legacy = await prisma.user.findUnique({ where: { email } });
+    if (!legacy) {
+      return res.status(404).json({ error: "No existing row found for your account by email — this needs manual provisioning, not a repair" });
+    }
+    if (legacy.role !== "ADMIN") {
+      return res.status(403).json({ error: "The row found for your email isn't an admin row" });
+    }
+
+    try {
+      const updated = await prisma.user.update({ where: { id: legacy.id }, data: { cognitoSub: req.user!.sub } });
+      void recordAudit({
+        actorSub: req.user!.sub,
+        action: "ADMIN_USER_COGNITO_SUB_REPAIRED",
+        entityType: "User",
+        entityId: updated.id,
+        metadata: { previousCognitoSub: legacy.cognitoSub },
+      });
+      res.json({ status: "repaired", id: updated.id });
+    } catch (error) {
+      // Another row already holds this sub — a genuine data conflict that
+      // needs a human to untangle rather than being resolved automatically.
+      if (error && typeof error === "object" && (error as { code?: string }).code === "P2002") {
+        return res.status(409).json({ error: "Another account row already has this identity — needs manual review" });
+      }
+      throw error;
+    }
+  },
+);
+
 // Super Admin: view a single admin's detail.
 adminUsersRouter.get("/admin-users/:id", requireAuth, requireAdminPermission("manage_admins"), async (req, res) => {
   const target = await findAdminById(req.params.id);
