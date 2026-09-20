@@ -13,6 +13,7 @@ import 'package:ravelgo_driver_app/views/notifications/notifications_screen.dart
 import 'package:ravelgo_driver_app/views/riderequest/incoming_request_sheet.dart';
 import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
 import 'package:ravelgo_driver_app/views/trip/active_trip_screen.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
 
 /// The driver's home. When online it polls the backend for a trip the matching
 /// engine has assigned to this driver (status MATCHED) and surfaces it as a
@@ -236,7 +237,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       if (matched != null) {
         await Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => ActiveTripScreen(trip: matched)),
+          AppPageRoute(builder: (_) => ActiveTripScreen(trip: matched)),
         );
         if (mounted) await _refreshTrips();
       }
@@ -323,7 +324,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                     GestureDetector(
                       onTap: () async {
                         await Navigator.push(
-                            context, MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+                            context, AppPageRoute(builder: (_) => const NotificationsScreen()));
                         // An approval notification lives in that list — coming
                         // back from it is the natural moment to re-read the
                         // real status.
@@ -358,7 +359,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       loadError: widget.loadError,
                       onRefresh: widget.onRefresh,
                       onOpenDocuments: () async {
-                        await Navigator.push(context, MaterialPageRoute(builder: (_) => const MyDocumentsScreen()));
+                        await Navigator.push(context, AppPageRoute(builder: (_) => const MyDocumentsScreen()));
                         if (context.mounted) await widget.onRefresh();
                       },
                     )

@@ -6,6 +6,7 @@ import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/auth/create_account_screen.dart';
 import 'package:ravelgo_driver_app/views/auth/forgot_password_screen.dart';
 import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
 
 /// Driver sign-in, wired to the RavelGo Cognito user pool via [AuthService].
 class LoginScreen extends StatefulWidget {
@@ -42,7 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
       unawaited(PushNotificationService.configureAndRegister());
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (context) => const DriverShell()),
+        AppPageRoute(builder: (context) => const DriverShell()),
         (route) => false,
       );
     } catch (e) {
@@ -111,7 +112,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: () {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (context) => const ForgotPasswordScreen()),
+                        AppPageRoute(builder: (context) => const ForgotPasswordScreen()),
                       );
                     },
                     child: const Text('Forgot Password?', style: TextStyle(color: AppColors.primaryDark)),
@@ -125,7 +126,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 TextButton(
                   onPressed: () {
                     Navigator.push(
-                        context, MaterialPageRoute(builder: (context) => const CreateAccountScreen()));
+                        context, AppPageRoute(builder: (context) => const CreateAccountScreen()));
                   },
                   child: const Text.rich(
                     TextSpan(

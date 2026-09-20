@@ -8,6 +8,7 @@ import 'package:ravelgo_driver_app/services/session_guard.dart';
 import 'package:ravelgo_driver_app/views/auth/login_screen.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/splash/splash_screen.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
 
 /// Lets a tapped device push notification (delivered while the app was
 /// backgrounded or terminated) navigate the same way an in-app notification
@@ -33,7 +34,7 @@ void _wireSessionExpiry() {
         const SnackBar(content: Text(SessionGuard.expiredMessage)),
       );
     navigatorKey.currentState?.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      AppPageRoute(builder: (_) => const LoginScreen()),
       (route) => false,
     );
   };

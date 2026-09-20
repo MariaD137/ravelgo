@@ -3,6 +3,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
+import 'package:ravelgo_driver_app/widgets/empty_state.dart';
+import 'package:ravelgo_driver_app/widgets/shimmer.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class MyDocumentsScreen extends StatefulWidget {
@@ -190,33 +192,23 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
   }
 
   Widget _body() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
-              TextButton(onPressed: _load, child: const Text('Try again')),
-            ],
-          ),
-        ),
-      );
-    }
-    if (_docs.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'No documents on file yet.\nYour uploaded documents and their approval status will appear here.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.textSecondary),
-          ),
-        ),
-      );
-    }
+    return AsyncBody(
+      stateKey: _loading ? "loading" : (_error != null ? "error" : "data:${_docs.length}"),
+      child: _loading
+          ? const ShimmerList()
+          : _error != null
+              ? EmptyState(icon: Icons.cloud_off, title: "Couldn't load documents", subtitle: _error!, onRetry: _load)
+              : _docs.isEmpty
+                  ? const EmptyState(
+                      icon: Icons.description_outlined,
+                      title: "No documents on file yet",
+                      subtitle: "Your uploaded documents and their approval status will appear here.",
+                    )
+                  : _docList(),
+    );
+  }
+
+  Widget _docList() {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(

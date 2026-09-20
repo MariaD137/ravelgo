@@ -20,6 +20,7 @@ import 'package:ravelgo_driver_app/views/support/contact_us_screen.dart';
 import 'package:ravelgo_driver_app/views/support/driver_support_screen.dart';
 import 'package:ravelgo_driver_app/views/support/faq_screen.dart';
 import 'package:ravelgo_driver_app/views/vehicles/vehicle_list_screen.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
 
 class AccountScreen extends StatelessWidget {
   final bool embedded;
@@ -35,7 +36,7 @@ class AccountScreen extends StatelessWidget {
         children: [
           if (embedded) AppComponents.sectionTitle("Account"),
           InkWell(
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileScreen(profile: profile))),
+            onTap: () => Navigator.push(context, AppPageRoute(builder: (_) => ProfileScreen(profile: profile))),
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: AppComponents.cardDecoration(),
@@ -123,7 +124,7 @@ class AccountScreen extends StatelessWidget {
                     await AuthService.signOut();
                     if (!context.mounted) return;
                     Navigator.of(context).pushAndRemoveUntil(
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      AppPageRoute(builder: (_) => const LoginScreen()),
                       (route) => false,
                     );
                   },
@@ -140,6 +141,6 @@ class AccountScreen extends StatelessWidget {
   }
 
   void _go(BuildContext context, Widget screen) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => screen));
+    Navigator.push(context, AppPageRoute(builder: (_) => screen));
   }
 }

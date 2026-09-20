@@ -3,6 +3,7 @@ import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/services/driver_profile_events.dart';
 import 'package:ravelgo_driver_app/views/deliveries/delivery_detail_screen.dart';
 import 'package:ravelgo_driver_app/views/trips/trip_detail_screen.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
 
 /// Opens the screen a notification refers to — shared by both the in-app
 /// notification list (NotificationsScreen) and a tapped device push
@@ -38,12 +39,12 @@ Future<void> openNotificationReference(
   if (referenceType == 'TRIP') {
     try {
       final trip = await DriverApi.tripById(referenceId);
-      navigator.push(MaterialPageRoute(builder: (_) => TripDetailScreen(trip: trip)));
+      navigator.push(AppPageRoute(builder: (_) => TripDetailScreen(trip: trip)));
     } catch (_) {
       // Trip may no longer be visible to this account, or the fetch failed.
     }
   } else if (referenceType == 'COURIER_REQUEST') {
-    navigator.push(MaterialPageRoute(builder: (_) => DeliveryDetailScreen(deliveryId: referenceId)));
+    navigator.push(AppPageRoute(builder: (_) => DeliveryDetailScreen(deliveryId: referenceId)));
   }
   // Other reference types have no dedicated detail screen in this app — the
   // notification is still shown/marked read, it just doesn't navigate

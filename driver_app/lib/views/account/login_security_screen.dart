@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/account/update_password_screen.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
 
 /// Login & Security: change password, plus honest verification status for
 /// the identity fields the app actually has (email from Cognito, phone from
@@ -25,7 +26,7 @@ class LoginSecurityScreen extends StatelessWidget {
                 leading: Icons.password_outlined,
                 onTap: () => Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const UpdatePasswordScreen()),
+                  AppPageRoute(builder: (_) => const UpdatePasswordScreen()),
                 ),
               ),
             ),

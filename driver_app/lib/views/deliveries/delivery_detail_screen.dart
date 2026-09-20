@@ -7,6 +7,9 @@ import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/deliveries/delivery_proof_screen.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
+import 'package:ravelgo_driver_app/widgets/empty_state.dart';
+import 'package:ravelgo_driver_app/widgets/shimmer.dart';
 
 /// Full detail of one package delivery: Package / Pickup / Drop-off /
 /// Assignment / Earnings, a map of the real pickup/dropoff/courier
@@ -146,7 +149,7 @@ class _DeliveryDetailScreenState extends State<DeliveryDetailScreen> {
     final current = _request;
     if (current == null) return;
     final updated = await Navigator.of(context).push<CourierRequest>(
-      MaterialPageRoute(builder: (_) => DeliveryProofScreen(request: current)),
+      AppPageRoute(builder: (_) => DeliveryProofScreen(request: current)),
     );
     if (updated != null && mounted) {
       setState(() => _request = updated);
@@ -175,29 +178,24 @@ class _DeliveryDetailScreenState extends State<DeliveryDetailScreen> {
 
   Widget _body() {
     final r = _request;
-    if (_loading && r == null) return const Center(child: CircularProgressIndicator());
-    if (r == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _noLongerAvailable
-                    ? 'This delivery is no longer available.'
-                    : (_error ?? 'Could not load this delivery.'),
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.danger),
-              ),
-              const SizedBox(height: 8),
-              TextButton(onPressed: () => _load(), child: const Text('Try again')),
-            ],
-          ),
-        ),
-      );
-    }
+    return AsyncBody(
+      stateKey: (_loading && r == null) ? "loading" : (r == null ? "error" : "data:${r.id}:${r.status}"),
+      child: (_loading && r == null)
+          ? const ShimmerDetail()
+          : r == null
+              ? EmptyState(
+                  icon: Icons.local_shipping_outlined,
+                  title: _noLongerAvailable ? "No longer available" : "Couldn't load this delivery",
+                  subtitle: _noLongerAvailable
+                      ? 'This delivery is no longer available.'
+                      : (_error ?? 'Could not load this delivery.'),
+                  onRetry: () => _load(),
+                )
+              : _detail(r),
+    );
+  }
 
+  Widget _detail(CourierRequest r) {
     final canPreviewOnly = r.status == 'REQUESTED' && r.driverId == null;
     return RefreshIndicator(
       onRefresh: () => _load(),

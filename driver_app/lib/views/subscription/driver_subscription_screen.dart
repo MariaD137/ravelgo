@@ -4,6 +4,8 @@ import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/utils/date_utils.dart';
+import 'package:ravelgo_driver_app/widgets/empty_state.dart';
+import 'package:ravelgo_driver_app/widgets/shimmer.dart';
 
 /// Real subscription plans (GET /api/subscription-plans, Admin-published —
 /// this screen used to show three entirely invented weekly/monthly/quarterly
@@ -113,21 +115,16 @@ class _DriverSubscriptionScreenState extends State<DriverSubscriptionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Subscription Plan")),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : (_error != null ? _errorView() : _body()),
+      body: AsyncBody(
+        stateKey: _loading ? "loading" : (_error != null ? "error" : "data"),
+        child: _loading
+            ? const ShimmerDetail()
+            : (_error != null
+                ? EmptyState(icon: Icons.cloud_off, title: "Couldn't load your plan", subtitle: _error!, onRetry: _load)
+                : _body()),
+      ),
     );
   }
-
-  Widget _errorView() => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
-            TextButton(onPressed: _load, child: const Text('Try again')),
-          ]),
-        ),
-      );
 
   Widget _body() {
     return RefreshIndicator(

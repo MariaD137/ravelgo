@@ -18,6 +18,7 @@ import 'package:ravelgo_driver_app/views/support/contact_us_screen.dart';
 import 'package:ravelgo_driver_app/views/support/driver_support_screen.dart';
 import 'package:ravelgo_driver_app/views/support/faq_screen.dart';
 import 'package:ravelgo_driver_app/views/vehicles/vehicle_list_screen.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
 
 class SideMenuDriver extends StatelessWidget {
   final DriverProfile profile;
@@ -87,9 +88,9 @@ class SideMenuDriver extends StatelessWidget {
         if (!context.mounted) return;
         Navigator.pop(context);
         if (replace) {
-          Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => builder()), (route) => false);
+          Navigator.of(context).pushAndRemoveUntil(AppPageRoute(builder: (_) => builder()), (route) => false);
         } else {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => builder()));
+          Navigator.push(context, AppPageRoute(builder: (_) => builder()));
         }
       },
       child: Padding(

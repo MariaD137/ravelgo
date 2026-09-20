@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/services/auth_service.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/auth/verify_account_screen.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
 
 /// Driver account creation, wired to the RavelGo Cognito user pool. Creating
 /// an account emails a real 6-digit confirmation code.
@@ -49,7 +50,7 @@ class _CreateAccountScreenState extends State<CreateAccountScreen> {
       if (!mounted) return;
       Navigator.push(
         context,
-        MaterialPageRoute(
+        AppPageRoute(
           builder: (_) => VerifyAccountScreen(
             email: _emailController.text.trim(),
             password: _passwordController.text,

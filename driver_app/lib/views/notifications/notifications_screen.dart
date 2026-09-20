@@ -4,6 +4,8 @@ import 'package:ravelgo_driver_app/services/driver_profile_events.dart';
 import 'package:ravelgo_driver_app/services/notification_navigation.dart';
 import 'package:ravelgo_driver_app/services/notifications_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
+import 'package:ravelgo_driver_app/widgets/empty_state.dart';
+import 'package:ravelgo_driver_app/widgets/shimmer.dart';
 
 /// Driver notification center — backed by the real GET /api/notifications
 /// feed. Every row here was created by an actual backend event (see
@@ -141,49 +143,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Widget _body() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.cloud_off, size: 48, color: AppColors.textMuted),
-              const SizedBox(height: 12),
-              Text(_error!, textAlign: TextAlign.center),
-              const SizedBox(height: 8),
-              TextButton(onPressed: _load, child: const Text('Try again')),
-            ],
-          ),
-        ),
-      );
-    }
-    if (_notifications.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: _load,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: [
-            const SizedBox(height: 120),
-            const Center(child: Icon(Icons.notifications_none, size: 64, color: AppColors.textMuted)),
-            const SizedBox(height: 16),
-            const Center(
-              child: Text('No notifications yet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(height: 8),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 32),
-              child: Text(
-                'Ride requests, delivery updates and payout updates will appear here as they happen.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textSecondary),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    return AsyncBody(
+      stateKey: _loading ? "loading" : (_error != null ? "error" : "data:${_notifications.length}"),
+      child: _loading
+          ? const ShimmerList()
+          : _error != null
+              ? EmptyState(icon: Icons.cloud_off, title: "Couldn't load notifications", subtitle: _error!, onRetry: _load)
+              : _notifications.isEmpty
+                  ? RefreshIndicator(
+                      onRefresh: _load,
+                      child: const EmptyState(
+                        icon: Icons.notifications_none,
+                        title: "No notifications yet",
+                        subtitle: "Ride requests, delivery updates and payout updates will appear here as they happen.",
+                      ),
+                    )
+                  : _notificationList(),
+    );
+  }
+
+  Widget _notificationList() {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(

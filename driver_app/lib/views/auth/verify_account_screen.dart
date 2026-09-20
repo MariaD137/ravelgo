@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/services/auth_service.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
 
 /// Driver account verification. Confirms the emailed Cognito code, then signs
 /// the driver in and enters the app.
@@ -48,7 +49,7 @@ class _VerifyAccountScreenState extends State<VerifyAccountScreen> {
       }
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const DriverShell()),
+        AppPageRoute(builder: (_) => const DriverShell()),
         (route) => false,
       );
     } catch (e) {

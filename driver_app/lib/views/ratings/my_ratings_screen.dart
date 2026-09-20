@@ -4,6 +4,7 @@ import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/utils/date_utils.dart';
+import 'package:ravelgo_driver_app/widgets/shimmer.dart';
 
 /// The driver's real rating and rider feedback — GET /api/drivers/me (via
 /// [profile], already loaded by the caller) for the headline average, and
@@ -63,7 +64,7 @@ class _MyRatingsScreenState extends State<MyRatingsScreen> {
 
   Widget _body() {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const ShimmerDetail();
     }
     return ListView(
       padding: const EdgeInsets.all(20),

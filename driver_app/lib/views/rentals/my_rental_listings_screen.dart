@@ -3,6 +3,8 @@ import 'package:ravelgo_driver_app/config/currency.dart';
 import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
+import 'package:ravelgo_driver_app/widgets/empty_state.dart';
+import 'package:ravelgo_driver_app/widgets/shimmer.dart';
 
 /// The driver's own rental listings AND their real bookings — backed
 /// entirely by GET /api/rentals/mine (requireRole("Driver"), scoped to the
@@ -51,46 +53,22 @@ class _MyRentalListingsScreenState extends State<MyRentalListingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('My Listings')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? _errorState()
-              : _listings.isEmpty
-                  ? _emptyState()
-                  : RefreshIndicator(onRefresh: _load, child: _list()),
+      body: AsyncBody(
+        stateKey: _loading ? "loading" : (_error != null ? "error" : "data:${_listings.length}"),
+        child: _loading
+            ? const ShimmerList()
+            : _error != null
+                ? EmptyState(icon: Icons.cloud_off, title: "Couldn't load your listings", subtitle: _error!, onRetry: _load)
+                : _listings.isEmpty
+                    ? const EmptyState(
+                        icon: Icons.directions_car_outlined,
+                        title: "No listings yet",
+                        subtitle: "You haven't listed a car for rental yet.",
+                      )
+                    : RefreshIndicator(onRefresh: _load, child: _list()),
+      ),
     );
   }
-
-  Widget _errorState() => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
-            const SizedBox(height: 12),
-            TextButton(onPressed: _load, child: const Text('Try again')),
-          ]),
-        ),
-      );
-
-  Widget _emptyState() => ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              children: const [
-                Icon(Icons.directions_car_outlined, size: 48, color: AppColors.textSecondary),
-                SizedBox(height: 12),
-                Text(
-                  "You haven't listed a car for rental yet.",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.textSecondary),
-                ),
-              ],
-            ),
-          ),
-        ],
-      );
 
   Widget _list() {
     return ListView.separated(

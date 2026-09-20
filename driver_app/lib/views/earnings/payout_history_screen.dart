@@ -4,6 +4,8 @@ import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/utils/date_utils.dart';
+import 'package:ravelgo_driver_app/widgets/empty_state.dart';
+import 'package:ravelgo_driver_app/widgets/shimmer.dart';
 
 /// Past and pending payouts from the backend (GET /api/payouts/history).
 class PayoutHistoryScreen extends StatefulWidget {
@@ -71,24 +73,23 @@ class _PayoutHistoryScreenState extends State<PayoutHistoryScreen> {
   }
 
   Widget _body() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
-              TextButton(onPressed: _load, child: const Text('Try again')),
-            ],
-          ),
-        ),
-      );
-    }
-    if (_payouts.isEmpty) {
-      return const Center(child: Text('No payouts yet', style: TextStyle(color: AppColors.textSecondary)));
-    }
+    return AsyncBody(
+      stateKey: _loading ? "loading" : (_error != null ? "error" : "data:${_payouts.length}"),
+      child: _loading
+          ? const ShimmerList()
+          : _error != null
+              ? EmptyState(icon: Icons.cloud_off, title: "Couldn't load payouts", subtitle: _error!, onRetry: _load)
+              : _payouts.isEmpty
+                  ? const EmptyState(
+                      icon: Icons.account_balance_outlined,
+                      title: "No payouts yet",
+                      subtitle: "Completed and pending payouts will appear here.",
+                    )
+                  : _payoutList(),
+    );
+  }
+
+  Widget _payoutList() {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
