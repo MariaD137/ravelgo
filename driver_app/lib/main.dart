@@ -25,10 +25,10 @@ void main() async {
   // build — covers the "already signed in from a restored session" case;
   // login_screen.dart also calls this after a fresh sign-in.
   unawaited(PushNotificationService.configureAndRegister());
-  PushNotificationService.onNotificationTapped = (referenceType, referenceId) {
+  PushNotificationService.onNotificationTapped = (type, referenceType, referenceId) {
     final navigator = navigatorKey.currentState;
     if (navigator == null) return;
-    openNotificationReference(navigator, referenceType: referenceType, referenceId: referenceId);
+    openNotificationReference(navigator, referenceType: referenceType, referenceId: referenceId, type: type);
   };
   runApp(const RavelGoDriverApp());
 }

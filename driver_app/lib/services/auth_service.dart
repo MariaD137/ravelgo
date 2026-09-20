@@ -128,6 +128,47 @@ class AuthService {
     return null;
   }
 
+  /// Whether the CURRENT access token carries the given Cognito group. The
+  /// backend authorizes every Driver route off the `cognito:groups` claim of
+  /// the token it receives (backend/src/middleware/auth.ts requireRole), so
+  /// what matters is what this token says — not what Cognito itself now
+  /// believes about the user.
+  static bool hasGroup(String group) {
+    final s = session;
+    if (s == null) return false;
+    try {
+      final groups = s.getAccessToken().decodePayload()['cognito:groups'];
+      return groups is List && groups.contains(group);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Force a token refresh via the stored refresh token, even though the
+  /// current access token is still valid.
+  ///
+  /// Group membership is baked into a token at issue time. After
+  /// POST /api/drivers/apply the SERVER adds the user to the "Driver" group,
+  /// but the access token the app already holds (valid for up to an hour —
+  /// see accessTokenValidity in infra/lib/auth-stack.ts) still lacks it, so
+  /// every Driver-only route (GET /drivers/me, documents, vehicles) 403s
+  /// until the token naturally expires. getSession() deliberately reuses a
+  /// still-valid token, so this is the only way to pick the new group up
+  /// immediately. Returns true if a fresh session was applied.
+  static Future<bool> refreshTokens() async {
+    try {
+      final user = currentUser ?? await _pool.getCurrentUser();
+      final refreshToken = session?.getRefreshToken() ?? (await user?.getSession())?.getRefreshToken();
+      if (user == null || refreshToken == null || refreshToken.getToken() == null) return false;
+      final refreshed = await user.refreshSession(refreshToken);
+      if (refreshed == null || !refreshed.isValid()) return false;
+      _applySession(user, refreshed);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static void _applySession(CognitoUser user, CognitoUserSession s) {
     currentUser = user;
     session = s;

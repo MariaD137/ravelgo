@@ -6,8 +6,11 @@ import 'package:ravelgo_driver_app/config/currency.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
+import 'package:ravelgo_driver_app/views/documents/my_documents_screen.dart';
+import 'package:ravelgo_driver_app/views/home/account_status_card.dart';
 import 'package:ravelgo_driver_app/views/notifications/notifications_screen.dart';
 import 'package:ravelgo_driver_app/views/riderequest/incoming_request_sheet.dart';
+import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
 import 'package:ravelgo_driver_app/views/trip/active_trip_screen.dart';
 
 /// The driver's home. When online it polls the backend for a trip the matching
@@ -16,11 +19,26 @@ import 'package:ravelgo_driver_app/views/trip/active_trip_screen.dart';
 /// Accepting opens the live trip screen; declining cancels the trip on the
 /// backend. Today's earnings/trips are derived from the driver's real completed
 /// trips.
+///
+/// The approval card at the top renders ONLY what GET /drivers/me last
+/// returned (via DriverShell): a status that hasn't loaded shows as such, a
+/// failed load shows the failure with a retry, and "Application under review"
+/// appears only when the backend's Driver.status really is PENDING_REVIEW.
 class DriverHomeScreen extends StatefulWidget {
   final DriverProfile profile;
+  final DriverProfileLoadState loadState;
+  final String? loadError;
   final ValueChanged<bool> onOnlineToggle;
+  final Future<void> Function() onRefresh;
 
-  const DriverHomeScreen({super.key, required this.profile, required this.onOnlineToggle});
+  const DriverHomeScreen({
+    super.key,
+    required this.profile,
+    required this.onOnlineToggle,
+    required this.onRefresh,
+    this.loadState = DriverProfileLoadState.ready,
+    this.loadError,
+  });
 
   @override
   State<DriverHomeScreen> createState() => _DriverHomeScreenState();
@@ -232,8 +250,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       ),
                     ),
                     GestureDetector(
-                      onTap: () => Navigator.push(
-                          context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+                      onTap: () async {
+                        await Navigator.push(
+                            context, MaterialPageRoute(builder: (_) => const NotificationsScreen()));
+                        // An approval notification lives in that list — coming
+                        // back from it is the natural moment to re-read the
+                        // real status.
+                        if (context.mounted) await widget.onRefresh();
+                      },
                       child: const CircleAvatar(
                           backgroundColor: AppColors.surface,
                           child: Icon(Icons.notifications_none, color: AppColors.textPrimary)),
@@ -244,39 +268,24 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             ],
           ),
           Expanded(
-            child: SingleChildScrollView(
+            child: RefreshIndicator(
+              onRefresh: widget.onRefresh,
+              child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (!profile.isApproved)
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: AppComponents.cardDecoration(),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.hourglass_top, size: 20, color: AppColors.warning),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  "Application under review",
-                                  style: TextStyle(fontWeight: FontWeight.w600),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  profile.status == 'SUSPENDED'
-                                      ? "Your account is suspended. Contact support for help."
-                                      : "We'll notify you as soon as your documents are approved and you can go online.",
-                                  style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                    DriverAccountStatusCard(
+                      profile: profile,
+                      loadState: widget.loadState,
+                      loadError: widget.loadError,
+                      onRefresh: widget.onRefresh,
+                      onOpenDocuments: () async {
+                        await Navigator.push(context, MaterialPageRoute(builder: (_) => const MyDocumentsScreen()));
+                        if (context.mounted) await widget.onRefresh();
+                      },
                     )
                   else
                     Container(
@@ -340,6 +349,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       ),
                     ),
                 ],
+              ),
               ),
             ),
           ),

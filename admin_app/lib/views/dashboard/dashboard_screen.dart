@@ -192,8 +192,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   SizedBox(
                     width: cardWidth,
                     child: AppComponents.statCard(
-                      "Pending approvals",
-                      "${_stats!.pendingApprovals}",
+                      // Drivers awaiting the approval decision — the same
+                      // set the tap-through list shows. (pendingApprovals is
+                      // document/Car Paddy reviews, a different number.)
+                      "Pending driver applications",
+                      "${_stats!.pendingDriverApplications}",
                       Icons.pending_actions_outlined,
                       color: AppColors.warning,
                       onTap: () => _openDrivers(statusFilter: 'PENDING_REVIEW'),

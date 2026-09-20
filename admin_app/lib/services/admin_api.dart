@@ -17,7 +17,13 @@ class DashboardStats {
   final int onlineDrivers;
   final int driversOnTrip;
   final int availableDrivers;
+  // Pending DOCUMENT + Car Paddy reviews. NOT the number of drivers waiting
+  // for an approval decision — see pendingDriverApplications.
   final int pendingApprovals;
+  // Drivers whose Driver.status is still PENDING_REVIEW: the real approval
+  // queue, i.e. the ones the "Approve driver" action on the detail screen
+  // hasn't been taken for yet.
+  final int pendingDriverApplications;
   final int pendingRideRequests;
   final int activeLogisticsDeliveries;
   final int registeredRiders;
@@ -30,6 +36,7 @@ class DashboardStats {
     required this.driversOnTrip,
     required this.availableDrivers,
     required this.pendingApprovals,
+    required this.pendingDriverApplications,
     required this.pendingRideRequests,
     required this.activeLogisticsDeliveries,
     required this.registeredRiders,
@@ -43,6 +50,7 @@ class DashboardStats {
         driversOnTrip: _i(j['driversOnTrip']),
         availableDrivers: _i(j['availableDrivers']),
         pendingApprovals: _i(j['pendingApprovals']),
+        pendingDriverApplications: _i(j['pendingDriverApplications']),
         pendingRideRequests: _i(j['pendingRideRequests']),
         activeLogisticsDeliveries: _i(j['activeLogisticsDeliveries']),
         registeredRiders: _i(j['registeredRiders']),
@@ -119,7 +127,8 @@ class AdminDriver {
       userId: '${user?['id'] ?? j['id']}',
       name: _name(user),
       email: '${user?['email'] ?? ''}',
-      status: '${j['status'] ?? 'PENDING_REVIEW'}',
+      // Never default a missing status to a real review outcome.
+      status: '${j['status'] ?? ''}',
       isOnline: j['isOnline'] == true,
       rating: j['rating'] == null ? 5.0 : _d(j['rating']),
       totalTrips: _i(j['totalTrips']),
@@ -1296,8 +1305,13 @@ class AdminApi {
   static Future<DashboardStats> dashboard() async =>
       DashboardStats.fromJson(await ApiClient.get('/api/admin/dashboard') as Map<String, dynamic>);
 
-  static Future<List<AdminDriver>> drivers() async {
-    final data = await ApiClient.get('/api/drivers?pageSize=100');
+  /// Drivers, optionally narrowed server-side to one approval status
+  /// (GET /api/drivers?status=PENDING_REVIEW). Filtering on the server means
+  /// the pending queue is the whole queue, not just whichever pending drivers
+  /// happened to fall inside the first page of "all drivers".
+  static Future<List<AdminDriver>> drivers({String? status}) async {
+    final query = status == null ? '' : '&status=${Uri.encodeQueryComponent(status)}';
+    final data = await ApiClient.get('/api/drivers?pageSize=100$query');
     return _list(data).whereType<Map<String, dynamic>>().map(AdminDriver.fromJson).toList();
   }
 

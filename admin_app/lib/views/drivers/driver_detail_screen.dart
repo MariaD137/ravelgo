@@ -98,6 +98,58 @@ class _DriverDetailScreenState extends State<DriverDetailScreen> {
     await _run(() => AdminApi.reviewDocument(doc.id, 'REJECTED', rejectionReason: reason), 'Document rejected');
   }
 
+  /// Approving the driver is the ONE action that changes Driver.status — the
+  /// field the driver app reads and the backend's go-online gate checks.
+  /// Approving documents individually never does (see backend
+  /// documents.routes.ts vs drivers.routes.ts). The backend deliberately does
+  /// not block approval on document state, so this confirmation shows the
+  /// reviewer the real per-document outcomes before they commit.
+  Future<void> _approveDriver(AdminDriver d) async {
+    final unresolved = d.documents.where((doc) => doc.status != 'APPROVED').toList();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Approve this driver?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'They will be able to go online and receive trips immediately.',
+              style: TextStyle(fontSize: 13.5),
+            ),
+            const SizedBox(height: 12),
+            if (d.documents.isEmpty)
+              const Text(
+                'This driver has not uploaded any documents.',
+                style: TextStyle(fontSize: 13, color: AppColors.danger),
+              )
+            else if (unresolved.isEmpty)
+              Text(
+                'All ${d.documents.length} uploaded document(s) are approved.',
+                style: const TextStyle(fontSize: 13, color: AppColors.success),
+              )
+            else ...[
+              Text(
+                '${unresolved.length} of ${d.documents.length} document(s) not yet approved:',
+                style: const TextStyle(fontSize: 13, color: AppColors.warning),
+              ),
+              const SizedBox(height: 4),
+              for (final doc in unresolved)
+                Text('• ${doc.title} — ${_label(doc.status)}', style: const TextStyle(fontSize: 12.5)),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Approve driver')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _run(() => AdminApi.setDriverStatus(d.id, 'ACTIVE'), 'Driver approved');
+  }
+
   Future<void> _callDriver(String phoneNumber) async {
     final uri = Uri(scheme: 'tel', path: phoneNumber);
     if (!await launchUrl(uri)) _snack('Could not start a call.');
@@ -190,6 +242,30 @@ class _DriverDetailScreenState extends State<DriverDetailScreen> {
                   ),
                 ),
             ],
+          ),
+        ],
+        if (d.status == 'PENDING_REVIEW') ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.warning.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, size: 18, color: AppColors.warning),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'This application is awaiting a decision. Reviewing documents below records each '
+                    'outcome for the driver, but only "Approve driver" lets them go online.',
+                    style: TextStyle(fontSize: 12.5),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
         const SizedBox(height: 20),
@@ -285,9 +361,7 @@ class _DriverDetailScreenState extends State<DriverDetailScreen> {
             Expanded(
               child: AppComponents.primaryButton(
                 text: d.status == 'ACTIVE' ? "Approved" : "Approve driver",
-                onPressed: (_busy || d.status == 'ACTIVE')
-                    ? null
-                    : () => _run(() => AdminApi.setDriverStatus(d.id, 'ACTIVE'), 'Driver approved'),
+                onPressed: (_busy || d.status == 'ACTIVE') ? null : () => _approveDriver(d),
               ),
             ),
           ],

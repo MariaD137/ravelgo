@@ -13,6 +13,11 @@ class DriverRecord {
   final String preferredLanguage;
   final bool quietModePreferred;
   final String phoneNumber;
+  // The driver's onboarding documents and their per-document review state,
+  // exactly as GET /drivers/me includes them. Informational only: the
+  // backend's go-online gate is Driver.status alone (an admin's explicit
+  // "Approve driver"), not whether every document here reads APPROVED.
+  final List<DriverDocument> documents;
 
   DriverRecord({
     required this.id,
@@ -23,19 +28,27 @@ class DriverRecord {
     required this.preferredLanguage,
     required this.quietModePreferred,
     required this.phoneNumber,
+    this.documents = const [],
   });
 
   bool get isApproved => status == 'ACTIVE';
 
   factory DriverRecord.fromJson(Map<String, dynamic> j) => DriverRecord(
         id: '${j['id']}',
-        status: '${j['status'] ?? 'PENDING_REVIEW'}',
+        // Never default a missing status to something that reads as a real
+        // review outcome — an empty status renders as "unknown", not as
+        // "under review".
+        status: '${j['status'] ?? ''}',
         isOnline: j['isOnline'] == true,
         rating: (j['rating'] is num) ? (j['rating'] as num).toDouble() : 5.0,
         totalTrips: (j['totalTrips'] is num) ? (j['totalTrips'] as num).toInt() : 0,
         preferredLanguage: '${j['preferredLanguage'] ?? 'English'}',
         quietModePreferred: j['quietModePreferred'] == true,
         phoneNumber: '${(j['user'] as Map?)?['phoneNumber'] ?? ''}',
+        documents: ((j['documents'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(DriverDocument.fromJson)
+            .toList(),
       );
 }
 
@@ -506,14 +519,18 @@ class DriverApi {
   /// only in the "Rider" group, so this is the path that actually elevates the
   /// role; calling /drivers/me instead would 403 for a user who hasn't been
   /// granted the group yet. The client never assigns its own role.
-  static Future<void> provisionMe() async {
+  ///
+  /// Returns the (new or existing) PENDING_REVIEW/ACTIVE/SUSPENDED record, or
+  /// null if the signed-in identity has no email to apply with.
+  static Future<DriverRecord?> provisionMe() async {
     final email = AuthService.email;
-    if (email == null || email.isEmpty) return;
-    await ApiClient.post('/api/drivers/apply', {
+    if (email == null || email.isEmpty) return null;
+    final data = await ApiClient.post('/api/drivers/apply', {
       'firstName': (AuthService.givenName?.isNotEmpty ?? false) ? AuthService.givenName : 'Driver',
       'lastName': (AuthService.familyName?.isNotEmpty ?? false) ? AuthService.familyName : 'User',
       'email': email,
     });
+    return DriverRecord.fromJson(data as Map<String, dynamic>);
   }
 
   /// The signed-in driver's backend record.

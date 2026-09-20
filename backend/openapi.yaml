@@ -199,6 +199,11 @@ paths:
       parameters:
         - $ref: "#/components/parameters/page"
         - $ref: "#/components/parameters/pageSize"
+        - name: status
+          in: query
+          required: false
+          description: Narrow the list to drivers in one approval status (e.g. PENDING_REVIEW for the review queue).
+          schema: { $ref: "#/components/schemas/DriverStatus" }
       responses:
         "200":
           description: Paginated drivers
@@ -346,7 +351,13 @@ paths:
   /drivers/{id}/status:
     patch:
       tags: [Drivers]
-      summary: Suspend/reactivate a driver (Admin)
+      summary: Approve (ACTIVE), suspend, or send a driver back to review (Admin, drivers:write)
+      description: >-
+        The single authoritative approval action. Driver.status is what the driver app
+        reads (GET /drivers/me), what gates going online (PATCH /drivers/me/availability)
+        and what trip matching requires. Reviewing individual documents never changes it.
+        Idempotent: repeating the current status returns 200 without re-notifying the driver.
+        Writes an audit row and sends the driver a DRIVER_ACCOUNT_STATUS_CHANGED notification.
       parameters:
         - $ref: "#/components/parameters/id"
       requestBody:
@@ -364,6 +375,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Driver" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No driver with this id
 
   /vehicles/me:
     get:
@@ -912,7 +927,12 @@ paths:
                 properties:
                   activeTrips: { type: integer }
                   onlineDrivers: { type: integer }
-                  pendingApprovals: { type: integer }
+                  pendingDriverApplications:
+                    type: integer
+                    description: Drivers whose Driver.status is still PENDING_REVIEW (awaiting the approval decision).
+                  pendingApprovals:
+                    type: integer
+                    description: Pending document reviews plus pending Car Paddy requests (not driver applications).
 
   /admin-users:
     get:

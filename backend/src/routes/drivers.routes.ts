@@ -89,20 +89,33 @@ driversRouter.post("/drivers/apply", sensitiveLimiter, requireAuth, async (req, 
   res.status(alreadyApplied ? 200 : 201).json(driver);
 });
 
-// Admin: list all drivers
+const DRIVER_STATUSES = ["ACTIVE", "PENDING_REVIEW", "SUSPENDED"] as const;
+
+const listDriversQuerySchema = paginationQuerySchema.extend({
+  // Optional server-side filter on Driver.status. The Admin App's pending-
+  // applications view previously filtered client-side over the first page
+  // only, so a PENDING_REVIEW driver past the pagination window was simply
+  // invisible to reviewers; filtering here makes "show me every driver still
+  // waiting" a real query over the whole table.
+  status: z.enum(DRIVER_STATUSES).optional(),
+});
+
+// Admin: list all drivers (optionally narrowed to one status)
 driversRouter.get("/drivers", requireAuth, requireRole("Admin"), async (req, res) => {
-  const parsed = paginationQuerySchema.safeParse(req.query);
+  const parsed = listDriversQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { page, pageSize } = parsed.data;
+  const { page, pageSize, status } = parsed.data;
+  const where = status ? { status } : {};
 
   const [drivers, total] = await Promise.all([
     prisma.driver.findMany({
+      where,
       include: { user: true, vehicles: true },
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.driver.count(),
+    prisma.driver.count({ where }),
   ]);
   res.json(paginate(drivers, total, page, pageSize));
 });
@@ -318,7 +331,7 @@ driversRouter.get(
 );
 
 const statusSchema = z.object({
-  status: z.enum(["ACTIVE", "PENDING_REVIEW", "SUSPENDED"]),
+  status: z.enum(DRIVER_STATUSES),
 });
 
 const DRIVER_STATUS_MESSAGES: Record<"ACTIVE" | "PENDING_REVIEW" | "SUSPENDED", { title: string; body: string }> = {
@@ -336,25 +349,45 @@ const DRIVER_STATUS_MESSAGES: Record<"ACTIVE" | "PENDING_REVIEW" | "SUSPENDED", 
   },
 };
 
-// Admin: suspend / reactivate a driver
+// Admin: approve (ACTIVE) / suspend / send back to review. This is THE
+// approval endpoint — Driver.status is the single authoritative approval
+// field the driver app (GET /drivers/me), the go-online gate
+// (PATCH /drivers/me/availability) and trip matching (services/matching.ts)
+// all read. Reviewing individual documents (PATCH /documents/:id/review)
+// records the outcome per document but never changes this field; an admin
+// must explicitly approve the driver here.
 driversRouter.patch("/drivers/:id/status", requireAuth, requireAdminPermission("drivers:write"), async (req, res) => {
   const parsed = statusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+  const existing = await prisma.driver.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: "Driver could not be found." });
+
+  // Idempotent: a repeated/duplicate approval (double-tap, retry after a
+  // timeout, stale admin screen) must not re-notify the driver "You're
+  // approved!" or write a second audit row for a change that never happened.
+  // 200 with the current record so the caller still converges on the truth.
+  if (existing.status === parsed.data.status) return res.json(existing);
+
   const driver = await prisma.driver.update({
-    where: { id: req.params.id },
+    where: { id: existing.id },
     data: { status: parsed.data.status },
   });
-  void recordAudit({
+  // Awaited (like the other admin-audit writes in this codebase) so the
+  // audit row is guaranteed to exist before the admin sees a 200; recordAudit
+  // never throws, so this can't turn a successful approval into an error.
+  await recordAudit({
     actorSub: req.user!.sub,
     action: "DRIVER_STATUS_CHANGED",
     entityType: "Driver",
     entityId: driver.id,
-    metadata: { status: parsed.data.status },
+    metadata: { from: existing.status, status: parsed.data.status },
   });
   // EI-1 gap closed: an approval/suspension/rejection previously only wrote
   // an audit row — the driver themself was never told their account status
-  // had changed at all.
+  // had changed at all. Best-effort (persisted in-app row + device push);
+  // the database status above is the source of truth, this is only how the
+  // driver app learns to re-fetch it.
   const message = DRIVER_STATUS_MESSAGES[parsed.data.status];
   await notifyUser(driver.userId, "DRIVER_ACCOUNT_STATUS_CHANGED", message.title, message.body);
   res.json(driver);

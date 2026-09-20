@@ -210,6 +210,7 @@ adminRouter.get("/admin/dashboard", requireAuth, requireRole("Admin"), async (_r
     activeTrips,
     onlineDrivers,
     driversOnTrip,
+    pendingDriverApplications,
     pendingDocs,
     pendingCarPaddy,
     pendingRideRequests,
@@ -221,6 +222,13 @@ adminRouter.get("/admin/dashboard", requireAuth, requireRole("Admin"), async (_r
     // "Online" now means approved AND currently online (see Driver.isOnline).
     prisma.driver.count({ where: { status: "ACTIVE", isOnline: true } }),
     prisma.driver.count({ where: { status: "ACTIVE", isOnline: true, tripsAsDriver: { some: { status: { in: ["MATCHED", "IN_PROGRESS"] } } } } }),
+    // Drivers still waiting on the actual approval decision (Driver.status,
+    // the field PATCH /drivers/:id/status changes). Distinct from
+    // pendingApprovals below, which counts pending DOCUMENT and Car Paddy
+    // reviews — approving every document does not approve the driver, so
+    // the dashboard has to show both numbers or reviewers see "0 pending"
+    // while applicants are still blocked from going online.
+    prisma.driver.count({ where: { status: "PENDING_REVIEW" } }),
     prisma.driverDocument.count({ where: { status: "PENDING" } }),
     prisma.carPaddyRequest.count({ where: { status: { in: ["SUBMITTED", "IN_REVIEW"] } } }),
     prisma.trip.count({ where: { status: "REQUESTED" } }),
@@ -246,6 +254,7 @@ adminRouter.get("/admin/dashboard", requireAuth, requireRole("Admin"), async (_r
     onlineDrivers,
     driversOnTrip,
     availableDrivers: Math.max(0, onlineDrivers - driversOnTrip),
+    pendingDriverApplications,
     pendingApprovals: pendingDocs + pendingCarPaddy,
     pendingRideRequests,
     activeLogisticsDeliveries,

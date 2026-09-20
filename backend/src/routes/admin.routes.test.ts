@@ -45,6 +45,25 @@ test("GET /api/admin/dashboard returns real KPI counts", async () => {
   assert.equal(res.body.activeTrips, 1);
   assert.equal(res.body.onlineDrivers, 1);
   assert.equal(res.body.pendingApprovals, 2);
+  // The one ACTIVE driver above is not awaiting a decision; pending document
+  // reviews must not be mistaken for pending driver applications.
+  assert.equal(res.body.pendingDriverApplications, 0);
+});
+
+test("GET /api/admin/dashboard counts drivers still awaiting the approval decision separately from document reviews", async () => {
+  const applicant = await prisma.user.create({
+    data: { cognitoSub: "driver-sub-pending", role: "DRIVER", firstName: "P", lastName: "Q", email: "p@example.com" },
+  });
+  // A pending applicant whose every document has already been approved — the
+  // exact case where "0 pending approvals" would hide someone still blocked.
+  const driver = await prisma.driver.create({ data: { userId: applicant.id, status: "PENDING_REVIEW" } });
+  await prisma.driverDocument.create({ data: { driverId: driver.id, title: "Licence", status: "APPROVED" } });
+
+  const token = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
+  const res = await request(app).get("/api/admin/dashboard").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.pendingDriverApplications, 1);
+  assert.equal(res.body.pendingApprovals, 0);
 });
 
 test("GET /api/admin/analytics buckets real revenue and completed trips by day and rejects non-admins", async () => {

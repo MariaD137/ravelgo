@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/services/api_client.dart';
+import 'package:ravelgo_driver_app/services/driver_profile_events.dart';
 import 'package:ravelgo_driver_app/services/notification_navigation.dart';
 import 'package:ravelgo_driver_app/services/notifications_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
@@ -97,7 +98,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       NotificationsApi.markRead(n.id).catchError((_) {});
     }
     if (!mounted) return;
-    await openNotificationReference(Navigator.of(context), referenceType: n.referenceType, referenceId: n.referenceId);
+    await openNotificationReference(
+      Navigator.of(context),
+      referenceType: n.referenceType,
+      referenceId: n.referenceId,
+      type: n.type,
+    );
   }
 
   String _relativeTime(DateTime dt) {
@@ -112,6 +118,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (type.startsWith('RIDE_')) return Icons.directions_car;
     if (type.startsWith('DELIVERY_')) return Icons.local_shipping_outlined;
     if (type.startsWith('PAYMENT_') || type.startsWith('PAYOUT_')) return Icons.payments_outlined;
+    if (DriverProfileEvents.isAccountStatusChange(type)) return Icons.verified_user_outlined;
     return Icons.notifications_none;
   }
 

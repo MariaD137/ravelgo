@@ -139,6 +139,231 @@ test("PATCH /api/drivers/:id/status lets an Admin suspend a driver", async () =>
   assert.equal(notifications[0].type, "DRIVER_ACCOUNT_STATUS_CHANGED");
 });
 
+// ---------------------------------------------------------------------------
+// Driver application -> admin approval -> driver can go online. These are the
+// end-to-end contract the Driver App (GET /drivers/me, PATCH
+// /drivers/me/availability) and the Admin App (PATCH /drivers/:id/status)
+// both depend on: ONE field, Driver.status, read and written through ONE
+// endpoint each.
+// ---------------------------------------------------------------------------
+
+async function applyAsDriver(sub: string, email: string) {
+  mockCognitoAddToGroup();
+  const token = mockAuthAs({ sub, email, groups: ["Rider"] });
+  const res = await request(app)
+    .post("/api/drivers/apply")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "App", lastName: "Licant", email });
+  assert.equal(res.status, 201);
+  return res.body as { id: string; userId: string; status: string };
+}
+
+test("approval flow: apply -> PENDING_REVIEW -> admin approves -> driver reads ACTIVE and can go online", async () => {
+  const driver = await applyAsDriver("e2e-driver-sub", "e2e@example.com");
+  assert.equal(driver.status, "PENDING_REVIEW");
+
+  // Before approval: the driver's own view is PENDING_REVIEW and going online is refused.
+  const pendingDriverToken = mockAuthAs({ sub: "e2e-driver-sub", groups: ["Driver"] });
+  const meBefore = await request(app).get("/api/drivers/me").set("Authorization", `Bearer ${pendingDriverToken}`);
+  assert.equal(meBefore.status, 200);
+  assert.equal(meBefore.body.status, "PENDING_REVIEW");
+  const blocked = await request(app)
+    .patch("/api/drivers/me/availability")
+    .set("Authorization", `Bearer ${pendingDriverToken}`)
+    .send({ isOnline: true });
+  assert.equal(blocked.status, 409);
+
+  // The admin's pending queue contains this application.
+  const adminToken = mockAuthAs({ sub: "e2e-admin-sub", groups: ["Admin"] });
+  const queue = await request(app).get("/api/drivers?status=PENDING_REVIEW").set("Authorization", `Bearer ${adminToken}`);
+  assert.equal(queue.status, 200);
+  assert.ok(queue.body.data.some((d: { id: string }) => d.id === driver.id));
+
+  // Admin approves.
+  const approve = await request(app)
+    .patch(`/api/drivers/${driver.id}/status`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ status: "ACTIVE" });
+  assert.equal(approve.status, 200);
+  assert.equal(approve.body.id, driver.id);
+  assert.equal(approve.body.status, "ACTIVE");
+
+  // Database is the source of truth and it changed.
+  const row = await prisma.driver.findUnique({ where: { id: driver.id } });
+  assert.equal(row?.status, "ACTIVE");
+
+  // It left the pending queue.
+  const queueAfter = await request(app).get("/api/drivers?status=PENDING_REVIEW").set("Authorization", `Bearer ${adminToken}`);
+  assert.ok(!queueAfter.body.data.some((d: { id: string }) => d.id === driver.id));
+
+  // The driver was told, with an audit trail of who did it.
+  const notifications = await prisma.notification.findMany({ where: { userId: driver.userId } });
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].type, "DRIVER_ACCOUNT_STATUS_CHANGED");
+  assert.equal(notifications[0].title, "You're approved!");
+  const audit = await prisma.auditLog.findMany({ where: { action: "DRIVER_STATUS_CHANGED", entityId: driver.id } });
+  assert.equal(audit.length, 1);
+  assert.equal(audit[0].actorSub, "e2e-admin-sub");
+
+  // The driver app's next status request sees ACTIVE and the driver can go online.
+  const driverToken = mockAuthAs({ sub: "e2e-driver-sub", groups: ["Driver"] });
+  const meAfter = await request(app).get("/api/drivers/me").set("Authorization", `Bearer ${driverToken}`);
+  assert.equal(meAfter.body.status, "ACTIVE");
+  const online = await request(app)
+    .patch("/api/drivers/me/availability")
+    .set("Authorization", `Bearer ${driverToken}`)
+    .send({ isOnline: true });
+  assert.equal(online.status, 200);
+  assert.equal(online.body.isOnline, true);
+});
+
+test("PATCH /api/drivers/:id/status is idempotent — approving an already-approved driver does not re-notify", async () => {
+  const driver = await applyAsDriver("idem-driver-sub", "idem@example.com");
+  const adminToken = mockAuthAs({ sub: "idem-admin-sub", groups: ["Admin"] });
+
+  const first = await request(app)
+    .patch(`/api/drivers/${driver.id}/status`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ status: "ACTIVE" });
+  assert.equal(first.status, 200);
+  const second = await request(app)
+    .patch(`/api/drivers/${driver.id}/status`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ status: "ACTIVE" });
+  assert.equal(second.status, 200);
+  assert.equal(second.body.status, "ACTIVE");
+
+  const notifications = await prisma.notification.findMany({ where: { userId: driver.userId } });
+  assert.equal(notifications.length, 1);
+  const audit = await prisma.auditLog.findMany({ where: { action: "DRIVER_STATUS_CHANGED", entityId: driver.id } });
+  assert.equal(audit.length, 1);
+});
+
+test("PATCH /api/drivers/:id/status 404s for a driver that doesn't exist and 400s for an unknown status", async () => {
+  const driver = await applyAsDriver("bad-status-driver-sub", "bad-status@example.com");
+  const adminToken = mockAuthAs({ sub: "bad-status-admin-sub", groups: ["Admin"] });
+
+  const missing = await request(app)
+    .patch("/api/drivers/00000000-0000-0000-0000-000000000000/status")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ status: "ACTIVE" });
+  assert.equal(missing.status, 404);
+
+  const invalid = await request(app)
+    .patch(`/api/drivers/${driver.id}/status`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ status: "APPROVED" });
+  assert.equal(invalid.status, 400);
+
+  const untouched = await prisma.driver.findUnique({ where: { id: driver.id } });
+  assert.equal(untouched?.status, "PENDING_REVIEW");
+});
+
+test("PATCH /api/drivers/:id/status cannot be used by the driver themself, another driver, a rider, or anonymously", async () => {
+  const driver = await applyAsDriver("self-approve-sub", "self@example.com");
+
+  const selfToken = mockAuthAs({ sub: "self-approve-sub", groups: ["Driver"] });
+  const self = await request(app)
+    .patch(`/api/drivers/${driver.id}/status`)
+    .set("Authorization", `Bearer ${selfToken}`)
+    .send({ status: "ACTIVE" });
+  assert.equal(self.status, 403);
+
+  const otherDriverToken = mockAuthAs({ sub: "other-driver-sub", groups: ["Driver"] });
+  const other = await request(app)
+    .patch(`/api/drivers/${driver.id}/status`)
+    .set("Authorization", `Bearer ${otherDriverToken}`)
+    .send({ status: "ACTIVE" });
+  assert.equal(other.status, 403);
+
+  const riderToken = mockAuthAs({ sub: "rider-approve-sub", groups: ["Rider"] });
+  const rider = await request(app)
+    .patch(`/api/drivers/${driver.id}/status`)
+    .set("Authorization", `Bearer ${riderToken}`)
+    .send({ status: "ACTIVE" });
+  assert.equal(rider.status, 403);
+
+  const anonymous = await request(app).patch(`/api/drivers/${driver.id}/status`).send({ status: "ACTIVE" });
+  assert.equal(anonymous.status, 401);
+
+  const untouched = await prisma.driver.findUnique({ where: { id: driver.id } });
+  assert.equal(untouched?.status, "PENDING_REVIEW");
+});
+
+test("a driver cannot change their own approval status through any driver-facing endpoint", async () => {
+  await applyAsDriver("escalate-sub", "escalate@example.com");
+  const token = mockAuthAs({ sub: "escalate-sub", groups: ["Driver"] });
+
+  // Client-supplied status fields are simply not part of these schemas — they
+  // must be ignored (or rejected), never applied.
+  await request(app)
+    .post("/api/drivers/apply")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "E", lastName: "S", email: "escalate@example.com", status: "ACTIVE" });
+  await request(app)
+    .patch("/api/drivers/me/preferences")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ preferredLanguage: "English", status: "ACTIVE" });
+  await request(app)
+    .patch("/api/drivers/me/availability")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ isOnline: false, status: "ACTIVE" });
+
+  const me = await request(app).get("/api/drivers/me").set("Authorization", `Bearer ${token}`);
+  assert.equal(me.body.status, "PENDING_REVIEW");
+});
+
+test("a SUSPENDED driver is taken offline-eligible: going online is refused until an admin reactivates", async () => {
+  const driver = await applyAsDriver("suspend-sub", "suspend@example.com");
+  const adminToken = mockAuthAs({ sub: "suspend-admin-sub", groups: ["Admin"] });
+  await request(app).patch(`/api/drivers/${driver.id}/status`).set("Authorization", `Bearer ${adminToken}`).send({ status: "ACTIVE" });
+  const suspend = await request(app)
+    .patch(`/api/drivers/${driver.id}/status`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ status: "SUSPENDED" });
+  assert.equal(suspend.status, 200);
+
+  const driverToken = mockAuthAs({ sub: "suspend-sub", groups: ["Driver"] });
+  const blocked = await request(app)
+    .patch("/api/drivers/me/availability")
+    .set("Authorization", `Bearer ${driverToken}`)
+    .send({ isOnline: true });
+  assert.equal(blocked.status, 409);
+
+  const reactivateToken = mockAuthAs({ sub: "suspend-admin-sub", groups: ["Admin"] });
+  const reactivate = await request(app)
+    .patch(`/api/drivers/${driver.id}/status`)
+    .set("Authorization", `Bearer ${reactivateToken}`)
+    .send({ status: "ACTIVE" });
+  assert.equal(reactivate.status, 200);
+  const notifications = await prisma.notification.findMany({ where: { userId: driver.userId }, orderBy: { createdAt: "asc" } });
+  assert.deepEqual(
+    notifications.map((n) => n.title),
+    ["You're approved!", "Account suspended", "You're approved!"],
+  );
+});
+
+test("GET /api/drivers?status= filters server-side and rejects an unknown status", async () => {
+  const pending = await applyAsDriver("filter-pending-sub", "filter-pending@example.com");
+  const approved = await applyAsDriver("filter-approved-sub", "filter-approved@example.com");
+  await prisma.driver.update({ where: { id: approved.id }, data: { status: "ACTIVE" } });
+
+  const adminToken = mockAuthAs({ sub: "filter-admin-sub", groups: ["Admin"] });
+  const pendingOnly = await request(app).get("/api/drivers?status=PENDING_REVIEW").set("Authorization", `Bearer ${adminToken}`);
+  assert.equal(pendingOnly.status, 200);
+  assert.deepEqual(
+    pendingOnly.body.data.map((d: { id: string }) => d.id),
+    [pending.id],
+  );
+  assert.equal(pendingOnly.body.total, 1);
+
+  const all = await request(app).get("/api/drivers").set("Authorization", `Bearer ${adminToken}`);
+  assert.equal(all.body.total, 2);
+
+  const bad = await request(app).get("/api/drivers?status=APPROVED").set("Authorization", `Bearer ${adminToken}`);
+  assert.equal(bad.status, 400);
+});
+
 test("PATCH /api/drivers/:id/status rejects a Support Agent admin preset", async () => {
   const user = await prisma.user.create({
     data: { cognitoSub: "driver-sub-5", role: "DRIVER", firstName: "Mo", lastName: "P", email: "mo@example.com" },

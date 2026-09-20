@@ -45,7 +45,9 @@ class _DriverListScreenState extends State<DriverListScreen> {
       _error = null;
     });
     try {
-      final drivers = await AdminApi.drivers();
+      // The status chip is applied server-side so this list is complete for
+      // that status, not just the first page of all drivers.
+      final drivers = await AdminApi.drivers(status: _statusFilter);
       if (!mounted) return;
       setState(() {
         _drivers = drivers;
@@ -76,10 +78,13 @@ class _DriverListScreenState extends State<DriverListScreen> {
   String _label(String s) =>
       s.isEmpty ? '' : s[0] + s.substring(1).toLowerCase().replaceAll('_', ' ');
 
-  List<AdminDriver> get _filtered => _drivers
-      .where((d) => _statusFilter == null || d.status == _statusFilter)
-      .where((d) => !_onlineOnly || d.isOnline)
-      .toList();
+  List<AdminDriver> get _filtered => _drivers.where((d) => !_onlineOnly || d.isOnline).toList();
+
+  void _setStatusFilter(String? status) {
+    if (status == _statusFilter) return;
+    setState(() => _statusFilter = status);
+    _load();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +114,7 @@ class _DriverListScreenState extends State<DriverListScreen> {
           FilterChip(
             label: const Text('All', style: TextStyle(fontSize: 12)),
             selected: _statusFilter == null,
-            onSelected: (_) => setState(() => _statusFilter = null),
+            onSelected: (_) => _setStatusFilter(null),
           ),
           const SizedBox(width: 8),
           for (final s in _statuses) ...[
@@ -117,7 +122,7 @@ class _DriverListScreenState extends State<DriverListScreen> {
               label: Text(_label(s), style: const TextStyle(fontSize: 12)),
               selected: _statusFilter == s,
               selectedColor: _statusColor(s).withValues(alpha: 0.15),
-              onSelected: (v) => setState(() => _statusFilter = v ? s : null),
+              onSelected: (v) => _setStatusFilter(v ? s : null),
             ),
             const SizedBox(width: 8),
           ],

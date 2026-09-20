@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
+import 'package:ravelgo_driver_app/services/driver_profile_events.dart';
 import 'package:ravelgo_driver_app/views/deliveries/delivery_detail_screen.dart';
 import 'package:ravelgo_driver_app/views/trips/trip_detail_screen.dart';
 
@@ -13,11 +14,25 @@ import 'package:ravelgo_driver_app/views/trips/trip_detail_screen.dart';
 /// the referenced object can no longer be resolved (deleted, reassigned, no
 /// longer accessible to this account) — this never opens a dead or
 /// placeholder screen.
+///
+/// [type] is the backend's NotificationType. A DRIVER_ACCOUNT_STATUS_CHANGED
+/// notification (an admin approved/suspended/reactivated this driver) has no
+/// reference to navigate to; instead it asks the shell to re-fetch the driver
+/// record so the home screen reflects the real, current Driver.status. The
+/// notification never sets that status itself.
 Future<void> openNotificationReference(
   NavigatorState navigator, {
   required String? referenceType,
   required String? referenceId,
+  String? type,
 }) async {
+  if (DriverProfileEvents.isAccountStatusChange(type)) {
+    DriverProfileEvents.requestRefresh();
+    // Land the driver back on the home screen, where the refreshed status
+    // (and the go-online toggle, if approved) is shown.
+    navigator.popUntil((route) => route.isFirst);
+    return;
+  }
   if (referenceId == null) return;
 
   if (referenceType == 'TRIP') {
