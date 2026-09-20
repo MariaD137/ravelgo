@@ -3161,6 +3161,26 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /health/schema:
+    servers:
+      - url: /
+        description: Served at the host root, outside the /api base above
+    get:
+      tags: [Health]
+      summary: Whether every migration this build ships has been applied here
+      security: []
+      responses:
+        "200":
+          description: The database is up to date with this build
+          content:
+            application/json:
+              schema: { type: object }
+        "503":
+          description: Migrations are pending or failed; the response names them
+          content:
+            application/json:
+              schema: { type: object }
+
 components:
   securitySchemes:
     bearerAuth:

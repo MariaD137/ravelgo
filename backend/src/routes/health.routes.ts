@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { Router } from "express";
 import { paystackConfig } from "../billing/paystack";
 import { prisma } from "../db/prisma";
@@ -49,6 +51,73 @@ healthRouter.get("/health/pricing", async (_req, res) => {
           ? "Database schema is out of date: run scripts/migrate-<env>.sh to apply pending Prisma migrations, then retry."
           : "Database query failed; see the service logs for the full error.",
       },
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+/**
+ * Which Prisma migrations this image expects, and which the database it is
+ * talking to has actually applied.
+ *
+ * This exists because a deploy could report fully green while the whole
+ * driver and rental surface was returning "Database schema is out of date on
+ * this server": the post-deploy smoke test probed /health, /health/pricing
+ * and the fare endpoint, and none of those touch the tables a missing
+ * migration had broken. The failure was real, user-facing and completely
+ * invisible to CI.
+ *
+ * Migrations deliberately stay a separate manual step (see
+ * scripts/migrate-env.sh for why — the database has no public endpoint and
+ * the deploy role has no IAM self-service), so this does NOT apply anything
+ * and does not block a deploy. It just makes the gap impossible to miss:
+ * the running container ships its own prisma/migrations directory, so it can
+ * compare what it expects against _prisma_migrations and say exactly which
+ * names are outstanding.
+ *
+ * Safe to expose unauthenticated, like /health/pricing: migration directory
+ * names are not secrets, and nothing here reveals data, credentials or
+ * connection details.
+ */
+healthRouter.get("/health/schema", async (_req, res) => {
+  try {
+    const expected = readdirSync(join(__dirname, "..", "..", "prisma", "migrations"), {
+      withFileTypes: true,
+    })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+
+    const rows = await prisma.$queryRaw<
+      { migration_name: string; finished_at: Date | null; rolled_back_at: Date | null }[]
+    >`SELECT migration_name, finished_at, rolled_back_at FROM "_prisma_migrations"`;
+
+    const applied = rows.filter((r) => r.finished_at !== null && r.rolled_back_at === null);
+    const appliedNames = new Set(applied.map((r) => r.migration_name));
+    // Started but never finished, or explicitly rolled back: `migrate deploy`
+    // refuses to continue past one of these, so it needs naming separately
+    // from "simply not run yet".
+    const failed = rows
+      .filter((r) => r.finished_at === null || r.rolled_back_at !== null)
+      .map((r) => r.migration_name);
+    const pending = expected.filter((name) => !appliedNames.has(name));
+
+    const healthy = pending.length === 0 && failed.length === 0;
+    res.status(healthy ? 200 : 503).json({
+      status: healthy ? "ok" : "out-of-date",
+      expected: expected.length,
+      applied: applied.length,
+      pending,
+      failed,
+      remedy: healthy ? undefined : "Run scripts/migrate-<env>.sh against this environment.",
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    const e = err as { code?: string; message?: string };
+    console.error("[health] /health/schema failed:", err);
+    res.status(503).json({
+      status: "error",
+      error: { code: e.code ?? "UNKNOWN", message: "Could not read the migration state" },
       timestamp: new Date().toISOString(),
     });
   }

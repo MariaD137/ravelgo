@@ -11,6 +11,13 @@
 #                                exist; 503 here means a Prisma migration was
 #                                never applied to this environment
 #                                (scripts/migrate-<env>.sh)
+#   GET /health/schema     200 — every migration this image ships has actually
+#                                been applied to the database it is talking
+#                                to. 503 lists the pending migration names.
+#                                This probe exists because a deploy once went
+#                                fully green while the driver and rental
+#                                surface was 500-ing on a missing column: the
+#                                other probes do not touch those tables.
 #   GET /api/pricing/categories  401 — the rider fare endpoint exists (404
 #                                would mean a stale image is still serving)
 set -euo pipefail
@@ -50,6 +57,11 @@ if grep -q '"paystack":"unconfigured' "$RESP" 2>/dev/null; then
   echo "::warning::Paystack is unconfigured on this backend — card payments, wallet top-ups and payouts will fail until the real secret key is set in Secrets Manager and the service is redeployed (see infra/lib/api-stack.ts)."
 fi
 check /health/pricing 200
+# Deliberately NOT fatal to the deploy itself (migrations stay a separate
+# manual step — see scripts/migrate-env.sh), but it must be impossible to
+# miss: a red smoke step naming the pending migrations beats a green run
+# over a half-broken environment.
+check /health/schema 200
 check "/api/pricing/categories?pickupLat=6.5&pickupLng=3.4&distanceKm=1&durationMinutes=5" 401
 
 rm -f "$RESP"

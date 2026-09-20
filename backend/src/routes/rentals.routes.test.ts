@@ -139,6 +139,103 @@ test("GET /api/rentals only shows approved listings to non-admin callers", async
   assert.equal(res.body.data[0].status, "APPROVED");
 });
 
+/**
+ * The whole Rent-a-Car path in one test: a driver lists a real vehicle, an
+ * admin approves it, and a rider browsing the catalogue gets that vehicle
+ * back with everything the screen renders — the car, the price and the
+ * driver — and can then open its detail page.
+ *
+ * Written after the rider app showed "Database schema is out of date on this
+ * server" for this exact flow. The cause was a missing column on Driver, and
+ * the reason no test caught it is that the browse test above asserts only
+ * the listing's status and count: it never touches the included `vehicle`
+ * and `driver` relations, which is where the query actually broke. These
+ * assertions fail loudly if either relation stops being returned.
+ */
+test("Rent a Car end to end: a driver's approved listing reaches the rider with its car, price and driver", async () => {
+  const { driver, vehicle } = await createDriverWithVehicle("driver-rent-e2e");
+
+  // 1. The driver lists their own vehicle and sets the rate.
+  const driverToken = mockAuthAs({ sub: "driver-rent-e2e", groups: ["Driver"] });
+  const created = await request(app)
+    .post("/api/rentals")
+    .set("Authorization", `Bearer ${driverToken}`)
+    .send({ vehicleId: vehicle.id, dailyRate: 25000, location: "Lekki, Lagos" });
+  assert.equal(created.status, 201);
+  const listingId: string = created.body.id;
+
+  // 2. It is really stored, and starts unapproved so it is not yet public.
+  const stored = await prisma.rentalListing.findUniqueOrThrow({ where: { id: listingId } });
+  assert.equal(stored.driverId, driver.id);
+  assert.equal(stored.vehicleId, vehicle.id);
+  assert.equal(stored.dailyRate, 25000);
+  assert.equal(stored.location, "Lekki, Lagos");
+  assert.equal(stored.status, "PENDING_APPROVAL");
+  restoreAuth();
+
+  // 3. A rider must NOT see it while it is still pending.
+  const riderToken = mockAuthAs({ sub: "rider-rent-e2e", groups: ["Rider"] });
+  const beforeApproval = await request(app).get("/api/rentals").set("Authorization", `Bearer ${riderToken}`);
+  assert.equal(beforeApproval.status, 200);
+  assert.equal(beforeApproval.body.total, 0, "an unapproved listing is never offered to riders");
+  restoreAuth();
+
+  // 4. An admin approves it.
+  const adminToken = mockAuthAs({ sub: "admin-rent-e2e", groups: ["Admin"] });
+  const approved = await request(app)
+    .patch(`/api/rentals/${listingId}/status`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ status: "APPROVED" });
+  assert.equal(approved.status, 200);
+  restoreAuth();
+
+  // 5. The rider now gets it back, with everything the browse screen shows.
+  const riderToken2 = mockAuthAs({ sub: "rider-rent-e2e", groups: ["Rider"] });
+  const browse = await request(app)
+    .get("/api/rentals?page=1&pageSize=50")
+    .set("Authorization", `Bearer ${riderToken2}`);
+  assert.equal(browse.status, 200);
+  assert.equal(browse.body.total, 1);
+
+  const row = browse.body.data[0];
+  assert.equal(row.id, listingId);
+  assert.equal(row.dailyRate, 25000, "the rider sees the real price");
+  assert.equal(row.location, "Lekki, Lagos");
+  // The included relations — the ones a missing column takes down.
+  assert.equal(row.vehicle.brand, "Tesla");
+  assert.equal(row.vehicle.model, "Model 3");
+  assert.equal(row.vehicle.plateNumber, "driver-rent-e2e-1");
+  assert.ok(row.driver, "the listing carries its driver");
+  assert.equal(row.driver.id, driver.id);
+  assert.equal(row.driver.user.firstName, "D");
+
+  // The driver summary stays a summary: no contact details leak to riders.
+  const blob = JSON.stringify(row);
+  assert.ok(!blob.includes("driver-rent-e2e@example.com"), "driver email must not be exposed");
+  assert.ok(!blob.includes("cognitoSub"), "driver cognitoSub must not be exposed");
+
+  // 6. The rider can open the detail page for it.
+  const detail = await request(app)
+    .get(`/api/rentals/${listingId}`)
+    .set("Authorization", `Bearer ${riderToken2}`);
+  assert.equal(detail.status, 200);
+  assert.equal(detail.body.id, listingId);
+  assert.equal(detail.body.dailyRate, 25000);
+  assert.equal(detail.body.vehicle.brand, "Tesla");
+  assert.equal(detail.body.driver.user.firstName, "D");
+});
+
+test("GET /api/rentals/:id 404s for a listing that does not exist, and needs authentication", async () => {
+  const anonymous = await request(app).get("/api/rentals/00000000-0000-0000-0000-000000000000");
+  assert.equal(anonymous.status, 401);
+
+  const token = mockAuthAs({ sub: "rider-rent-404", groups: ["Rider"] });
+  const missing = await request(app)
+    .get("/api/rentals/00000000-0000-0000-0000-000000000000")
+    .set("Authorization", `Bearer ${token}`);
+  assert.equal(missing.status, 404);
+});
+
 test("PATCH /api/rentals/:id/status rejects a non-Admin caller", async () => {
   const { driver, vehicle } = await createDriverWithVehicle("driver-sub-6");
   const listing = await prisma.rentalListing.create({
