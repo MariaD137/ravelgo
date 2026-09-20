@@ -14,13 +14,41 @@ import 'package:ravelgo_driver_app/services/session_guard.dart';
 class ApiException implements Exception {
   final int statusCode;
   final String message;
-  ApiException(this.statusCode, this.message);
+
+  /// The backend's machine-readable error code from its `{error: {code, ...}}`
+  /// envelope (backend/src/lib/errors.ts), when it sent one. Used to decide
+  /// whether a 5xx message is one the backend meant a person to read — see
+  /// [describeApiFailure].
+  final String? code;
+
+  ApiException(this.statusCode, this.message, {this.code});
 
   bool get isNetworkFailure => statusCode == 0;
   bool get isUnauthenticated => statusCode == 401;
   bool get isForbidden => statusCode == 403;
   bool get isNotFound => statusCode == 404;
   bool get isServerError => statusCode >= 500;
+
+  /// Error codes whose message the backend writes FOR the reader and keeps
+  /// free of internals — safe to show verbatim on a 5xx. Everything else
+  /// falls back to a generic sentence, so a future 5xx carrying a dynamic
+  /// message under some other code can never leak through this path.
+  ///
+  /// This exists because a real outage was made harder to diagnose by the
+  /// apps: the backend said "Database schema is out of date on this server
+  /// (pending migrations not applied)" and every screen replaced it with
+  /// "RavelGo had a server problem (500)", hiding the one fact that would
+  /// have pointed straight at the cause.
+  static const _readableServerCodes = {
+    'DATABASE_ERROR',
+    'PAYMENT_PROVIDER_ERROR',
+    'SERVICE_UNAVAILABLE',
+    'UPSTREAM_ERROR',
+  };
+
+  /// Whether this failure carries a server-side explanation worth showing.
+  bool get hasReadableServerReason =>
+      isServerError && code != null && _readableServerCodes.contains(code) && message.trim().isNotEmpty;
 
   @override
   String toString() => message;
@@ -180,6 +208,7 @@ class ApiClient {
     throw ApiException(
       res.statusCode,
       _extractMessage(decoded, res.statusCode),
+      code: _extractCode(decoded),
     );
   }
 
@@ -194,8 +223,18 @@ class ApiClient {
         return error['message'].toString();
       }
       if (error is String && error.isNotEmpty) return error;
+      if (error != null) return error.toString();
     }
     return 'Request failed ($statusCode)';
+  }
+
+  /// The backend's error code, when its envelope carried one.
+  static String? _extractCode(dynamic decoded) {
+    if (decoded is Map) {
+      final error = decoded['error'];
+      if (error is Map && error['code'] != null) return error['code'].toString();
+    }
+    return null;
   }
 }
 
@@ -223,6 +262,13 @@ String describeApiFailure(Object error, {String what = 'this'}) {
       return 'Your driver profile hasn\'t been created yet. Open the Home screen to start your application, then try again.';
     default:
       if (error.isServerError) {
+        // When the backend has told us WHY in its own words, show that
+        // instead of a generic sentence — it is written for a person and
+        // carries no internals (see ApiException.hasReadableServerReason).
+        // A real outage was prolonged by collapsing
+        // "Database schema is out of date on this server (pending migrations
+        // not applied)" into "server problem (500)".
+        if (error.hasReadableServerReason) return error.message;
         return 'RavelGo had a server problem loading $what (${error.statusCode}). Please try again in a moment.';
       }
       return error.message;

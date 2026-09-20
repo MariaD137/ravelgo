@@ -187,4 +187,84 @@ void main() {
           .having((e) => e.message, 'message', 'Database is down')),
     );
   });
+
+  test(
+      'a 5xx the backend explained is shown in its own words, anything else '
+      'stays generic', () {
+    // The case that prolonged a real outage: every screen replaced this with
+    // "server problem (500)", hiding the one fact that named the cause.
+    const schema =
+        'Database schema is out of date on this server (pending migrations not applied)';
+    final outOfDate = ApiException(500, schema, code: 'DATABASE_ERROR');
+    expect(outOfDate.hasReadableServerReason, isTrue);
+    expect(describeApiFailure(outOfDate, what: 'your profile'), schema);
+
+    // Payments and upstream services are equally operator-written.
+    expect(
+      describeApiFailure(
+        ApiException(503, 'Payments are not configured on this server yet',
+            code: 'PAYMENT_PROVIDER_ERROR'),
+        what: 'payment',
+      ),
+      'Payments are not configured on this server yet',
+    );
+    expect(
+      describeApiFailure(
+        ApiException(502, 'Could not reach the location service',
+            code: 'UPSTREAM_ERROR'),
+        what: 'places',
+      ),
+      'Could not reach the location service',
+    );
+
+    // The catch-all 500 stays generic: that is the branch where an unexpected
+    // error could otherwise carry internals.
+    final internal = ApiException(500, 'Internal server error',
+        code: 'INTERNAL_SERVER_ERROR');
+    expect(internal.hasReadableServerReason, isFalse);
+    expect(
+        describeApiFailure(internal, what: 'trips'), contains('server problem'));
+
+    // An unknown code is never trusted, whatever it says.
+    final unknown = ApiException(500, 'relation "public.Secret" does not exist',
+        code: 'SOME_NEW_CODE');
+    expect(unknown.hasReadableServerReason, isFalse);
+    expect(
+        describeApiFailure(unknown, what: 'trips'), contains('server problem'));
+    expect(describeApiFailure(unknown, what: 'trips'),
+        isNot(contains('public.Secret')));
+
+    // No code at all (a bare string body) is also not trusted on a 5xx.
+    expect(ApiException(500, 'boom').hasReadableServerReason, isFalse);
+    // A 4xx is unaffected: its message was always shown.
+    expect(
+      describeApiFailure(
+          ApiException(400, 'Bad input', code: 'VALIDATION_ERROR'),
+          what: 'x'),
+      'Bad input',
+    );
+  });
+
+  test('the error code is parsed off the wire, not invented', () async {
+    respond([
+      http.Response(
+        jsonEncode({
+          'error': {
+            'code': 'DATABASE_ERROR',
+            'message':
+                'Database schema is out of date on this server (pending migrations not applied)'
+          }
+        }),
+        500,
+      )
+    ]);
+
+    await expectLater(
+      ApiClient.get('/api/thing'),
+      throwsA(isA<ApiException>()
+          .having((e) => e.code, 'code', 'DATABASE_ERROR')
+          .having(
+              (e) => e.hasReadableServerReason, 'hasReadableServerReason', true)),
+    );
+  });
 }
