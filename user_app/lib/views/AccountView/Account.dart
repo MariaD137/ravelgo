@@ -1,5 +1,7 @@
 import 'package:ravelgo_user_app/services/auth_service.dart';
 import 'package:ravelgo_user_app/services/push_notification_service.dart';
+import 'package:ravelgo_user_app/components/initials_avatar.dart';
+import 'package:ravelgo_user_app/services/api_client.dart';
 import 'package:ravelgo_user_app/services/rider_api.dart';
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/Model/app_state.dart';
@@ -54,7 +56,7 @@ class _AccountviewState extends State<Accountview> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _loadError = e.toString();
+        _loadError = describeApiFailure(e, what: 'your profile');
         _email = AuthService.email;
         _loading = false;
       });
@@ -75,13 +77,10 @@ class _AccountviewState extends State<Accountview> {
             Center(
               child: Column(
                 children: [
-                  ClipOval(
-                    child: SizedBox(
-                      width: 86,
-                      height: 86,
-                      child: Image.asset("assets/fake_profile.png",fit: BoxFit.fill,),
-                    ),
-                  ),
+                  // The rider's own initials — RavelGo has no rider photo
+                  // upload, and a bundled stock portrait of somebody else is
+                  // not this rider's picture.
+                  InitialsAvatar(name: _name, size: 86),
                   const SizedBox(height: 12),
                   Text(
                     _loading

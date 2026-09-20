@@ -109,7 +109,20 @@ class _StayDetailScreenState extends State<StayDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_listing.title.isEmpty ? 'Listing' : _listing.title)),
+      appBar: AppBar(
+        title: Text(_listing.title.isEmpty ? 'Listing' : _listing.title),
+        actions: [
+      // A-5: these screens load once and then sit on whatever they fetched.
+      // Approvals, suspensions and payouts are worked in parallel by several
+      // admins, so a stale detail view is a decision made on old facts; there
+      // was no way to re-read it short of backing out and reopening.
+          IconButton(
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh),
+            onPressed: (_loading || _busy) ? null : _load,
+          ),
+        ],
+      ),
       body: _body(),
     );
   }

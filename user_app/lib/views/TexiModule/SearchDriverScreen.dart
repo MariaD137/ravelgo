@@ -72,6 +72,12 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
   // Cancellation.
   bool _cancelBusy = false;
 
+  // A failed refetch of the trip after a late match (see _refreshTrip). The
+  // banner says a driver was found but the details card has nothing to show,
+  // so the rider is told, and offered a retry, instead of staring at a gap.
+  String? _refreshError;
+  bool _refreshBusy = false;
+
   // Payment for the completed trip (P0 #1).
   bool _paid = false;
   bool _payBusy = false;
@@ -379,16 +385,59 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
     if (ok) _rt.subscribe(trip.id);
   }
 
+  /// Refetch the trip so the driver/vehicle card can be rendered. The
+  /// 'trip:status' WebSocket message that reports a late match carries only
+  /// a status string, so without this the rider sees "Driver found" with no
+  /// driver. A failure here used to be swallowed entirely, leaving that gap
+  /// permanently and silently; it is now shown with a retry.
   Future<void> _refreshTrip() async {
+    if (_refreshBusy) return;
+    setState(() {
+      _refreshBusy = true;
+      _refreshError = null;
+    });
     try {
       final fresh = await TripsApi.byId(widget.trip.id);
       if (!mounted) return;
-      setState(() => _trip = fresh);
-    } catch (_) {
-      // Best-effort — the status banner already reflects MATCHED from the
-      // WebSocket message; only the driver-details card is missing until a
-      // retry (the next poll cycle, or a pull-to-refresh path if one exists).
+      setState(() {
+        _trip = fresh;
+        _refreshBusy = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _refreshError = describeApiFailure(e, what: 'your driver\'s details');
+        _refreshBusy = false;
+      });
     }
+  }
+
+  /// Shown only when the details we are missing are the ones the rider is
+  /// waiting on — a matched trip whose driver card cannot be drawn.
+  Widget _refreshErrorNotice() {
+    final message = _refreshError;
+    if (message == null) return const SizedBox.shrink();
+    if (trip.driverName?.isNotEmpty ?? false) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline, size: 18, color: AppColors.error),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(message,
+                style: const TextStyle(fontSize: 13, color: AppColors.error)),
+          ),
+          const SizedBox(width: 8),
+          if (_refreshBusy)
+            const SizedBox(
+                height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+          else
+            TextButton(onPressed: _refreshTrip, child: const Text('Retry')),
+        ],
+      ),
+    );
   }
 
   void _onMessage(Map<String, dynamic> m) {
@@ -471,6 +520,7 @@ class _SearchDriverScreenState extends State<SearchDriverScreen> {
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       children: [
+                        _refreshErrorNotice(),
                         _buildTripInfo(),
                         const SizedBox(height: 16),
                         if (_completed) ...[

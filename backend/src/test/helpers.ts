@@ -3,6 +3,8 @@ import { verifier } from "../middleware/auth";
 import { prisma } from "../db/prisma";
 import { paystackClient, type PaystackTransactionStatus } from "../billing/paystack";
 import { cognitoGroups } from "../services/cognito";
+import { resetDriverLocationThrottle } from "../services/driver-location";
+import { resetMatchingThrottle } from "../services/matching";
 
 export interface MockCognitoUser {
   sub: string;
@@ -151,8 +153,19 @@ export function mockCognitoAdminResetUserPassword() {
   return mock.method(cognitoGroups, "adminResetUserPassword", async () => {});
 }
 
+/**
+ * Driver row fields placing a driver at a fresh (or `ageMs`-old) reported
+ * position — trip matching (services/matching.ts) only offers rides to
+ * drivers with a recent location, so any test expecting an OFFER needs this.
+ */
+export function locatedAt(lat: number, lng: number, ageMs = 0) {
+  return { lastLat: lat, lastLng: lng, lastLocationAt: new Date(Date.now() - ageMs) };
+}
+
 // Delete in FK-safe order (children before parents).
 export async function resetDb() {
+  resetDriverLocationThrottle();
+  resetMatchingThrottle();
   // AuditLog has no FK dependents; clear it too so audit-writing admin routes
   // in one test don't leak entries into another (the audit test asserts an
   // exact row count).

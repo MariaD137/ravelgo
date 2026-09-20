@@ -310,7 +310,7 @@ paymentsRouter.get("/payments", requireAuth, requireRole("Admin"), async (req, r
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { page, pageSize } = parsed.data;
 
-  const [payments, total] = await Promise.all([
+  const [payments, total, byMethod] = await Promise.all([
     prisma.payment.findMany({
       include: { user: true, trip: true },
       orderBy: { createdAt: "desc" },
@@ -318,6 +318,18 @@ paymentsRouter.get("/payments", requireAuth, requireRole("Admin"), async (req, r
       take: pageSize,
     }),
     prisma.payment.count(),
+    // All-time SUCCEEDED revenue per method, computed here over the whole
+    // table. The Admin App's Payments overview used to sum whichever rows
+    // fell in its single 100-row fetch, which silently under-reported the
+    // moment there were more payments than that.
+    prisma.payment.groupBy({ by: ["method"], where: { status: "SUCCEEDED" }, _sum: { amount: true } }),
   ]);
-  res.json(paginate(payments, total, page, pageSize));
+  const totals = { cash: 0, card: 0, wallet: 0 };
+  for (const row of byMethod) {
+    const sum = row._sum.amount ?? 0;
+    if (row.method === "CASH") totals.cash = sum;
+    else if (row.method === "CARD") totals.card = sum;
+    else if (row.method === "WALLET") totals.wallet = sum;
+  }
+  res.json({ ...paginate(payments, total, page, pageSize), totals });
 });

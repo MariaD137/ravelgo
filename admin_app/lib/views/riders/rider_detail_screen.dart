@@ -104,7 +104,20 @@ class _RiderDetailScreenState extends State<RiderDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.rider.name.isEmpty ? widget.rider.email : widget.rider.name)),
+      appBar: AppBar(
+        title: Text(widget.rider.name.isEmpty ? widget.rider.email : widget.rider.name),
+        actions: [
+      // A-5: these screens load once and then sit on whatever they fetched.
+      // Approvals, suspensions and payouts are worked in parallel by several
+      // admins, so a stale detail view is a decision made on old facts; there
+      // was no way to re-read it short of backing out and reopening.
+          IconButton(
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh),
+            onPressed: (_loading || _busy) ? null : _load,
+          ),
+        ],
+      ),
       body: _body(),
     );
   }

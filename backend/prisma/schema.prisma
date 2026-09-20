@@ -249,6 +249,15 @@ model Driver {
   preferredLanguage  String       @default("English")
   quietModePreferred Boolean      @default(false)
   subscriptionActive Boolean      @default(false)
+  // Last known position, persisted from the driver's own location reports
+  // (POST /drivers/me/location, and the WebSocket "location" message) so
+  // trip matching can prefer the nearest eligible driver
+  // (services/matching.ts). Null until the driver has ever reported one; a
+  // report older than MATCHING_LOCATION_MAX_AGE_MS is treated as unknown.
+  // Never exposed to riders (lib/trip-view.ts builds an explicit summary).
+  lastLat            Float?
+  lastLng            Float?
+  lastLocationAt     DateTime?
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 
@@ -260,6 +269,10 @@ model Driver {
   courierRequestsHandled CourierRequest[]    @relation("CourierDriver")
   subscription           DriverSubscription?
   cashRemittances        CashRemittance[]
+
+  // Backs the matching candidate query: online, ACTIVE drivers with a recent
+  // location report.
+  @@index([status, isOnline, lastLocationAt])
 }
 
 model Vehicle {

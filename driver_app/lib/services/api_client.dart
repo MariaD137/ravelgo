@@ -4,6 +4,7 @@ import 'dart:io' show SocketException;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:ravelgo_driver_app/services/auth_service.dart';
+import 'package:ravelgo_driver_app/services/session_guard.dart';
 
 /// Thrown for any non-2xx backend response, carrying a human-readable message.
 ///
@@ -88,6 +89,20 @@ class ApiClient {
     var res = await _request(method, path, body);
     if (res.statusCode == 403 && await _tryRecoverDriverAccess()) {
       res = await _request(method, path, body);
+    }
+    // One app-wide rule for an expired/revoked session (see SessionGuard):
+    // force a refresh, retry once, and otherwise hand the driver back to the
+    // sign-in screen instead of leaving them on a screen that can no longer
+    // load anything. Distinct from the 403 recovery above, which is about a
+    // token that is valid but does not yet carry the Driver group.
+    if (res.statusCode == 401) {
+      if (await SessionGuard.tryRefresh()) {
+        res = await _request(method, path, body);
+      }
+      if (res.statusCode == 401) {
+        await SessionGuard.expire();
+        throw ApiException(401, SessionGuard.expiredMessage);
+      }
     }
     return _handle(res);
   }
@@ -201,7 +216,7 @@ String describeApiFailure(Object error, {String what = 'this'}) {
   if (error.isNetworkFailure) return error.message;
   switch (error.statusCode) {
     case 401:
-      return 'Your session has expired. Please sign out and sign in again.';
+      return SessionGuard.expiredMessage;
     case 403:
       return 'This account doesn\'t have driver access yet. Finish your driver application from the Home screen, then try again.';
     case 404:

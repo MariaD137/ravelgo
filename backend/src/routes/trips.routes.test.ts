@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
+import { locatedAt, mockAuthAs, restoreAuth, resetDb } from "../test/helpers";
 import { estimateDurationMinutes, haversineKm } from "../lib/geo";
 import { computeFare } from "../services/pricing";
 import { getRiderLocation, resetRealtimeState } from "../realtime/hub";
@@ -111,7 +111,9 @@ test("POST /api/trips offers an available ACTIVE driver, but does not yet MATCH 
   const driverUser = await prisma.user.create({
     data: { cognitoSub: "driver-sub-6", role: "DRIVER", firstName: "I", lastName: "J", email: "i@example.com" },
   });
-  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE", isOnline: true } });
+  const driver = await prisma.driver.create({
+    data: { userId: driverUser.id, status: "ACTIVE", isOnline: true, ...locatedAt(PICKUP.lat, PICKUP.lng) },
+  });
 
   const token = mockAuthAs({ sub: "rider-sub-6", groups: ["Rider"] });
   const res = await request(app).post("/api/trips").set("Authorization", `Bearer ${token}`).send(tripInput);
@@ -130,7 +132,9 @@ test("POST /api/trips/:id/accept lets the offered driver actually accept, moving
   const driverUser = await prisma.user.create({
     data: { cognitoSub: "driver-accept-1", role: "DRIVER", firstName: "I", lastName: "J", email: "accept1d@example.com" },
   });
-  await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE", isOnline: true } });
+  await prisma.driver.create({
+    data: { userId: driverUser.id, status: "ACTIVE", isOnline: true, ...locatedAt(PICKUP.lat, PICKUP.lng) },
+  });
 
   const riderToken = mockAuthAs({ sub: "rider-accept-1", groups: ["Rider"] });
   const created = await request(app).post("/api/trips").set("Authorization", `Bearer ${riderToken}`).send(tripInput);
@@ -154,13 +158,13 @@ test("POST /api/trips/:id/decline releases the offer and re-offers it to the nex
     data: { cognitoSub: "driver-decline-1", role: "DRIVER", firstName: "I", lastName: "J", email: "decline1d@example.com" },
   });
   const decliningDriver = await prisma.driver.create({
-    data: { userId: decliningUser.id, status: "ACTIVE", isOnline: true, rating: 5.0 },
+    data: { userId: decliningUser.id, status: "ACTIVE", isOnline: true, rating: 5.0, ...locatedAt(PICKUP.lat, PICKUP.lng) },
   });
   const secondUser = await prisma.user.create({
     data: { cognitoSub: "driver-decline-2", role: "DRIVER", firstName: "K", lastName: "L", email: "decline2d@example.com" },
   });
   const secondDriver = await prisma.driver.create({
-    data: { userId: secondUser.id, status: "ACTIVE", isOnline: true, rating: 4.0 },
+    data: { userId: secondUser.id, status: "ACTIVE", isOnline: true, rating: 4.0, ...locatedAt(PICKUP.lat, PICKUP.lng) },
   });
 
   const riderToken = mockAuthAs({ sub: "rider-decline-1", groups: ["Rider"] });
@@ -196,7 +200,9 @@ test("POST /api/trips/:id/accept: two concurrent accepts for the same offer — 
   const driverUser = await prisma.user.create({
     data: { cognitoSub: "driver-race-1", role: "DRIVER", firstName: "I", lastName: "J", email: "race1d@example.com" },
   });
-  await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE", isOnline: true } });
+  await prisma.driver.create({
+    data: { userId: driverUser.id, status: "ACTIVE", isOnline: true, ...locatedAt(PICKUP.lat, PICKUP.lng) },
+  });
 
   const riderToken = mockAuthAs({ sub: "rider-race-1", groups: ["Rider"] });
   const created = await request(app).post("/api/trips").set("Authorization", `Bearer ${riderToken}`).send(tripInput);
@@ -221,7 +227,9 @@ test("A driver cannot accept a ride while already carrying an active delivery", 
   const driverUser = await prisma.user.create({
     data: { cognitoSub: "driver-conflict-1", role: "DRIVER", firstName: "I", lastName: "J", email: "conflict1d@example.com" },
   });
-  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE", isOnline: true } });
+  const driver = await prisma.driver.create({
+    data: { userId: driverUser.id, status: "ACTIVE", isOnline: true, ...locatedAt(PICKUP.lat, PICKUP.lng) },
+  });
   // This driver already has an active (MATCHED) delivery.
   await prisma.courierRequest.create({
     data: {
@@ -683,7 +691,9 @@ test("POST /api/trips returns a safe driver summary when matched (no sensitive f
   const driverUser = await prisma.user.create({
     data: { cognitoSub: "driver-disp", role: "DRIVER", firstName: "Dele", lastName: "Okoro", email: "dele@example.com" },
   });
-  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE", isOnline: true, rating: 4.7 } });
+  const driver = await prisma.driver.create({
+    data: { userId: driverUser.id, status: "ACTIVE", isOnline: true, rating: 4.7, ...locatedAt(PICKUP.lat, PICKUP.lng) },
+  });
   await prisma.vehicle.create({
     data: { driverId: driver.id, brand: "Toyota", model: "Corolla", colour: "Silver", plateNumber: "LND-482-KJ", year: "2020" },
   });

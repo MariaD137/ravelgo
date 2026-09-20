@@ -50,10 +50,12 @@ class _CreatePayoutScreenState extends State<CreatePayoutScreen> {
       _driversError = null;
     });
     try {
-      final drivers = await AdminApi.drivers();
+      // Every ACTIVE driver, across all pages — a picker must offer the whole
+      // set, not whichever active drivers fell inside the first page.
+      final drivers = await AdminApi.allDrivers(status: 'ACTIVE');
       if (!mounted) return;
       setState(() {
-        _drivers = drivers.where((d) => d.status == 'ACTIVE').toList();
+        _drivers = drivers;
         _loadingDrivers = false;
       });
     } catch (e) {
@@ -137,7 +139,20 @@ class _CreatePayoutScreenState extends State<CreatePayoutScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("New Payout")),
+      appBar: AppBar(
+        title: const Text("New Payout"),
+        actions: [
+      // A-5: these screens load once and then sit on whatever they fetched.
+      // Approvals, suspensions and payouts are worked in parallel by several
+      // admins, so a stale detail view is a decision made on old facts; there
+      // was no way to re-read it short of backing out and reopening.
+          IconButton(
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh),
+            onPressed: (_loadingDrivers || _creating || _calculating) ? null : _loadDrivers,
+          ),
+        ],
+      ),
       body: _loadingDrivers
           ? const Center(child: CircularProgressIndicator())
           : (_driversError != null ? _err() : _form()),

@@ -12,6 +12,7 @@ import { cognitoGroups } from "../services/cognito";
 import { sensitiveLimiter } from "../middleware/rate-limit";
 import { recordDriverLocation } from "../realtime/hub";
 import { matchPendingTrips } from "../services/matching";
+import { persistDriverLocation } from "../services/driver-location";
 import { notifyUser } from "../lib/notifications";
 
 // Same pattern as courier.routes.ts's withProofUrls: a dedicated S3 client for
@@ -130,36 +131,13 @@ driversRouter.get("/drivers", requireAuth, requireRole("Admin"), async (req, res
   res.json(paginate(drivers, total, page, pageSize));
 });
 
-const createDriverSchema = z.object({
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  email: z.string().email(),
-  phoneNumber: z.string().optional(),
-  preferredLanguage: z.string().default("English"),
-});
-
-// Driver: create my profile (called once, right after Cognito sign-up completes
-// the driver onboarding flow — Cognito itself has no Postgres row for the user)
-driversRouter.post("/drivers/me", requireAuth, requireRole("Driver"), async (req, res) => {
-  const parsed = createDriverSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-
-  const { preferredLanguage, ...userFields } = parsed.data;
-
-  const user = await prisma.user.upsert({
-    where: { cognitoSub: req.user!.sub },
-    update: {},
-    create: { cognitoSub: req.user!.sub, role: "DRIVER", ...userFields },
-  });
-
-  const driver = await prisma.driver.upsert({
-    where: { userId: user.id },
-    update: {},
-    create: { userId: user.id, preferredLanguage },
-  });
-
-  res.status(201).json(driver);
-});
+// B-11: POST /drivers/me is gone. It let anyone already carrying the Driver
+// Cognito group create their own Driver row from a client-supplied name and
+// email, in parallel with (and bypassing) the real onboarding route,
+// POST /drivers/apply — which is the one that decides who becomes a driver,
+// adds the Cognito group server-side, and records the application. No app
+// ever called it (driver_app uses /drivers/apply then GET /drivers/me), so
+// its only remaining role was a second, weaker way in.
 
 const updateDriverMeSchema = z
   .object({ phoneNumber: z.string().min(1) })
@@ -269,6 +247,14 @@ driversRouter.post("/drivers/me/location", requireAuth, requireRole("Driver"), a
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
   const location = recordDriverLocation(driver.id, parsed.data.lat, parsed.data.lng);
+  // Durable copy for location-aware matching (services/matching.ts). The
+  // in-memory hub above stays the source for the Live Map; this is throttled
+  // per driver and must never fail the ping itself.
+  try {
+    await persistDriverLocation(driver.id, parsed.data.lat, parsed.data.lng);
+  } catch (err) {
+    console.error("Failed to persist driver location", err);
+  }
   res.json(location);
 });
 

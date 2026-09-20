@@ -7,11 +7,8 @@ import "express-async-errors";
 import cors from "cors";
 import express, { type Request, type Response } from "express";
 import helmet from "helmet";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import morgan from "morgan";
 import swaggerUi from "swagger-ui-express";
-import { load as loadYaml } from "js-yaml";
 import { env } from "./config/env";
 import { errorHandler } from "./middleware/error-handler";
 import { createRateLimiter, webhookLimiter } from "./middleware/rate-limit";
@@ -26,6 +23,7 @@ import { documentsRouter } from "./routes/documents.routes";
 import { driversRouter } from "./routes/drivers.routes";
 import { eatsRouter } from "./routes/eats.routes";
 import { healthRouter } from "./routes/health.routes";
+import { openapiDocument } from "./lib/openapi";
 import { loyaltyRouter } from "./routes/loyalty.routes";
 import { notificationsRouter } from "./routes/notifications.routes";
 import { paymentsRouter } from "./routes/payments.routes";
@@ -74,7 +72,6 @@ app.use("/api", createRateLimiter({ limit: 300, name: "global" }));
 // BE-15: the OpenAPI spec is hand-written (openapi.yaml, project root) rather
 // than generated from the zod schemas — served as-is, both raw and via a
 // browsable UI, so it's one file to keep in sync as routes change.
-const openapiDocument = loadYaml(readFileSync(join(__dirname, "..", "openapi.yaml"), "utf-8")) as object;
 app.get("/openapi.json", (_req, res) => res.json(openapiDocument));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiDocument));
 

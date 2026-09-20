@@ -180,7 +180,20 @@ class _DriverDetailScreenState extends State<DriverDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(_driver?.name.isNotEmpty == true ? _driver!.name : 'Driver')),
+      appBar: AppBar(
+        title: Text(_driver?.name.isNotEmpty == true ? _driver!.name : 'Driver'),
+        actions: [
+      // A-5: these screens load once and then sit on whatever they fetched.
+      // Approvals, suspensions and payouts are worked in parallel by several
+      // admins, so a stale detail view is a decision made on old facts; there
+      // was no way to re-read it short of backing out and reopening.
+          IconButton(
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh),
+            onPressed: (_loading || _busy) ? null : _load,
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : (_error != null

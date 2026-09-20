@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/pagination_bar.dart';
+
 import 'package:ravelgo_admin/utils/date_utils.dart';
 import 'package:ravelgo_admin/views/couriers/courier_request_detail_screen.dart';
 
@@ -21,6 +23,9 @@ class _CourierRequestsScreenState extends State<CourierRequestsScreen> {
   bool _loading = true;
   bool _busy = false;
   String? _error;
+  int _page = 1;
+  int _totalPages = 1;
+  int _total = 0;
   List<CourierRequest> _items = const [];
   Set<String> _statusFilter = {};
 
@@ -40,16 +45,21 @@ class _CourierRequestsScreenState extends State<CourierRequestsScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({int? page}) async {
+    if (page != null) _page = page;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final items = await AdminApi.courierRequests();
+      // Status chips are applied server-side (GET /api/courier-requests?status=...).
+      final result = await AdminApi.courierRequests(statuses: _statusFilter, page: _page);
       if (!mounted) return;
+      if (result.isPastEnd) return await _load(page: result.totalPages);
       setState(() {
-        _items = items;
+        _items = result.items;
+        _total = result.total;
+        _totalPages = result.totalPages;
         _loading = false;
       });
     } catch (e) {
@@ -97,9 +107,10 @@ class _CourierRequestsScreenState extends State<CourierRequestsScreen> {
   String _label(String s) =>
       s.isEmpty ? '' : s[0] + s.substring(1).toLowerCase().replaceAll('_', ' ');
 
-  List<CourierRequest> get _filtered => _statusFilter.isEmpty
-      ? _items
-      : _items.where((c) => _statusFilter.contains(c.status)).toList();
+  void _toggleStatus(String status, bool selected) {
+    setState(() => selected ? _statusFilter.add(status) : _statusFilter.remove(status));
+    _load(page: 1); // a changed filter always restarts from the first page
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -129,9 +140,7 @@ class _CourierRequestsScreenState extends State<CourierRequestsScreen> {
               label: Text(_label(s), style: const TextStyle(fontSize: 12)),
               selected: _statusFilter.contains(s),
               selectedColor: _color(s).withValues(alpha: 0.15),
-              onSelected: (v) => setState(
-                () => v ? _statusFilter.add(s) : _statusFilter.remove(s),
-              ),
+              onSelected: (v) => _toggleStatus(s, v),
             ),
             const SizedBox(width: 8),
           ],
@@ -158,11 +167,27 @@ class _CourierRequestsScreenState extends State<CourierRequestsScreen> {
   );
 
   Widget _list() {
-    final items = _filtered;
+    return Column(
+      children: [
+        Expanded(child: _listView()),
+        PaginationBar(
+          page: _page,
+          totalPages: _totalPages,
+          total: _total,
+          itemLabel: 'requests',
+          busy: _loading,
+          onPageChanged: (p) => _load(page: p),
+        ),
+      ],
+    );
+  }
+
+  Widget _listView() {
+    final items = _items;
     if (items.isEmpty) {
       return Center(
         child: Text(
-          _items.isEmpty
+          _statusFilter.isEmpty
               ? "No courier requests."
               : "No requests match this filter.",
           style: const TextStyle(color: AppColors.textSecondary),

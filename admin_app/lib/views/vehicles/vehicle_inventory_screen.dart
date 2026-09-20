@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/pagination_bar.dart';
+
 
 /// Cross-driver vehicle inventory (GET /api/vehicles, admin-only). Admin
 /// cannot edit a driver's own vehicle details (brand/plate/etc — only the
@@ -20,6 +22,9 @@ class VehicleInventoryScreen extends StatefulWidget {
 class _VehicleInventoryScreenState extends State<VehicleInventoryScreen> {
   bool _loading = true;
   String? _error;
+  int _page = 1;
+  int _totalPages = 1;
+  int _total = 0;
   List<AdminVehicle> _vehicles = const [];
 
   @override
@@ -28,16 +33,20 @@ class _VehicleInventoryScreenState extends State<VehicleInventoryScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({int? page}) async {
+    if (page != null) _page = page;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final vehicles = await AdminApi.vehicles();
+      final result = await AdminApi.vehicles(page: _page);
       if (!mounted) return;
+      if (result.isPastEnd) return await _load(page: result.totalPages);
       setState(() {
-        _vehicles = vehicles;
+        _vehicles = result.items;
+        _total = result.total;
+        _totalPages = result.totalPages;
         _loading = false;
       });
     } catch (e) {
@@ -70,6 +79,22 @@ class _VehicleInventoryScreenState extends State<VehicleInventoryScreen> {
       );
 
   Widget _list() {
+    return Column(
+      children: [
+        Expanded(child: _listView()),
+        PaginationBar(
+          page: _page,
+          totalPages: _totalPages,
+          total: _total,
+          itemLabel: 'vehicles',
+          busy: _loading,
+          onPageChanged: (p) => _load(page: p),
+        ),
+      ],
+    );
+  }
+
+  Widget _listView() {
     if (_vehicles.isEmpty) {
       return const Center(child: Text("No vehicles yet.", style: TextStyle(color: AppColors.textSecondary)));
     }

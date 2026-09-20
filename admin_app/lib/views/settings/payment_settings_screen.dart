@@ -112,7 +112,20 @@ class _PaymentSettingsScreenState extends State<PaymentSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Payment Settings')),
+      appBar: AppBar(
+        title: const Text('Payment Settings'),
+        actions: [
+      // A-5: these screens load once and then sit on whatever they fetched.
+      // Approvals, suspensions and payouts are worked in parallel by several
+      // admins, so a stale detail view is a decision made on old facts; there
+      // was no way to re-read it short of backing out and reopening.
+          IconButton(
+            tooltip: 'Refresh',
+            icon: const Icon(Icons.refresh),
+            onPressed: (_loading || _saving) ? null : _load,
+          ),
+        ],
+      ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : (_error != null ? _err() : _body()),

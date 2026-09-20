@@ -3,6 +3,8 @@ import 'package:ravelgo_admin/config/currency.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/pagination_bar.dart';
+
 import 'package:ravelgo_admin/views/stays/stay_detail_screen.dart';
 
 /// Short Stays admin management (GET/PATCH /api/stays — admin sees every
@@ -18,6 +20,9 @@ class _StaysManagementScreenState extends State<StaysManagementScreen> {
   bool _loading = true;
   bool _busy = false;
   String? _error;
+  int _page = 1;
+  int _totalPages = 1;
+  int _total = 0;
   List<StayListing> _items = const [];
 
   @override
@@ -26,16 +31,20 @@ class _StaysManagementScreenState extends State<StaysManagementScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({int? page}) async {
+    if (page != null) _page = page;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final items = await AdminApi.stays();
+      final result = await AdminApi.stays(page: _page);
       if (!mounted) return;
+      if (result.isPastEnd) return await _load(page: result.totalPages);
       setState(() {
-        _items = items;
+        _items = result.items;
+        _total = result.total;
+        _totalPages = result.totalPages;
         _loading = false;
       });
     } catch (e) {
@@ -119,6 +128,22 @@ class _StaysManagementScreenState extends State<StaysManagementScreen> {
       );
 
   Widget _list() {
+    return Column(
+      children: [
+        Expanded(child: _listView()),
+        PaginationBar(
+          page: _page,
+          totalPages: _totalPages,
+          total: _total,
+          itemLabel: 'listings',
+          busy: _loading,
+          onPageChanged: (p) => _load(page: p),
+        ),
+      ],
+    );
+  }
+
+  Widget _listView() {
     if (_items.isEmpty) {
       return const Center(child: Text("No short-stay listings yet.", style: TextStyle(color: AppColors.textSecondary)));
     }

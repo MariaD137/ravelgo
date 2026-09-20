@@ -3,8 +3,9 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb, mockCognitoAddToGroup, mockCognitoAdminUserStatus } from "../test/helpers";
+import { locatedAt, mockAuthAs, restoreAuth, resetDb, mockCognitoAddToGroup, mockCognitoAdminUserStatus } from "../test/helpers";
 import { getLatestDriverLocation, resetRealtimeState } from "../realtime/hub";
+import { maybeMatchPendingTrips } from "../services/matching";
 
 beforeEach(() => {
   resetRealtimeState();
@@ -152,19 +153,19 @@ test("POST /api/drivers/apply never downgrades an ADMIN's User.role, and the adm
   assert.equal(rider?.role, "DRIVER");
 });
 
-test("POST /api/drivers/me creates a user + driver profile together", async () => {
+// B-11: POST /api/drivers/me has been removed — /drivers/apply is the only
+// way to become a driver, and it is the one that adds the Cognito group
+// server-side. A caller who still tries the old route gets a plain 404.
+test("POST /api/drivers/me no longer exists — onboarding goes through /drivers/apply", async () => {
   const token = mockAuthAs({ sub: "driver-sub-1", groups: ["Driver"] });
   const res = await request(app)
     .post("/api/drivers/me")
     .set("Authorization", `Bearer ${token}`)
     .send({ firstName: "Kay", lastName: "D", email: "kay@example.com" });
 
-  assert.equal(res.status, 201);
-  assert.equal(res.body.status, "PENDING_REVIEW");
-
-  const user = await prisma.user.findUnique({ where: { cognitoSub: "driver-sub-1" } });
-  assert.ok(user);
-  assert.equal(user?.role, "DRIVER");
+  assert.equal(res.status, 404);
+  // And nothing was created by the attempt.
+  assert.equal(await prisma.user.count({ where: { cognitoSub: "driver-sub-1" } }), 0);
 });
 
 test("GET /api/drivers/me 404s before a driver profile exists", async () => {
@@ -549,7 +550,7 @@ test("PATCH /api/drivers/me/availability retries matching for a rider already wa
   const driverUser = await prisma.user.create({
     data: { cognitoSub: "drv-retry-1", role: "DRIVER", firstName: "D", lastName: "R", email: "dr@example.com" },
   });
-  await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE" } });
+  await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE", ...locatedAt(6.5244, 3.3792) } });
   const token = mockAuthAs({ sub: "drv-retry-1", groups: ["Driver"] });
 
   const res = await request(app)
@@ -620,6 +621,46 @@ test("POST /api/drivers/me/location records the driver's position in the realtim
   const stored = getLatestDriverLocation(driver.id);
   assert.equal(stored?.lat, 6.5244);
   assert.equal(stored?.lng, 3.3792);
+  // Also persisted on the Driver row for location-aware matching (B-1).
+  const row = await prisma.driver.findUniqueOrThrow({ where: { id: driver.id } });
+  assert.equal(row.lastLat, 6.5244);
+  assert.equal(row.lastLng, 3.3792);
+  assert.ok(row.lastLocationAt && Date.now() - row.lastLocationAt.getTime() < 10_000);
+});
+
+test("POST /api/drivers/me/location offers a nearby waiting rider's trip to the driver who just reported in", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "rider-loc-2", role: "RIDER", firstName: "R", lastName: "L", email: "rl2@example.com" },
+  });
+  const trip = await prisma.trip.create({
+    data: {
+      riderId: rider.id,
+      pickup: "X",
+      destination: "Y",
+      pickupLat: 6.5244,
+      pickupLng: 3.3792,
+      estimatedFare: 12,
+      status: "REQUESTED",
+    },
+  });
+  const user = await prisma.user.create({
+    data: { cognitoSub: "drv-loc-2", role: "DRIVER", firstName: "L", lastName: "D", email: "ld2@example.com" },
+  });
+  // Online and ACTIVE but with no known position: not offerable yet.
+  const driver = await prisma.driver.create({ data: { userId: user.id, status: "ACTIVE", isOnline: true } });
+  const token = mockAuthAs({ sub: "drv-loc-2", groups: ["Driver"] });
+
+  const res = await request(app)
+    .post("/api/drivers/me/location")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ lat: 6.53, lng: 3.38 });
+  assert.equal(res.status, 200);
+
+  // The pending-trip sweep is fire-and-forget from the ping; wait for it.
+  await maybeMatchPendingTrips();
+  const updated = await prisma.trip.findUniqueOrThrow({ where: { id: trip.id } });
+  assert.equal(updated.status, "OFFERED");
+  assert.equal(updated.driverId, driver.id);
 });
 
 test("GET /api/drivers/:driverId/documents/:documentId/url returns a signed URL for an Admin", async () => {

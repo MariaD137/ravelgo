@@ -1,14 +1,28 @@
 import 'dart:convert';
+import 'dart:io' show SocketException;
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:ravelgo_admin/services/auth_service.dart';
+import 'package:ravelgo_admin/services/session_guard.dart';
 
 /// Thrown for any non-2xx backend response, carrying a human-readable message.
+///
+/// [statusCode] 0 means the request never reached the backend at all (no
+/// network, DNS failure, TLS failure, a wrong API_BASE_URL) — a connection
+/// problem, not an answer from the backend, and screens must never present
+/// it as one. Everything else is a real HTTP status the backend chose.
 class ApiException implements Exception {
   final int statusCode;
   final String message;
   ApiException(this.statusCode, this.message);
+
+  bool get isNetworkFailure => statusCode == 0;
+  bool get isUnauthenticated => statusCode == 401;
+  bool get isForbidden => statusCode == 403;
+  bool get isNotFound => statusCode == 404;
+  bool get isServerError => statusCode >= 500;
+
   @override
   String toString() => message;
 }
@@ -22,9 +36,13 @@ class ApiClient {
     return b.endsWith('/') ? b.substring(0, b.length - 1) : b;
   }
 
-  static bool get isConfigured => _base.isNotEmpty && !_base.contains('example.com');
+  static bool get isConfigured =>
+      _base.isNotEmpty && !_base.contains('example.com');
 
   static Uri _uri(String path) => Uri.parse('$_base$path');
+
+  /// Swappable for tests (package:http/testing.dart's MockClient).
+  static http.Client client = http.Client();
 
   static Future<Map<String, String>> _headers() async {
     final token = await AuthService.validAccessToken();
@@ -34,19 +52,73 @@ class ApiClient {
     };
   }
 
-  static Future<dynamic> get(String path) async =>
-      _handle(await http.get(_uri(path), headers: await _headers()));
+  static Future<dynamic> get(String path) => _send('GET', path, null);
+  static Future<dynamic> post(String path, [Object? body]) =>
+      _send('POST', path, body);
+  static Future<dynamic> patch(String path, [Object? body]) =>
+      _send('PATCH', path, body);
+  static Future<dynamic> delete(String path, [Object? body]) =>
+      _send('DELETE', path, body);
 
-  static Future<dynamic> post(String path, [Object? body]) async => _handle(
-        await http.post(_uri(path), headers: await _headers(), body: body == null ? null : jsonEncode(body)),
+  static Future<dynamic> _send(String method, String path, Object? body) async {
+    var res = await _request(method, path, body);
+    // One app-wide rule for an expired/revoked session (see SessionGuard):
+    // force a refresh, retry once, and otherwise hand the user back to the
+    // sign-in screen instead of leaving them on a screen that can no longer
+    // load anything.
+    if (res.statusCode == 401) {
+      if (await SessionGuard.tryRefresh()) {
+        res = await _request(method, path, body);
+      }
+      if (res.statusCode == 401) {
+        await SessionGuard.expire();
+        throw ApiException(401, SessionGuard.expiredMessage);
+      }
+    }
+    return _handle(res);
+  }
+
+  static Future<http.Response> _request(
+    String method,
+    String path,
+    Object? body,
+  ) async {
+    final headers = await _headers();
+    final encoded = body == null ? null : jsonEncode(body);
+    try {
+      switch (method) {
+        case 'GET':
+          return await client.get(_uri(path), headers: headers);
+        case 'POST':
+          return await client.post(_uri(path), headers: headers, body: encoded);
+        case 'PATCH':
+          return await client.patch(
+            _uri(path),
+            headers: headers,
+            body: encoded,
+          );
+        default:
+          return await client.delete(
+            _uri(path),
+            headers: headers,
+            body: encoded,
+          );
+      }
+      // A request that never reaches the backend is not a backend answer.
+      // Left unclassified, these surfaced as a raw
+      // "ClientException: Failed to fetch, uri=..." in the UI.
+    } on SocketException catch (e) {
+      throw ApiException(
+        0,
+        'Can\'t reach RavelGo (${e.osError?.message ?? e.message}). Check your connection and try again.',
       );
-
-  static Future<dynamic> patch(String path, [Object? body]) async => _handle(
-        await http.patch(_uri(path), headers: await _headers(), body: body == null ? null : jsonEncode(body)),
+    } on http.ClientException catch (e) {
+      throw ApiException(
+        0,
+        'Can\'t reach RavelGo (${e.message}). Check your connection and try again.',
       );
-
-  static Future<dynamic> delete(String path) async =>
-      _handle(await http.delete(_uri(path), headers: await _headers()));
+    }
+  }
 
   static dynamic _handle(http.Response res) {
     dynamic decoded;
@@ -59,22 +131,58 @@ class ApiClient {
     }
     if (res.statusCode >= 200 && res.statusCode < 300) return decoded;
 
-    throw ApiException(res.statusCode, _extractMessage(decoded, res.statusCode));
+    throw ApiException(
+      res.statusCode,
+      _extractMessage(decoded, res.statusCode),
+    );
   }
 
   /// Backend errors come in two shapes: most route handlers reply with
   /// `{error: "plain string"}`, while the global error-handler middleware
   /// (and classified Prisma errors) reply with a nested
   /// `{error: {code, message, details, timestamp}}`. Without this, the
-  /// nested shape fell through to `.toString()` on a raw Map and showed the
-  /// admin a dump like "{code: INTERNAL_SERVER_ERROR, message: ...}" instead
-  /// of the human-readable message.
+  /// nested shape fell through to `.toString()` on a raw Map and showed a
+  /// dump like "{code: INTERNAL_SERVER_ERROR, message: ...}" instead of the
+  /// human-readable message.
   static String _extractMessage(dynamic decoded, int statusCode) {
     if (decoded is Map) {
       final error = decoded['error'];
-      if (error is Map && error['message'] != null) return error['message'].toString();
+      if (error is Map && error['message'] != null) {
+        return error['message'].toString();
+      }
       if (error is String && error.isNotEmpty) return error;
+      if (error != null) return error.toString();
     }
     return 'Request failed ($statusCode)';
+  }
+}
+
+/// One user-facing sentence per failure CLASS. Each class is a different
+/// problem with a different remedy, and a screen that collapses them into a
+/// single "Something went wrong" tells the user nothing about which one they
+/// are actually looking at:
+///
+///   0    the request never got an answer   -> connection/config problem
+///   401  the session is gone               -> sign in again
+///   403  the backend refused this account  -> not allowed to do this
+///   404  no such record                    -> nothing to show
+///   5xx  the backend/database failed       -> server problem, retry later
+String describeApiFailure(Object error, {String what = 'this'}) {
+  if (error is! ApiException) {
+    return 'Something went wrong loading $what. Please try again.';
+  }
+  if (error.isNetworkFailure) return error.message;
+  switch (error.statusCode) {
+    case 401:
+      return SessionGuard.expiredMessage;
+    case 403:
+      return 'Your admin role doesn\'t have permission for $what.';
+    case 404:
+      return 'We couldn\'t find $what.';
+    default:
+      if (error.isServerError) {
+        return 'RavelGo had a server problem loading $what (${error.statusCode}). Please try again in a moment.';
+      }
+      return error.message;
   }
 }

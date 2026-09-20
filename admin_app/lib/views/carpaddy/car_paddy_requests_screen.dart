@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/pagination_bar.dart';
+
 import 'package:ravelgo_admin/utils/date_utils.dart';
 
 /// Car Paddy verification requests (GET /api/car-paddy, admin).
@@ -16,6 +18,9 @@ class _CarPaddyRequestsScreenState extends State<CarPaddyRequestsScreen> {
   bool _loading = true;
   bool _busy = false;
   String? _error;
+  int _page = 1;
+  int _totalPages = 1;
+  int _total = 0;
   List<CarPaddyRequest> _items = const [];
 
   @override
@@ -24,16 +29,20 @@ class _CarPaddyRequestsScreenState extends State<CarPaddyRequestsScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({int? page}) async {
+    if (page != null) _page = page;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final items = await AdminApi.carPaddyRequests();
+      final result = await AdminApi.carPaddyRequests(page: _page);
       if (!mounted) return;
+      if (result.isPastEnd) return await _load(page: result.totalPages);
       setState(() {
-        _items = items;
+        _items = result.items;
+        _total = result.total;
+        _totalPages = result.totalPages;
         _loading = false;
       });
     } catch (e) {
@@ -96,6 +105,22 @@ class _CarPaddyRequestsScreenState extends State<CarPaddyRequestsScreen> {
       );
 
   Widget _list() {
+    return Column(
+      children: [
+        Expanded(child: _listView()),
+        PaginationBar(
+          page: _page,
+          totalPages: _totalPages,
+          total: _total,
+          itemLabel: 'requests',
+          busy: _loading,
+          onPageChanged: (p) => _load(page: p),
+        ),
+      ],
+    );
+  }
+
+  Widget _listView() {
     if (_items.isEmpty) {
       return const Center(child: Text("No Car Paddy requests.", style: TextStyle(color: AppColors.textSecondary)));
     }

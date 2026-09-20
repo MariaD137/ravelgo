@@ -8,7 +8,7 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { blockIfAdminLacksPermission } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
 import { notifyUser, type NotificationType } from "../lib/notifications";
-import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { csvList, inFilter, paginate, paginationQuerySchema } from "../lib/pagination";
 import { getLatestDriverLocation, locationFreshness } from "../realtime/hub";
 import { haversineKm, isValidCoordinate } from "../lib/geo";
 import { serializeCourierRequest } from "../lib/courier-view";
@@ -507,20 +507,30 @@ courierRouter.get("/courier-requests/:id", requireAuth, async (req, res) => {
   res.json(isOwner || isAdmin ? { ...body, payment: request.payment ?? null } : body);
 });
 
+const adminCourierQuerySchema = paginationQuerySchema.extend({
+  // Optional comma-separated status filter, applied server-side (see trips).
+  status: z.preprocess(
+    csvList,
+    z.array(z.enum(["REQUESTED", "MATCHED", "PICKED_UP", "IN_TRANSIT", "DELIVERED", "CANCELLED"])).optional(),
+  ),
+});
+
 // Admin: monitor all courier requests
 courierRouter.get("/courier-requests", requireAuth, requireRole("Admin"), async (req, res) => {
-  const parsed = paginationQuerySchema.safeParse(req.query);
+  const parsed = adminCourierQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { page, pageSize } = parsed.data;
+  const { page, pageSize, status } = parsed.data;
+  const where = { status: inFilter(status) };
 
   const [requests, total] = await Promise.all([
     prisma.courierRequest.findMany({
+      where,
       include: { sender: true, driver: { include: { user: true, vehicles: { where: { isPrimary: true }, take: 1 } } } },
       orderBy: { requestedAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.courierRequest.count(),
+    prisma.courierRequest.count({ where }),
   ]);
   res.json(paginate(requests.map(serializeCourierRequest), total, page, pageSize));
 });

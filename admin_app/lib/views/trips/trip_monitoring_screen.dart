@@ -3,6 +3,8 @@ import 'package:ravelgo_admin/config/currency.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/pagination_bar.dart';
+
 import 'package:ravelgo_admin/utils/date_utils.dart';
 import 'package:ravelgo_admin/views/trips/trip_admin_detail_screen.dart';
 
@@ -25,6 +27,9 @@ class TripMonitoringScreen extends StatefulWidget {
 class _TripMonitoringScreenState extends State<TripMonitoringScreen> {
   bool _loading = true;
   String? _error;
+  int _page = 1;
+  int _totalPages = 1;
+  int _total = 0;
   List<AdminTrip> _trips = const [];
   Set<String> _statusFilter = {};
 
@@ -44,16 +49,22 @@ class _TripMonitoringScreenState extends State<TripMonitoringScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({int? page}) async {
+    if (page != null) _page = page;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final trips = await AdminApi.trips();
+      // Status chips are applied server-side (GET /api/trips?status=...), so
+      // a filter narrows the whole table and pages within that subset.
+      final result = await AdminApi.trips(statuses: _statusFilter, page: _page);
       if (!mounted) return;
+      if (result.isPastEnd) return await _load(page: result.totalPages);
       setState(() {
-        _trips = trips;
+        _trips = result.items;
+        _total = result.total;
+        _totalPages = result.totalPages;
         _loading = false;
       });
     } catch (e) {
@@ -84,9 +95,10 @@ class _TripMonitoringScreenState extends State<TripMonitoringScreen> {
   String _label(String s) =>
       s.isEmpty ? '' : s[0] + s.substring(1).toLowerCase().replaceAll('_', ' ');
 
-  List<AdminTrip> get _filtered => _statusFilter.isEmpty
-      ? _trips
-      : _trips.where((t) => _statusFilter.contains(t.status)).toList();
+  void _toggleStatus(String status, bool selected) {
+    setState(() => selected ? _statusFilter.add(status) : _statusFilter.remove(status));
+    _load(page: 1); // a changed filter always restarts from the first page
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -118,9 +130,7 @@ class _TripMonitoringScreenState extends State<TripMonitoringScreen> {
               label: Text(_label(s), style: const TextStyle(fontSize: 12)),
               selected: _statusFilter.contains(s),
               selectedColor: _statusColor(s).withValues(alpha: 0.15),
-              onSelected: (v) => setState(
-                () => v ? _statusFilter.add(s) : _statusFilter.remove(s),
-              ),
+              onSelected: (v) => _toggleStatus(s, v),
             ),
             const SizedBox(width: 8),
           ],
@@ -147,11 +157,27 @@ class _TripMonitoringScreenState extends State<TripMonitoringScreen> {
   );
 
   Widget _list() {
-    final trips = _filtered;
+    return Column(
+      children: [
+        Expanded(child: _listView()),
+        PaginationBar(
+          page: _page,
+          totalPages: _totalPages,
+          total: _total,
+          itemLabel: 'trips',
+          busy: _loading,
+          onPageChanged: (p) => _load(page: p),
+        ),
+      ],
+    );
+  }
+
+  Widget _listView() {
+    final trips = _trips;
     if (trips.isEmpty) {
       return Center(
         child: Text(
-          _trips.isEmpty ? "No trips yet." : "No trips match this filter.",
+          _statusFilter.isEmpty ? "No trips yet." : "No trips match this filter.",
           style: const TextStyle(color: AppColors.textSecondary),
         ),
       );

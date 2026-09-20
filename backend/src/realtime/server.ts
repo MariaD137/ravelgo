@@ -4,6 +4,7 @@ import { verifier } from "../middleware/auth";
 import { prisma } from "../db/prisma";
 import { isValidCoordinate } from "../lib/geo";
 import { broadcastDriverLocation, joinTripRoom, leaveAllRooms, recordDriverLocation } from "./hub";
+import { persistDriverLocation } from "../services/driver-location";
 
 interface ConnectionUser {
   sub: string;
@@ -51,6 +52,7 @@ async function handleLocation(socket: WebSocket, user: ConnectionUser, lat: unkn
   }
 
   const location = recordDriverLocation(driver.id, lat, lng);
+  persistDriverLocation(driver.id, lat, lng).catch((err) => console.error("Failed to persist driver location", err));
   const activeTrips = await prisma.trip.findMany({
     where: { driverId: driver.id, status: { in: ["MATCHED", "IN_PROGRESS"] } },
     select: { id: true },

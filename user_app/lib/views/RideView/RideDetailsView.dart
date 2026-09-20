@@ -1,13 +1,156 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
 import 'package:ravelgo_user_app/config/currency.dart';
 import 'RidesView.dart'; // adjust path if needed; this imports the Ride class
+import 'package:ravelgo_user_app/services/api_client.dart';
+import 'package:ravelgo_user_app/services/trips_api.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 import 'package:ravelgo_user_app/views/AccountView/EReceiptPage.dart';
 
-class RideDetailsScreen extends StatelessWidget {
+class RideDetailsScreen extends StatefulWidget {
   final Ride ride;
 
   const RideDetailsScreen({Key? key, required this.ride}) : super(key: key);
+
+  @override
+  State<RideDetailsScreen> createState() => _RideDetailsScreenState();
+}
+
+class _RideDetailsScreenState extends State<RideDetailsScreen> {
+  Ride get ride => widget.ride;
+
+  // The route this trip actually took, fetched from the backend. The list
+  // route (GET /api/trips) deliberately stays minimal and carries no
+  // coordinates, so the map needs the single-trip route.
+  Trip? _trip;
+  bool _loadingRoute = true;
+  String? _routeError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRoute();
+  }
+
+  Future<void> _loadRoute() async {
+    setState(() {
+      _loadingRoute = true;
+      _routeError = null;
+    });
+    try {
+      final trip = await TripsApi.byId(ride.tripId);
+      if (!mounted) return;
+      setState(() {
+        _trip = trip;
+        _loadingRoute = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _routeError = describeApiFailure(e, what: 'this trip\'s route');
+        _loadingRoute = false;
+      });
+    }
+  }
+
+  /// The real pickup/dropoff markers for this trip, or an empty set when the
+  /// backend has no coordinates for it (older trips created before
+  /// coordinates were required).
+  Set<Marker> get _markers {
+    final t = _trip;
+    if (t == null) return const {};
+    return {
+      if (t.pickupLat != null && t.pickupLng != null)
+        Marker(
+          markerId: const MarkerId('pickup'),
+          position: LatLng(t.pickupLat!, t.pickupLng!),
+          infoWindow: InfoWindow(title: 'Pickup', snippet: t.pickup),
+        ),
+      if (t.dropoffLat != null && t.dropoffLng != null)
+        Marker(
+          markerId: const MarkerId('dropoff'),
+          position: LatLng(t.dropoffLat!, t.dropoffLng!),
+          infoWindow: InfoWindow(title: 'Destination', snippet: t.destination),
+        ),
+    };
+  }
+
+  /// A map of the real route, a plain message when this trip has no
+  /// coordinates, or the failure that stopped us loading it. Never a picture
+  /// of somebody else's journey: this used to be a static bitmap of an
+  /// unrelated map, shown for every trip as though it were this one.
+  Widget _routePreview() {
+    if (_loadingRoute) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_routeError != null) {
+      return _routePlaceholder(
+        icon: Icons.error_outline,
+        message: _routeError!,
+        onRetry: _loadRoute,
+      );
+    }
+    final markers = _markers;
+    if (markers.isEmpty) {
+      return _routePlaceholder(
+        icon: Icons.map_outlined,
+        message: 'No route was recorded for this trip.',
+      );
+    }
+    final first = markers.first.position;
+    return SafeGoogleMap(
+      initialCameraPosition: CameraPosition(target: first, zoom: 13),
+      markers: markers,
+      myLocationEnabled: false,
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      onMapCreated: (controller) => _fitRoute(controller, markers),
+    );
+  }
+
+  void _fitRoute(GoogleMapController controller, Set<Marker> markers) {
+    if (markers.length < 2) return;
+    final positions = markers.map((m) => m.position).toList();
+    final bounds = LatLngBounds(
+      southwest: LatLng(
+        positions.map((p) => p.latitude).reduce((a, b) => a < b ? a : b),
+        positions.map((p) => p.longitude).reduce((a, b) => a < b ? a : b),
+      ),
+      northeast: LatLng(
+        positions.map((p) => p.latitude).reduce((a, b) => a > b ? a : b),
+        positions.map((p) => p.longitude).reduce((a, b) => a > b ? a : b),
+      ),
+    );
+    controller.animateCamera(CameraUpdate.newLatLngBounds(bounds, 48));
+  }
+
+  Widget _routePlaceholder({
+    required IconData icon,
+    required String message,
+    VoidCallback? onRetry,
+  }) {
+    return Container(
+      color: AppColors.background,
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 32, color: AppColors.textMuted),
+          const SizedBox(height: 10),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          ),
+          if (onRetry != null) ...[
+            const SizedBox(height: 10),
+            OutlinedButton(onPressed: onRetry, child: const Text('Try again')),
+          ],
+        ],
+      ),
+    );
+  }
 
   String _formatTime(DateTime dt) {
     final months = [
@@ -63,32 +206,10 @@ class RideDetailsScreen extends StatelessWidget {
               ),
             ),
 
-            // Map preview
-            SizedBox(
-              height: 300,
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: Image.asset("assets/fake_map.png",fit: BoxFit.fill,),
-                  ),
-                  // Positioned(
-                  //   right: 12,
-                  //   bottom: 12,
-                  //   child: Material(
-                  //     elevation: 2,
-                  //     shape: const CircleBorder(),
-                  //     color: AppColors.surface,
-                  //     child: IconButton(
-                  //       icon: const Icon(Icons.my_location),
-                  //       onPressed: () {},
-                  //     ),
-                  //   ),
-                  // ),
-                ],
-              ),
-            ),
+            // Map preview — this trip's real pickup and destination.
+            SizedBox(height: 300, child: _routePreview()),
 
-            // Details & payments (static example)
+            // Details & payments
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),

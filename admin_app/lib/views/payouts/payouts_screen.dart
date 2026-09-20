@@ -3,6 +3,8 @@ import 'package:ravelgo_admin/config/currency.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/pagination_bar.dart';
+
 import 'package:ravelgo_admin/utils/date_utils.dart';
 import 'package:ravelgo_admin/views/payouts/create_payout_screen.dart';
 
@@ -21,6 +23,9 @@ class _PayoutsScreenState extends State<PayoutsScreen> {
   bool _loading = true;
   bool _busy = false;
   String? _error;
+  int _page = 1;
+  int _totalPages = 1;
+  int _total = 0;
   List<AdminPayout> _payouts = const [];
   String _filter = 'ALL';
 
@@ -30,16 +35,20 @@ class _PayoutsScreenState extends State<PayoutsScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({int? page}) async {
+    if (page != null) _page = page;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final payouts = await AdminApi.payouts(status: _filter == 'ALL' ? null : _filter);
+      final result = await AdminApi.payouts(status: _filter == 'ALL' ? null : _filter, page: _page);
       if (!mounted) return;
+      if (result.isPastEnd) return await _load(page: result.totalPages);
       setState(() {
-        _payouts = payouts;
+        _payouts = result.items;
+        _total = result.total;
+        _totalPages = result.totalPages;
         _loading = false;
       });
     } catch (e) {
@@ -209,7 +218,7 @@ class _PayoutsScreenState extends State<PayoutsScreen> {
                   selected: selected,
                   onSelected: (_) {
                     setState(() => _filter = f);
-                    _load();
+                    _load(page: 1); // a changed filter always restarts from the first page
                   },
                 );
               },
@@ -236,6 +245,22 @@ class _PayoutsScreenState extends State<PayoutsScreen> {
       );
 
   Widget _list() {
+    return Column(
+      children: [
+        Expanded(child: _listView()),
+        PaginationBar(
+          page: _page,
+          totalPages: _totalPages,
+          total: _total,
+          itemLabel: 'payouts',
+          busy: _loading,
+          onPageChanged: (p) => _load(page: p),
+        ),
+      ],
+    );
+  }
+
+  Widget _listView() {
     if (_payouts.isEmpty) {
       return const Center(child: Text("No payouts yet.", style: TextStyle(color: AppColors.textSecondary)));
     }

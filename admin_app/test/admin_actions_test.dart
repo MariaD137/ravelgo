@@ -26,27 +26,88 @@ void main() {
     expect(find.byType(AdminLoginScreen), findsOneWidget);
   });
 
-  testWidgets('trip detail shows real payment status instead of any fake actions',
+  AdminTrip tripWith({String? paymentStatus, String? method, double? amount}) => AdminTrip(
+        id: 'trip-1',
+        pickup: 'Ikeja',
+        destination: 'Lekki',
+        status: 'COMPLETED',
+        fare: 5000,
+        riderName: 'Ada Guest',
+        driverName: 'Femi Driver',
+        requestedAt: DateTime(2026, 1, 1),
+        paymentStatus: paymentStatus,
+        paymentMethod: method,
+        paymentAmount: amount,
+      );
+
+  testWidgets('trip detail shows the real trip and its settled payment',
       (WidgetTester tester) async {
-    final trip = AdminTrip(
-      id: 'trip-1',
-      pickup: 'Ikeja',
-      destination: 'Lekki',
-      status: 'COMPLETED',
-      fare: 5000,
-      riderName: 'Ada Guest',
-      driverName: 'Femi Driver',
-      requestedAt: DateTime(2026, 1, 1),
-      paymentStatus: 'SUCCEEDED',
-      paymentMethod: 'CARD',
-    );
-    await tester.pumpWidget(MaterialApp(home: TripAdminDetailScreen(trip: trip)));
+    await tester.pumpWidget(MaterialApp(
+        home: TripAdminDetailScreen(
+            trip: tripWith(paymentStatus: 'SUCCEEDED', method: 'CARD', amount: 5000))));
 
     expect(find.text('Ada Guest'), findsOneWidget);
     expect(find.text('Femi Driver'), findsOneWidget);
-    // No refund/dispute actions — no such backend endpoint exists.
-    expect(find.text('Refund rider'), findsNothing);
+    // Still no invented actions — only the endpoints that exist.
     expect(find.text('Flag this trip for review'), findsNothing);
+  });
+
+  // A-3 / B-6: the refund endpoint existed all along; the admin app simply
+  // could not reach it.
+  testWidgets('a settled payment offers a refund, an unsettled one does not',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: TripAdminDetailScreen(
+            trip: tripWith(paymentStatus: 'SUCCEEDED', method: 'CARD', amount: 5000))));
+    expect(find.text('Issue refund'), findsOneWidget);
+
+    await tester.pumpWidget(MaterialApp(
+        home: TripAdminDetailScreen(trip: tripWith(paymentStatus: 'PENDING', method: 'CARD'))));
+    expect(find.text('Issue refund'), findsNothing);
+    expect(find.text('Only a settled payment can be refunded.'), findsOneWidget);
+
+    await tester.pumpWidget(MaterialApp(home: TripAdminDetailScreen(trip: tripWith())));
+    expect(find.text('Issue refund'), findsNothing);
+    expect(find.text('Not charged yet.'), findsOneWidget);
+  });
+
+  testWidgets('a refund is never one tap: it needs a reason, and a partial amount '
+      'cannot exceed the charge', (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: TripAdminDetailScreen(
+            trip: tripWith(paymentStatus: 'SUCCEEDED', method: 'CARD', amount: 5000))));
+
+    await tester.tap(find.text('Issue refund'));
+    await tester.pumpAndSettle();
+    expect(find.text('Charged ₦5,000 by card.'), findsOneWidget);
+
+    // Submitting with no reason is refused — the backend requires one and it
+    // lands in the audit log.
+    await tester.tap(find.text('Refund'));
+    await tester.pumpAndSettle();
+    expect(find.text('A reason is required'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextFormField).first, 'Rider charged twice');
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).last, '9000');
+    await tester.tap(find.text('Refund'));
+    await tester.pumpAndSettle();
+    expect(find.text('Cannot exceed ₦5,000'), findsOneWidget);
+
+    // Cancelling calls nothing at all.
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Issue refund'), findsOneWidget);
+  });
+
+  testWidgets('a cash refund says plainly that no cash moves through RavelGo',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(MaterialApp(
+        home: TripAdminDetailScreen(
+            trip: tripWith(paymentStatus: 'SUCCEEDED', method: 'CASH', amount: 3000))));
+    expect(find.textContaining('Cash never passed through RavelGo'), findsOneWidget);
   });
 
   // These consoles read live data from the backend (GET /api/admin/*, etc).

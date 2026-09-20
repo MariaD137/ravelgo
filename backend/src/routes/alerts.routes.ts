@@ -4,7 +4,7 @@ import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { requireAdminPermission } from "../lib/admin-permissions";
 import { notifyAllAdmins } from "../lib/notifications";
-import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { csvList, inFilter, paginate, paginationQuerySchema } from "../lib/pagination";
 
 export const alertsRouter = Router();
 
@@ -46,20 +46,30 @@ alertsRouter.get("/emergency-alerts/mine", requireAuth, async (req, res) => {
   res.json(alerts);
 });
 
+const adminAlertsQuerySchema = paginationQuerySchema.extend({
+  // The Admin App has one screen per alert type (SOS vs suspected fraud);
+  // filtering here means each screen pages through ITS alerts, not through
+  // a mixed list it then thins out client-side.
+  type: z.enum(["SOS", "FRAUD_SUSPECTED"]).optional(),
+  status: z.preprocess(csvList, z.array(z.enum(["OPEN", "ACKNOWLEDGED", "RESOLVED"])).optional()),
+});
+
 // Admin: list all alerts, most urgent (open) first
 alertsRouter.get("/emergency-alerts", requireAuth, requireRole("Admin"), async (req, res) => {
-  const parsed = paginationQuerySchema.safeParse(req.query);
+  const parsed = adminAlertsQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { page, pageSize } = parsed.data;
+  const { page, pageSize, type, status } = parsed.data;
+  const where = { type, status: inFilter(status) };
 
   const [alerts, total] = await Promise.all([
     prisma.emergencyAlert.findMany({
+      where,
       include: { user: true, trip: true },
       orderBy: [{ status: "asc" }, { createdAt: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.emergencyAlert.count(),
+    prisma.emergencyAlert.count({ where }),
   ]);
   res.json(paginate(alerts, total, page, pageSize));
 });
