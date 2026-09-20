@@ -40,6 +40,7 @@ tags:
   - name: Eats
   - name: Stays
   - name: Places
+  - name: Referrals
 
 paths:
   /health:
@@ -3069,6 +3070,96 @@ paths:
           content:
             application/json:
               schema: { type: object }
+
+  /riders/me/referral:
+    get:
+      tags: [Referrals]
+      summary: My referral code, the programme terms and my invite stats (Rider)
+      responses:
+        "200":
+          description: Referral summary
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /riders/me/referral/claim:
+    post:
+      tags: [Referrals]
+      summary: Use someone else's invite code (Rider, before the first completed ride)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        "201":
+          description: Referral recorded
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /settings/referral:
+    get:
+      tags: [Referrals]
+      summary: Current referral programme terms
+      responses:
+        "200":
+          description: Referral programme
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /admin/settings/referral:
+    patch:
+      tags: [Referrals]
+      summary: Configure the referral programme (Admin, settings:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                referralEnabled: { type: boolean }
+                referralRewardAmount: { type: number }
+                referralRefereeRewardAmount: { type: number }
+                referralQualifyingTrips: { type: integer }
+      responses:
+        "200":
+          description: Updated referral programme
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/referrals:
+    get:
+      tags: [Referrals]
+      summary: All referrals and their status (Admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+        - { name: status, in: query, schema: { type: string, enum: [PENDING, REWARDED] } }
+      responses:
+        "200":
+          description: Paginated referrals
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
 components:
   securitySchemes:

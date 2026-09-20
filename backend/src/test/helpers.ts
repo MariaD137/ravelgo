@@ -211,6 +211,9 @@ export async function resetDb() {
   await prisma.cashRemittance.deleteMany();
   await prisma.vehicle.deleteMany();
   await prisma.driver.deleteMany();
+  // Referral cascades from User at the database level, but clearing it
+  // explicitly keeps the intent obvious and the ordering independent of that.
+  await prisma.referral.deleteMany();
   await prisma.user.deleteMany();
   // Global singleton config, not user-scoped, but reset so one test's cash
   // limit/enabled-method change can never leak into another.

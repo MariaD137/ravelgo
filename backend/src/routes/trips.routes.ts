@@ -14,6 +14,7 @@ import {
 } from "../realtime/hub";
 import { notifyAllAdmins, notifyUser } from "../lib/notifications";
 import { acceptTripOffer, declineTripOffer, matchDriverToTrip } from "../services/matching";
+import { maybeRewardReferral } from "../services/referral";
 import { driverHasActiveDelivery } from "../lib/driver-conflicts";
 import { quoteFare, quoteFareForCategory } from "../services/pricing";
 import { MAX_FINAL_FARE_MULTIPLIER, MIN_FINAL_FARE_MULTIPLIER, moneyAmountSchema } from "../lib/money";
@@ -446,6 +447,12 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
       entityId: trip.id,
       metadata: { finalFare: trip.finalFare, driverId: trip.driverId, riderId: trip.riderId },
     });
+    // A completed trip is the only thing that can qualify a referral, so this
+    // is the one place it is settled. Awaited so a rider who has just earned
+    // a reward can see it immediately, but maybeRewardReferral never throws:
+    // a referral problem must not fail a trip that genuinely completed, and a
+    // failure leaves the row PENDING for the next completed trip to retry.
+    await maybeRewardReferral(trip.riderId);
   } else if (trip.status === "CANCELLED") {
     await notifyUser(trip.riderId, "RIDE_CANCELLED", "Ride cancelled", "Your ride was cancelled.", {
       type: "TRIP",

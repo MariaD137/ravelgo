@@ -29,7 +29,9 @@ export type NotificationType =
   | "ADMIN_TRIP_DISPUTED"
   | "DRIVER_ACCOUNT_STATUS_CHANGED"
   | "PAYOUT_COMPLETED"
-  | "PAYOUT_FAILED";
+  | "PAYOUT_FAILED"
+  // Both sides of a referral that just paid out (services/referral.ts).
+  | "REFERRAL_REWARDED";
 
 export type NotificationReferenceType =
   | "TRIP"

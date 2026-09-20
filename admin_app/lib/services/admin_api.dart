@@ -1932,6 +1932,41 @@ class AdminApi {
     );
   }
 
+  // ---- Referrals ----
+  // The referral programme pays real money out of real wallets, so the app
+  // only ever reads and writes what the backend reports; the switch that
+  // turns it on is guarded by requireAdminPermission("settings:write")
+  // server-side, and every change is audited there.
+
+  static Future<ReferralProgram> referralProgram() async {
+    final data = await ApiClient.get('/api/settings/referral');
+    return ReferralProgram.fromJson((data as Map).cast<String, dynamic>());
+  }
+
+  /// Change the programme. Pass only what is changing — the backend audits
+  /// each field that actually differs.
+  static Future<ReferralProgram> updateReferralProgram({
+    bool? enabled,
+    double? rewardAmount,
+    double? refereeRewardAmount,
+    int? qualifyingTrips,
+  }) async {
+    final data = await ApiClient.patch('/api/admin/settings/referral', {
+      if (enabled != null) 'referralEnabled': enabled,
+      if (rewardAmount != null) 'referralRewardAmount': rewardAmount,
+      if (refereeRewardAmount != null) 'referralRefereeRewardAmount': refereeRewardAmount,
+      if (qualifyingTrips != null) 'referralQualifyingTrips': qualifyingTrips,
+    });
+    return ReferralProgram.fromJson((data as Map).cast<String, dynamic>());
+  }
+
+  static Future<PagedResult<AdminReferral>> referrals({String? status, int page = 1}) async {
+    final data = await ApiClient.get(
+      '/api/admin/referrals?${pagedQuery(page, filters: {'status': status})}',
+    ) as Map<String, dynamic>;
+    return PagedResult.fromJson(data, AdminReferral.fromJson);
+  }
+
   // ---- Refunds (A-3 / B-6) ----
   // POST /api/trips/:id/refund and /api/courier-requests/:id/refund already
   // existed and already did the whole job — reverse the commission on the
@@ -2040,4 +2075,72 @@ class PaymentsPage {
   final double wallet;
   const PaymentsPage({required this.page, required this.cash, required this.card, required this.wallet});
   double get total => cash + card + wallet;
+}
+
+/// The referral programme's terms (GET /api/settings/referral).
+class ReferralProgram {
+  final bool enabled;
+  final double rewardAmount;
+  final double refereeRewardAmount;
+  final int qualifyingTrips;
+
+  const ReferralProgram({
+    required this.enabled,
+    required this.rewardAmount,
+    required this.refereeRewardAmount,
+    required this.qualifyingTrips,
+  });
+
+  factory ReferralProgram.fromJson(Map<String, dynamic> j) => ReferralProgram(
+        enabled: j['enabled'] == true,
+        rewardAmount: _d(j['rewardAmount']),
+        refereeRewardAmount: _d(j['refereeRewardAmount']),
+        qualifyingTrips: j['qualifyingTrips'] == null ? 1 : _i(j['qualifyingTrips']),
+      );
+}
+
+/// One referral, with both parties (GET /api/admin/referrals).
+class AdminReferral {
+  final String id;
+  final String code;
+  // PENDING | REWARDED
+  final String status;
+  final String referrerName;
+  final String referrerEmail;
+  final String refereeName;
+  final String refereeEmail;
+  final double? referrerRewardAmount;
+  final DateTime createdAt;
+  final DateTime? rewardedAt;
+
+  AdminReferral({
+    required this.id,
+    required this.code,
+    required this.status,
+    required this.referrerName,
+    required this.referrerEmail,
+    required this.refereeName,
+    required this.refereeEmail,
+    required this.referrerRewardAmount,
+    required this.createdAt,
+    required this.rewardedAt,
+  });
+
+  factory AdminReferral.fromJson(Map<String, dynamic> j) {
+    final referrer = (j['referrer'] as Map?) ?? const {};
+    final referee = (j['referee'] as Map?) ?? const {};
+    return AdminReferral(
+      id: '${j['id']}',
+      code: '${j['code'] ?? ''}',
+      status: '${j['status'] ?? ''}',
+      referrerName: _name(referrer),
+      referrerEmail: '${referrer['email'] ?? ''}',
+      refereeName: _name(referee),
+      refereeEmail: '${referee['email'] ?? ''}',
+      referrerRewardAmount:
+          j['referrerRewardAmount'] == null ? null : _d(j['referrerRewardAmount']),
+      createdAt: _dt(j['createdAt']),
+      rewardedAt: j['rewardedAt'] == null ? null : _dt(j['rewardedAt']),
+    );
+  }
 }

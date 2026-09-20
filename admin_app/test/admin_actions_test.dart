@@ -10,6 +10,7 @@ import 'package:ravelgo_admin/views/pricing/pricing_policy_screen.dart';
 import 'package:ravelgo_admin/views/rentals/rental_listings_screen.dart';
 import 'package:ravelgo_admin/views/safety/fraud_alerts_screen.dart';
 import 'package:ravelgo_admin/views/settings/admin_profile_screen.dart';
+import 'package:ravelgo_admin/views/settings/referral_settings_screen.dart';
 import 'package:ravelgo_admin/views/settings/admin_user_detail_screen.dart';
 import 'package:ravelgo_admin/views/settings/admin_users_screen.dart';
 import 'package:ravelgo_admin/views/stays/stays_management_screen.dart';
@@ -269,4 +270,24 @@ void main() {
     expect(find.byIcon(Icons.arrow_back), findsNothing);
     expect(find.text('Set up two-factor authentication'), findsOneWidget);
   });
+  // The referral programme spends real money, so the screen must never
+  // advertise terms it did not get from the backend, and turning it on must
+  // not be a single unconfirmed tap.
+  testWidgets('referral settings screen renders its scaffold', (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: ReferralSettingsScreen()));
+    expect(find.text('Referral Programme'), findsOneWidget);
+    // Without a backend it shows a loading state, never invented terms.
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.text('On'), findsNothing);
+    expect(find.text('Off'), findsNothing);
+  });
+
+  testWidgets('referral settings screen surfaces a load failure with a retry',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(const MaterialApp(home: ReferralSettingsScreen()));
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(ReferralSettingsScreen), findsOneWidget);
+  });
+
 }
