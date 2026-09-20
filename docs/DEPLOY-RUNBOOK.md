@@ -244,7 +244,24 @@ expecting real requests to work.
 > laptop**. `npx prisma migrate deploy` with the secret's host will simply time
 > out from outside the VPC. You must reach it from inside the VPC.
 
-**Recommended: a CloudShell VPC environment** (no bastion needed).
+**Recommended: `scripts/migrate-env.sh`, from an ordinary CloudShell.** It needs
+no bastion and no VPC CloudShell environment: it packages `backend/`, creates a
+CodeBuild project placed *inside* the VPC (egress subnets, the same security
+group App Runner uses, which RDS already allows on 5432), reads the DB
+credentials from Secrets Manager at run time, runs `prisma migrate deploy`, and
+tails the build log back to your terminal.
+
+```bash
+git clone https://github.com/MariaD137/ravelgo.git && cd ravelgo
+bash scripts/migrate-staging.sh        # or: bash scripts/migrate-production.sh
+```
+
+Production prompts for confirmation before it touches the live database. Both
+are safe to re-run: `migrate deploy` only applies migrations not yet applied.
+Success ends with *"All migrations have been successfully applied."*
+
+**Fallback: a CloudShell VPC environment** (only if CodeBuild is unavailable to
+you).
 
 1. CloudShell console → **Actions → Create VPC environment**:
    - **VPC:** the RavelGo VPC
@@ -269,22 +286,21 @@ expecting real requests to work.
    bash scripts/cloudshell-migrate.sh
    ```
 
-   Success: *"All migrations have been successfully applied."* (13 migrations —
-   the chain was fresh-DB validated during development.)
-
 4. **Remove** the temporary ingress rule when finished
    (`aws ec2 revoke-security-group-ingress …`).
 
 > Note: only **two** VPC environments are allowed per IAM principal, and RDS
 > forces SSL (`rds.force_ssl=1`), which is why the URL carries `sslmode=require`.
 
+**Migrations are a deliberate manual step, and deploying does not run them.**
+The deploy workflows only print a `::warning::` when the commit adds migration
+files; nothing blocks. So a deploy can succeed while the database is still on
+the old schema, and every endpoint that reads a missing column then answers 500.
+Run the migration for any deploy that adds one, and confirm with
+`/health/schema` (§7) before calling the deploy done.
+
 Do **not** run `prisma:seed` in production — the seed guard refuses production
 anyway (P0 #14).
-
-> **Recommended follow-up (not required for this deploy):** add a VPC-internal
-> migration runner (a CodeBuild project in the egress subnet, or a one-shot task)
-> so future migrations don't need a manual bastion. Tracked as a P1 infra
-> improvement.
 
 ---
 
@@ -292,14 +308,31 @@ anyway (P0 #14).
 
 ```bash
 curl -fsS "$SERVICE_URL/health"        # expect HTTP 200
+curl -fsS "$SERVICE_URL/health/schema" # expect HTTP 200 {"status":"ok"}
 ```
+
+`/health/schema` compares the migrations the running image ships against the
+`_prisma_migrations` rows in the database it is pointed at. A 503 means the two
+have drifted and names exactly what is missing:
+
+```json
+{ "status": "out-of-date", "expected": 37, "applied": 35,
+  "pending": ["zz09_driver_last_location", "zz10_referrals"], "failed": [],
+  "remedy": "Run scripts/migrate-<env>.sh against this environment." }
+```
+
+`pending` is "shipped but never run" — go back to §6. `failed` is "started and
+did not finish, or was rolled back"; `migrate deploy` refuses to continue past
+one of those, so resolve it before re-running. The post-deploy smoke test
+(`scripts/ci/backend-smoke.sh`) probes this endpoint, so a deploy over an
+unmigrated database goes red here rather than reporting green.
 
 - App Runner service shows **RUNNING** (App Runner console).
 - Cognito user pool exists with `Rider` / `Driver` / `Admin` groups (auto-created
   by the Auth stack).
 - CloudWatch alarms present; confirm the SNS email subscription (check inbox for
   the AWS confirmation).
-- RDS is **Available**; `\dt` through the tunnel lists ~26 tables incl. `Payout`
+- RDS is **Available**; `\dt` through the tunnel lists 41 tables incl. `Payout`
   with the `Payout_driverId_period_key` unique index and RESTRICT FKs.
 
 ---
@@ -396,3 +429,44 @@ each app against staging before release.**
 
 Cost note: RDS + App Runner + NAT run ~continuously. See `infra/README.md` for
 the estimate; tear down non-prod environments when idle.
+
+---
+
+## 13. Troubleshooting — an app screen shows a 500
+
+A screen reading *"RavelGo had a server problem loading …(500)"*, or the
+backend's own *"Database schema is out of date on this server (pending
+migrations not applied)"*, is almost always schema drift: a deploy shipped code
+that reads a column the database does not have yet, because §6 was skipped.
+
+Check the environment first — it answers without credentials and names the
+cause:
+
+```bash
+curl -s "$SERVICE_URL/health/schema" | jq .
+```
+
+- **503 with a non-empty `pending`** → run §6 against that environment. That is
+  the whole fix; no code change is involved.
+- **503 with a non-empty `failed`** → a migration started and never finished, or
+  was rolled back. `migrate deploy` will not continue past it; resolve that
+  migration before re-running.
+- **200 `{"status":"ok"}`** → the schema is current and the 500 is something
+  else. Read the App Runner logs for the failing request.
+
+Two things worth knowing when you are reading this from a user's screenshot:
+
+- **Any endpoint touching the affected table fails, not only the obvious one.**
+  `zz09_driver_last_location` adds `Driver.lastLat/lastLng/lastLocationAt`;
+  Prisma selects every scalar on a model, so an unmigrated database breaks
+  `GET /drivers/me` (the driver app's "Couldn't load your account status") *and*
+  `GET /api/rentals` (the rider's Rent a Car screen), which read `Driver` only
+  incidentally. The screen you are looking at may not be the feature the
+  migration was for.
+- **The web apps must be redeployed to show the real message.** Since the apps
+  learned to surface the backend's own explanation on a 5xx, an out-of-date
+  schema reads as *"Database schema is out of date on this server"* rather than
+  a bare `(500)`. A bundle published before that change still shows the generic
+  text, so a stale CloudFront build hides the very clue you need. Redeploy the
+  web apps ("Deploy Web Apps to Production", or the staging deploy workflow) —
+  they publish to S3 and invalidate CloudFront.
