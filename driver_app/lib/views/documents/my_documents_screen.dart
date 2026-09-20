@@ -90,7 +90,7 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      final msg = e is ApiException ? e.message : e.toString();
+      final msg = describeApiFailure(e, what: 'your document');
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     } finally {
       if (mounted) setState(() => _uploading = false);
@@ -112,9 +112,7 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e is ApiException && e.statusCode == 403
-            ? 'Your account isn\'t set up as a driver yet.'
-            : e.toString();
+        _error = describeApiFailure(e, what: 'your documents');
         _loading = false;
       });
     }
@@ -177,8 +175,12 @@ class _MyDocumentsScreenState extends State<MyDocumentsScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text("My Documents")),
       body: _body(),
+      // Uploading is only offered once the document list itself loaded —
+      // i.e. the backend confirmed this token belongs to a driver with a
+      // profile. Otherwise the S3 upload would succeed and POST /documents
+      // would be refused, leaving an orphaned object and a confusing error.
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _uploading ? null : _addDocument,
+        onPressed: (_uploading || _loading || _error != null) ? null : _addDocument,
         icon: _uploading
             ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
             : const Icon(Icons.upload_file),

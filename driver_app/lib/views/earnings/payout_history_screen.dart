@@ -39,9 +39,7 @@ class _PayoutHistoryScreenState extends State<PayoutHistoryScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e is ApiException && e.statusCode == 403
-            ? 'Your account isn\'t set up as a driver yet.'
-            : e.toString();
+        _error = describeApiFailure(e, what: 'your payout history');
         _loading = false;
       });
     }

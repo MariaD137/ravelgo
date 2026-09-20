@@ -40,9 +40,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e is ApiException && e.statusCode == 403
-            ? 'Your account isn\'t set up as a driver yet.'
-            : e.toString();
+        _error = describeApiFailure(e, what: 'your vehicles');
         _loading = false;
       });
     }
@@ -86,7 +84,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
-        onPressed: _busy ? null : () => _addOrEdit(),
+        onPressed: (_busy || _loading || _error != null) ? null : () => _addOrEdit(),
         child: const Icon(Icons.add),
       ),
       body: _body(),

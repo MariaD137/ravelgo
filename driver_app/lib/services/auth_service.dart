@@ -169,6 +169,17 @@ class AuthService {
     }
   }
 
+  /// Make sure the access token we send carries the "Driver" group. If it
+  /// already does, nothing happens. Otherwise force one refresh and report
+  /// whether the fresh token has it — false means Cognito still does not
+  /// list this user in the group (the application hasn't been submitted, or
+  /// the server-side grant failed), which only POST /drivers/apply can fix.
+  static Future<bool> ensureDriverGroupOnToken() async {
+    if (hasGroup('Driver')) return true;
+    if (!await refreshTokens()) return false;
+    return hasGroup('Driver');
+  }
+
   static void _applySession(CognitoUser user, CognitoUserSession s) {
     currentUser = user;
     session = s;

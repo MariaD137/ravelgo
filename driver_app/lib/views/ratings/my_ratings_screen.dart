@@ -47,9 +47,7 @@ class _MyRatingsScreenState extends State<MyRatingsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e is ApiException && e.statusCode == 403
-            ? 'Your account isn\'t set up as a driver yet.'
-            : 'Could not load your ratings.';
+        _error = describeApiFailure(e, what: 'your ratings');
         _loading = false;
       });
     }

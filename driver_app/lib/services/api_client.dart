@@ -1,14 +1,26 @@
 import 'dart:convert';
+import 'dart:io' show SocketException;
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:ravelgo_driver_app/services/auth_service.dart';
 
 /// Thrown for any non-2xx backend response, carrying a human-readable message.
+///
+/// [statusCode] 0 means the request never reached the backend (no network,
+/// DNS failure, TLS failure, wrong API_BASE_URL) — a connection problem, not
+/// a backend answer, and screens must not present it as one.
 class ApiException implements Exception {
   final int statusCode;
   final String message;
   ApiException(this.statusCode, this.message);
+
+  bool get isNetworkFailure => statusCode == 0;
+  bool get isUnauthenticated => statusCode == 401;
+  bool get isForbidden => statusCode == 403;
+  bool get isNotFound => statusCode == 404;
+  bool get isServerError => statusCode >= 500;
+
   @override
   String toString() => message;
 }
@@ -16,15 +28,45 @@ class ApiException implements Exception {
 /// The single HTTP client every driver screen uses to reach the RavelGo
 /// backend. Attaches the signed-in driver's Cognito ACCESS token as a Bearer
 /// header and points at API_BASE_URL from the app's .env.
+///
+/// Driver-access recovery: the backend authorizes every Driver-only route
+/// (GET /drivers/me, /documents/me, /vehicles/me, …) off the `cognito:groups`
+/// claim of the access token it receives. That claim is fixed at token issue
+/// time, so right after POST /drivers/apply has the SERVER add the user to
+/// the "Driver" group, the token the app already holds (valid for up to an
+/// hour) still lacks it and every one of those routes answers 403. When a
+/// 403 arrives and the current token does not carry the Driver group, this
+/// client forces ONE token refresh via the stored refresh token and, only if
+/// the refreshed token now carries the group, retries the request once. The
+/// backend still makes every authorization decision — nothing here grants,
+/// assumes or fakes a role; it only stops the app presenting a token that is
+/// known to be stale.
 class ApiClient {
   static String get _base {
     final b = (dotenv.env['API_BASE_URL'] ?? '').trim();
     return b.endsWith('/') ? b.substring(0, b.length - 1) : b;
   }
 
-  static bool get isConfigured => _base.isNotEmpty && !_base.contains('example.com');
+  static bool get isConfigured =>
+      _base.isNotEmpty && !_base.contains('example.com');
 
   static Uri _uri(String path) => Uri.parse('$_base$path');
+
+  /// Swappable for tests (package:http/testing.dart's MockClient).
+  static http.Client client = http.Client();
+
+  /// Returns true if, after a forced refresh, the access token now carries
+  /// the Driver group. Swappable for tests.
+  static Future<bool> Function() recoverDriverAccess =
+      AuthService.ensureDriverGroupOnToken;
+
+  static const driverGroup = 'Driver';
+
+  // A genuine non-driver (a rider who never applied) would otherwise cost a
+  // Cognito refresh on every 403; one attempt per window is plenty, since the
+  // shell re-checks on every profile load anyway.
+  static DateTime? _lastRecoveryAttempt;
+  static const _recoveryWindow = Duration(seconds: 30);
 
   static Future<Map<String, String>> _headers() async {
     final token = await AuthService.validAccessToken();
@@ -34,20 +76,80 @@ class ApiClient {
     };
   }
 
-  static Future<dynamic> get(String path) async =>
-      _handle(await http.get(_uri(path), headers: await _headers()));
+  static Future<dynamic> get(String path) => _send('GET', path, null);
+  static Future<dynamic> post(String path, [Object? body]) =>
+      _send('POST', path, body);
+  static Future<dynamic> patch(String path, [Object? body]) =>
+      _send('PATCH', path, body);
+  static Future<dynamic> delete(String path, [Object? body]) =>
+      _send('DELETE', path, body);
 
-  static Future<dynamic> post(String path, [Object? body]) async => _handle(
-        await http.post(_uri(path), headers: await _headers(), body: body == null ? null : jsonEncode(body)),
-      );
+  static Future<dynamic> _send(String method, String path, Object? body) async {
+    var res = await _request(method, path, body);
+    if (res.statusCode == 403 && await _tryRecoverDriverAccess()) {
+      res = await _request(method, path, body);
+    }
+    return _handle(res);
+  }
 
-  static Future<dynamic> patch(String path, [Object? body]) async => _handle(
-        await http.patch(_uri(path), headers: await _headers(), body: body == null ? null : jsonEncode(body)),
+  static Future<http.Response> _request(
+    String method,
+    String path,
+    Object? body,
+  ) async {
+    final headers = await _headers();
+    final encoded = body == null ? null : jsonEncode(body);
+    try {
+      switch (method) {
+        case 'GET':
+          return await client.get(_uri(path), headers: headers);
+        case 'POST':
+          return await client.post(_uri(path), headers: headers, body: encoded);
+        case 'PATCH':
+          return await client.patch(
+            _uri(path),
+            headers: headers,
+            body: encoded,
+          );
+        default:
+          return await client.delete(
+            _uri(path),
+            headers: headers,
+            body: encoded,
+          );
+      }
+    } on SocketException catch (e) {
+      throw ApiException(
+        0,
+        'Can\'t reach RavelGo (${e.osError?.message ?? e.message}). Check your connection and try again.',
       );
+    } on http.ClientException catch (e) {
+      throw ApiException(
+        0,
+        'Can\'t reach RavelGo (${e.message}). Check your connection and try again.',
+      );
+    }
+  }
 
-  static Future<dynamic> delete(String path, [Object? body]) async => _handle(
-        await http.delete(_uri(path), headers: await _headers(), body: body == null ? null : jsonEncode(body)),
-      );
+  static Future<bool> _tryRecoverDriverAccess() async {
+    if (AuthService.hasGroup(driverGroup)) {
+      return false; // a real 403 for a driver — not a stale token
+    }
+    final now = DateTime.now();
+    final last = _lastRecoveryAttempt;
+    if (last != null && now.difference(last) < _recoveryWindow) {
+      return false;
+    }
+    _lastRecoveryAttempt = now;
+    try {
+      return await recoverDriverAccess();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Test hook: forget the recovery rate limit.
+  static void resetRecoveryWindow() => _lastRecoveryAttempt = null;
 
   static dynamic _handle(http.Response res) {
     dynamic decoded;
@@ -60,9 +162,54 @@ class ApiClient {
     }
     if (res.statusCode >= 200 && res.statusCode < 300) return decoded;
 
-    final msg = (decoded is Map && decoded['error'] != null)
-        ? decoded['error'].toString()
-        : 'Request failed (${res.statusCode})';
-    throw ApiException(res.statusCode, msg);
+    throw ApiException(
+      res.statusCode,
+      _extractMessage(decoded, res.statusCode),
+    );
+  }
+
+  /// Backend errors come in two shapes: most route handlers reply with
+  /// `{error: "plain string"}`, while the global error-handler middleware
+  /// (and classified Prisma errors) reply with a nested
+  /// `{error: {code, message, details, timestamp}}`.
+  static String _extractMessage(dynamic decoded, int statusCode) {
+    if (decoded is Map) {
+      final error = decoded['error'];
+      if (error is Map && error['message'] != null) {
+        return error['message'].toString();
+      }
+      if (error is String && error.isNotEmpty) return error;
+    }
+    return 'Request failed ($statusCode)';
+  }
+}
+
+/// One user-facing sentence per failure CLASS, for a Driver-only screen
+/// (documents, vehicles, profile). Each class is a different problem with a
+/// different remedy, and only one of them means "this account isn't a
+/// driver" — the others must never be shown as that:
+///
+///   401  the session is gone (token expired/revoked, or none)  → sign in again
+///   403  the backend refused this token for a Driver-only route → not (yet) a driver
+///   404  authenticated driver, but no driver profile row yet    → application not created
+///   5xx  the backend/database failed                             → server problem
+///   0    the request never got an answer                         → connection/config problem
+String describeApiFailure(Object error, {String what = 'this'}) {
+  if (error is! ApiException) {
+    return 'Something went wrong loading $what. Please try again.';
+  }
+  if (error.isNetworkFailure) return error.message;
+  switch (error.statusCode) {
+    case 401:
+      return 'Your session has expired. Please sign out and sign in again.';
+    case 403:
+      return 'This account doesn\'t have driver access yet. Finish your driver application from the Home screen, then try again.';
+    case 404:
+      return 'Your driver profile hasn\'t been created yet. Open the Home screen to start your application, then try again.';
+    default:
+      if (error.isServerError) {
+        return 'RavelGo had a server problem loading $what (${error.statusCode}). Please try again in a moment.';
+      }
+      return error.message;
   }
 }

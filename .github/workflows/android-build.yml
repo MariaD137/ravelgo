@@ -40,6 +40,11 @@ permissions:
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    # The staging OIDC role (infra/lib/ci-stack.ts) trusts jobs on the main
+    # branch OR jobs that declare `environment: staging` — the same
+    # declaration staging-deploy.yml's jobs carry — so config discovery below
+    # works from any branch this workflow is dispatched on.
+    environment: staging
     strategy:
       fail-fast: false
       matrix:

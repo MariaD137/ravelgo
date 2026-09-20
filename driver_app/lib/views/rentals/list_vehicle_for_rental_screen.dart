@@ -58,9 +58,7 @@ class _ListVehicleForRentalScreenState extends State<ListVehicleForRentalScreen>
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _vehiclesError = e is ApiException && e.statusCode == 403
-            ? 'Your account isn\'t set up as a driver yet.'
-            : e.toString();
+        _vehiclesError = describeApiFailure(e, what: 'your vehicles');
         _loadingVehicles = false;
       });
     }

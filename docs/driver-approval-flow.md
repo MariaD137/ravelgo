@@ -69,6 +69,45 @@ Driver App learns the new state (the notification is only a prompt to re-fetch)
   status == ACTIVE -> online toggle shown -> PATCH /api/drivers/me/availability {isOnline:true}
 ```
 
+## "Your account isn't set up as a driver yet." — provisioning and access
+
+Every Driver-only route (`GET /drivers/me`, `/documents/me`, `/vehicles/me`,
+`/trips/mine`, …) is gated by `requireRole("Driver")`, which reads the
+`cognito:groups` claim of the **access token** the app sends. That claim is
+fixed when the token is issued. `POST /drivers/apply` makes the *server* add
+the user to the Cognito "Driver" group (the app has no Cognito admin
+credentials and cannot), but the token the app already holds is valid for up
+to an hour and still lacks the group — so every Driver route answers 403
+until the app obtains a fresh token.
+
+How the Driver App handles it now (`driver_app/lib/services/api_client.dart`,
+`auth_service.dart`, `views/shell/driver_shell.dart`):
+
+1. `DriverShell` reads `GET /drivers/me` first. A 404 (no Driver row) or a
+   403 while the current token lacks the Driver group triggers the idempotent
+   `POST /drivers/apply`, then `AuthService.ensureDriverGroupOnToken()` — a
+   forced `REFRESH_TOKEN_AUTH` — so the next request carries the group.
+2. `ApiClient` does the same recovery for *any* request that gets a 403 while
+   the token lacks the Driver group: one forced refresh, and one retry only
+   if the refreshed token now has the group (rate-limited to once per 30 s).
+   A 403 with a token that already has the group is a real refusal and is
+   surfaced as such. Nothing here grants or assumes a role; the backend
+   decides every request.
+3. `describeApiFailure()` gives each failure class its own explanation and
+   remedy — 401 session expired, 403 no driver access (finish the application),
+   404 no driver profile yet, 5xx server problem, network/config failure —
+   so screens no longer present every failure as "not set up as a driver".
+   "Add document" / "Add vehicle" are disabled until the list actually loads.
+
+HTTP contract the app relies on (tested in `documents.routes.test.ts`):
+
+| Caller | `GET /documents/me` |
+|---|---|
+| no / invalid token | 401 |
+| token without the Driver group (a rider, or a stale pre-apply token) | 403 |
+| Driver group but no Driver row | 404 |
+| driver | 200 |
+
 ## Gaps found and their status
 
 | Area | Was | Problem | Severity | Now |

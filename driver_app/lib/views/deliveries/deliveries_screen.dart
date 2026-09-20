@@ -63,9 +63,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
       setState(() {
         _error = e is ApiException && e.statusCode == 409
             ? 'Your account isn\'t approved for deliveries yet. You can go online for deliveries once an admin approves you.'
-            : (e is ApiException && e.statusCode == 403
-                ? 'Your account isn\'t set up as a driver yet.'
-                : 'Could not load deliveries — check your connection.');
+            : describeApiFailure(e, what: 'deliveries');
         _loading = false;
       });
     }

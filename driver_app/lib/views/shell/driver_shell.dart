@@ -118,9 +118,7 @@ class _DriverShellState extends State<DriverShell> with WidgetsBindingObserver {
         _loadState = _profile.hasStatus
             ? DriverProfileLoadState.ready
             : DriverProfileLoadState.error;
-        _loadError = e is ApiException
-            ? e.message
-            : 'Could not reach the server.';
+        _loadError = describeApiFailure(e, what: 'your driver profile');
       });
     } finally {
       _loadingProfile = false;
@@ -133,29 +131,45 @@ class _DriverShellState extends State<DriverShell> with WidgetsBindingObserver {
   /// the Driver group).
   ///
   /// Order matters: reading first means an existing driver's launch is one
-  /// GET, not a re-submitted application on every app open. Only a 404 (no
-  /// profile) or a 403 (token lacks the Driver group) triggers
-  /// POST /drivers/apply — which is idempotent server-side — followed by a
-  /// forced token refresh so the group the server just granted is actually
-  /// on the token we send next (see AuthService.refreshTokens).
+  /// GET, not a re-submitted application on every app open. Only two
+  /// outcomes lead to POST /drivers/apply (idempotent server-side):
+  ///
+  ///   404  authenticated as a driver, but no Driver row exists yet
+  ///   403  with a token that does NOT carry the Driver group — i.e. this
+  ///        user has not (successfully) applied. (ApiClient has already tried
+  ///        one forced token refresh at this point, so a 403 here is not a
+  ///        merely stale token.)
+  ///
+  /// A 403 with a token that DOES carry the Driver group is a real
+  /// authorization refusal and is surfaced as such, never papered over by
+  /// re-applying. After applying, the token is refreshed so the group the
+  /// server just granted is on the very next request.
   Future<DriverRecord> _fetchOrProvision() async {
     try {
       return await DriverApi.getMe();
     } on ApiException catch (e) {
-      if (e.statusCode != 404 && e.statusCode != 403) rethrow;
+      final needsApplication =
+          e.statusCode == 404 ||
+          (e.statusCode == 403 && !AuthService.hasGroup(ApiClient.driverGroup));
+      if (!needsApplication) rethrow;
     }
 
     final applied = await DriverApi.provisionMe();
-    if (!AuthService.hasGroup('Driver')) {
-      await AuthService.refreshTokens();
+    if (applied == null) {
+      throw ApiException(
+        0,
+        "Your signed-in account has no email address, so a driver application can't be started.",
+      );
     }
+    final hasDriverGroup = await AuthService.ensureDriverGroupOnToken();
     try {
       return await DriverApi.getMe();
     } on ApiException catch (e) {
-      // The application itself succeeded (it's the source of truth), but this
-      // token still can't read it — the refresh failed or hasn't propagated.
-      // Show the record the server just returned rather than nothing.
-      if (applied != null && e.statusCode == 403) return applied;
+      // The application itself succeeded and is the source of truth. If this
+      // token still can't read it back (the refresh failed, or Cognito hasn't
+      // propagated the group yet), show the record the server just returned
+      // rather than nothing; the next poll/refresh converges.
+      if (e.statusCode == 403 && !hasDriverGroup) return applied;
       rethrow;
     }
   }
@@ -176,9 +190,7 @@ class _DriverShellState extends State<DriverShell> with WidgetsBindingObserver {
       if (!mounted) return;
       final msg = e is ApiException && e.statusCode == 409
           ? 'Your account isn\'t approved to go online yet.'
-          : (e is ApiException && e.statusCode == 403
-                ? 'Your account isn\'t set up as a driver yet.'
-                : e.toString());
+          : describeApiFailure(e, what: 'your availability');
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
       // A 409 means our view of the status is stale (e.g. just suspended) —
       // re-read it rather than leaving the toggle visible.

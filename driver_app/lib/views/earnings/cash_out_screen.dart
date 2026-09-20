@@ -76,9 +76,7 @@ class _CashOutScreenState extends State<CashOutScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _loadError = e is ApiException && e.statusCode == 403
-            ? 'Your account isn\'t set up as a driver yet.'
-            : e.toString();
+        _loadError = describeApiFailure(e, what: 'your payout account');
         _loading = false;
       });
     }
