@@ -3,7 +3,7 @@ import { after, afterEach, beforeEach, test } from "node:test";
 import request from "supertest";
 import { app } from "../app";
 import { prisma } from "../db/prisma";
-import { mockAuthAs, restoreAuth, resetDb, mockCognitoAddToGroup } from "../test/helpers";
+import { mockAuthAs, restoreAuth, resetDb, mockCognitoAddToGroup, mockCognitoAdminUserStatus } from "../test/helpers";
 import { getLatestDriverLocation, resetRealtimeState } from "../realtime/hub";
 
 beforeEach(() => {
@@ -88,6 +88,68 @@ test("POST /api/drivers/apply is server-authoritative — a rider cannot reach D
   const token = mockAuthAs({ sub: "applicant-4", groups: ["Rider"] });
   const blocked = await request(app).get("/api/drivers/me").set("Authorization", `Bearer ${token}`);
   assert.equal(blocked.status, 403);
+});
+
+test("POST /api/drivers/apply never downgrades an ADMIN's User.role, and the admin keeps admin access and stays listed", async () => {
+  const admin = await prisma.user.create({
+    data: {
+      cognitoSub: "admin-applies-sub",
+      role: "ADMIN",
+      adminRole: "OPERATIONS_MANAGER",
+      firstName: "Ops",
+      lastName: "Admin",
+      email: "ops-admin@example.com",
+    },
+  });
+  mockCognitoAddToGroup();
+  // The admin's token is what they'd carry into the Driver App: Admin group only.
+  const adminToken = mockAuthAs({ sub: "admin-applies-sub", email: "ops-admin@example.com", groups: ["Admin"] });
+
+  const res = await request(app)
+    .post("/api/drivers/apply")
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ firstName: "Placeholder", lastName: "Name", email: "ops-admin@example.com" });
+  assert.equal(res.status, 201);
+  assert.equal(res.body.status, "PENDING_REVIEW");
+
+  // The row is untouched: still ADMIN, preset intact, name not clobbered.
+  const after = await prisma.user.findUnique({ where: { id: admin.id } });
+  assert.equal(after?.role, "ADMIN");
+  assert.equal(after?.adminRole, "OPERATIONS_MANAGER");
+  assert.equal(after?.firstName, "Ops");
+
+  // A Driver profile exists for them, in PENDING_REVIEW like any applicant.
+  const driver = await prisma.driver.findUnique({ where: { userId: admin.id } });
+  assert.equal(driver?.status, "PENDING_REVIEW");
+
+  // Admin access is unchanged: base Admin gate and the drivers:write preset check
+  // (which reads adminRole/suspended from this very row) both still pass.
+  const dashboard = await request(app).get("/api/admin/dashboard").set("Authorization", `Bearer ${adminToken}`);
+  assert.equal(dashboard.status, 200);
+  const suspend = await request(app)
+    .patch(`/api/drivers/${driver!.id}/status`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ status: "SUSPENDED" });
+  assert.equal(suspend.status, 200);
+
+  // And they remain visible to admin-user management (which filters on role === ADMIN).
+  const superAdminToken = mockAuthAs({ sub: "super-admin-lister-sub", groups: ["Admin"] });
+  mockCognitoAdminUserStatus();
+  const listed = await request(app).get("/api/admin-users").set("Authorization", `Bearer ${superAdminToken}`);
+  assert.equal(listed.status, 200);
+  assert.ok(listed.body.some((u: { id: string }) => u.id === admin.id));
+  const detail = await request(app).get(`/api/admin-users/${admin.id}`).set("Authorization", `Bearer ${superAdminToken}`);
+  assert.equal(detail.status, 200);
+
+  // A DRIVER-group applicant still does not get that treatment: a rider's row
+  // becomes DRIVER exactly as before.
+  const riderToken = mockAuthAs({ sub: "rider-applies-sub", email: "rider-applies@example.com", groups: ["Rider"] });
+  await request(app)
+    .post("/api/drivers/apply")
+    .set("Authorization", `Bearer ${riderToken}`)
+    .send({ firstName: "R", lastName: "D", email: "rider-applies@example.com" });
+  const rider = await prisma.user.findUnique({ where: { cognitoSub: "rider-applies-sub" } });
+  assert.equal(rider?.role, "DRIVER");
 });
 
 test("POST /api/drivers/me creates a user + driver profile together", async () => {

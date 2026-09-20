@@ -128,6 +128,30 @@ HTTP contract the app relies on (tested in `documents.routes.test.ts`):
 | Transactions | Single-row update; audit and notification are deliberately best-effort | Acceptable for one row | PASS | — |
 | Environment (web) | Both web apps built from the same stack outputs | — | PASS | — |
 
+## `User.role` and the driver application
+
+`User.role` (RIDER | DRIVER | ADMIN) is a single-valued **listing/eligibility
+label**, not an authorization input: authorization is the Cognito group on
+the access token plus `User.adminRole` for admin presets. The column drives
+`GET /admin-users` and `findAdminById`, `notifyAllAdmins`, the admin rider
+list / `GET /riders/:id` / rider count, and payout eligibility
+(`role === "DRIVER"`).
+
+`POST /drivers/apply` sets `role = DRIVER` on the applicant's row so those
+listings and payouts recognise the driver. It **never** does so for an
+`ADMIN` row (fixed): an admin who opened the Driver App would otherwise drop
+out of admin-user management while keeping every permission.
+
+Open product question (not changed): a *rider* who applies becomes
+`role = DRIVER` immediately, before any admin decision, even though
+`Driver.status` (PENDING_REVIEW → ACTIVE) already carries the application
+state. Consequences today: the applicant disappears from the admin rider
+list and rider count, and re-appears only as a driver. Options are to flip
+the role at approval time instead (`PATCH /drivers/:id/status` → ACTIVE), or
+to stop deriving listings from the column and use the Driver relation.
+Either is a product/data-model decision; the payout eligibility query would
+need to follow.
+
 ## Still open (product / infrastructure decisions)
 
 1. **Driver-level rejection state.** If the business needs "application

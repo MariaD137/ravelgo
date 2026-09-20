@@ -50,13 +50,23 @@ driversRouter.post("/drivers/apply", sensitiveLimiter, requireAuth, async (req, 
   // Create/find the profile first (the application's source of truth). Both
   // upserts and the group add are idempotent, so a retry after a partial
   // failure converges rather than duplicating or corrupting anything.
+  //
+  // User.role is a single-valued listing/eligibility label (admin-users list
+  // and lookup, rider list, payout eligibility, notifyAllAdmins) — it is NOT
+  // what authorizes anything; Cognito groups and User.adminRole are. It must
+  // never be downgraded for an ADMIN: an admin who opens the Driver App (or
+  // is in the Driver group for any reason) would otherwise vanish from
+  // GET /admin-users and findAdminById, becoming impossible to suspend or
+  // re-invite, while keeping every admin permission. Their row stays ADMIN;
+  // a Driver profile may still be created for them below.
+  const existingUser = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
   const user = await prisma.user.upsert({
     where: { cognitoSub: req.user!.sub },
-    // On an EXISTING user only flip the role — never overwrite their stored
-    // name/email from the application payload (the client may send placeholder
-    // names, which must not clobber a real profile). New users are seeded with
-    // the supplied fields.
-    update: { role: "DRIVER" },
+    // On an EXISTING user only flip the role (and never for an ADMIN) — never
+    // overwrite their stored name/email from the application payload (the
+    // client may send placeholder names, which must not clobber a real
+    // profile). New users are seeded with the supplied fields.
+    update: existingUser?.role === "ADMIN" ? {} : { role: "DRIVER" },
     create: { cognitoSub: req.user!.sub, role: "DRIVER", ...userFields },
   });
 
