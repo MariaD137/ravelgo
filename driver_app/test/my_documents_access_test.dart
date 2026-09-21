@@ -72,9 +72,13 @@ void main() {
       });
       ApiClient.recoverDriverAccess = () async => true;
       await pump(tester);
+      // The empty state is the shared EmptyState widget, so its heading and
+      // explanation are two Text widgets rather than one newline-joined
+      // string — same words, same meaning, asserted separately.
+      expect(find.text('No documents on file yet'), findsOneWidget);
       expect(
-        find.text(
-          'No documents on file yet.\nYour uploaded documents and their approval status will appear here.',
+        find.textContaining(
+          'uploaded documents and their approval status will appear here',
         ),
         findsOneWidget,
       );
@@ -109,13 +113,15 @@ void main() {
     expect(find.textContaining('driver access'), findsNothing);
   });
 
-  testWidgets('500 is reported as a server problem', (tester) async {
+  testWidgets('500 the backend did not explain is reported as a server problem', (
+    tester,
+  ) async {
     ApiClient.client = MockClient(
       (_) async => http.Response(
         jsonEncode({
           'error': {
-            'code': 'DATABASE_ERROR',
-            'message': 'Database operation failed',
+            'code': 'INTERNAL_SERVER_ERROR',
+            'message': 'relation "public.Secret" does not exist',
           },
         }),
         500,
@@ -123,6 +129,35 @@ void main() {
     );
     await pump(tester);
     expect(find.textContaining('server problem'), findsOneWidget);
+    // An unrecognised 5xx code may carry raw internals — never shown.
+    expect(find.textContaining('public.Secret'), findsNothing);
+    expect(find.textContaining('driver access'), findsNothing);
+  });
+
+  // The counterpart to the test above: for the handful of 5xx codes whose
+  // messages the backend writes for a person to read, the driver sees that
+  // sentence instead of "server problem (500)". A real outage was prolonged
+  // by collapsing exactly this message into the generic one.
+  testWidgets('500 the backend explained is shown in the backend\'s own words', (
+    tester,
+  ) async {
+    ApiClient.client = MockClient(
+      (_) async => http.Response(
+        jsonEncode({
+          'error': {
+            'code': 'DATABASE_ERROR',
+            'message':
+                'Database schema is out of date on this server (pending migrations not applied)',
+          },
+        }),
+        500,
+      ),
+    );
+    await pump(tester);
+    expect(
+      find.textContaining('Database schema is out of date on this server'),
+      findsOneWidget,
+    );
     expect(find.textContaining('driver access'), findsNothing);
   });
 
