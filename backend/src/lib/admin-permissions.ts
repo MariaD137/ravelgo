@@ -107,6 +107,48 @@ export function requireAdminPermission(permission: AdminPermission) {
 }
 
 /**
+ * Requires the caller to be in the Cognito "Admin" group AND not suspended in
+ * Postgres. This is requireRole("Admin") plus the same isSuspendedAdmin check
+ * requireAdminPermission already applies to writes — extended to admin READS,
+ * closing the window where a just-disabled admin's still-cryptographically-
+ * valid access token (issued before AdminDisableUser, cryptographically live
+ * for up to its full hour-long lifetime — see accessTokenValidity in
+ * infra/lib/auth-stack.ts) kept working against every admin GET endpoint,
+ * including the audit log and financial dashboard, until Cognito's own token
+ * expiry caught up.
+ *
+ * Deliberately a single drop-in replacement for requireRole("Admin") on
+ * admin-only routes (same call signature, same 403 status) rather than a
+ * second middleware layered on top of it, so every call site only needs to
+ * swap one name and no route ends up checking suspension twice.
+ *
+ * Not applied to endpoints shared with non-Admin callers (e.g.
+ * notifications.routes.ts's GET /notifications, read by Rider/Driver/Admin
+ * alike, scoped per-user rather than role-gated at all) — gating those by
+ * Admin-group membership would break them for the other two roles. A
+ * suspended admin's own in-app notifications therefore remain reachable
+ * through that shared endpoint; closing that specific gap would need a
+ * distinct admin-only notifications view, which does not currently exist and
+ * is outside this fix's scope.
+ */
+export function requireActiveAdmin(req: Request, res: Response, next: NextFunction) {
+  const groups = req.user?.groups ?? [];
+  if (!groups.includes("Admin")) {
+    logSecurityEvent("AUTHZ_FAILURE", req, { required: "Admin" });
+    return res.status(403).json({ error: "Insufficient permissions" });
+  }
+  isSuspendedAdmin(req.user!.sub)
+    .then((suspended) => {
+      if (suspended) {
+        logSecurityEvent("AUTHZ_FAILURE", req, { required: "not_suspended" });
+        return res.status(403).json({ error: "This admin account is suspended" });
+      }
+      next();
+    })
+    .catch(next);
+}
+
+/**
  * For a route shared by Driver and Admin callers (e.g. advancing a trip or
  * courier request's status) where requireAdminPermission can't sit in the
  * middleware chain without also rejecting the Driver caller: call this from

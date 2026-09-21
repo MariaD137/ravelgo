@@ -2,31 +2,49 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
-import { requireAdminPermission } from "../lib/admin-permissions";
-import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { requireActiveAdmin, requireAdminPermission } from "../lib/admin-permissions";
+import { containsInsensitive, paginate, paginationQuerySchema, searchQuerySchema } from "../lib/pagination";
 import { validate } from "../lib/validate";
 import { Errors } from "../lib/errors";
 import { recordAudit } from "../lib/audit";
+import type { Prisma } from "@prisma/client";
 
 export const ridersRouter = Router();
 
-// Admin: list all riders
-ridersRouter.get("/riders", requireAuth, requireRole("Admin"), async (req, res, next) => {
+const listRidersQuerySchema = paginationQuerySchema.merge(searchQuerySchema);
+
+// Admin: list all riders, optionally narrowed by ?q= against name/email/phone
+// (server-side, across the whole table — not client-side over one page).
+ridersRouter.get("/riders", requireAuth, requireActiveAdmin, async (req, res, next) => {
   try {
-    const { page, pageSize } = validate<{ page: number; pageSize: number }>(
-      paginationQuerySchema,
+    const { page, pageSize, q } = validate<{ page: number; pageSize: number; q?: string }>(
+      listRidersQuerySchema,
       req.query,
       "Query parameters",
     );
 
+    const where: Prisma.UserWhereInput = {
+      role: "RIDER",
+      ...(q
+        ? {
+            OR: [
+              { firstName: containsInsensitive(q) },
+              { lastName: containsInsensitive(q) },
+              { email: containsInsensitive(q) },
+              { phoneNumber: containsInsensitive(q) },
+            ],
+          }
+        : {}),
+    };
+
     const [riders, total] = await Promise.all([
       prisma.user.findMany({
-        where: { role: "RIDER" },
+        where,
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      prisma.user.count({ where: { role: "RIDER" } }),
+      prisma.user.count({ where }),
     ]);
     res.json(paginate(riders, total, page, pageSize));
   } catch (err) {
@@ -97,7 +115,7 @@ ridersRouter.patch("/riders/me", requireAuth, requireRole("Rider"), async (req, 
 // Registered after the literal "/riders/me" routes above — Express matches
 // path segments in registration order, so ":id" would otherwise swallow
 // "me" and shadow the rider's own-profile routes with this Admin check.
-ridersRouter.get("/riders/:id", requireAuth, requireRole("Admin"), async (req, res, next) => {
+ridersRouter.get("/riders/:id", requireAuth, requireActiveAdmin, async (req, res, next) => {
   try {
     const rider = await prisma.user.findFirst({
       where: { id: req.params.id, role: "RIDER" },

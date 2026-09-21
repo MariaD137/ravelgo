@@ -279,6 +279,51 @@ test("PATCH /api/rentals/:id/status rejects a Finance Viewer admin and records a
   assert.ok(audit);
 });
 
+test("PATCH /api/rentals/:id/status requires a reason to reject, stores/clears it, and notifies the driver", async () => {
+  const { driver, vehicle } = await createDriverWithVehicle("driver-sub-reject-1");
+  const listing = await prisma.rentalListing.create({
+    data: { driverId: driver.id, vehicleId: vehicle.id, dailyRate: 60, location: "Abuja" },
+  });
+  const token = mockAuthAs({ sub: "admin-sub-reject-1", groups: ["Admin"] });
+
+  const missingReason = await request(app)
+    .patch(`/api/rentals/${listing.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "REJECTED" });
+  assert.equal(missingReason.status, 400);
+
+  const rejected = await request(app)
+    .patch(`/api/rentals/${listing.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "REJECTED", rejectionReason: "Vehicle photos are missing" });
+  assert.equal(rejected.status, 200);
+  assert.equal(rejected.body.status, "REJECTED");
+  assert.equal(rejected.body.rejectionReason, "Vehicle photos are missing");
+
+  const notifications = await prisma.notification.findMany({ where: { userId: driver.userId } });
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].type, "RENTAL_LISTING_REVIEWED");
+  assert.match(notifications[0].body, /Vehicle photos are missing/);
+
+  // Approving afterwards clears the stale reason (same convention as
+  // DriverDocument.rejectionReason / Vehicle.rejectionReason).
+  const approved = await request(app)
+    .patch(`/api/rentals/${listing.id}/status`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "APPROVED" });
+  assert.equal(approved.body.status, "APPROVED");
+  assert.equal(approved.body.rejectionReason, null);
+});
+
+test("PATCH /api/rentals/:id/status 404s for a listing that doesn't exist", async () => {
+  const token = mockAuthAs({ sub: "admin-sub-reject-2", groups: ["Admin"] });
+  const res = await request(app)
+    .patch("/api/rentals/does-not-exist/status")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ status: "APPROVED" });
+  assert.equal(res.status, 404);
+});
+
 async function createRider(cognitoSub: string) {
   return prisma.user.create({
     data: { cognitoSub, role: "RIDER", firstName: "R", lastName: "I", email: `${cognitoSub}@example.com` },

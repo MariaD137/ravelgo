@@ -165,7 +165,7 @@ test("a completed CASH trip's expected cash is the COMMISSION owed to RavelGo, n
   const adminToken = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
   const recon = await request(app).get("/api/admin/cash-reconciliation").set("Authorization", `Bearer ${adminToken}`);
   assert.equal(recon.status, 200);
-  const row = recon.body.find((r: { driverId: string }) => r.driverId === driver.id);
+  const row = recon.body.rows.find((r: { driverId: string }) => r.driverId === driver.id);
   assert.ok(row, "driver should appear in reconciliation once they have a CASH payment");
   // ₦5,000 fare @ 20% default commission = ₦1,000 owed — never the full
   // ₦5,000 (the driver already collected that in person and keeps ₦4,000
@@ -194,7 +194,7 @@ test("a CARD trip is never counted as physical cash collected", async () => {
   const adminToken = mockAuthAs({ sub: "admin-sub-1", groups: ["Admin"] });
   const recon = await request(app).get("/api/admin/cash-reconciliation").set("Authorization", `Bearer ${adminToken}`);
   assert.equal(recon.status, 200);
-  assert.equal(recon.body.find((r: { driverId: string }) => r.driverId === driver.id), undefined);
+  assert.equal(recon.body.rows.find((r: { driverId: string }) => r.driverId === driver.id), undefined);
 });
 
 test("POST /api/trips/:id/charge (WALLET) debits the rider's funded balance and settles", async () => {

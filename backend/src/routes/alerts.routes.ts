@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
-import { requireAuth, requireRole } from "../middleware/auth";
-import { requireAdminPermission } from "../lib/admin-permissions";
+import { requireAuth } from "../middleware/auth";
+import { requireActiveAdmin, requireAdminPermission } from "../lib/admin-permissions";
 import { notifyAllAdmins } from "../lib/notifications";
 import { csvList, inFilter, paginate, paginationQuerySchema } from "../lib/pagination";
 
@@ -55,7 +55,7 @@ const adminAlertsQuerySchema = paginationQuerySchema.extend({
 });
 
 // Admin: list all alerts, most urgent (open) first
-alertsRouter.get("/emergency-alerts", requireAuth, requireRole("Admin"), async (req, res) => {
+alertsRouter.get("/emergency-alerts", requireAuth, requireActiveAdmin, async (req, res) => {
   const parsed = adminAlertsQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { page, pageSize, type, status } = parsed.data;

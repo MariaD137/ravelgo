@@ -265,6 +265,155 @@ test("GET /api/admin/financial-dashboard rejects a non-Admin caller", async () =
   assert.equal(res.status, 403);
 });
 
+test("GET /api/admin/financial-dashboard accounts for REFUND, CANCELLATION_FEE and WAITING_CHARGE rows correctly", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "fd-rider-2", role: "RIDER", firstName: "R", lastName: "F", email: "fdr2@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "fd-driver-2", role: "DRIVER", firstName: "D", lastName: "F", email: "fdd2@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE" } });
+
+  await prisma.financialTransaction.create({
+    data: {
+      type: "RIDE_FARE",
+      customerId: rider.id,
+      driverId: driver.id,
+      grossAmount: 5000,
+      commissionRate: 0.2,
+      commissionAmount: 1000,
+      driverEarnings: 4000,
+      paymentMethod: "CARD",
+      status: "SETTLED",
+    },
+  });
+  // A full refund of the ride above: grossAmount is the refunded amount (a
+  // positive reduction), commissionAmount/driverEarnings stored negative.
+  await prisma.financialTransaction.create({
+    data: {
+      type: "REFUND",
+      customerId: rider.id,
+      driverId: driver.id,
+      grossAmount: 5000,
+      commissionRate: 0.2,
+      commissionAmount: -1000,
+      driverEarnings: -4000,
+      status: "SETTLED",
+    },
+  });
+  await prisma.financialTransaction.create({
+    data: {
+      type: "CANCELLATION_FEE",
+      customerId: rider.id,
+      driverId: driver.id,
+      grossAmount: 300,
+      commissionRate: 0,
+      commissionAmount: 0,
+      driverEarnings: 300,
+      status: "SETTLED",
+    },
+  });
+  await prisma.financialTransaction.create({
+    data: {
+      type: "WAITING_CHARGE",
+      customerId: rider.id,
+      driverId: driver.id,
+      grossAmount: 150,
+      commissionRate: 0,
+      commissionAmount: 0,
+      driverEarnings: 150,
+      status: "SETTLED",
+    },
+  });
+
+  const token = mockAuthAs({ sub: "admin-fd-3", groups: ["Admin"] });
+  const res = await request(app).get("/api/admin/financial-dashboard").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 200);
+  // 5000 gross - 5000 refunded = 0 net marketplace volume.
+  assert.equal(res.body.grossMarketplaceVolume, 0);
+  // 1000 commission - 1000 reversed = 0 revenue.
+  assert.equal(res.body.ravelgoRevenue, 0);
+  // 4000 - 4000 (refund) + 300 (cancellation, 100% driver) + 150 (waiting, 100% driver) = 450.
+  assert.equal(res.body.driverEarnings, 450);
+  assert.equal(res.body.refunds, 5000);
+  assert.equal(res.body.cancellationFees, 300);
+  assert.equal(res.body.waitingCharges, 150);
+});
+
+test("GET /api/admin/financial-dashboard computes exact totals over the full period at real volume — the aggregation is database-side, not a capped in-memory sum", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "fd-rider-3", role: "RIDER", firstName: "R", lastName: "F", email: "fdr3@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "fd-driver-3", role: "DRIVER", firstName: "D", lastName: "F", email: "fdd3@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE" } });
+
+  // Deliberately larger than any row cap this endpoint (or a neighbouring
+  // one, like cash-reconciliation's 5000) has ever used — proves the total
+  // is exact at a volume where "sum the first N rows" would silently
+  // under-report.
+  const ROW_COUNT = 6000;
+  await prisma.financialTransaction.createMany({
+    data: Array.from({ length: ROW_COUNT }, () => ({
+      type: "RIDE_FARE" as const,
+      customerId: rider.id,
+      driverId: driver.id,
+      grossAmount: 1000,
+      commissionRate: 0.2,
+      commissionAmount: 200,
+      driverEarnings: 800,
+      paymentMethod: "CASH" as const,
+      status: "SETTLED" as const,
+    })),
+  });
+
+  const token = mockAuthAs({ sub: "admin-fd-4", groups: ["Admin"] });
+  const res = await request(app).get("/api/admin/financial-dashboard").set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.grossMarketplaceVolume, ROW_COUNT * 1000);
+  assert.equal(res.body.ravelgoRevenue, ROW_COUNT * 200);
+  assert.equal(res.body.driverEarnings, ROW_COUNT * 800);
+  assert.equal(res.body.cashCommissionRecorded, ROW_COUNT * 200);
+});
+
+test("GET /api/admin/financial-dashboard only counts rows inside the requested date range", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "fd-rider-4", role: "RIDER", firstName: "R", lastName: "F", email: "fdr4@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "fd-driver-4", role: "DRIVER", firstName: "D", lastName: "F", email: "fdd4@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id, status: "ACTIVE" } });
+
+  const inRange = { createdAt: new Date("2027-03-15") };
+  const outOfRange = { createdAt: new Date("2027-01-01") };
+  for (const dates of [inRange, outOfRange]) {
+    await prisma.financialTransaction.create({
+      data: {
+        type: "RIDE_FARE",
+        customerId: rider.id,
+        driverId: driver.id,
+        grossAmount: 1000,
+        commissionRate: 0.2,
+        commissionAmount: 200,
+        driverEarnings: 800,
+        paymentMethod: "CARD",
+        status: "SETTLED",
+        ...dates,
+      },
+    });
+  }
+
+  const token = mockAuthAs({ sub: "admin-fd-5", groups: ["Admin"] });
+  const res = await request(app)
+    .get("/api/admin/financial-dashboard")
+    .query({ from: "2027-03-01", to: "2027-03-31" })
+    .set("Authorization", `Bearer ${token}`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.grossMarketplaceVolume, 1000);
+});
+
 // ---------------------------------------------------------------------------
 // Pricing policy
 // ---------------------------------------------------------------------------

@@ -1,9 +1,10 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
-import { requireAuth, requireRole } from "../middleware/auth";
-import { requireAdminPermission } from "../lib/admin-permissions";
-import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { requireAuth } from "../middleware/auth";
+import { requireActiveAdmin, requireAdminPermission } from "../lib/admin-permissions";
+import { containsInsensitive, paginate, paginationQuerySchema, searchQuerySchema } from "../lib/pagination";
+import type { Prisma } from "@prisma/client";
 
 export const supportRouter = Router();
 
@@ -38,20 +39,33 @@ supportRouter.get("/support-tickets/mine", requireAuth, async (req, res) => {
   res.json(tickets);
 });
 
-// Admin: list all support tickets
-supportRouter.get("/support-tickets", requireAuth, requireRole("Admin"), async (req, res) => {
-  const parsed = paginationQuerySchema.safeParse(req.query);
+// Admin: list all support tickets, optionally narrowed by a ?q= search
+// against the subject, category, or the raising user's name/email.
+supportRouter.get("/support-tickets", requireAuth, requireActiveAdmin, async (req, res) => {
+  const parsed = paginationQuerySchema.merge(searchQuerySchema).safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { page, pageSize } = parsed.data;
+  const { page, pageSize, q } = parsed.data;
+  const where: Prisma.SupportTicketWhereInput = q
+    ? {
+        OR: [
+          { subject: containsInsensitive(q) },
+          { category: containsInsensitive(q) },
+          { user: { firstName: containsInsensitive(q) } },
+          { user: { lastName: containsInsensitive(q) } },
+          { user: { email: containsInsensitive(q) } },
+        ],
+      }
+    : {};
 
   const [tickets, total] = await Promise.all([
     prisma.supportTicket.findMany({
+      where,
       include: { user: true },
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.supportTicket.count(),
+    prisma.supportTicket.count({ where }),
   ]);
   res.json(paginate(tickets, total, page, pageSize));
 });

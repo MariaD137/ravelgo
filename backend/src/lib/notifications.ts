@@ -31,7 +31,18 @@ export type NotificationType =
   | "PAYOUT_COMPLETED"
   | "PAYOUT_FAILED"
   // Both sides of a referral that just paid out (services/referral.ts).
-  | "REFERRAL_REWARDED";
+  | "REFERRAL_REWARDED"
+  // Vehicle-level review decision (vehicles.routes.ts) — distinct from
+  // DRIVER_ACCOUNT_STATUS_CHANGED, which is the driver's own approval.
+  | "VEHICLE_APPROVAL_STATUS_CHANGED"
+  // Rental listing / Car Paddy review decisions (rentals.routes.ts,
+  // carpaddy.routes.ts) — previously recorded only in the audit log, never
+  // told to the driver who submitted the request.
+  | "RENTAL_LISTING_REVIEWED"
+  | "CAR_PADDY_REQUEST_REVIEWED"
+  // A dispute an admin resolved/rejected (disputes.routes.ts) — told to the
+  // user who raised it.
+  | "DISPUTE_RESOLVED";
 
 export type NotificationReferenceType =
   | "TRIP"
@@ -39,7 +50,11 @@ export type NotificationReferenceType =
   | "RENTAL_BOOKING"
   | "PAYMENT"
   | "EMERGENCY_ALERT"
-  | "PAYOUT";
+  | "PAYOUT"
+  | "VEHICLE"
+  | "RENTAL_LISTING"
+  | "CAR_PADDY_REQUEST"
+  | "DISPUTE";
 
 /**
  * Create a real, persisted in-app notification for one user. This is the

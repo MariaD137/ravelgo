@@ -529,6 +529,39 @@ test("GET /api/trips (Admin monitor) rejects a Rider caller", async () => {
   assert.equal(res.status, 403);
 });
 
+test("GET /api/trips?q= searches server-side by trip id and by rider/driver name/email", async () => {
+  const rider = await prisma.user.create({
+    data: { cognitoSub: "search-rider", role: "RIDER", firstName: "Yemi", lastName: "Coker", email: "yemi@example.com" },
+  });
+  const driverUser = await prisma.user.create({
+    data: { cognitoSub: "search-driver", role: "DRIVER", firstName: "Segun", lastName: "Balogun", email: "segun@example.com" },
+  });
+  const driver = await prisma.driver.create({ data: { userId: driverUser.id } });
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 20, status: "COMPLETED" },
+  });
+  await prisma.user.create({
+    data: { cognitoSub: "search-rider-2", role: "RIDER", firstName: "Other", lastName: "Rider", email: "other@example.com" },
+  });
+
+  const token = mockAuthAs({ sub: "search-trips-admin", groups: ["Admin"] });
+
+  const byId = await request(app).get("/api/trips").query({ q: trip.id }).set("Authorization", `Bearer ${token}`);
+  assert.equal(byId.body.total, 1);
+  assert.equal(byId.body.data[0].id, trip.id);
+
+  const byRiderName = await request(app).get("/api/trips").query({ q: "coker" }).set("Authorization", `Bearer ${token}`);
+  assert.equal(byRiderName.body.total, 1);
+  assert.equal(byRiderName.body.data[0].id, trip.id);
+
+  const byDriverEmail = await request(app).get("/api/trips").query({ q: "segun@example" }).set("Authorization", `Bearer ${token}`);
+  assert.equal(byDriverEmail.body.total, 1);
+  assert.equal(byDriverEmail.body.data[0].id, trip.id);
+
+  const noMatch = await request(app).get("/api/trips").query({ q: "no-such-trip" }).set("Authorization", `Bearer ${token}`);
+  assert.equal(noMatch.body.total, 0);
+});
+
 test("GET /api/trips/mine returns only the caller's own trips (as rider or driver)", async () => {
   const rider = await prisma.user.create({
     data: { cognitoSub: "rider-mine", role: "RIDER", firstName: "M", lastName: "I", email: "mine@example.com" },

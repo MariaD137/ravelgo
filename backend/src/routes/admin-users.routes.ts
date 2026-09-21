@@ -3,8 +3,8 @@ import { z } from "zod";
 import type { AdminRole } from "@prisma/client";
 import { UsernameExistsException } from "@aws-sdk/client-cognito-identity-provider";
 import { prisma } from "../db/prisma";
-import { requireAuth, requireRole } from "../middleware/auth";
-import { requireAdminPermission } from "../lib/admin-permissions";
+import { requireAuth } from "../middleware/auth";
+import { requireActiveAdmin, requireAdminPermission } from "../lib/admin-permissions";
 import { cognitoGroups } from "../services/cognito";
 import { recordAudit } from "../lib/audit";
 import { sensitiveLimiter } from "../middleware/rate-limit";
@@ -76,7 +76,7 @@ adminUsersRouter.get("/admin-users", requireAuth, requireAdminPermission("manage
 // check), not requireAdminPermission("manage_admins") — every admin can see
 // their own profile regardless of preset, same as any other app's "my
 // account" page.
-adminUsersRouter.get("/admin-users/me", requireAuth, requireRole("Admin"), async (req, res) => {
+adminUsersRouter.get("/admin-users/me", requireAuth, requireActiveAdmin, async (req, res) => {
   // select matches AdminUserRow exactly (declared above) rather than pulling
   // every User scalar. An unscoped findUnique here would also select columns
   // added by a migration this environment may not have applied yet (e.g.
@@ -126,7 +126,7 @@ adminUsersRouter.get("/admin-users/me", requireAuth, requireRole("Admin"), async
 // this call exists purely to complete the audit trail with an
 // ADMIN_USER_MFA_ENABLED entry; Cognito remains the actual source of truth
 // for whether MFA is enabled (see serializeAdminUser).
-adminUsersRouter.post("/admin-users/me/mfa-enrolled", requireAuth, requireRole("Admin"), async (req, res) => {
+adminUsersRouter.post("/admin-users/me/mfa-enrolled", requireAuth, requireActiveAdmin, async (req, res) => {
   const me = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
   await recordAudit({
     actorSub: req.user!.sub,

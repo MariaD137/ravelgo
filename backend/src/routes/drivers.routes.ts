@@ -5,8 +5,9 @@ import { z } from "zod";
 import { env } from "../config/env";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
-import { requireAdminPermission } from "../lib/admin-permissions";
-import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { requireActiveAdmin, requireAdminPermission } from "../lib/admin-permissions";
+import { containsInsensitive, paginate, paginationQuerySchema, searchQuerySchema } from "../lib/pagination";
+import type { Prisma } from "@prisma/client";
 import { recordAudit } from "../lib/audit";
 import { cognitoGroups } from "../services/cognito";
 import { sensitiveLimiter } from "../middleware/rate-limit";
@@ -14,6 +15,7 @@ import { recordDriverLocation } from "../realtime/hub";
 import { matchPendingTrips } from "../services/matching";
 import { persistDriverLocation } from "../services/driver-location";
 import { notifyUser } from "../lib/notifications";
+import { serializeVehicle } from "../lib/vehicle-view";
 
 // Same pattern as courier.routes.ts's withProofUrls: a dedicated S3 client for
 // signing GET URLs to objects in the private documents bucket. Kept
@@ -89,7 +91,11 @@ driversRouter.post("/drivers/apply", sensitiveLimiter, requireAuth, async (req, 
     });
   }
 
-  void recordAudit({
+  // Awaited (matching every other recordAudit call site in this file) so a
+  // caller can never observe a 200/201 before the audit row actually exists;
+  // recordAudit never throws, so this can't turn a successful application
+  // into an error.
+  await recordAudit({
     actorSub: req.user!.sub,
     action: "DRIVER_APPLICATION_SUBMITTED",
     entityType: "Driver",
@@ -102,7 +108,7 @@ driversRouter.post("/drivers/apply", sensitiveLimiter, requireAuth, async (req, 
 
 const DRIVER_STATUSES = ["ACTIVE", "PENDING_REVIEW", "SUSPENDED"] as const;
 
-const listDriversQuerySchema = paginationQuerySchema.extend({
+const listDriversQuerySchema = paginationQuerySchema.merge(searchQuerySchema).extend({
   // Optional server-side filter on Driver.status. The Admin App's pending-
   // applications view previously filtered client-side over the first page
   // only, so a PENDING_REVIEW driver past the pagination window was simply
@@ -111,12 +117,27 @@ const listDriversQuerySchema = paginationQuerySchema.extend({
   status: z.enum(DRIVER_STATUSES).optional(),
 });
 
-// Admin: list all drivers (optionally narrowed to one status)
-driversRouter.get("/drivers", requireAuth, requireRole("Admin"), async (req, res) => {
+// Admin: list all drivers, optionally narrowed by status and/or a ?q= search
+// against the owning User's name/email/phone or the driver's own vehicle
+// plate numbers — server-side, across the whole table.
+driversRouter.get("/drivers", requireAuth, requireActiveAdmin, async (req, res) => {
   const parsed = listDriversQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { page, pageSize, status } = parsed.data;
-  const where = status ? { status } : {};
+  const { page, pageSize, status, q } = parsed.data;
+  const where: Prisma.DriverWhereInput = {
+    ...(status ? { status } : {}),
+    ...(q
+      ? {
+          OR: [
+            { user: { firstName: containsInsensitive(q) } },
+            { user: { lastName: containsInsensitive(q) } },
+            { user: { email: containsInsensitive(q) } },
+            { user: { phoneNumber: containsInsensitive(q) } },
+            { vehicles: { some: { plateNumber: containsInsensitive(q) } } },
+          ],
+        }
+      : {}),
+  };
 
   const [drivers, total] = await Promise.all([
     prisma.driver.findMany({
@@ -287,13 +308,20 @@ driversRouter.post("/drivers/me/location", requireAuth, requireRole("Driver"), a
 // Registered after the literal "/drivers/me" routes above — Express matches
 // path segments in registration order, so ":id" would otherwise swallow
 // "me" and shadow the driver's own-profile routes with this Admin check.
-driversRouter.get("/drivers/:id", requireAuth, requireRole("Admin"), async (req, res) => {
+driversRouter.get("/drivers/:id", requireAuth, requireActiveAdmin, async (req, res) => {
   const driver = await prisma.driver.findUnique({
     where: { id: req.params.id },
     include: { user: true, vehicles: true, documents: true },
   });
   if (!driver) return res.status(404).json({ error: "Driver not found" });
-  res.json(driver);
+  // Vehicles run through the same serializer as every other vehicle response
+  // (GET /vehicles, GET /rentals) rather than being sent raw — this used to
+  // send Vehicle.photoKeys (the internal S3 object-key naming scheme) instead
+  // of a usable URL, and gives the Admin App the same
+  // photoUrl/photoUrls/approvalStatus shape it already knows how to render
+  // everywhere else, closing the gap where the driver-detail screen fetched
+  // vehicles it had no field to display at all.
+  res.json({ ...driver, vehicles: driver.vehicles.map(serializeVehicle) });
 });
 
 // Admin: a short-lived signed URL to view one of this driver's uploaded

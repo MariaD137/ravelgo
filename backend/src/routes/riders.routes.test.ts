@@ -43,6 +43,40 @@ test("GET /api/riders lists riders for an Admin caller", async () => {
   assert.equal(res.body.data[0].email, "ada@example.com");
 });
 
+test("GET /api/riders?q= searches server-side across the whole table by name/email/phone, not just the loaded page", async () => {
+  await prisma.user.create({
+    data: { cognitoSub: "rider-search-1", role: "RIDER", firstName: "Chidi", lastName: "Okoro", email: "chidi@example.com" },
+  });
+  await prisma.user.create({
+    data: { cognitoSub: "rider-search-2", role: "RIDER", firstName: "Ngozi", lastName: "Eze", email: "ngozi@example.com", phoneNumber: "+2348012345678" },
+  });
+  await prisma.user.create({
+    data: { cognitoSub: "rider-search-3", role: "RIDER", firstName: "Femi", lastName: "Adeyemi", email: "femi@example.com" },
+  });
+
+  const token = mockAuthAs({ sub: "admin-search-1", groups: ["Admin"] });
+
+  const byLastName = await request(app).get("/api/riders").query({ q: "okoro" }).set("Authorization", `Bearer ${token}`);
+  assert.equal(byLastName.body.total, 1);
+  assert.equal(byLastName.body.data[0].email, "chidi@example.com");
+
+  // Case-insensitive, and matches a substring of the email.
+  const byEmail = await request(app).get("/api/riders").query({ q: "NGOZI@EXAMPLE" }).set("Authorization", `Bearer ${token}`);
+  assert.equal(byEmail.body.total, 1);
+  assert.equal(byEmail.body.data[0].email, "ngozi@example.com");
+
+  const byPhone = await request(app).get("/api/riders").query({ q: "8012345678" }).set("Authorization", `Bearer ${token}`);
+  assert.equal(byPhone.body.total, 1);
+  assert.equal(byPhone.body.data[0].email, "ngozi@example.com");
+
+  const noMatch = await request(app).get("/api/riders").query({ q: "nonexistent-name" }).set("Authorization", `Bearer ${token}`);
+  assert.equal(noMatch.body.total, 0);
+  assert.deepEqual(noMatch.body.data, []);
+
+  const allThree = await request(app).get("/api/riders").set("Authorization", `Bearer ${token}`);
+  assert.equal(allThree.body.total, 3);
+});
+
 test("POST /api/riders/me creates my profile on first call, then upserts on repeat calls", async () => {
   const token = mockAuthAs({ sub: "rider-sub-2", groups: ["Rider"] });
   const payload = { firstName: "Nia", lastName: "R", email: "nia@example.com" };

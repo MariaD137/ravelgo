@@ -67,6 +67,18 @@ enum RentalListingStatus {
   REJECTED
 }
 
+// Vehicle-level safety/eligibility review, independent of Driver.status (a
+// driver can be ACTIVE while a specific vehicle they later add is still
+// PENDING) and independent of RideVehicleClass (which category a vehicle
+// serves, not whether it's cleared to serve any). Mirrors DocumentStatus's
+// three decision states without EXPIRING_SOON, which has no vehicle-level
+// equivalent (a vehicle doesn't expire the way a document does).
+enum VehicleApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum RentalBookingStatus {
   PENDING_PAYMENT
   CONFIRMED
@@ -306,6 +318,16 @@ model Vehicle {
   // category that restricts itself to specific classes.
   vehicleClass    RideVehicleClass?
   createdAt       DateTime          @default(now())
+  // Admin safety/eligibility review, added by zz11_vehicle_approval. Backfilled
+  // for existing rows by the migration itself (see that migration's SQL for
+  // the exact rule) rather than left to this default, which only governs
+  // vehicles created AFTER the migration runs.
+  approvalStatus  VehicleApprovalStatus @default(PENDING)
+  // Required whenever approvalStatus is set to REJECTED (enforced in the
+  // route, not here — same convention as DriverDocument.rejectionReason).
+  // Cleared back to null on a subsequent approval so it never lingers on a
+  // vehicle that isn't actually rejected.
+  rejectionReason String?
 
   rentalListings RentalListing[]
 }
@@ -402,7 +424,20 @@ model CarPaddyRequest {
   driverId    String
   driver      Driver         @relation(fields: [driverId], references: [id], onDelete: Cascade)
   plateNumber String
+  // When the current vehicle license/registration expires — the actual thing
+  // being renewed. Nullable so a request submitted before this field existed
+  // remains valid; the driver-facing submit form requires it going forward.
+  renewalDate DateTime?
+  // S3 key in the private "documents" bucket (same bucket/pattern as
+  // DriverDocument.fileKey) — the renewal document/receipt an admin actually
+  // reviews against. Never a raw URL; a fresh signed URL is issued on demand,
+  // matching GET /drivers/:driverId/documents/:documentId/url.
+  fileKey     String?
   status      CarPaddyStatus @default(SUBMITTED)
+  // Required whenever status is set to REJECTED — same convention as
+  // DriverDocument.rejectionReason. Cleared back to null on a subsequent
+  // approval.
+  rejectionReason String?
   submittedAt DateTime       @default(now())
   reviewedAt  DateTime?
 }
@@ -421,6 +456,10 @@ model RentalListing {
   lat       Float?
   lng       Float?
   status    RentalListingStatus @default(PENDING_APPROVAL)
+  // Required whenever status is set to REJECTED (enforced in the route, same
+  // convention as DriverDocument.rejectionReason / Vehicle.rejectionReason).
+  // Cleared back to null on a subsequent approval.
+  rejectionReason String?
   createdAt DateTime            @default(now())
 
   bookings RentalBooking[]

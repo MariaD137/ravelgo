@@ -2,9 +2,10 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
-import { blockIfAdminLacksPermission } from "../lib/admin-permissions";
+import { blockIfAdminLacksPermission, requireActiveAdmin } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
-import { csvList, inFilter, paginate, paginationQuerySchema } from "../lib/pagination";
+import { containsInsensitive, csvList, inFilter, paginate, paginationQuerySchema, searchQuerySchema } from "../lib/pagination";
+import type { Prisma } from "@prisma/client";
 import {
   broadcastTripStatus,
   clearRiderLocation,
@@ -597,7 +598,7 @@ tripsRouter.post("/trips/:id/rider-location", requireAuth, requireRole("Rider"),
   res.json(location);
 });
 
-const adminTripsQuerySchema = paginationQuerySchema.extend({
+const adminTripsQuerySchema = paginationQuerySchema.merge(searchQuerySchema).extend({
   // Optional server-side status filter, comma-separated (?status=MATCHED,IN_PROGRESS)
   // so the Admin App's multi-select chips narrow the whole table, not one page.
   status: z.preprocess(
@@ -606,12 +607,28 @@ const adminTripsQuerySchema = paginationQuerySchema.extend({
   ),
 });
 
-// Admin: monitor all trips
-tripsRouter.get("/trips", requireAuth, requireRole("Admin"), async (req, res) => {
+// Admin: monitor all trips, optionally narrowed by status and/or a ?q= search
+// against the trip's own id or the rider's/driver's name/email.
+tripsRouter.get("/trips", requireAuth, requireActiveAdmin, async (req, res) => {
   const parsed = adminTripsQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { page, pageSize, status } = parsed.data;
-  const where = { status: inFilter(status) };
+  const { page, pageSize, status, q } = parsed.data;
+  const where: Prisma.TripWhereInput = {
+    status: inFilter(status),
+    ...(q
+      ? {
+          OR: [
+            { id: containsInsensitive(q) },
+            { rider: { firstName: containsInsensitive(q) } },
+            { rider: { lastName: containsInsensitive(q) } },
+            { rider: { email: containsInsensitive(q) } },
+            { driver: { user: { firstName: containsInsensitive(q) } } },
+            { driver: { user: { lastName: containsInsensitive(q) } } },
+            { driver: { user: { email: containsInsensitive(q) } } },
+          ],
+        }
+      : {}),
+  };
 
   const [trips, total] = await Promise.all([
     prisma.trip.findMany({

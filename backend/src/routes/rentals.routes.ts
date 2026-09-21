@@ -4,8 +4,10 @@ import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { requireAdminPermission } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
-import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { containsInsensitive, paginate, paginationQuerySchema, searchQuerySchema } from "../lib/pagination";
+import type { Prisma } from "@prisma/client";
 import { sensitiveLimiter } from "../middleware/rate-limit";
+import { notifyUser } from "../lib/notifications";
 import { InsufficientFundsError } from "../services/wallet";
 import {
   RentalBookingNotChargeableError,
@@ -105,15 +107,34 @@ rentalsRouter.get("/rentals/mine", requireAuth, requireRole("Driver"), async (re
   res.json(listings.map(serializeRentalListing));
 });
 
-// Riders/public: browse approved rental listings
+// Riders/public: browse approved rental listings. Admin callers additionally
+// get ?q= server-side search (listing id, vehicle plate/brand/model, or the
+// owning driver's name/email) — riders browse by location/price elsewhere,
+// so search stays admin-only rather than adding a param with no real use for
+// the public browse case.
 rentalsRouter.get("/rentals", requireAuth, async (req, res) => {
-  const parsed = paginationQuerySchema.safeParse(req.query);
+  const parsed = paginationQuerySchema.merge(searchQuerySchema).safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { page, pageSize } = parsed.data;
+  const { page, pageSize, q } = parsed.data;
 
   const groups = req.user!.groups;
   const isAdmin = groups.includes("Admin");
-  const where = isAdmin ? {} : { status: "APPROVED" as const };
+  const where: Prisma.RentalListingWhereInput = {
+    ...(isAdmin ? {} : { status: "APPROVED" as const }),
+    ...(isAdmin && q
+      ? {
+          OR: [
+            { id: containsInsensitive(q) },
+            { vehicle: { plateNumber: containsInsensitive(q) } },
+            { vehicle: { brand: containsInsensitive(q) } },
+            { vehicle: { model: containsInsensitive(q) } },
+            { driver: { user: { firstName: containsInsensitive(q) } } },
+            { driver: { user: { lastName: containsInsensitive(q) } } },
+            { driver: { user: { email: containsInsensitive(q) } } },
+          ],
+        }
+      : {}),
+  };
 
   const [listings, total] = await Promise.all([
     prisma.rentalListing.findMany({
@@ -280,16 +301,37 @@ rentalsRouter.patch("/rental-bookings/:id/cancel", requireAuth, async (req, res,
   }
 });
 
-const decisionSchema = z.object({ status: z.enum(["APPROVED", "REJECTED"]) });
+const decisionSchema = z
+  .object({
+    status: z.enum(["APPROVED", "REJECTED"]),
+    // Required (and validated non-empty after trimming) only when rejecting —
+    // enforced below rather than with a discriminated union so the 400 names
+    // the real reason instead of a generic schema-shape error. Same pattern
+    // as documents.routes.ts's reviewSchema.
+    rejectionReason: z.string().trim().max(1000).optional(),
+  })
+  .refine((data) => data.status !== "REJECTED" || !!data.rejectionReason, {
+    message: "A rejection reason is required.",
+    path: ["rejectionReason"],
+  });
 
 // Admin (Super Admin / Operations Manager): approve/reject a rental listing
 rentalsRouter.patch("/rentals/:id/status", requireAuth, requireAdminPermission("listings:write"), async (req, res) => {
   const parsed = decisionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+  const existing = await prisma.rentalListing.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: "Rental listing not found" });
+
   const listing = await prisma.rentalListing.update({
     where: { id: req.params.id },
-    data: { status: parsed.data.status },
+    data: {
+      status: parsed.data.status,
+      // Cleared back to null on approval so a reason never lingers on a
+      // listing that isn't actually rejected (same convention as
+      // DriverDocument.rejectionReason).
+      rejectionReason: parsed.data.status === "REJECTED" ? parsed.data.rejectionReason : null,
+    },
   });
   // Awaited (unlike most recordAudit call sites) so a caller can never
   // observe a 200 for this admin action before the audit row actually
@@ -300,7 +342,21 @@ rentalsRouter.patch("/rentals/:id/status", requireAuth, requireAdminPermission("
     action: "RENTAL_LISTING_REVIEWED",
     entityType: "RentalListing",
     entityId: listing.id,
-    metadata: { status: parsed.data.status },
+    metadata: { status: parsed.data.status, rejectionReason: parsed.data.rejectionReason },
   });
+  // Told to the driver, not just recorded in the audit log — this decision
+  // previously left no trace the submitting driver could ever see.
+  const driver = await prisma.driver.findUnique({ where: { id: listing.driverId } });
+  if (driver) {
+    await notifyUser(
+      driver.userId,
+      "RENTAL_LISTING_REVIEWED",
+      parsed.data.status === "APPROVED" ? "Rental listing approved" : "Rental listing rejected",
+      parsed.data.status === "APPROVED"
+        ? "Your rental listing has been approved and is now visible to riders."
+        : `Your rental listing was rejected: ${parsed.data.rejectionReason}`,
+      { type: "RENTAL_LISTING", id: listing.id },
+    );
+  }
   res.json(listing);
 });

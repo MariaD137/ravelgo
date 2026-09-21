@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
-import { requireAuth, requireRole } from "../middleware/auth";
-import { requireAdminPermission } from "../lib/admin-permissions";
+import { requireAuth } from "../middleware/auth";
+import { requireActiveAdmin, requireAdminPermission } from "../lib/admin-permissions";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { recordAudit } from "../lib/audit";
 
@@ -161,7 +161,7 @@ staysRouter.post("/stays/:id/book", requireAuth, async (req, res) => {
 });
 
 // Admin: bookings made against one listing.
-staysRouter.get("/stays/:id/bookings", requireAuth, requireRole("Admin"), async (req, res) => {
+staysRouter.get("/stays/:id/bookings", requireAuth, requireActiveAdmin, async (req, res) => {
   const bookings = await prisma.stayBooking.findMany({
     where: { propertyId: req.params.id },
     include: { guest: { select: { firstName: true, lastName: true, email: true } } },

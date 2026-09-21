@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
-import { requireAuth, requireRole } from "../middleware/auth";
-import { requireAdminPermission } from "../lib/admin-permissions";
+import { requireAuth } from "../middleware/auth";
+import { requireActiveAdmin, requireAdminPermission } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
 import {
   computeFare,
@@ -157,7 +157,7 @@ pricingRouter.get("/pricing/categories", requireAuth, async (req, res) => {
 
 // Admin (any preset — reads stay open): every ride category, active or not,
 // for the pricing management screen.
-pricingRouter.get("/admin/ride-categories", requireAuth, requireRole("Admin"), async (_req, res) => {
+pricingRouter.get("/admin/ride-categories", requireAuth, requireActiveAdmin, async (_req, res) => {
   await ensureDefaultRideCategories();
   const categories = await prisma.rideCategory.findMany({ orderBy: { sortOrder: "asc" } });
   res.json(categories);
@@ -240,7 +240,7 @@ pricingRouter.get("/pricing/delivery-quote", requireAuth, async (req, res) => {
 });
 
 // Admin (any preset — reads stay open): the four delivery vehicle-class rate cards.
-pricingRouter.get("/admin/delivery-vehicle-rates", requireAuth, requireRole("Admin"), async (_req, res) => {
+pricingRouter.get("/admin/delivery-vehicle-rates", requireAuth, requireActiveAdmin, async (_req, res) => {
   await ensureDefaultDeliveryVehicleRates();
   const rates = await prisma.deliveryVehicleRate.findMany({ orderBy: { initialFee: "asc" } });
   res.json(rates);
@@ -300,7 +300,7 @@ pricingRouter.patch(
 // ---------------------------------------------------------------------------
 
 // Admin (any preset — reads stay open): every service's current commission rate.
-pricingRouter.get("/admin/commission-config", requireAuth, requireRole("Admin"), async (_req, res) => {
+pricingRouter.get("/admin/commission-config", requireAuth, requireActiveAdmin, async (_req, res) => {
   res.json(await listCommissionConfig());
 });
 
@@ -335,7 +335,7 @@ pricingRouter.patch("/admin/commission-config/:service", requireAuth, requireAdm
 // ---------------------------------------------------------------------------
 
 // Admin (any preset — reads stay open): the current policy.
-pricingRouter.get("/admin/pricing-policy", requireAuth, requireRole("Admin"), async (_req, res) => {
+pricingRouter.get("/admin/pricing-policy", requireAuth, requireActiveAdmin, async (_req, res) => {
   res.json(await getPricingPolicy());
 });
 
@@ -387,65 +387,64 @@ const dashboardQuerySchema = z.object({
 // Admin (any preset — reads stay open): marketplace-wide financial rollup,
 // computed live from the FinancialTransaction ledger — never a cached or
 // estimated figure.
-pricingRouter.get("/admin/financial-dashboard", requireAuth, requireRole("Admin"), async (req, res) => {
+pricingRouter.get("/admin/financial-dashboard", requireAuth, requireActiveAdmin, async (req, res) => {
   const parsed = dashboardQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const rows = await prisma.financialTransaction.findMany({
-    where: {
-      status: "SETTLED",
-      createdAt: {
-        gte: parsed.data.from,
-        lte: parsed.data.to,
+  const dateFilter = { gte: parsed.data.from, lte: parsed.data.to };
+
+  // Aggregated at the database level (Postgres GROUP BY / SUM), not by
+  // pulling every settled row into Node and summing in JS — the previous
+  // implementation had no row cap at all, so a wide date range at real
+  // transaction volume was an unbounded-memory query. This computes exact
+  // totals over the FULL requested period regardless of how many rows back
+  // it, and its cost no longer scales with row count the same way.
+  const [byType, cash] = await Promise.all([
+    prisma.financialTransaction.groupBy({
+      by: ["type"],
+      where: { status: "SETTLED", createdAt: dateFilter },
+      _sum: { grossAmount: true, commissionAmount: true, driverEarnings: true },
+    }),
+    prisma.financialTransaction.aggregate({
+      where: {
+        status: "SETTLED",
+        createdAt: dateFilter,
+        paymentMethod: "CASH",
+        type: { in: ["RIDE_FARE", "DELIVERY_FARE"] },
       },
-    },
-  });
+      _sum: { commissionAmount: true },
+    }),
+  ]);
 
-  let grossVolume = 0;
-  let ravelgoRevenue = 0;
-  let totalDriverEarnings = 0;
-  let refundsTotal = 0;
-  let cancellationFeesTotal = 0;
-  let waitingChargesTotal = 0;
-  let rideRevenue = 0;
-  let deliveryRevenue = 0;
-  let cashCommissionRecorded = 0;
+  const sums = (type: (typeof byType)[number]["type"]) => byType.find((r) => r.type === type)?._sum;
+  const ride = sums("RIDE_FARE");
+  const delivery = sums("DELIVERY_FARE");
+  const refund = sums("REFUND");
+  const cancellation = sums("CANCELLATION_FEE");
+  const waiting = sums("WAITING_CHARGE");
 
-  for (const r of rows) {
-    switch (r.type) {
-      case "RIDE_FARE":
-        grossVolume += r.grossAmount;
-        ravelgoRevenue += r.commissionAmount;
-        totalDriverEarnings += r.driverEarnings;
-        rideRevenue += r.grossAmount;
-        break;
-      case "DELIVERY_FARE":
-        grossVolume += r.grossAmount;
-        ravelgoRevenue += r.commissionAmount;
-        totalDriverEarnings += r.driverEarnings;
-        deliveryRevenue += r.grossAmount;
-        break;
-      case "REFUND":
-        // grossAmount here is the refunded amount (a positive reduction);
-        // commissionAmount/driverEarnings are already stored negative.
-        grossVolume -= r.grossAmount;
-        refundsTotal += r.grossAmount;
-        ravelgoRevenue += r.commissionAmount;
-        totalDriverEarnings += r.driverEarnings;
-        break;
-      case "CANCELLATION_FEE":
-        cancellationFeesTotal += r.grossAmount;
-        totalDriverEarnings += r.driverEarnings;
-        break;
-      case "WAITING_CHARGE":
-        waitingChargesTotal += r.grossAmount;
-        totalDriverEarnings += r.driverEarnings;
-        break;
-    }
-    if (r.paymentMethod === "CASH" && (r.type === "RIDE_FARE" || r.type === "DELIVERY_FARE")) {
-      cashCommissionRecorded += r.commissionAmount;
-    }
-  }
+  const rideGross = ride?.grossAmount ?? 0;
+  const deliveryGross = delivery?.grossAmount ?? 0;
+  // REFUND rows store grossAmount as the refunded amount (a positive
+  // reduction) and commissionAmount/driverEarnings already negative — same
+  // sign convention the previous row-by-row loop relied on.
+  const refundGross = refund?.grossAmount ?? 0;
+
+  const grossVolume = rideGross + deliveryGross - refundGross;
+  const ravelgoRevenue =
+    (ride?.commissionAmount ?? 0) + (delivery?.commissionAmount ?? 0) + (refund?.commissionAmount ?? 0);
+  const totalDriverEarnings =
+    (ride?.driverEarnings ?? 0) +
+    (delivery?.driverEarnings ?? 0) +
+    (refund?.driverEarnings ?? 0) +
+    (cancellation?.driverEarnings ?? 0) +
+    (waiting?.driverEarnings ?? 0);
+  const refundsTotal = refundGross;
+  const cancellationFeesTotal = cancellation?.grossAmount ?? 0;
+  const waitingChargesTotal = waiting?.grossAmount ?? 0;
+  const rideRevenue = rideGross;
+  const deliveryRevenue = deliveryGross;
+  const cashCommissionRecorded = cash._sum.commissionAmount ?? 0;
 
   res.json({
     grossMarketplaceVolume: roundMoney(grossVolume),

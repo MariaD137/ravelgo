@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db/prisma";
-import { requireAuth, requireRole } from "../middleware/auth";
+import { requireAuth } from "../middleware/auth";
+import { requireActiveAdmin } from "../lib/admin-permissions";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import {
   getAllDriverLocations,
@@ -30,7 +31,7 @@ const ACTIVE_COURIER_STATUSES = ["MATCHED", "PICKED_UP", "IN_TRANSIT"] as const;
 // from real state (an open incident beats an active job beats being online):
 //   GREEN available · BLUE on a passenger trip · ORANGE on a logistics job ·
 //   RED open incident · GRAY known-but-currently-offline.
-adminRouter.get("/admin/live-map", requireAuth, requireRole("Admin"), async (_req, res) => {
+adminRouter.get("/admin/live-map", requireAuth, requireActiveAdmin, async (_req, res) => {
   const locations = getAllDriverLocations();
   const driverIds = locations.map((l) => l.driverId);
   const now = new Date();
@@ -203,7 +204,7 @@ const START_OF_TODAY = () => {
 
 // Admin: dashboard KPIs. Every figure here is a real aggregate query against
 // the same tables the rest of the admin app reads — nothing is simulated.
-adminRouter.get("/admin/dashboard", requireAuth, requireRole("Admin"), async (_req, res) => {
+adminRouter.get("/admin/dashboard", requireAuth, requireActiveAdmin, async (_req, res) => {
   const todayStart = START_OF_TODAY();
 
   const [
@@ -271,7 +272,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 // days, bucketed by day. There's no tracked "driver online hours" anywhere
 // in the schema, so that metric is intentionally not returned rather than
 // fabricated — the admin UI should say so instead of showing a fake number.
-adminRouter.get("/admin/analytics", requireAuth, requireRole("Admin"), async (_req, res) => {
+adminRouter.get("/admin/analytics", requireAuth, requireActiveAdmin, async (_req, res) => {
   const days = 7;
   const end = new Date();
   end.setHours(0, 0, 0, 0);
@@ -308,7 +309,7 @@ adminRouter.get("/admin/analytics", requireAuth, requireRole("Admin"), async (_r
 });
 
 // Admin: audit log of privileged actions, newest first.
-adminRouter.get("/admin/audit", requireAuth, requireRole("Admin"), async (req, res) => {
+adminRouter.get("/admin/audit", requireAuth, requireActiveAdmin, async (req, res) => {
   const parsed = paginationQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { page, pageSize } = parsed.data;

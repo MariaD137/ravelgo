@@ -5,10 +5,11 @@ import { z } from "zod";
 import { env } from "../config/env";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
-import { blockIfAdminLacksPermission } from "../lib/admin-permissions";
+import { blockIfAdminLacksPermission, requireActiveAdmin } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
 import { notifyUser, type NotificationType } from "../lib/notifications";
-import { csvList, inFilter, paginate, paginationQuerySchema } from "../lib/pagination";
+import { containsInsensitive, csvList, inFilter, paginate, paginationQuerySchema, searchQuerySchema } from "../lib/pagination";
+import type { Prisma } from "@prisma/client";
 import { getLatestDriverLocation, locationFreshness } from "../realtime/hub";
 import { haversineKm, isValidCoordinate } from "../lib/geo";
 import { serializeCourierRequest } from "../lib/courier-view";
@@ -507,7 +508,7 @@ courierRouter.get("/courier-requests/:id", requireAuth, async (req, res) => {
   res.json(isOwner || isAdmin ? { ...body, payment: request.payment ?? null } : body);
 });
 
-const adminCourierQuerySchema = paginationQuerySchema.extend({
+const adminCourierQuerySchema = paginationQuerySchema.merge(searchQuerySchema).extend({
   // Optional comma-separated status filter, applied server-side (see trips).
   status: z.preprocess(
     csvList,
@@ -515,12 +516,29 @@ const adminCourierQuerySchema = paginationQuerySchema.extend({
   ),
 });
 
-// Admin: monitor all courier requests
-courierRouter.get("/courier-requests", requireAuth, requireRole("Admin"), async (req, res) => {
+// Admin: monitor all courier requests, optionally narrowed by status and/or
+// a ?q= search against the sender's/driver's name/email or the recipient's
+// name.
+courierRouter.get("/courier-requests", requireAuth, requireActiveAdmin, async (req, res) => {
   const parsed = adminCourierQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { page, pageSize, status } = parsed.data;
-  const where = { status: inFilter(status) };
+  const { page, pageSize, status, q } = parsed.data;
+  const where: Prisma.CourierRequestWhereInput = {
+    status: inFilter(status),
+    ...(q
+      ? {
+          OR: [
+            { recipientName: containsInsensitive(q) },
+            { sender: { firstName: containsInsensitive(q) } },
+            { sender: { lastName: containsInsensitive(q) } },
+            { sender: { email: containsInsensitive(q) } },
+            { driver: { user: { firstName: containsInsensitive(q) } } },
+            { driver: { user: { lastName: containsInsensitive(q) } } },
+            { driver: { user: { email: containsInsensitive(q) } } },
+          ],
+        }
+      : {}),
+  };
 
   const [requests, total] = await Promise.all([
     prisma.courierRequest.findMany({

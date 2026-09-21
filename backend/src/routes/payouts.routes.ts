@@ -8,12 +8,13 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
-import { requireAdminPermission } from "../lib/admin-permissions";
+import { requireActiveAdmin, requireAdminPermission } from "../lib/admin-permissions";
 import { validate } from "../lib/validate";
 import { Errors } from "../lib/errors";
 import { moneyAmountSchema } from "../lib/money";
 import { sensitiveLimiter } from "../middleware/rate-limit";
-import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { containsInsensitive, paginate, paginationQuerySchema, searchQuerySchema } from "../lib/pagination";
+import type { Prisma } from "@prisma/client";
 import { paystackClient } from "../billing/paystack";
 import {
   calculatePayoutForPeriod,
@@ -277,11 +278,13 @@ payoutsRouter.post("/payouts/:id/fail", requireAuth, requireAdminPermission("pay
   }
 });
 
-// Admin: list all payouts with filtering
-payoutsRouter.get("/payouts", requireAuth, requireRole("Admin"), async (req, res, next) => {
+// Admin: list all payouts with filtering, optionally narrowed by a ?q=
+// search against the driver's name/email or the payout's transaction
+// reference.
+payoutsRouter.get("/payouts", requireAuth, requireActiveAdmin, async (req, res, next) => {
   try {
-    const { page, pageSize } = validate<{ page: number; pageSize: number }>(
-      paginationQuerySchema,
+    const { page, pageSize, q } = validate<{ page: number; pageSize: number; q?: string }>(
+      paginationQuerySchema.merge(searchQuerySchema),
       req.query,
       "Query parameters",
     );
@@ -294,12 +297,24 @@ payoutsRouter.get("/payouts", requireAuth, requireRole("Admin"), async (req, res
     );
     const driverId = req.query.driverId ? String(req.query.driverId) : undefined;
 
+    const where: Prisma.PayoutWhereInput = {
+      ...(status && { status }),
+      ...(driverId && { driverId }),
+      ...(q
+        ? {
+            OR: [
+              { transactionId: containsInsensitive(q) },
+              { driver: { firstName: containsInsensitive(q) } },
+              { driver: { lastName: containsInsensitive(q) } },
+              { driver: { email: containsInsensitive(q) } },
+            ],
+          }
+        : {}),
+    };
+
     const [payouts, total] = await Promise.all([
       prisma.payout.findMany({
-        where: {
-          ...(status && { status }),
-          ...(driverId && { driverId }),
-        },
+        where,
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -307,12 +322,7 @@ payoutsRouter.get("/payouts", requireAuth, requireRole("Admin"), async (req, res
           driver: { select: { id: true, firstName: true, lastName: true, email: true } },
         },
       }),
-      prisma.payout.count({
-        where: {
-          ...(status && { status }),
-          ...(driverId && { driverId }),
-        },
-      }),
+      prisma.payout.count({ where }),
     ]);
 
     res.json(paginate(payouts, total, page, pageSize));

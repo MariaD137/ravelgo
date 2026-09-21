@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
-import { requireAuth, requireRole } from "../middleware/auth";
-import { requireAdminPermission } from "../lib/admin-permissions";
+import { requireAuth } from "../middleware/auth";
+import { requireActiveAdmin, requireAdminPermission } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
 
 export const cashRouter = Router();
@@ -31,14 +31,26 @@ const ROUNDING_TOLERANCE = 0.01;
  * than silently netted, since it usually means a remittance was recorded
  * against the wrong driver or a ledger entry is missing.
  */
-cashRouter.get("/admin/cash-reconciliation", requireAuth, requireRole("Admin"), async (_req, res) => {
-  const [cashLedgerRows, remittances] = await Promise.all([
-    prisma.financialTransaction.findMany({
-      where: { paymentMethod: "CASH", type: { in: ["RIDE_FARE", "DELIVERY_FARE"] }, status: "SETTLED" },
-      take: 5000,
-    }),
-    prisma.cashRemittance.findMany({ take: 5000 }),
+const CASH_ROW_CAP = 5000;
+
+cashRouter.get("/admin/cash-reconciliation", requireAuth, requireActiveAdmin, async (_req, res) => {
+  const ledgerWhere = {
+    paymentMethod: "CASH" as const,
+    type: { in: ["RIDE_FARE" as const, "DELIVERY_FARE" as const] },
+    status: "SETTLED" as const,
+  };
+
+  // Counted separately from the capped fetch below so a truncated result is
+  // never presented to an admin as the complete ledger — a financial screen
+  // must say so explicitly rather than silently under-reporting what a
+  // driver owes.
+  const [cashLedgerRows, remittances, ledgerTotalCount, remittanceTotalCount] = await Promise.all([
+    prisma.financialTransaction.findMany({ where: ledgerWhere, take: CASH_ROW_CAP }),
+    prisma.cashRemittance.findMany({ take: CASH_ROW_CAP }),
+    prisma.financialTransaction.count({ where: ledgerWhere }),
+    prisma.cashRemittance.count(),
   ]);
+  const truncated = ledgerTotalCount > CASH_ROW_CAP || remittanceTotalCount > CASH_ROW_CAP;
 
   const expectedByDriver = new Map<string, { total: number; count: number }>();
   for (const row of cashLedgerRows) {
@@ -80,7 +92,16 @@ cashRouter.get("/admin/cash-reconciliation", requireAuth, requireRole("Admin"), 
   });
 
   rows.sort((a, b) => b.outstandingCash - a.outstandingCash);
-  res.json(rows);
+  res.json({
+    rows,
+    // True only when the underlying ledger/remittance history has grown
+    // past what this endpoint fetches in one call — the per-driver figures
+    // above would then be computed from an incomplete slice of history, so
+    // the Admin App must say so rather than presenting them as complete.
+    truncated,
+    ledgerRowCount: ledgerTotalCount,
+    remittanceRowCount: remittanceTotalCount,
+  });
 });
 
 const remittanceSchema = z.object({

@@ -42,6 +42,35 @@ test("GET /api/vehicles lets an admin see every driver's vehicles with owner inf
   assert.ok(res.body.data[0].driver.user.email);
 });
 
+test("GET /api/vehicles?q= searches server-side by plate/brand/model or the owning driver's name/email", async () => {
+  const driverA = await createDriver("driver-search-a");
+  const driverB = await createDriver("driver-search-b");
+  await prisma.user.update({
+    where: { cognitoSub: "driver-search-a" },
+    data: { firstName: "Search", lastName: "TargetOwner" },
+  });
+  await prisma.vehicle.create({
+    data: { driverId: driverA.id, brand: "Toyota", model: "Camry", colour: "Silver", plateNumber: "SCH-001", year: "2021" },
+  });
+  await prisma.vehicle.create({
+    data: { driverId: driverB.id, brand: "Honda", model: "Accord", colour: "Black", plateNumber: "SCH-002", year: "2022" },
+  });
+
+  const token = mockAuthAs({ sub: "admin-search-vehicles", groups: ["Admin"] });
+
+  const byPlate = await request(app).get("/api/vehicles").query({ q: "sch-002" }).set("Authorization", `Bearer ${token}`);
+  assert.equal(byPlate.body.total, 1);
+  assert.equal(byPlate.body.data[0].plateNumber, "SCH-002");
+
+  const byModel = await request(app).get("/api/vehicles").query({ q: "camry" }).set("Authorization", `Bearer ${token}`);
+  assert.equal(byModel.body.total, 1);
+  assert.equal(byModel.body.data[0].plateNumber, "SCH-001");
+
+  const byOwner = await request(app).get("/api/vehicles").query({ q: "TargetOwner" }).set("Authorization", `Bearer ${token}`);
+  assert.equal(byOwner.body.total, 1);
+  assert.equal(byOwner.body.data[0].plateNumber, "SCH-001");
+});
+
 test("GET /api/vehicles rejects a non-admin caller", async () => {
   await createDriver("driver-sub-admin-3");
   const token = mockAuthAs({ sub: "driver-sub-admin-3", groups: ["Driver"] });
@@ -281,4 +310,114 @@ test("DELETE /api/vehicles/:id rejects deleting a vehicle that's listed for rent
 
   const stillThere = await prisma.vehicle.findUnique({ where: { id: vehicle.id } });
   assert.ok(stillThere);
+});
+
+test("a new vehicle starts PENDING approval and GET /api/vehicles/me reports it", async () => {
+  await createDriver("driver-sub-approval-1");
+  const token = mockAuthAs({ sub: "driver-sub-approval-1", groups: ["Driver"] });
+
+  const created = await request(app)
+    .post("/api/vehicles")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ brand: "Toyota", model: "Camry", colour: "Silver", plateNumber: "APR-001", year: "2022" });
+  assert.equal(created.body.approvalStatus, "PENDING");
+
+  const mine = await request(app).get("/api/vehicles/me").set("Authorization", `Bearer ${token}`);
+  assert.equal(mine.body[0].approvalStatus, "PENDING");
+  assert.equal(mine.body[0].rejectionReason, null);
+});
+
+test("PATCH /api/admin/vehicles/:id/approval approves a vehicle, audits it, and notifies the driver", async () => {
+  const driver = await createDriver("driver-sub-approval-2");
+  const vehicle = await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Honda", model: "Accord", colour: "Black", plateNumber: "APR-002", year: "2021" },
+  });
+  const token = mockAuthAs({ sub: "admin-sub-approval-1", groups: ["Admin"] });
+
+  const res = await request(app)
+    .patch(`/api/admin/vehicles/${vehicle.id}/approval`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ approvalStatus: "APPROVED" });
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.approvalStatus, "APPROVED");
+  assert.equal(res.body.rejectionReason, null);
+
+  const audit = await prisma.auditLog.findFirst({ where: { action: "VEHICLE_APPROVAL_STATUS_CHANGED", entityId: vehicle.id } });
+  assert.ok(audit);
+
+  const notifications = await prisma.notification.findMany({ where: { userId: driver.userId } });
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].type, "VEHICLE_APPROVAL_STATUS_CHANGED");
+});
+
+test("PATCH /api/admin/vehicles/:id/approval requires a reason to reject, and stores/clears it correctly", async () => {
+  const driver = await createDriver("driver-sub-approval-3");
+  const vehicle = await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Kia", model: "Rio", colour: "Blue", plateNumber: "APR-003", year: "2019" },
+  });
+  const token = mockAuthAs({ sub: "admin-sub-approval-2", groups: ["Admin"] });
+
+  const missingReason = await request(app)
+    .patch(`/api/admin/vehicles/${vehicle.id}/approval`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ approvalStatus: "REJECTED" });
+  assert.equal(missingReason.status, 400);
+
+  const rejected = await request(app)
+    .patch(`/api/admin/vehicles/${vehicle.id}/approval`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ approvalStatus: "REJECTED", rejectionReason: "Plate photo is unreadable" });
+  assert.equal(rejected.status, 200);
+  assert.equal(rejected.body.approvalStatus, "REJECTED");
+  assert.equal(rejected.body.rejectionReason, "Plate photo is unreadable");
+
+  // Approving afterwards clears the stale reason (same convention as
+  // DriverDocument.rejectionReason).
+  const approved = await request(app)
+    .patch(`/api/admin/vehicles/${vehicle.id}/approval`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ approvalStatus: "APPROVED" });
+  assert.equal(approved.body.approvalStatus, "APPROVED");
+  assert.equal(approved.body.rejectionReason, null);
+});
+
+test("PATCH /api/admin/vehicles/:id/approval rejects a non-admin caller", async () => {
+  const driver = await createDriver("driver-sub-approval-4");
+  const vehicle = await prisma.vehicle.create({
+    data: { driverId: driver.id, brand: "Ford", model: "Focus", colour: "White", plateNumber: "APR-004", year: "2018" },
+  });
+  const token = mockAuthAs({ sub: "driver-sub-approval-4", groups: ["Driver"] });
+
+  const res = await request(app)
+    .patch(`/api/admin/vehicles/${vehicle.id}/approval`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({ approvalStatus: "APPROVED" });
+  assert.equal(res.status, 403);
+});
+
+test("GET /api/drivers/:id includes the driver's vehicles, serialized (no raw photoKeys) and with approval status", async () => {
+  const driver = await createDriver("driver-sub-detail-1");
+  await prisma.vehicle.create({
+    data: {
+      driverId: driver.id,
+      brand: "Toyota",
+      model: "Corolla",
+      colour: "Red",
+      plateNumber: "DET-001",
+      year: "2020",
+      photoKeys: ["driver-sub-detail-1/photo.jpg"],
+    },
+  });
+  const token = mockAuthAs({ sub: "admin-sub-detail-1", groups: ["Admin"] });
+
+  const res = await request(app).get(`/api/drivers/${driver.id}`).set("Authorization", `Bearer ${token}`);
+
+  assert.equal(res.status, 200);
+  assert.equal(res.body.vehicles.length, 1);
+  const v = res.body.vehicles[0];
+  assert.equal(v.plateNumber, "DET-001");
+  assert.equal(v.approvalStatus, "PENDING");
+  assert.ok(!("photoKeys" in v), "raw S3 keys must never be returned to the client");
+  assert.ok(Array.isArray(v.photoUrls));
 });

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
-import { requireAdminPermission } from "../lib/admin-permissions";
+import { requireActiveAdmin, requireAdminPermission } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
 import { paginate, paginationQuerySchema } from "../lib/pagination";
 import { SETTINGS_ID } from "../lib/payment-rules";
@@ -67,7 +67,7 @@ const adminReferralQuerySchema = paginationQuerySchema.extend({
   status: z.enum(["PENDING", "REWARDED"]).optional(),
 });
 
-referralRouter.get("/admin/referrals", requireAuth, requireRole("Admin"), async (req, res) => {
+referralRouter.get("/admin/referrals", requireAuth, requireActiveAdmin, async (req, res) => {
   const parsed = adminReferralQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { page, pageSize, status } = parsed.data;

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { requireActiveAdmin } from "../lib/admin-permissions";
 
 export const loyaltyRouter = Router();
 
@@ -19,7 +20,7 @@ const createTierSchema = z.object({
 });
 
 // Admin: define a tier
-loyaltyRouter.post("/loyalty-tiers", requireAuth, requireRole("Admin"), async (req, res) => {
+loyaltyRouter.post("/loyalty-tiers", requireAuth, requireActiveAdmin, async (req, res) => {
   const parsed = createTierSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -59,7 +60,7 @@ const createPromotionSchema = z.object({
 });
 
 // Admin: create a promotion code
-loyaltyRouter.post("/promotions", requireAuth, requireRole("Admin"), async (req, res) => {
+loyaltyRouter.post("/promotions", requireAuth, requireActiveAdmin, async (req, res) => {
   const parsed = createPromotionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 

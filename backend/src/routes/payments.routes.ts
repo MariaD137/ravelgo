@@ -3,10 +3,11 @@ import { z } from "zod";
 import type { PaymentMethod, PaymentStatus } from "@prisma/client";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
-import { requireAdminPermission } from "../lib/admin-permissions";
+import { requireActiveAdmin, requireAdminPermission } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
 import { notifyUser } from "../lib/notifications";
-import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { containsInsensitive, paginate, paginationQuerySchema, searchQuerySchema } from "../lib/pagination";
+import type { Prisma } from "@prisma/client";
 import { sensitiveLimiter } from "../middleware/rate-limit";
 import { paystackClient } from "../billing/paystack";
 import { moneyAmountSchema, toCents } from "../lib/money";
@@ -304,20 +305,33 @@ paymentsRouter.get("/payments/mine", requireAuth, async (req, res) => {
   res.json(payments);
 });
 
-// Admin: view all payments
-paymentsRouter.get("/payments", requireAuth, requireRole("Admin"), async (req, res) => {
-  const parsed = paginationQuerySchema.safeParse(req.query);
+// Admin: view all payments, optionally narrowed by a ?q= search against the
+// transaction reference or the paying user's name/email.
+paymentsRouter.get("/payments", requireAuth, requireActiveAdmin, async (req, res) => {
+  const parsed = paginationQuerySchema.merge(searchQuerySchema).safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { page, pageSize } = parsed.data;
+  const { page, pageSize, q } = parsed.data;
+  const where: Prisma.PaymentWhereInput = q
+    ? {
+        OR: [
+          { providerReference: containsInsensitive(q) },
+          { id: containsInsensitive(q) },
+          { user: { firstName: containsInsensitive(q) } },
+          { user: { lastName: containsInsensitive(q) } },
+          { user: { email: containsInsensitive(q) } },
+        ],
+      }
+    : {};
 
   const [payments, total, byMethod] = await Promise.all([
     prisma.payment.findMany({
+      where,
       include: { user: true, trip: true },
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.payment.count(),
+    prisma.payment.count({ where }),
     // All-time SUCCEEDED revenue per method, computed here over the whole
     // table. The Admin App's Payments overview used to sum whichever rows
     // fell in its single 100-row fetch, which silently under-reported the

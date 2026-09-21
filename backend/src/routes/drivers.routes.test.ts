@@ -43,6 +43,24 @@ test("POST /api/drivers/apply lets any authenticated user apply and grants the D
   assert.ok(driver);
 });
 
+test("POST /api/drivers/apply records the audit entry before responding (awaited, not fire-and-forget)", async () => {
+  const token = mockAuthAs({ sub: "applicant-audit-1", groups: ["Rider"] });
+  mockCognitoAddToGroup();
+
+  const res = await request(app)
+    .post("/api/drivers/apply")
+    .set("Authorization", `Bearer ${token}`)
+    .send({ firstName: "Audit", lastName: "Test", email: "audit-test@example.com" });
+  assert.equal(res.status, 201);
+
+  // No delay/retry here on purpose — this is the same guarantee the other
+  // awaited recordAudit call sites in this file already rely on: the row
+  // must already exist the instant the response is observed, not "usually"
+  // exist a moment later.
+  const audit = await prisma.auditLog.findFirst({ where: { action: "DRIVER_APPLICATION_SUBMITTED", entityId: res.body.id } });
+  assert.ok(audit);
+});
+
 test("POST /api/drivers/apply requires authentication", async () => {
   const res = await request(app)
     .post("/api/drivers/apply")
@@ -425,6 +443,34 @@ test("GET /api/drivers?status= filters server-side and rejects an unknown status
 
   const bad = await request(app).get("/api/drivers?status=APPROVED").set("Authorization", `Bearer ${adminToken}`);
   assert.equal(bad.status, 400);
+});
+
+test("GET /api/drivers?q= searches server-side by name/email/phone (nested through User) and by vehicle plate number", async () => {
+  const userA = await prisma.user.create({
+    data: { cognitoSub: "search-driver-a", role: "DRIVER", firstName: "Tunde", lastName: "Bakare", email: "tunde@example.com" },
+  });
+  const driverA = await prisma.driver.create({ data: { userId: userA.id } });
+  await prisma.vehicle.create({
+    data: { driverId: driverA.id, brand: "Toyota", model: "Hiace", colour: "White", plateNumber: "SRC-001", year: "2019" },
+  });
+
+  const userB = await prisma.user.create({
+    data: { cognitoSub: "search-driver-b", role: "DRIVER", firstName: "Kemi", lastName: "Alabi", email: "kemi@example.com" },
+  });
+  await prisma.driver.create({ data: { userId: userB.id } });
+
+  const adminToken = mockAuthAs({ sub: "search-driver-admin", groups: ["Admin"] });
+
+  const byName = await request(app).get("/api/drivers").query({ q: "bakare" }).set("Authorization", `Bearer ${adminToken}`);
+  assert.equal(byName.body.total, 1);
+  assert.equal(byName.body.data[0].user.email, "tunde@example.com");
+
+  const byPlate = await request(app).get("/api/drivers").query({ q: "SRC-001" }).set("Authorization", `Bearer ${adminToken}`);
+  assert.equal(byPlate.body.total, 1);
+  assert.equal(byPlate.body.data[0].user.email, "tunde@example.com");
+
+  const noMatch = await request(app).get("/api/drivers").query({ q: "no-such-plate" }).set("Authorization", `Bearer ${adminToken}`);
+  assert.equal(noMatch.body.total, 0);
 });
 
 test("PATCH /api/drivers/:id/status rejects a Support Agent admin preset", async () => {

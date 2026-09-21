@@ -7,6 +7,20 @@ export const paginationQuerySchema = z.object({
 
 export type PaginationQuery = z.infer<typeof paginationQuerySchema>;
 
+// Shared free-text search param (?q=...) every admin list endpoint that
+// supports search extends onto paginationQuerySchema, the same way each
+// already extends it with its own status filter. Trimmed and length-capped
+// so a stray very long value can't build an absurd query; empty/whitespace
+// collapses to undefined (no filter) rather than matching everything.
+export const searchQuerySchema = z.object({
+  q: z
+    .string()
+    .trim()
+    .max(200)
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
+});
+
 export interface Paginated<T> {
   data: T[];
   page: number;
@@ -46,4 +60,16 @@ export function csvList(value: unknown): unknown {
       .filter((v) => v.length > 0);
   }
   return value;
+}
+
+/**
+ * Builds a case-insensitive Prisma `contains` filter for a single field, or
+ * undefined when there's no search term — spread that into a where clause's
+ * OR array. Kept to one field at a time (rather than returning the whole OR
+ * array) since each route's set of searchable fields — and how deeply
+ * nested they are behind a relation — differs enough that composing the OR
+ * array itself reads more clearly written out at each call site.
+ */
+export function containsInsensitive(q: string | undefined) {
+  return q ? { contains: q, mode: "insensitive" as const } : undefined;
 }

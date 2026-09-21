@@ -2,10 +2,12 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
-import { requireAdminPermission } from "../lib/admin-permissions";
+import { requireActiveAdmin, requireAdminPermission } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
-import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { notifyUser } from "../lib/notifications";
+import { containsInsensitive, paginate, paginationQuerySchema, searchQuerySchema } from "../lib/pagination";
 import { photoUrlFor, serializeVehicle } from "../lib/vehicle-view";
+import type { Prisma } from "@prisma/client";
 
 export const vehiclesRouter = Router();
 
@@ -17,13 +19,26 @@ async function findOwnDriver(cognitoSub: string) {
 // whether it's currently listed for rental. Registered before "/vehicles/me"
 // would matter only if it were also literal "/vehicles" - Express matches
 // the two paths independently either way.
-vehiclesRouter.get("/vehicles", requireAuth, requireRole("Admin"), async (req, res) => {
-  const parsed = paginationQuerySchema.safeParse(req.query);
+vehiclesRouter.get("/vehicles", requireAuth, requireActiveAdmin, async (req, res) => {
+  const parsed = paginationQuerySchema.merge(searchQuerySchema).safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { page, pageSize } = parsed.data;
+  const { page, pageSize, q } = parsed.data;
+  const where: Prisma.VehicleWhereInput = q
+    ? {
+        OR: [
+          { plateNumber: containsInsensitive(q) },
+          { brand: containsInsensitive(q) },
+          { model: containsInsensitive(q) },
+          { driver: { user: { firstName: containsInsensitive(q) } } },
+          { driver: { user: { lastName: containsInsensitive(q) } } },
+          { driver: { user: { email: containsInsensitive(q) } } },
+        ],
+      }
+    : {};
 
   const [vehicles, total] = await Promise.all([
     prisma.vehicle.findMany({
+      where,
       include: {
         driver: { include: { user: { select: { firstName: true, lastName: true, email: true } } } },
         _count: { select: { rentalListings: true } },
@@ -32,7 +47,7 @@ vehiclesRouter.get("/vehicles", requireAuth, requireRole("Admin"), async (req, r
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.vehicle.count(),
+    prisma.vehicle.count({ where }),
   ]);
   // Admin-only view: keeps the raw driver.user include (email is genuinely
   // useful here) but still runs photoKeys through the same URL builder as
@@ -77,6 +92,77 @@ vehiclesRouter.patch("/admin/vehicles/:id/class", requireAuth, requireAdminPermi
   });
   res.json(serializeVehicle(updated));
 });
+
+const vehicleDecisionSchema = z
+  .object({
+    approvalStatus: z.enum(["APPROVED", "REJECTED"]),
+    // Required (and validated non-empty after trimming) only when rejecting —
+    // enforced below, same pattern as documents.routes.ts's reviewSchema and
+    // rentals.routes.ts's decisionSchema.
+    rejectionReason: z.string().trim().max(1000).optional(),
+  })
+  .refine((data) => data.approvalStatus !== "REJECTED" || !!data.rejectionReason, {
+    message: "A rejection reason is required.",
+    path: ["rejectionReason"],
+  });
+
+// Admin: approve/reject a specific vehicle's safety/eligibility review —
+// independent of Driver.status (a driver can be ACTIVE while a vehicle they
+// just added is still PENDING) and independent of vehicleClass (which
+// category it serves, not whether it's cleared to serve any). Re-approving
+// an already-approved vehicle, or re-rejecting an already-rejected one, is
+// allowed (idempotent) but always re-records an audit entry and re-notifies
+// the driver, since a deliberate re-review (new photos, a fixed plate) is a
+// real event each time, unlike drivers.routes.ts's driver-status endpoint
+// which treats a same-status PATCH as a no-op — a vehicle has no equivalent
+// "already told you" risk since nothing else reads this field yet (see the
+// route's own doc comment on why this doesn't gate matching/rentals).
+vehiclesRouter.patch(
+  "/admin/vehicles/:id/approval",
+  requireAuth,
+  requireAdminPermission("drivers:write"),
+  async (req, res) => {
+    const parsed = vehicleDecisionSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+    const existing = await prisma.vehicle.findUnique({ where: { id: req.params.id } });
+    if (!existing) return res.status(404).json({ error: "Vehicle not found" });
+
+    const vehicle = await prisma.vehicle.update({
+      where: { id: req.params.id },
+      data: {
+        approvalStatus: parsed.data.approvalStatus,
+        // Cleared back to null on approval so a reason never lingers on a
+        // vehicle that isn't actually rejected.
+        rejectionReason: parsed.data.approvalStatus === "REJECTED" ? parsed.data.rejectionReason : null,
+      },
+    });
+    await recordAudit({
+      actorSub: req.user!.sub,
+      action: "VEHICLE_APPROVAL_STATUS_CHANGED",
+      entityType: "Vehicle",
+      entityId: vehicle.id,
+      metadata: {
+        from: existing.approvalStatus,
+        to: parsed.data.approvalStatus,
+        rejectionReason: parsed.data.rejectionReason,
+      },
+    });
+    const driver = await prisma.driver.findUnique({ where: { id: vehicle.driverId } });
+    if (driver) {
+      await notifyUser(
+        driver.userId,
+        "VEHICLE_APPROVAL_STATUS_CHANGED",
+        parsed.data.approvalStatus === "APPROVED" ? "Vehicle approved" : "Vehicle rejected",
+        parsed.data.approvalStatus === "APPROVED"
+          ? `Your vehicle (${vehicle.brand} ${vehicle.model}, ${vehicle.plateNumber}) has been approved.`
+          : `Your vehicle (${vehicle.brand} ${vehicle.model}, ${vehicle.plateNumber}) was rejected: ${parsed.data.rejectionReason}`,
+        { type: "VEHICLE", id: vehicle.id },
+      );
+    }
+    res.json(serializeVehicle(vehicle));
+  },
+);
 
 // Driver: list my own vehicles
 vehiclesRouter.get("/vehicles/me", requireAuth, requireRole("Driver"), async (req, res) => {

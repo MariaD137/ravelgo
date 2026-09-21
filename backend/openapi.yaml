@@ -2206,6 +2206,21 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /car-paddy/{id}/document-url:
+    get:
+      tags: [Car Paddy]
+      summary: Signed S3 URL for a Car Paddy request's supporting document (Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Short-lived signed URL
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /trips/mine:
     get:
       tags: [Trips]
@@ -2456,6 +2471,32 @@ paths:
               required: [vehicleClass]
               properties:
                 vehicleClass: { type: string }
+      responses:
+        "200":
+          description: Updated vehicle
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /admin/vehicles/{id}/approval:
+    patch:
+      tags: [Vehicles]
+      summary: Approve/reject a vehicle's safety/eligibility review (Admin, drivers:write)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [approvalStatus]
+              properties:
+                approvalStatus: { type: string, enum: [APPROVED, REJECTED] }
+                rejectionReason: { type: string, description: "Required when approvalStatus is REJECTED" }
       responses:
         "200":
           description: Updated vehicle

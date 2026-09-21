@@ -33,6 +33,8 @@ interface VehicleRel {
   listedForRental: boolean;
   vehicleClass?: string | null;
   photoKeys?: string[] | null;
+  approvalStatus?: string | null;
+  rejectionReason?: string | null;
   createdAt: Date;
 }
 interface RentalBookingRel {
@@ -55,6 +57,7 @@ interface RentalListingRel {
   lat?: number | null;
   lng?: number | null;
   status: string;
+  rejectionReason?: string | null;
   createdAt: Date;
   vehicle?: VehicleRel | null;
   driver?: DriverRel | null;
@@ -105,6 +108,11 @@ export function serializeVehicle(vehicle: VehicleRel) {
     vehicleClass: vehicle.vehicleClass ?? null,
     photoUrl: photoUrls[0] ?? null,
     photoUrls,
+    // Never a literal null/undefined string, matching every other status
+    // field in this codebase — a vehicle predating this column always reads
+    // "PENDING" via the column's own DEFAULT, never a blank value here.
+    approvalStatus: vehicle.approvalStatus ?? "PENDING",
+    rejectionReason: vehicle.rejectionReason ?? null,
     createdAt: vehicle.createdAt,
   };
 }
@@ -119,6 +127,7 @@ export function serializeRentalListing(listing: RentalListingRel) {
     lat: listing.lat ?? null,
     lng: listing.lng ?? null,
     status: listing.status,
+    rejectionReason: listing.rejectionReason ?? null,
     createdAt: listing.createdAt,
     vehicle: listing.vehicle ? serializeVehicle(listing.vehicle) : undefined,
     driver: listing.driver
