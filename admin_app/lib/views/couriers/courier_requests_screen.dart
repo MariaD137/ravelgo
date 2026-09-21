@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/admin_search_field.dart';
 import 'package:ravelgo_admin/widgets/pagination_bar.dart';
 
 import 'package:ravelgo_admin/utils/date_utils.dart';
@@ -28,6 +29,7 @@ class _CourierRequestsScreenState extends State<CourierRequestsScreen> {
   int _total = 0;
   List<CourierRequest> _items = const [];
   Set<String> _statusFilter = {};
+  String? _q;
 
   static const _statuses = [
     'REQUESTED',
@@ -52,8 +54,9 @@ class _CourierRequestsScreenState extends State<CourierRequestsScreen> {
       _error = null;
     });
     try {
-      // Status chips are applied server-side (GET /api/courier-requests?status=...).
-      final result = await AdminApi.courierRequests(statuses: _statusFilter, page: _page);
+      // Status chips and search are applied server-side (GET
+      // /api/courier-requests?status=...&q=...).
+      final result = await AdminApi.courierRequests(statuses: _statusFilter, q: _q, page: _page);
       if (!mounted) return;
       if (result.isPastEnd) return await _load(page: result.totalPages);
       setState(() {
@@ -112,20 +115,32 @@ class _CourierRequestsScreenState extends State<CourierRequestsScreen> {
     _load(page: 1); // a changed filter always restarts from the first page
   }
 
+  void _onSearchChanged(String? q) {
+    _q = q;
+    _load(page: 1);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Courier Requests")),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : (_error != null
-                ? _err()
-                : Column(
-                    children: [
-                      _filterBar(),
-                      Expanded(child: _list()),
-                    ],
-                  )),
+      body: Column(
+        children: [
+          AdminSearchField(hintText: 'Search sender, driver or recipient…', onChanged: _onSearchChanged),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : (_error != null
+                      ? _err()
+                      : Column(
+                          children: [
+                            _filterBar(),
+                            Expanded(child: _list()),
+                          ],
+                        )),
+          ),
+        ],
+      ),
     );
   }
 
@@ -185,14 +200,10 @@ class _CourierRequestsScreenState extends State<CourierRequestsScreen> {
   Widget _listView() {
     final items = _items;
     if (items.isEmpty) {
-      return Center(
-        child: Text(
-          _statusFilter.isEmpty
-              ? "No courier requests."
-              : "No requests match this filter.",
-          style: const TextStyle(color: AppColors.textSecondary),
-        ),
-      );
+      final message = _q != null
+          ? "No requests match \"$_q\"."
+          : (_statusFilter.isEmpty ? "No courier requests." : "No requests match this filter.");
+      return Center(child: Text(message, style: const TextStyle(color: AppColors.textSecondary)));
     }
     return RefreshIndicator(
       onRefresh: _load,

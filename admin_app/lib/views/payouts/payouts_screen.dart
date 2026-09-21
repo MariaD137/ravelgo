@@ -3,6 +3,7 @@ import 'package:ravelgo_admin/config/currency.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/admin_search_field.dart';
 import 'package:ravelgo_admin/widgets/pagination_bar.dart';
 
 import 'package:ravelgo_admin/utils/date_utils.dart';
@@ -28,6 +29,7 @@ class _PayoutsScreenState extends State<PayoutsScreen> {
   int _total = 0;
   List<AdminPayout> _payouts = const [];
   String _filter = 'ALL';
+  String? _q;
 
   @override
   void initState() {
@@ -42,7 +44,7 @@ class _PayoutsScreenState extends State<PayoutsScreen> {
       _error = null;
     });
     try {
-      final result = await AdminApi.payouts(status: _filter == 'ALL' ? null : _filter, page: _page);
+      final result = await AdminApi.payouts(status: _filter == 'ALL' ? null : _filter, q: _q, page: _page);
       if (!mounted) return;
       if (result.isPastEnd) return await _load(page: result.totalPages);
       setState(() {
@@ -203,6 +205,13 @@ class _PayoutsScreenState extends State<PayoutsScreen> {
       ),
       body: Column(
         children: [
+          AdminSearchField(
+            hintText: 'Search driver name, email or reference…',
+            onChanged: (q) {
+              _q = q;
+              _load(page: 1);
+            },
+          ),
           SizedBox(
             height: 48,
             child: ListView.separated(
@@ -262,7 +271,12 @@ class _PayoutsScreenState extends State<PayoutsScreen> {
 
   Widget _listView() {
     if (_payouts.isEmpty) {
-      return const Center(child: Text("No payouts yet.", style: TextStyle(color: AppColors.textSecondary)));
+      return Center(
+        child: Text(
+          _q == null ? "No payouts yet." : "No payouts match \"$_q\".",
+          style: const TextStyle(color: AppColors.textSecondary),
+        ),
+      );
     }
     return RefreshIndicator(
       onRefresh: _load,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/admin_search_field.dart';
 import 'package:ravelgo_admin/widgets/pagination_bar.dart';
 
 import 'package:ravelgo_admin/views/drivers/driver_detail_screen.dart';
@@ -33,6 +34,7 @@ class _DriverListScreenState extends State<DriverListScreen> {
   List<AdminDriver> _drivers = const [];
   String? _statusFilter;
   bool _onlineOnly = false;
+  String? _q;
 
   static const _statuses = ['PENDING_REVIEW', 'ACTIVE', 'SUSPENDED'];
 
@@ -51,9 +53,10 @@ class _DriverListScreenState extends State<DriverListScreen> {
       _error = null;
     });
     try {
-      // The status chip is applied server-side so this list is complete for
-      // that status, not just the first page of all drivers.
-      final result = await AdminApi.drivers(status: _statusFilter, page: _page);
+      // The status chip and search term are both applied server-side so this
+      // list is complete for that filter, not just the first page of all
+      // drivers.
+      final result = await AdminApi.drivers(status: _statusFilter, q: _q, page: _page);
       if (!mounted) return;
       if (result.isPastEnd) return await _load(page: result.totalPages);
       setState(() {
@@ -95,18 +98,30 @@ class _DriverListScreenState extends State<DriverListScreen> {
     _load(page: 1); // a changed filter always restarts from the first page
   }
 
+  void _onSearchChanged(String? q) {
+    _q = q;
+    _load(page: 1);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final Widget body = _loading
-        ? const Center(child: CircularProgressIndicator())
-        : (_error != null
-              ? _errorView()
-              : Column(
-                  children: [
-                    _filterBar(),
-                    Expanded(child: _list()),
-                  ],
-                ));
+    final Widget body = Column(
+      children: [
+        AdminSearchField(hintText: 'Search name, email, phone or plate…', onChanged: _onSearchChanged),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : (_error != null
+                    ? _errorView()
+                    : Column(
+                        children: [
+                          _filterBar(),
+                          Expanded(child: _list()),
+                        ],
+                      )),
+        ),
+      ],
+    );
     if (widget.embedded) return body;
     return Scaffold(
       appBar: AppBar(title: const Text("Drivers")),
@@ -182,13 +197,11 @@ class _DriverListScreenState extends State<DriverListScreen> {
   Widget _listView() {
     final drivers = _filtered;
     if (drivers.isEmpty) {
+      final message = _drivers.isEmpty
+          ? (_q == null ? "No drivers yet." : "No drivers match \"$_q\".")
+          : "No drivers match this filter.";
       return Center(
-        child: Text(
-          _drivers.isEmpty
-              ? "No drivers yet."
-              : "No drivers match this filter.",
-          style: const TextStyle(color: AppColors.textSecondary),
-        ),
+        child: Text(message, style: const TextStyle(color: AppColors.textSecondary)),
       );
     }
     return RefreshIndicator(

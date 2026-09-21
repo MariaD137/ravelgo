@@ -3,6 +3,7 @@ import 'package:ravelgo_admin/config/currency.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/admin_search_field.dart';
 import 'package:ravelgo_admin/widgets/pagination_bar.dart';
 
 /// Financial operations: revenue by payment method and per-driver physical
@@ -64,6 +65,7 @@ class _OverviewTabState extends State<_OverviewTab> {
   double _cash = 0;
   double _card = 0;
   double _wallet = 0;
+  String? _q;
 
   @override
   void initState() {
@@ -78,7 +80,7 @@ class _OverviewTabState extends State<_OverviewTab> {
       _error = null;
     });
     try {
-      final result = await AdminApi.payments(page: _page);
+      final result = await AdminApi.payments(q: _q, page: _page);
       if (!mounted) return;
       if (result.page.isPastEnd) return await _load(page: result.page.totalPages);
       setState(() {
@@ -115,8 +117,22 @@ class _OverviewTabState extends State<_OverviewTab> {
     _ => AppColors.textMuted,
   };
 
+  void _onSearchChanged(String? q) {
+    _q = q;
+    _load(page: 1);
+  }
+
   @override
   Widget build(BuildContext context) {
+    return Column(
+      children: [
+        AdminSearchField(hintText: 'Search rider, driver or trip id…', onChanged: _onSearchChanged),
+        Expanded(child: _body()),
+      ],
+    );
+  }
+
+  Widget _body() {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
       return Center(
@@ -191,12 +207,12 @@ class _OverviewTabState extends State<_OverviewTab> {
                 ),
                 const SizedBox(height: 10),
                 if (_payments.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
                     child: Center(
                       child: Text(
-                        'No payments yet.',
-                        style: TextStyle(color: AppColors.textSecondary),
+                        _q == null ? 'No payments yet.' : 'No payments match "$_q".',
+                        style: const TextStyle(color: AppColors.textSecondary),
                       ),
                     ),
                   )
@@ -315,6 +331,10 @@ class _ReconciliationTabState extends State<_ReconciliationTab> {
   bool _busy = false;
   String? _error;
   List<CashReconciliationRow> _rows = const [];
+  // True only when the ledger/remittance history has grown past what the
+  // backend fetches in one call — the figures below are then computed from
+  // an incomplete slice of history, not the complete ledger.
+  bool _truncated = false;
 
   @override
   void initState() {
@@ -328,10 +348,11 @@ class _ReconciliationTabState extends State<_ReconciliationTab> {
       _error = null;
     });
     try {
-      final rows = await AdminApi.cashReconciliation();
+      final result = await AdminApi.cashReconciliation();
       if (!mounted) return;
       setState(() {
-        _rows = rows;
+        _rows = result.rows;
+        _truncated = result.truncated;
         _loading = false;
       });
     } catch (e) {
@@ -463,14 +484,21 @@ class _ReconciliationTabState extends State<_ReconciliationTab> {
       );
     }
     if (_rows.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'No driver has collected cash yet.',
-            style: TextStyle(color: AppColors.textSecondary),
+      return Column(
+        children: [
+          if (_truncated) _truncatedBanner(),
+          const Expanded(
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'No driver has collected cash yet.',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+              ),
+            ),
           ),
-        ),
+        ],
       );
     }
     return RefreshIndicator(
@@ -478,9 +506,13 @@ class _ReconciliationTabState extends State<_ReconciliationTab> {
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
         physics: const AlwaysScrollableScrollPhysics(),
-        itemCount: _rows.length,
+        itemCount: _rows.length + (_truncated ? 1 : 0),
         separatorBuilder: (_, __) => const SizedBox(height: 10),
         itemBuilder: (context, i) {
+          if (_truncated) {
+            if (i == 0) return _truncatedBanner();
+            i -= 1;
+          }
           final r = _rows[i];
           return Container(
             padding: const EdgeInsets.all(14),
@@ -555,5 +587,34 @@ class _ReconciliationTabState extends State<_ReconciliationTab> {
         style: TextStyle(fontWeight: FontWeight.w700, color: color),
       ),
     ],
+  );
+
+  // The backend caps how many ledger/remittance rows it fetches per request
+  // (see cash.routes.ts) — this is never silent: when the real history has
+  // grown past that cap, the per-driver figures above are computed from an
+  // incomplete slice of it, and this screen must say so rather than let an
+  // admin mistake a partial reconciliation for the complete one.
+  Widget _truncatedBanner() => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 18, color: AppColors.warning),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'This reconciliation covers only the most recent ledger/remittance history — the real history has grown past what one screen can show. Figures below may be incomplete.',
+              style: TextStyle(fontSize: 12.5),
+            ),
+          ),
+        ],
+      ),
+    ),
   );
 }

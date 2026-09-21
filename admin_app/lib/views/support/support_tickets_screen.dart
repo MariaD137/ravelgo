@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/admin_search_field.dart';
 import 'package:ravelgo_admin/widgets/pagination_bar.dart';
 
 import 'package:ravelgo_admin/utils/date_utils.dart';
@@ -22,6 +23,7 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen> {
   int _totalPages = 1;
   int _total = 0;
   List<SupportTicket> _tickets = const [];
+  String? _q;
 
   @override
   void initState() {
@@ -36,7 +38,7 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen> {
       _error = null;
     });
     try {
-      final result = await AdminApi.supportTickets(page: _page);
+      final result = await AdminApi.supportTickets(page: _page, q: _q);
       if (!mounted) return;
       if (result.isPastEnd) return await _load(page: result.totalPages);
       setState(() {
@@ -82,11 +84,23 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen> {
 
   String _label(String s) => s.isEmpty ? '' : s[0] + s.substring(1).toLowerCase().replaceAll('_', ' ');
 
+  void _onSearchChanged(String? q) {
+    _q = q;
+    _load(page: 1);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final Widget body = _loading
-        ? const Center(child: CircularProgressIndicator())
-        : (_error != null ? _err(_error!, _load) : _list());
+    final Widget body = Column(
+      children: [
+        AdminSearchField(hintText: 'Search subject, category or user…', onChanged: _onSearchChanged),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : (_error != null ? _err(_error!, _load) : _list()),
+        ),
+      ],
+    );
     if (widget.embedded) return body;
     return Scaffold(appBar: AppBar(title: const Text("Support Tickets")), body: body);
   }
@@ -109,7 +123,12 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen> {
 
   Widget _listView() {
     if (_tickets.isEmpty) {
-      return const Center(child: Text("No support tickets.", style: TextStyle(color: AppColors.textSecondary)));
+      return Center(
+        child: Text(
+          _q == null ? "No support tickets." : "No tickets match \"$_q\".",
+          style: const TextStyle(color: AppColors.textSecondary),
+        ),
+      );
     }
     return RefreshIndicator(
       onRefresh: _load,

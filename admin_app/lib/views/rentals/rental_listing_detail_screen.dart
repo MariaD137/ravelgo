@@ -3,6 +3,7 @@ import 'package:ravelgo_admin/config/currency.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/reject_reason_dialog.dart';
 
 /// Rental listing detail (AA-1). Takes the RentalListing already loaded by
 /// RentalListingsScreen's list call (GET /api/rentals) — every field shown
@@ -23,28 +24,32 @@ class _RentalListingDetailScreenState extends State<RentalListingDetailScreen> {
   Future<void> _setStatus(String status) async {
     final r = widget.listing;
     final approve = status == 'APPROVED';
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(approve ? 'Approve this listing?' : 'Reject this listing?'),
-        content: Text(approve
-            ? '${r.vehicle.isEmpty ? 'This vehicle' : r.vehicle} will become visible to riders for rental.'
-            : '${r.vehicle.isEmpty ? 'This vehicle' : r.vehicle} will be hidden from riders.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(
-            style: approve ? null : ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(approve ? 'Approve' : 'Reject'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
+    String? rejectionReason;
+    if (approve) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Approve this listing?'),
+          content: Text('${r.vehicle.isEmpty ? 'This vehicle' : r.vehicle} will become visible to riders for rental.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+            ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('Approve')),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    } else {
+      final reason = await showDialog<String>(
+        context: context,
+        builder: (context) => RejectReasonDialog(itemLabel: r.vehicle.isEmpty ? 'this listing' : r.vehicle),
+      );
+      if (reason == null || !mounted) return; // cancelled
+      rejectionReason = reason;
+    }
 
     setState(() => _busy = true);
     try {
-      await AdminApi.setRentalStatus(r.id, status);
+      await AdminApi.setRentalStatus(r.id, status, rejectionReason: rejectionReason);
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
@@ -96,6 +101,12 @@ class _RentalListingDetailScreenState extends State<RentalListingDetailScreen> {
                 _row("Owner", r.driverName.isEmpty ? "—" : r.driverName),
                 _row("Daily rate", Currency.format(r.dailyRate, decimals: 0)),
                 _row("Pickup location", r.location),
+                if (r.status == 'REJECTED' && (r.rejectionReason?.isNotEmpty ?? false)) ...[
+                  const Divider(height: 20),
+                  const Text("Rejection reason", style: TextStyle(color: AppColors.textSecondary)),
+                  const SizedBox(height: 4),
+                  Text(r.rejectionReason!, style: const TextStyle(color: AppColors.danger)),
+                ],
               ],
             ),
           ),

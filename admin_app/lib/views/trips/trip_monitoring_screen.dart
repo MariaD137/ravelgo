@@ -3,6 +3,7 @@ import 'package:ravelgo_admin/config/currency.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/admin_search_field.dart';
 import 'package:ravelgo_admin/widgets/pagination_bar.dart';
 
 import 'package:ravelgo_admin/utils/date_utils.dart';
@@ -32,6 +33,7 @@ class _TripMonitoringScreenState extends State<TripMonitoringScreen> {
   int _total = 0;
   List<AdminTrip> _trips = const [];
   Set<String> _statusFilter = {};
+  String? _q;
 
   static const _statuses = [
     'REQUESTED',
@@ -56,9 +58,10 @@ class _TripMonitoringScreenState extends State<TripMonitoringScreen> {
       _error = null;
     });
     try {
-      // Status chips are applied server-side (GET /api/trips?status=...), so
-      // a filter narrows the whole table and pages within that subset.
-      final result = await AdminApi.trips(statuses: _statusFilter, page: _page);
+      // Status chips and the search term are both applied server-side (GET
+      // /api/trips?status=...&q=...), so a filter narrows the whole table
+      // and pages within that subset.
+      final result = await AdminApi.trips(statuses: _statusFilter, q: _q, page: _page);
       if (!mounted) return;
       if (result.isPastEnd) return await _load(page: result.totalPages);
       setState(() {
@@ -100,18 +103,30 @@ class _TripMonitoringScreenState extends State<TripMonitoringScreen> {
     _load(page: 1); // a changed filter always restarts from the first page
   }
 
+  void _onSearchChanged(String? q) {
+    _q = q;
+    _load(page: 1);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final Widget body = _loading
-        ? const Center(child: CircularProgressIndicator())
-        : (_error != null
-              ? _errorView()
-              : Column(
-                  children: [
-                    _filterBar(),
-                    Expanded(child: _list()),
-                  ],
-                ));
+    final Widget body = Column(
+      children: [
+        AdminSearchField(hintText: 'Search trip id, rider or driver…', onChanged: _onSearchChanged),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : (_error != null
+                    ? _errorView()
+                    : Column(
+                        children: [
+                          _filterBar(),
+                          Expanded(child: _list()),
+                        ],
+                      )),
+        ),
+      ],
+    );
     if (widget.embedded) return body;
     return Scaffold(
       appBar: AppBar(title: const Text("Trips")),
@@ -175,12 +190,10 @@ class _TripMonitoringScreenState extends State<TripMonitoringScreen> {
   Widget _listView() {
     final trips = _trips;
     if (trips.isEmpty) {
-      return Center(
-        child: Text(
-          _statusFilter.isEmpty ? "No trips yet." : "No trips match this filter.",
-          style: const TextStyle(color: AppColors.textSecondary),
-        ),
-      );
+      final message = _q != null
+          ? "No trips match \"$_q\"."
+          : (_statusFilter.isEmpty ? "No trips yet." : "No trips match this filter.");
+      return Center(child: Text(message, style: const TextStyle(color: AppColors.textSecondary)));
     }
     return RefreshIndicator(
       onRefresh: _load,

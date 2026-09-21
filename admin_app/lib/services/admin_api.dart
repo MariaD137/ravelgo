@@ -90,6 +90,57 @@ class AdminDocument {
       );
 }
 
+/// A driver's own vehicle, as returned nested in GET /drivers/:id (backend
+/// serializeVehicle()) — never the raw Prisma row, so photoKeys never
+/// appears here, only the computed photoUrl/photoUrls.
+class AdminDriverVehicle {
+  final String id;
+  final String brand;
+  final String model;
+  final String colour;
+  final String plateNumber;
+  final String year;
+  final bool isPrimary;
+  final bool listedForRental;
+  final String? vehicleClass;
+  final String approvalStatus; // PENDING | APPROVED | REJECTED
+  final String? rejectionReason;
+  final String? photoUrl;
+
+  AdminDriverVehicle({
+    required this.id,
+    required this.brand,
+    required this.model,
+    required this.colour,
+    required this.plateNumber,
+    required this.year,
+    required this.isPrimary,
+    required this.listedForRental,
+    required this.vehicleClass,
+    required this.approvalStatus,
+    required this.rejectionReason,
+    required this.photoUrl,
+  });
+
+  factory AdminDriverVehicle.fromJson(Map<String, dynamic> j) => AdminDriverVehicle(
+        id: '${j['id']}',
+        brand: '${j['brand'] ?? ''}',
+        model: '${j['model'] ?? ''}',
+        colour: '${j['colour'] ?? ''}',
+        plateNumber: '${j['plateNumber'] ?? ''}',
+        year: '${j['year'] ?? ''}',
+        isPrimary: j['isPrimary'] == true,
+        listedForRental: j['listedForRental'] == true,
+        vehicleClass: j['vehicleClass'] as String?,
+        // Never default a missing value to a real review outcome — a vehicle
+        // predating this field always carries "PENDING" from the backend's
+        // own column default, never a blank value here.
+        approvalStatus: '${j['approvalStatus'] ?? 'PENDING'}',
+        rejectionReason: j['rejectionReason'] as String?,
+        photoUrl: j['photoUrl'] as String?,
+      );
+}
+
 class AdminDriver {
   final String id;
   // Payout/DriverBankAccount records key off User.id, not this Driver.id —
@@ -106,6 +157,7 @@ class AdminDriver {
   // is null, rather than inventing a value.
   final String? phoneNumber;
   final List<AdminDocument> documents;
+  final List<AdminDriverVehicle> vehicles;
 
   AdminDriver({
     required this.id,
@@ -118,11 +170,13 @@ class AdminDriver {
     required this.totalTrips,
     required this.phoneNumber,
     required this.documents,
+    required this.vehicles,
   });
 
   factory AdminDriver.fromJson(Map<String, dynamic> j) {
     final user = j['user'] as Map?;
     final docs = (j['documents'] as List?) ?? const [];
+    final vehicles = (j['vehicles'] as List?) ?? const [];
     return AdminDriver(
       id: '${j['id']}',
       userId: '${user?['id'] ?? j['id']}',
@@ -135,6 +189,7 @@ class AdminDriver {
       totalTrips: _i(j['totalTrips']),
       phoneNumber: user?['phoneNumber']?.toString(),
       documents: docs.whereType<Map<String, dynamic>>().map(AdminDocument.fromJson).toList(),
+      vehicles: vehicles.whereType<Map<String, dynamic>>().map(AdminDriverVehicle.fromJson).toList(),
     );
   }
 }
@@ -400,12 +455,21 @@ class CarPaddyRequest {
   final String id;
   final String plateNumber;
   final String status;
+  final String? rejectionReason;
+  final DateTime? renewalDate;
+  // Never a usable URL by itself — the raw S3 key only identifies that a
+  // document was uploaded. A fresh signed URL is fetched on demand via
+  // AdminApi.carPaddyDocumentUrl(id), same pattern as driver documents.
+  final bool hasDocument;
   final String driverName;
   final DateTime submittedAt;
   CarPaddyRequest({
     required this.id,
     required this.plateNumber,
     required this.status,
+    required this.rejectionReason,
+    required this.renewalDate,
+    required this.hasDocument,
     required this.driverName,
     required this.submittedAt,
   });
@@ -415,6 +479,9 @@ class CarPaddyRequest {
       id: '${j['id']}',
       plateNumber: '${j['plateNumber'] ?? ''}',
       status: '${j['status'] ?? ''}',
+      rejectionReason: j['rejectionReason'] as String?,
+      renewalDate: j['renewalDate'] == null ? null : _dt(j['renewalDate']),
+      hasDocument: j['fileKey'] != null && '${j['fileKey']}'.isNotEmpty,
       driverName: driver == null ? '' : _name(driver['user'] as Map?),
       submittedAt: _dt(j['submittedAt']),
     );
@@ -510,6 +577,7 @@ class RentalListing {
   final double dailyRate;
   final String location;
   final String status;
+  final String? rejectionReason;
   final String vehicle;
   final String driverName;
   RentalListing({
@@ -517,6 +585,7 @@ class RentalListing {
     required this.dailyRate,
     required this.location,
     required this.status,
+    required this.rejectionReason,
     required this.vehicle,
     required this.driverName,
   });
@@ -529,6 +598,7 @@ class RentalListing {
       dailyRate: _d(j['dailyRate']),
       location: '${j['location'] ?? ''}',
       status: '${j['status'] ?? ''}',
+      rejectionReason: j['rejectionReason'] as String?,
       vehicle: vehicle,
       driverName: driver == null ? '' : _name(driver['user'] as Map?),
     );
@@ -882,6 +952,8 @@ class AdminVehicle {
   final String ownerName;
   final String ownerEmail;
   final String? vehicleClass;
+  final String approvalStatus; // PENDING | APPROVED | REJECTED
+  final String? rejectionReason;
   AdminVehicle({
     required this.id,
     required this.brand,
@@ -893,6 +965,8 @@ class AdminVehicle {
     required this.ownerName,
     required this.ownerEmail,
     required this.vehicleClass,
+    required this.approvalStatus,
+    required this.rejectionReason,
   });
   factory AdminVehicle.fromJson(Map<String, dynamic> j) {
     final driver = j['driver'] as Map?;
@@ -908,6 +982,9 @@ class AdminVehicle {
       ownerName: _name(user),
       ownerEmail: '${user?['email'] ?? ''}',
       vehicleClass: j['vehicleClass'] as String?,
+      // Never default a missing value to a real review outcome.
+      approvalStatus: '${j['approvalStatus'] ?? 'PENDING'}',
+      rejectionReason: j['rejectionReason'] as String?,
     );
   }
 }
@@ -1278,6 +1355,34 @@ class CashReconciliationRow {
       );
 }
 
+/// GET /api/admin/cash-reconciliation's envelope. [truncated] is true only
+/// when the underlying ledger/remittance history has grown past what the
+/// backend fetches in one call (see cash.routes.ts's CASH_ROW_CAP) — the
+/// per-driver figures in [rows] would then be computed from an incomplete
+/// slice of history, so the UI must say so rather than presenting them as
+/// the complete ledger.
+class CashReconciliationResult {
+  final List<CashReconciliationRow> rows;
+  final bool truncated;
+  final int ledgerRowCount;
+  final int remittanceRowCount;
+  CashReconciliationResult({
+    required this.rows,
+    required this.truncated,
+    required this.ledgerRowCount,
+    required this.remittanceRowCount,
+  });
+  factory CashReconciliationResult.fromJson(Map<String, dynamic> j) => CashReconciliationResult(
+        rows: ((j['rows'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(CashReconciliationRow.fromJson)
+            .toList(),
+        truncated: j['truncated'] == true,
+        ledgerRowCount: _i(j['ledgerRowCount']),
+        remittanceRowCount: _i(j['remittanceRowCount']),
+      );
+}
+
 class AdminPayment {
   final String id;
   final String tripId;
@@ -1319,8 +1424,8 @@ class AdminApi {
   /// (GET /api/drivers?status=PENDING_REVIEW). Filtering on the server means
   /// the pending queue is the whole queue, not just whichever pending drivers
   /// happened to fall inside the first page of "all drivers".
-  static Future<PagedResult<AdminDriver>> drivers({String? status, int page = 1}) async {
-    final data = await ApiClient.get('/api/drivers?${pagedQuery(page, filters: {'status': status})}');
+  static Future<PagedResult<AdminDriver>> drivers({String? status, String? q, int page = 1}) async {
+    final data = await ApiClient.get('/api/drivers?${pagedQuery(page, filters: {'status': status, 'q': q})}');
     return PagedResult.fromJson(data as Map<String, dynamic>, AdminDriver.fromJson);
   }
 
@@ -1358,8 +1463,8 @@ class AdminApi {
     return '${data['url']}';
   }
 
-  static Future<PagedResult<AdminRider>> riders({int page = 1}) async {
-    final data = await ApiClient.get('/api/riders?${pagedQuery(page)}');
+  static Future<PagedResult<AdminRider>> riders({String? q, int page = 1}) async {
+    final data = await ApiClient.get('/api/riders?${pagedQuery(page, filters: {'q': q})}');
     return PagedResult.fromJson(data as Map<String, dynamic>, AdminRider.fromJson);
   }
 
@@ -1372,9 +1477,14 @@ class AdminApi {
 
   /// Trips, optionally narrowed server-side to a set of statuses
   /// (GET /api/trips?status=MATCHED,IN_PROGRESS).
-  static Future<PagedResult<AdminTrip>> trips({Set<String> statuses = const {}, int page = 1, int pageSize = kAdminPageSize}) async {
+  static Future<PagedResult<AdminTrip>> trips({
+    Set<String> statuses = const {},
+    String? q,
+    int page = 1,
+    int pageSize = kAdminPageSize,
+  }) async {
     final data = await ApiClient.get(
-      '/api/trips?${pagedQuery(page, pageSize: pageSize, filters: {'status': statuses.isEmpty ? null : statuses.join(',')})}',
+      '/api/trips?${pagedQuery(page, pageSize: pageSize, filters: {'status': statuses.isEmpty ? null : statuses.join(','), 'q': q})}',
     );
     return PagedResult.fromJson(data as Map<String, dynamic>, AdminTrip.fromJson);
   }
@@ -1394,8 +1504,8 @@ class AdminApi {
   }
 
   // ---- Support tickets ----
-  static Future<PagedResult<SupportTicket>> supportTickets({int page = 1}) async {
-    final data = await ApiClient.get('/api/support-tickets?${pagedQuery(page)}');
+  static Future<PagedResult<SupportTicket>> supportTickets({String? q, int page = 1}) async {
+    final data = await ApiClient.get('/api/support-tickets?${pagedQuery(page, filters: {'q': q})}');
     return PagedResult.fromJson(data as Map<String, dynamic>, SupportTicket.fromJson);
   }
 
@@ -1414,9 +1524,13 @@ class AdminApi {
   }
 
   // ---- Courier requests ----
-  static Future<PagedResult<CourierRequest>> courierRequests({Set<String> statuses = const {}, int page = 1}) async {
+  static Future<PagedResult<CourierRequest>> courierRequests({
+    Set<String> statuses = const {},
+    String? q,
+    int page = 1,
+  }) async {
     final data = await ApiClient.get(
-      '/api/courier-requests?${pagedQuery(page, filters: {'status': statuses.isEmpty ? null : statuses.join(',')})}',
+      '/api/courier-requests?${pagedQuery(page, filters: {'status': statuses.isEmpty ? null : statuses.join(','), 'q': q})}',
     );
     return PagedResult.fromJson(data as Map<String, dynamic>, CourierRequest.fromJson);
   }
@@ -1426,23 +1540,36 @@ class AdminApi {
   }
 
   // ---- Car Paddy requests ----
-  static Future<PagedResult<CarPaddyRequest>> carPaddyRequests({int page = 1}) async {
-    final data = await ApiClient.get('/api/car-paddy?${pagedQuery(page)}');
+  static Future<PagedResult<CarPaddyRequest>> carPaddyRequests({String? q, int page = 1}) async {
+    final data = await ApiClient.get('/api/car-paddy?${pagedQuery(page, filters: {'q': q})}');
     return PagedResult.fromJson(data as Map<String, dynamic>, CarPaddyRequest.fromJson);
   }
 
-  static Future<void> reviewCarPaddy(String id, String status) async {
-    await ApiClient.patch('/api/car-paddy/$id', {'status': status});
+  static Future<void> reviewCarPaddy(String id, String status, {String? rejectionReason}) async {
+    await ApiClient.patch('/api/car-paddy/$id', {
+      'status': status,
+      if (rejectionReason != null) 'rejectionReason': rejectionReason,
+    });
+  }
+
+  /// A short-lived signed URL to view the renewal document/receipt attached
+  /// to a Car Paddy request — GET /api/car-paddy/:id/document-url.
+  static Future<String> carPaddyDocumentUrl(String id) async {
+    final data = await ApiClient.get('/api/car-paddy/$id/document-url') as Map<String, dynamic>;
+    return '${data['url']}';
   }
 
   // ---- Rental listings ----
-  static Future<PagedResult<RentalListing>> rentals({int page = 1}) async {
-    final data = await ApiClient.get('/api/rentals?${pagedQuery(page)}');
+  static Future<PagedResult<RentalListing>> rentals({String? q, int page = 1}) async {
+    final data = await ApiClient.get('/api/rentals?${pagedQuery(page, filters: {'q': q})}');
     return PagedResult.fromJson(data as Map<String, dynamic>, RentalListing.fromJson);
   }
 
-  static Future<void> setRentalStatus(String id, String status) async {
-    await ApiClient.patch('/api/rentals/$id/status', {'status': status});
+  static Future<void> setRentalStatus(String id, String status, {String? rejectionReason}) async {
+    await ApiClient.patch('/api/rentals/$id/status', {
+      'status': status,
+      if (rejectionReason != null) 'rejectionReason': rejectionReason,
+    });
   }
 
   // ---- Short Stays (property listings) ----
@@ -1566,8 +1693,8 @@ class AdminApi {
   }
 
   // ---- Vehicle inventory (admin, cross-driver) ----
-  static Future<PagedResult<AdminVehicle>> vehicles({int page = 1}) async {
-    final data = await ApiClient.get('/api/vehicles?${pagedQuery(page)}');
+  static Future<PagedResult<AdminVehicle>> vehicles({String? q, int page = 1}) async {
+    final data = await ApiClient.get('/api/vehicles?${pagedQuery(page, filters: {'q': q})}');
     return PagedResult.fromJson(data as Map<String, dynamic>, AdminVehicle.fromJson);
   }
 
@@ -1580,9 +1707,25 @@ class AdminApi {
     await ApiClient.patch('/api/admin/vehicles/$vehicleId/class', {'vehicleClass': vehicleClass});
   }
 
+  /// Approve/reject a vehicle's safety/eligibility review —
+  /// PATCH /api/admin/vehicles/:id/approval. [rejectionReason] is required by
+  /// the backend when [approvalStatus] is 'REJECTED' (400 otherwise); ignored
+  /// for 'APPROVED'.
+  static Future<AdminDriverVehicle> setVehicleApproval(
+    String vehicleId,
+    String approvalStatus, {
+    String? rejectionReason,
+  }) async {
+    final data = await ApiClient.patch('/api/admin/vehicles/$vehicleId/approval', {
+      'approvalStatus': approvalStatus,
+      if (rejectionReason != null) 'rejectionReason': rejectionReason,
+    });
+    return AdminDriverVehicle.fromJson(data as Map<String, dynamic>);
+  }
+
   // ---- Payouts ----
-  static Future<PagedResult<AdminPayout>> payouts({String? status, int page = 1}) async {
-    final data = await ApiClient.get('/api/payouts?${pagedQuery(page, filters: {'status': status})}');
+  static Future<PagedResult<AdminPayout>> payouts({String? status, String? q, int page = 1}) async {
+    final data = await ApiClient.get('/api/payouts?${pagedQuery(page, filters: {'status': status, 'q': q})}');
     return PagedResult.fromJson(data as Map<String, dynamic>, AdminPayout.fromJson);
   }
 
@@ -1898,9 +2041,9 @@ class AdminApi {
   }
 
   // ---- Cash reconciliation ----
-  static Future<List<CashReconciliationRow>> cashReconciliation() async {
+  static Future<CashReconciliationResult> cashReconciliation() async {
     final data = await ApiClient.get('/api/admin/cash-reconciliation');
-    return (data as List).whereType<Map<String, dynamic>>().map(CashReconciliationRow.fromJson).toList();
+    return CashReconciliationResult.fromJson(data as Map<String, dynamic>);
   }
 
   /// Record that a driver has physically handed in cash. Finance/Super Admin
@@ -1921,8 +2064,8 @@ class AdminApi {
   /// One page of payments plus the backend's whole-table SUCCEEDED totals
   /// per method, so the overview's revenue figures never depend on how many
   /// rows fit in a page.
-  static Future<PaymentsPage> payments({int page = 1}) async {
-    final data = await ApiClient.get('/api/payments?${pagedQuery(page)}') as Map<String, dynamic>;
+  static Future<PaymentsPage> payments({String? q, int page = 1}) async {
+    final data = await ApiClient.get('/api/payments?${pagedQuery(page, filters: {'q': q})}') as Map<String, dynamic>;
     final totals = (data['totals'] as Map?) ?? const {};
     return PaymentsPage(
       page: PagedResult.fromJson(data, AdminPayment.fromJson),

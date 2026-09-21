@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/admin_search_field.dart';
 import 'package:ravelgo_admin/widgets/pagination_bar.dart';
 
 import 'package:ravelgo_admin/views/riders/rider_detail_screen.dart';
@@ -20,6 +21,7 @@ class _RiderListScreenState extends State<RiderListScreen> {
   int _page = 1;
   int _totalPages = 1;
   int _total = 0;
+  String? _q;
   List<AdminRider> _riders = const [];
 
   @override
@@ -35,7 +37,7 @@ class _RiderListScreenState extends State<RiderListScreen> {
       _error = null;
     });
     try {
-      final result = await AdminApi.riders(page: _page);
+      final result = await AdminApi.riders(page: _page, q: _q);
       if (!mounted) return;
       if (result.isPastEnd) return await _load(page: result.totalPages);
       setState(() {
@@ -73,13 +75,28 @@ class _RiderListScreenState extends State<RiderListScreen> {
     }
   }
 
+  // A search narrowing the whole table must reset to page 1 — otherwise an
+  // admin paged partway through would see "no results" for a search that
+  // actually matches plenty, just not on that now-stale page.
+  void _onSearchChanged(String? q) {
+    _q = q;
+    _load(page: 1);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Riders")),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : (_error != null ? _errorView() : _list()),
+      body: Column(
+        children: [
+          AdminSearchField(hintText: 'Search name, email or phone…', onChanged: _onSearchChanged),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : (_error != null ? _errorView() : _list()),
+          ),
+        ],
+      ),
     );
   }
 
@@ -114,7 +131,12 @@ class _RiderListScreenState extends State<RiderListScreen> {
 
   Widget _listView() {
     if (_riders.isEmpty) {
-      return const Center(child: Text("No riders yet.", style: TextStyle(color: AppColors.textSecondary)));
+      return Center(
+        child: Text(
+          _q == null ? "No riders yet." : "No riders match \"$_q\".",
+          style: const TextStyle(color: AppColors.textSecondary),
+        ),
+      );
     }
     return RefreshIndicator(
       onRefresh: _load,

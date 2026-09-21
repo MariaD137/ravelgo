@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/reject_reason_dialog.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class DriverDetailScreen extends StatefulWidget {
@@ -92,10 +93,28 @@ class _DriverDetailScreenState extends State<DriverDetailScreen> {
   Future<void> _rejectDocument(AdminDocument doc) async {
     final reason = await showDialog<String>(
       context: context,
-      builder: (context) => _RejectDocumentDialog(documentTitle: doc.title),
+      builder: (context) => RejectReasonDialog(itemLabel: doc.title),
     );
     if (reason == null) return; // cancelled
     await _run(() => AdminApi.reviewDocument(doc.id, 'REJECTED', rejectionReason: reason), 'Document rejected');
+  }
+
+  String _vehicleLabel(AdminDriverVehicle v) => '${v.brand} ${v.model} (${v.plateNumber})'.trim();
+
+  Future<void> _approveVehicle(AdminDriverVehicle v) async {
+    await _run(() => AdminApi.setVehicleApproval(v.id, 'APPROVED'), 'Vehicle approved');
+  }
+
+  Future<void> _rejectVehicle(AdminDriverVehicle v) async {
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (context) => RejectReasonDialog(itemLabel: _vehicleLabel(v)),
+    );
+    if (reason == null) return; // cancelled
+    await _run(
+      () => AdminApi.setVehicleApproval(v.id, 'REJECTED', rejectionReason: reason),
+      'Vehicle rejected',
+    );
   }
 
   /// Approving the driver is the ONE action that changes Driver.status — the
@@ -282,6 +301,96 @@ class _DriverDetailScreenState extends State<DriverDetailScreen> {
           ),
         ],
         const SizedBox(height: 20),
+        AppComponents.sectionTitle("Vehicles"),
+        if (d.vehicles.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Text("This driver hasn't added any vehicles yet.",
+                style: TextStyle(color: AppColors.textSecondary)),
+          )
+        else
+          ...d.vehicles.map((v) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: AppComponents.cardDecoration(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (v.photoUrl != null)
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(
+                                v.photoUrl!,
+                                width: 44,
+                                height: 44,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    const Icon(Icons.directions_car, color: AppColors.textSecondary),
+                              ),
+                            )
+                          else
+                            const Icon(Icons.directions_car_outlined, color: AppColors.textSecondary, size: 32),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('${v.year} ${v.brand} ${v.model}'.trim(),
+                                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                                Text('${v.colour} · ${v.plateNumber}',
+                                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                                Text(_label(v.approvalStatus), style: TextStyle(fontSize: 11, color: _docColor(v.approvalStatus))),
+                                Text(
+                                  'Class: ${v.vehicleClass ?? "Unclassified"}',
+                                  style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (v.isPrimary) AppComponents.badge("Primary", color: AppColors.info),
+                          if (v.listedForRental) AppComponents.badge("Rental", color: AppColors.success),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          if (v.approvalStatus != 'APPROVED')
+                            Expanded(
+                              child: AppComponents.outlineButton(
+                                text: 'Approve',
+                                color: AppColors.success,
+                                onPressed: _busy ? null : () => _approveVehicle(v),
+                              ),
+                            ),
+                          if (v.approvalStatus != 'APPROVED' && v.approvalStatus != 'REJECTED')
+                            const SizedBox(width: 8),
+                          if (v.approvalStatus != 'REJECTED')
+                            Expanded(
+                              child: AppComponents.outlineButton(
+                                text: 'Reject',
+                                color: AppColors.danger,
+                                onPressed: _busy ? null : () => _rejectVehicle(v),
+                              ),
+                            ),
+                        ],
+                      ),
+                      if (v.approvalStatus == 'REJECTED' && (v.rejectionReason?.isNotEmpty ?? false))
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            'Reason: ${v.rejectionReason}',
+                            style: const TextStyle(fontSize: 12, color: AppColors.danger),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              )),
+        const SizedBox(height: 20),
         AppComponents.sectionTitle("Document verification"),
         if (d.documents.isEmpty)
           const Padding(
@@ -390,52 +499,4 @@ class _DriverDetailScreenState extends State<DriverDetailScreen> {
           Flexible(child: Text(v, textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.w600))),
         ],
       );
-}
-
-/// A confirmation dialog that requires a non-empty, trimmed reason before a
-/// document rejection can be confirmed — the driver needs to know what to
-/// fix before resubmitting (see documents.routes.ts's reviewSchema, which
-/// enforces the same requirement server-side).
-class _RejectDocumentDialog extends StatefulWidget {
-  final String documentTitle;
-  const _RejectDocumentDialog({required this.documentTitle});
-
-  @override
-  State<_RejectDocumentDialog> createState() => _RejectDocumentDialogState();
-}
-
-class _RejectDocumentDialogState extends State<_RejectDocumentDialog> {
-  final _controller = TextEditingController();
-  bool get _valid => _controller.text.trim().isNotEmpty;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('Reject "${widget.documentTitle}"'),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        maxLength: 1000,
-        maxLines: 3,
-        decoration: const InputDecoration(
-          labelText: 'Reason for rejection',
-          hintText: 'e.g. Photo is blurry, please retake it.',
-        ),
-        onChanged: (_) => setState(() {}),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
-        TextButton(
-          onPressed: _valid ? () => Navigator.of(context).pop(_controller.text.trim()) : null,
-          child: const Text('Reject'),
-        ),
-      ],
-    );
-  }
 }
