@@ -82,6 +82,25 @@ export class AuthStack extends cdk.Stack {
         requireSymbols: false,
       },
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
+      // Explicit, not left to CDK's default. This pool predates Cognito's
+      // Sept-2024 feature-plan pricing model (Lite/Essentials/Plus, replacing
+      // the old free-form "Advanced Security Features" toggle); the account
+      // has since settled on the ESSENTIALS tier, which does not support
+      // Threat Protection (Plus-only) at all. Leaving both properties unset
+      // means CDK omits them from the template, so on every update
+      // CloudFormation reasserts whatever the live resource's legacy
+      // AdvancedSecurityMode happens to be -- and that conflicts with the
+      // account's actual tier, failing every deploy with "The following
+      // features need to be disabled for the ESSENTIALS pricing tier
+      // configured: Threat Protection" on UserPool update, however unrelated
+      // the actual change being deployed. Declaring both here removes the
+      // ambiguity: this pool is Essentials, with Threat Protection off. Not a
+      // capability this app used or relied on -- MFA (below) is a separate,
+      // unaffected Cognito feature. If Threat Protection is ever wanted,
+      // upgrade to FeaturePlan.PLUS first (a billing change, made
+      // deliberately, not a side effect of an unrelated deploy).
+      featurePlan: cognito.FeaturePlan.ESSENTIALS,
+      standardThreatProtectionMode: cognito.StandardThreatProtectionMode.NO_ENFORCEMENT,
       // IN-2: OPTIONAL (not REQUIRED) so this rolls out without breaking any
       // existing session or sign-in flow — nobody is forced into MFA they
       // haven't enrolled in. TOTP only (an authenticator app); SMS is left
