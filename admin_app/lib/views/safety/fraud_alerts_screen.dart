@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/pagination_bar.dart';
+
 import 'package:ravelgo_admin/utils/date_utils.dart';
 
-/// Suspected-fraud alerts (GET /api/emergency-alerts, filtered to FRAUD_SUSPECTED).
+/// Suspected-fraud alerts (GET /api/emergency-alerts?type=FRAUD_SUSPECTED, paged).
 class FraudAlertsScreen extends StatefulWidget {
   const FraudAlertsScreen({super.key});
 
@@ -16,6 +18,9 @@ class _FraudAlertsScreenState extends State<FraudAlertsScreen> {
   bool _loading = true;
   bool _busy = false;
   String? _error;
+  int _page = 1;
+  int _totalPages = 1;
+  int _total = 0;
   List<EmergencyAlert> _alerts = const [];
 
   @override
@@ -24,16 +29,22 @@ class _FraudAlertsScreenState extends State<FraudAlertsScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({int? page}) async {
+    if (page != null) _page = page;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final all = await AdminApi.alerts();
+      // Filtered server-side by type, so this pages through every fraud
+      // alert rather than the fraud subset of one mixed page.
+      final result = await AdminApi.alerts(type: 'FRAUD_SUSPECTED', page: _page);
       if (!mounted) return;
+      if (result.isPastEnd) return await _load(page: result.totalPages);
       setState(() {
-        _alerts = all.where((a) => a.type == 'FRAUD_SUSPECTED').toList();
+        _alerts = result.items;
+        _total = result.total;
+        _totalPages = result.totalPages;
         _loading = false;
       });
     } catch (e) {
@@ -94,6 +105,22 @@ class _FraudAlertsScreenState extends State<FraudAlertsScreen> {
       );
 
   Widget _list() {
+    return Column(
+      children: [
+        Expanded(child: _listView()),
+        PaginationBar(
+          page: _page,
+          totalPages: _totalPages,
+          total: _total,
+          itemLabel: 'alerts',
+          busy: _loading,
+          onPageChanged: (p) => _load(page: p),
+        ),
+      ],
+    );
+  }
+
+  Widget _listView() {
     if (_alerts.isEmpty) {
       return const Center(child: Text("No fraud alerts.", style: TextStyle(color: AppColors.textSecondary)));
     }

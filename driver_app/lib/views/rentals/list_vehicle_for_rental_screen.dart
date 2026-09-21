@@ -5,6 +5,7 @@ import 'package:ravelgo_driver_app/services/places_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/places/place_search_screen.dart';
 import 'package:ravelgo_driver_app/views/vehicles/add_vehicle_screen.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
 
 class ListVehicleForRentalScreen extends StatefulWidget {
   const ListVehicleForRentalScreen({super.key});
@@ -58,9 +59,7 @@ class _ListVehicleForRentalScreenState extends State<ListVehicleForRentalScreen>
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _vehiclesError = e is ApiException && e.statusCode == 403
-            ? 'Your account isn\'t set up as a driver yet.'
-            : e.toString();
+        _vehiclesError = describeApiFailure(e, what: 'your vehicles');
         _loadingVehicles = false;
       });
     }
@@ -72,7 +71,7 @@ class _ListVehicleForRentalScreenState extends State<ListVehicleForRentalScreen>
   /// whatever free text a driver happens to type.
   Future<void> _pickLocation() async {
     final place = await Navigator.of(context).push<PlaceLocation>(
-      MaterialPageRoute(
+      AppPageRoute(
         builder: (_) => const PlaceSearchScreen(title: 'Pickup location', hint: 'Search for a pickup location'),
       ),
     );
@@ -231,7 +230,7 @@ class _ListVehicleForRentalScreenState extends State<ListVehicleForRentalScreen>
           ? null
           : () async {
               final saved = await Navigator.of(context)
-                  .push<bool>(MaterialPageRoute(builder: (_) => AddVehicleScreen(existing: selected)));
+                  .push<bool>(AppPageRoute(builder: (_) => AddVehicleScreen(existing: selected)));
               if (saved == true) _loadVehicles();
             },
       child: Container(

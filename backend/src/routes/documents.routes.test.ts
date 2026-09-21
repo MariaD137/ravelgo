@@ -63,6 +63,32 @@ test("GET /api/documents/me only returns the calling driver's own documents", as
   assert.equal(res.body[0].title, "Mine");
 });
 
+// The Driver App maps each of these to a different message — they must stay
+// distinguishable at the HTTP level: no token vs. a non-driver token vs. a
+// driver token with no profile row vs. a real driver.
+test("GET /api/documents/me distinguishes unauthenticated (401), non-driver (403), no profile (404) and driver (200)", async () => {
+  const anonymous = await request(app).get("/api/documents/me");
+  assert.equal(anonymous.status, 401);
+
+  const riderToken = mockAuthAs({ sub: "docs-rider-sub", groups: ["Rider"] });
+  const rider = await request(app).get("/api/documents/me").set("Authorization", `Bearer ${riderToken}`);
+  assert.equal(rider.status, 403);
+
+  // In the Driver group (server granted it) but the profile row is missing.
+  const orphanToken = mockAuthAs({ sub: "docs-orphan-sub", groups: ["Driver"] });
+  const orphan = await request(app).get("/api/documents/me").set("Authorization", `Bearer ${orphanToken}`);
+  assert.equal(orphan.status, 404);
+
+  const user = await prisma.user.create({
+    data: { cognitoSub: "docs-driver-sub", role: "DRIVER", firstName: "D", lastName: "R", email: "docs-driver@example.com" },
+  });
+  await prisma.driver.create({ data: { userId: user.id } });
+  const driverToken = mockAuthAs({ sub: "docs-driver-sub", groups: ["Driver"] });
+  const driver = await request(app).get("/api/documents/me").set("Authorization", `Bearer ${driverToken}`);
+  assert.equal(driver.status, 200);
+  assert.deepEqual(driver.body, []);
+});
+
 test("PATCH /api/documents/:id/review rejects a non-Admin caller", async () => {
   const driver = await createDriver("driver-sub-4");
   const doc = await prisma.driverDocument.create({ data: { driverId: driver.id, title: "Doc", fileKey: "k3" } });

@@ -1,5 +1,6 @@
 import type { RideVehicleClass, Trip } from "@prisma/client";
 import { prisma } from "../db/prisma";
+import { haversineKm } from "../lib/geo";
 import { broadcastTripStatus } from "../realtime/hub";
 import { notifyUser } from "../lib/notifications";
 import { driverHasActiveDelivery } from "../lib/driver-conflicts";
@@ -20,13 +21,22 @@ export const OFFER_TTL_SECONDS = 20;
  * eligible driver, excluding everyone who has already declined/timed out on
  * this specific trip (Trip.declinedDriverIds).
  *
- * Deliberately not location-aware yet: there's no driver location in
- * Postgres today (RT-02's location stream is in-memory only, see
- * src/realtime/hub.ts) and no PostGIS/geo index to query against. "First
- * available ACTIVE driver, highest rated" is the honest MVP algorithm this
- * data supports — swap in a real distance-based query once driver location
- * is itself persisted somewhere queryable.
+ * Location-aware (gap B-1): drivers persist their last reported position on
+ * their Driver row (services/driver-location.ts, fed by POST
+ * /drivers/me/location and the WebSocket location feed). Candidates are the
+ * eligible drivers with a position fresher than MATCHING_LOCATION_MAX_AGE_MS,
+ * ranked by great-circle distance to the pickup, then rating. A driver who
+ * has never reported a position (or whose last report is stale) is never
+ * offered a ride they may be nowhere near. The eligible set is small (only
+ * online, unassigned, correctly-classed drivers with a fresh location), so
+ * ranking in memory with haversine is cheap and needs no PostGIS.
+ *
+ * If a trip has no pickup coordinates at all (legacy rows only — POST /trips
+ * requires them) it falls back to rating order across fresh-located drivers.
  */
+export const MATCHING_LOCATION_MAX_AGE_MS = 2 * 60_000;
+export const MATCHING_MAX_DISTANCE_KM = 25;
+
 async function findNextEligibleDriver(trip: Trip) {
   let eligibleClasses: RideVehicleClass[] = [];
   if (trip.rideCategoryKey) {
@@ -34,11 +44,15 @@ async function findNextEligibleDriver(trip: Trip) {
     eligibleClasses = category?.eligibleVehicleClasses ?? [];
   }
 
-  return prisma.driver.findFirst({
+  const freshSince = new Date(Date.now() - MATCHING_LOCATION_MAX_AGE_MS);
+  const candidates = await prisma.driver.findMany({
     where: {
       status: "ACTIVE",
       isOnline: true,
       id: { notIn: trip.declinedDriverIds },
+      lastLat: { not: null },
+      lastLng: { not: null },
+      lastLocationAt: { gte: freshSince },
       // A driver already OFFERED/MATCHED/IN_PROGRESS on another ride, or
       // actively carrying a delivery (MATCHED/PICKED_UP/IN_TRANSIT), must
       // never be offered a second, conflicting job at the same time (P0:
@@ -53,6 +67,19 @@ async function findNextEligibleDriver(trip: Trip) {
     },
     orderBy: { rating: "desc" },
   });
+  if (candidates.length === 0) return null;
+
+  if (trip.pickupLat == null || trip.pickupLng == null) return candidates[0];
+  const pickup = { lat: trip.pickupLat, lng: trip.pickupLng };
+
+  const ranked = candidates
+    .map((driver) => ({
+      driver,
+      distanceKm: haversineKm(pickup, { lat: driver.lastLat as number, lng: driver.lastLng as number }),
+    }))
+    .filter(({ distanceKm }) => distanceKm <= MATCHING_MAX_DISTANCE_KM)
+    .sort((a, b) => a.distanceKm - b.distanceKm || b.driver.rating - a.driver.rating);
+  return ranked[0]?.driver ?? null;
 }
 
 /**
@@ -69,13 +96,23 @@ export async function matchDriverToTrip(tripId: string) {
   const driver = await findNextEligibleDriver(trip);
   if (!driver) return null;
 
-  const offered = await prisma.trip.update({
-    where: { id: tripId },
+  // Conditional on the trip still being REQUESTED: matchDriverToTrip can now
+  // be triggered concurrently (trip creation, decline/expiry re-offers, a
+  // driver going online, and every persisted location ping via
+  // maybeMatchPendingTrips), so two callers that both found a driver for the
+  // same trip must not both write an offer — only the first wins.
+  const { count } = await prisma.trip.updateMany({
+    where: { id: tripId, status: "REQUESTED" },
     data: {
       driverId: driver.id,
       status: "OFFERED",
       offerExpiresAt: new Date(Date.now() + OFFER_TTL_SECONDS * 1000),
     },
+  });
+  if (count === 0) return null;
+
+  const offered = await prisma.trip.findUniqueOrThrow({
+    where: { id: tripId },
     include: { rider: true, driver: { include: { user: true, vehicles: true } } },
   });
 
@@ -207,4 +244,36 @@ export async function matchPendingTrips(): Promise<void> {
   for (const { id } of pending) {
     await matchDriverToTrip(id);
   }
+}
+
+// Location pings arrive every ~20 s per online driver (plus the WebSocket
+// feed while on a trip), so a sweep on every persisted ping would be a full
+// REQUESTED scan per driver per few seconds. Coalesce: at most one sweep per
+// PENDING_MATCH_THROTTLE_MS; a ping that lands inside the window is dropped,
+// because the next ping (or the next decline/expiry/go-online) retries anyway.
+export const PENDING_MATCH_THROTTLE_MS = 3_000;
+let lastPendingSweepAt = 0;
+let pendingSweep: Promise<void> | null = null;
+
+/**
+ * Throttled matchPendingTrips for high-frequency triggers (driver location
+ * persistence). Returns the in-flight sweep so tests can await it; callers in
+ * request paths must `void` it.
+ */
+export function maybeMatchPendingTrips(): Promise<void> {
+  if (pendingSweep) return pendingSweep;
+  const now = Date.now();
+  if (now - lastPendingSweepAt < PENDING_MATCH_THROTTLE_MS) return Promise.resolve();
+  lastPendingSweepAt = now;
+  pendingSweep = matchPendingTrips()
+    .catch((err) => console.error("Failed to match pending trips after location update", err))
+    .finally(() => {
+      pendingSweep = null;
+    });
+  return pendingSweep;
+}
+
+/** Test hook: forget the pending-sweep throttle. */
+export function resetMatchingThrottle(): void {
+  lastPendingSweepAt = 0;
 }

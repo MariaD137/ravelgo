@@ -12,6 +12,7 @@ import { cognitoGroups } from "../services/cognito";
 import { sensitiveLimiter } from "../middleware/rate-limit";
 import { recordDriverLocation } from "../realtime/hub";
 import { matchPendingTrips } from "../services/matching";
+import { persistDriverLocation } from "../services/driver-location";
 import { notifyUser } from "../lib/notifications";
 
 // Same pattern as courier.routes.ts's withProofUrls: a dedicated S3 client for
@@ -50,13 +51,23 @@ driversRouter.post("/drivers/apply", sensitiveLimiter, requireAuth, async (req, 
   // Create/find the profile first (the application's source of truth). Both
   // upserts and the group add are idempotent, so a retry after a partial
   // failure converges rather than duplicating or corrupting anything.
+  //
+  // User.role is a single-valued listing/eligibility label (admin-users list
+  // and lookup, rider list, payout eligibility, notifyAllAdmins) — it is NOT
+  // what authorizes anything; Cognito groups and User.adminRole are. It must
+  // never be downgraded for an ADMIN: an admin who opens the Driver App (or
+  // is in the Driver group for any reason) would otherwise vanish from
+  // GET /admin-users and findAdminById, becoming impossible to suspend or
+  // re-invite, while keeping every admin permission. Their row stays ADMIN;
+  // a Driver profile may still be created for them below.
+  const existingUser = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
   const user = await prisma.user.upsert({
     where: { cognitoSub: req.user!.sub },
-    // On an EXISTING user only flip the role — never overwrite their stored
-    // name/email from the application payload (the client may send placeholder
-    // names, which must not clobber a real profile). New users are seeded with
-    // the supplied fields.
-    update: { role: "DRIVER" },
+    // On an EXISTING user only flip the role (and never for an ADMIN) — never
+    // overwrite their stored name/email from the application payload (the
+    // client may send placeholder names, which must not clobber a real
+    // profile). New users are seeded with the supplied fields.
+    update: existingUser?.role === "ADMIN" ? {} : { role: "DRIVER" },
     create: { cognitoSub: req.user!.sub, role: "DRIVER", ...userFields },
   });
 
@@ -89,54 +100,44 @@ driversRouter.post("/drivers/apply", sensitiveLimiter, requireAuth, async (req, 
   res.status(alreadyApplied ? 200 : 201).json(driver);
 });
 
-// Admin: list all drivers
+const DRIVER_STATUSES = ["ACTIVE", "PENDING_REVIEW", "SUSPENDED"] as const;
+
+const listDriversQuerySchema = paginationQuerySchema.extend({
+  // Optional server-side filter on Driver.status. The Admin App's pending-
+  // applications view previously filtered client-side over the first page
+  // only, so a PENDING_REVIEW driver past the pagination window was simply
+  // invisible to reviewers; filtering here makes "show me every driver still
+  // waiting" a real query over the whole table.
+  status: z.enum(DRIVER_STATUSES).optional(),
+});
+
+// Admin: list all drivers (optionally narrowed to one status)
 driversRouter.get("/drivers", requireAuth, requireRole("Admin"), async (req, res) => {
-  const parsed = paginationQuerySchema.safeParse(req.query);
+  const parsed = listDriversQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { page, pageSize } = parsed.data;
+  const { page, pageSize, status } = parsed.data;
+  const where = status ? { status } : {};
 
   const [drivers, total] = await Promise.all([
     prisma.driver.findMany({
+      where,
       include: { user: true, vehicles: true },
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.driver.count(),
+    prisma.driver.count({ where }),
   ]);
   res.json(paginate(drivers, total, page, pageSize));
 });
 
-const createDriverSchema = z.object({
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  email: z.string().email(),
-  phoneNumber: z.string().optional(),
-  preferredLanguage: z.string().default("English"),
-});
-
-// Driver: create my profile (called once, right after Cognito sign-up completes
-// the driver onboarding flow — Cognito itself has no Postgres row for the user)
-driversRouter.post("/drivers/me", requireAuth, requireRole("Driver"), async (req, res) => {
-  const parsed = createDriverSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-
-  const { preferredLanguage, ...userFields } = parsed.data;
-
-  const user = await prisma.user.upsert({
-    where: { cognitoSub: req.user!.sub },
-    update: {},
-    create: { cognitoSub: req.user!.sub, role: "DRIVER", ...userFields },
-  });
-
-  const driver = await prisma.driver.upsert({
-    where: { userId: user.id },
-    update: {},
-    create: { userId: user.id, preferredLanguage },
-  });
-
-  res.status(201).json(driver);
-});
+// B-11: POST /drivers/me is gone. It let anyone already carrying the Driver
+// Cognito group create their own Driver row from a client-supplied name and
+// email, in parallel with (and bypassing) the real onboarding route,
+// POST /drivers/apply — which is the one that decides who becomes a driver,
+// adds the Cognito group server-side, and records the application. No app
+// ever called it (driver_app uses /drivers/apply then GET /drivers/me), so
+// its only remaining role was a second, weaker way in.
 
 const updateDriverMeSchema = z
   .object({ phoneNumber: z.string().min(1) })
@@ -181,10 +182,35 @@ driversRouter.patch("/drivers/me/preferences", requireAuth, requireRole("Driver"
 });
 
 // Driver: get my own profile
+//
+// select, not include: an unscoped findFirst here would pull every scalar on
+// Driver, including lastLat/lastLng/lastLocationAt (zz09_driver_last_location)
+// -- columns this response never serialized before that migration existed and
+// the driver app has never read. Against an environment where zz09 hasn't
+// been applied yet, that unscoped shape throws P2022 ("column does not
+// exist") and turns EVERY driver's "who am I" call into a 500, which is
+// exactly what this app's error screen has been showing. Naming every field
+// explicitly means a future additive migration to Driver can no longer break
+// this endpoint the same way.
 driversRouter.get("/drivers/me", requireAuth, requireRole("Driver"), async (req, res) => {
   const driver = await prisma.driver.findFirst({
     where: { user: { cognitoSub: req.user!.sub } },
-    include: { vehicles: true, documents: true, user: { select: { phoneNumber: true } } },
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      isOnline: true,
+      rating: true,
+      totalTrips: true,
+      preferredLanguage: true,
+      quietModePreferred: true,
+      subscriptionActive: true,
+      createdAt: true,
+      updatedAt: true,
+      vehicles: true,
+      documents: true,
+      user: { select: { phoneNumber: true } },
+    },
   });
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
   res.json(driver);
@@ -246,6 +272,14 @@ driversRouter.post("/drivers/me/location", requireAuth, requireRole("Driver"), a
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
   const location = recordDriverLocation(driver.id, parsed.data.lat, parsed.data.lng);
+  // Durable copy for location-aware matching (services/matching.ts). The
+  // in-memory hub above stays the source for the Live Map; this is throttled
+  // per driver and must never fail the ping itself.
+  try {
+    await persistDriverLocation(driver.id, parsed.data.lat, parsed.data.lng);
+  } catch (err) {
+    console.error("Failed to persist driver location", err);
+  }
   res.json(location);
 });
 
@@ -318,7 +352,7 @@ driversRouter.get(
 );
 
 const statusSchema = z.object({
-  status: z.enum(["ACTIVE", "PENDING_REVIEW", "SUSPENDED"]),
+  status: z.enum(DRIVER_STATUSES),
 });
 
 const DRIVER_STATUS_MESSAGES: Record<"ACTIVE" | "PENDING_REVIEW" | "SUSPENDED", { title: string; body: string }> = {
@@ -336,25 +370,45 @@ const DRIVER_STATUS_MESSAGES: Record<"ACTIVE" | "PENDING_REVIEW" | "SUSPENDED", 
   },
 };
 
-// Admin: suspend / reactivate a driver
+// Admin: approve (ACTIVE) / suspend / send back to review. This is THE
+// approval endpoint — Driver.status is the single authoritative approval
+// field the driver app (GET /drivers/me), the go-online gate
+// (PATCH /drivers/me/availability) and trip matching (services/matching.ts)
+// all read. Reviewing individual documents (PATCH /documents/:id/review)
+// records the outcome per document but never changes this field; an admin
+// must explicitly approve the driver here.
 driversRouter.patch("/drivers/:id/status", requireAuth, requireAdminPermission("drivers:write"), async (req, res) => {
   const parsed = statusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
+  const existing = await prisma.driver.findUnique({ where: { id: req.params.id } });
+  if (!existing) return res.status(404).json({ error: "Driver could not be found." });
+
+  // Idempotent: a repeated/duplicate approval (double-tap, retry after a
+  // timeout, stale admin screen) must not re-notify the driver "You're
+  // approved!" or write a second audit row for a change that never happened.
+  // 200 with the current record so the caller still converges on the truth.
+  if (existing.status === parsed.data.status) return res.json(existing);
+
   const driver = await prisma.driver.update({
-    where: { id: req.params.id },
+    where: { id: existing.id },
     data: { status: parsed.data.status },
   });
-  void recordAudit({
+  // Awaited (like the other admin-audit writes in this codebase) so the
+  // audit row is guaranteed to exist before the admin sees a 200; recordAudit
+  // never throws, so this can't turn a successful approval into an error.
+  await recordAudit({
     actorSub: req.user!.sub,
     action: "DRIVER_STATUS_CHANGED",
     entityType: "Driver",
     entityId: driver.id,
-    metadata: { status: parsed.data.status },
+    metadata: { from: existing.status, status: parsed.data.status },
   });
   // EI-1 gap closed: an approval/suspension/rejection previously only wrote
   // an audit row — the driver themself was never told their account status
-  // had changed at all.
+  // had changed at all. Best-effort (persisted in-app row + device push);
+  // the database status above is the source of truth, this is only how the
+  // driver app learns to re-fetch it.
   const message = DRIVER_STATUS_MESSAGES[parsed.data.status];
   await notifyUser(driver.userId, "DRIVER_ACCOUNT_STATUS_CHANGED", message.title, message.body);
   res.json(driver);

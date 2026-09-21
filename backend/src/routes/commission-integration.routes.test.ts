@@ -164,6 +164,103 @@ test("POST /api/trips/:id/refund (full) reverses the commission and zeroes the t
   assert.equal(payment.status, "REFUNDED");
 });
 
+// The admin app can now reach these routes (admin_app trip detail screen), so
+// the partial/limit/eligibility answers it renders are pinned down here.
+test("POST /api/trips/:id/refund (partial) reverses only the refunded share and leaves the payment SUCCEEDED", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 5000, finalFare: 5000, status: "COMPLETED" },
+  });
+  const driverToken = mockAuthAs({ sub: "ci-driver", groups: ["Driver"] });
+  await request(app).post(`/api/trips/${trip.id}/charge`).set("Authorization", `Bearer ${driverToken}`).send({ method: "CASH" });
+  restoreAuth();
+
+  const adminToken = mockAuthAs({ sub: "ci-admin", groups: ["Admin"] });
+  const refund = await request(app)
+    .post(`/api/trips/${trip.id}/refund`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ reason: "late pickup", amount: 2000 });
+  assert.equal(refund.status, 200);
+  assert.equal(refund.body.refunded, 2000);
+
+  // 20% commission on the refunded 2000, proportionally reversed.
+  const refundRow = await prisma.financialTransaction.findFirstOrThrow({ where: { tripId: trip.id, type: "REFUND" } });
+  assert.equal(refundRow.commissionAmount, -400);
+  assert.equal(refundRow.driverEarnings, -1600);
+
+  // Partially refunded is not refunded: the payment itself stays SUCCEEDED,
+  // which is what keeps the admin screen offering the remaining balance.
+  const payment = await prisma.payment.findUniqueOrThrow({ where: { tripId: trip.id } });
+  assert.equal(payment.status, "SUCCEEDED");
+});
+
+test("POST /api/trips/:id/refund refuses more than was charged, and a trip with nothing settled", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 5000, finalFare: 5000, status: "COMPLETED" },
+  });
+  const adminToken = mockAuthAs({ sub: "ci-admin", groups: ["Admin"] });
+
+  // Never charged at all.
+  const unpaid = await request(app)
+    .post(`/api/trips/${trip.id}/refund`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ reason: "nothing to refund" });
+  assert.equal(unpaid.status, 409);
+  restoreAuth();
+
+  const driverToken = mockAuthAs({ sub: "ci-driver", groups: ["Driver"] });
+  await request(app).post(`/api/trips/${trip.id}/charge`).set("Authorization", `Bearer ${driverToken}`).send({ method: "CASH" });
+  restoreAuth();
+
+  const adminAgain = mockAuthAs({ sub: "ci-admin", groups: ["Admin"] });
+  const tooMuch = await request(app)
+    .post(`/api/trips/${trip.id}/refund`)
+    .set("Authorization", `Bearer ${adminAgain}`)
+    .send({ reason: "over", amount: 5001 });
+  assert.equal(tooMuch.status, 400);
+
+  // A reason is mandatory — it is what lands in the audit log.
+  const noReason = await request(app)
+    .post(`/api/trips/${trip.id}/refund`)
+    .set("Authorization", `Bearer ${adminAgain}`)
+    .send({ amount: 100 });
+  assert.equal(noReason.status, 400);
+
+  // Nothing was moved by any of the three refusals.
+  assert.equal(await prisma.financialTransaction.count({ where: { tripId: trip.id, type: "REFUND" } }), 0);
+});
+
+test("POST /api/trips/:id/refund writes an audit row naming the actor, amount and reason", async () => {
+  const { rider, driver } = await createRiderAndDriver();
+  const trip = await prisma.trip.create({
+    data: { riderId: rider.id, driverId: driver.id, pickup: "A", destination: "B", estimatedFare: 5000, finalFare: 5000, status: "COMPLETED" },
+  });
+  const driverToken = mockAuthAs({ sub: "ci-driver", groups: ["Driver"] });
+  await request(app).post(`/api/trips/${trip.id}/charge`).set("Authorization", `Bearer ${driverToken}`).send({ method: "CASH" });
+  restoreAuth();
+
+  const adminToken = mockAuthAs({ sub: "ci-admin", groups: ["Admin"] });
+  const refund = await request(app)
+    .post(`/api/trips/${trip.id}/refund`)
+    .set("Authorization", `Bearer ${adminToken}`)
+    .send({ reason: "charged twice", amount: 1500 });
+  assert.equal(refund.status, 200);
+
+  const audit = await prisma.auditLog.findFirstOrThrow({
+    where: { action: "TRIP_PAYMENT_REFUNDED", entityId: trip.id },
+  });
+  assert.equal(audit.entityType, "Trip");
+  const metadata = audit.metadata as { refundAmount?: number; reason?: string };
+  assert.equal(metadata.refundAmount, 1500);
+  assert.equal(metadata.reason, "charged twice");
+
+  // The rider is told, through the same notification path every other
+  // payment event uses.
+  const notifications = await prisma.notification.findMany({ where: { userId: rider.id } });
+  assert.ok(notifications.some((n) => n.title === "Refund issued"));
+});
+
 test("POST /api/trips/:id/refund rejects a non-Admin caller", async () => {
   const { rider, driver } = await createRiderAndDriver();
   const trip = await prisma.trip.create({

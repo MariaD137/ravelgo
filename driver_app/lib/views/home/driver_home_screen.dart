@@ -3,12 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_driver_app/config/currency.dart';
+import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/models/driver_profile.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
+import 'package:ravelgo_driver_app/views/documents/my_documents_screen.dart';
+import 'package:ravelgo_driver_app/views/home/account_status_card.dart';
 import 'package:ravelgo_driver_app/views/notifications/notifications_screen.dart';
 import 'package:ravelgo_driver_app/views/riderequest/incoming_request_sheet.dart';
+import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
 import 'package:ravelgo_driver_app/views/trip/active_trip_screen.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
 
 /// The driver's home. When online it polls the backend for a trip the matching
 /// engine has assigned to this driver (status MATCHED) and surfaces it as a
@@ -16,11 +21,26 @@ import 'package:ravelgo_driver_app/views/trip/active_trip_screen.dart';
 /// Accepting opens the live trip screen; declining cancels the trip on the
 /// backend. Today's earnings/trips are derived from the driver's real completed
 /// trips.
+///
+/// The approval card at the top renders ONLY what GET /drivers/me last
+/// returned (via DriverShell): a status that hasn't loaded shows as such, a
+/// failed load shows the failure with a retry, and "Application under review"
+/// appears only when the backend's Driver.status really is PENDING_REVIEW.
 class DriverHomeScreen extends StatefulWidget {
   final DriverProfile profile;
+  final DriverProfileLoadState loadState;
+  final String? loadError;
   final ValueChanged<bool> onOnlineToggle;
+  final Future<void> Function() onRefresh;
 
-  const DriverHomeScreen({super.key, required this.profile, required this.onOnlineToggle});
+  const DriverHomeScreen({
+    super.key,
+    required this.profile,
+    required this.onOnlineToggle,
+    required this.onRefresh,
+    this.loadState = DriverProfileLoadState.ready,
+    this.loadError,
+  });
 
   @override
   State<DriverHomeScreen> createState() => _DriverHomeScreenState();
@@ -34,6 +54,32 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
 
   int _tripsToday = 0;
   double _earningsToday = 0;
+
+  // D-4: while online, this screen's poll and location ping are the driver's
+  // only link to the dispatcher, and both used to fail silently. A driver
+  // whose connection had dropped saw "You're online and visible to riders"
+  // and a spinner saying we would notify them — while nothing at all was
+  // reaching the backend and no offer could ever arrive. Two consecutive
+  // network failures (roughly 16s of polling) is enough to be worth saying
+  // out loud; a single blip is not.
+  static const _offlineAfterConsecutiveFailures = 2;
+  int _consecutiveNetworkFailures = 0;
+  bool get _unreachable =>
+      _consecutiveNetworkFailures >= _offlineAfterConsecutiveFailures;
+
+  /// Records the outcome of a backend call made by the online loop. Only a
+  /// genuine "never reached RavelGo" counts (ApiException.statusCode 0) — a
+  /// 4xx/5xx means the backend answered, which is a different problem and
+  /// must not be reported as the driver being offline.
+  void _noteReachability({required Object? error}) {
+    final networkFailure = error is ApiException && error.isNetworkFailure;
+    final next = networkFailure ? _consecutiveNetworkFailures + 1 : 0;
+    if (next == _consecutiveNetworkFailures) return;
+    final wasUnreachable = _unreachable;
+    _consecutiveNetworkFailures = next;
+    if (!mounted) return;
+    if (wasUnreachable != _unreachable) setState(() {});
+  }
 
   @override
   void initState() {
@@ -101,8 +147,12 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
       final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       await DriverApi.pingLocation(pos.latitude, pos.longitude);
-    } catch (_) {
-      // Best-effort: a failed fix/ping just means no update this tick.
+      _noteReachability(error: null);
+    } catch (e) {
+      // Best-effort: a failed fix/ping just means no update this tick — but a
+      // ping that never reached RavelGo counts toward the offline banner,
+      // because matching only considers drivers with a recent position.
+      _noteReachability(error: e);
     }
   }
 
@@ -139,7 +189,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
     List<DriverTrip> trips;
     try {
       trips = await _loadTrips();
-    } catch (_) {
+      _noteReachability(error: null);
+    } catch (e) {
+      _noteReachability(error: e);
       return;
     }
     if (!mounted) return;
@@ -185,13 +237,51 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
       if (matched != null) {
         await Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => ActiveTripScreen(trip: matched)),
+          AppPageRoute(builder: (_) => ActiveTripScreen(trip: matched)),
         );
         if (mounted) await _refreshTrips();
       }
     } finally {
       _handlingRequest = false;
     }
+  }
+
+  /// Says plainly that the device, not the driver, is the problem — and that
+  /// no ride request can arrive until it clears. Retrying is the poll itself,
+  /// which keeps running; there is nothing for the driver to tap.
+  Widget _unreachableBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.warning),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.wifi_off, size: 20, color: AppColors.warning),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("Can't reach RavelGo",
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                SizedBox(height: 4),
+                Text(
+                  "You're still marked online, but your location isn't reaching us and "
+                  "no ride request can either. Check your connection — this clears by "
+                  "itself the moment it comes back.",
+                  style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -232,8 +322,14 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       ),
                     ),
                     GestureDetector(
-                      onTap: () => Navigator.push(
-                          context, MaterialPageRoute(builder: (_) => const NotificationsScreen())),
+                      onTap: () async {
+                        await Navigator.push(
+                            context, AppPageRoute(builder: (_) => const NotificationsScreen()));
+                        // An approval notification lives in that list — coming
+                        // back from it is the natural moment to re-read the
+                        // real status.
+                        if (context.mounted) await widget.onRefresh();
+                      },
                       child: const CircleAvatar(
                           backgroundColor: AppColors.surface,
                           child: Icon(Icons.notifications_none, color: AppColors.textPrimary)),
@@ -244,39 +340,28 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
             ],
           ),
           Expanded(
-            child: SingleChildScrollView(
+            child: RefreshIndicator(
+              onRefresh: widget.onRefresh,
+              child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (profile.isOnline && _unreachable) ...[
+                    _unreachableBanner(),
+                    const SizedBox(height: 12),
+                  ],
                   if (!profile.isApproved)
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: AppComponents.cardDecoration(),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.hourglass_top, size: 20, color: AppColors.warning),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  "Application under review",
-                                  style: TextStyle(fontWeight: FontWeight.w600),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  profile.status == 'SUSPENDED'
-                                      ? "Your account is suspended. Contact support for help."
-                                      : "We'll notify you as soon as your documents are approved and you can go online.",
-                                  style: const TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                    DriverAccountStatusCard(
+                      profile: profile,
+                      loadState: widget.loadState,
+                      loadError: widget.loadError,
+                      onRefresh: widget.onRefresh,
+                      onOpenDocuments: () async {
+                        await Navigator.push(context, AppPageRoute(builder: (_) => const MyDocumentsScreen()));
+                        if (context.mounted) await widget.onRefresh();
+                      },
                     )
                   else
                     Container(
@@ -284,11 +369,19 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       decoration: AppComponents.cardDecoration(),
                       child: Row(
                         children: [
-                          Icon(Icons.circle, size: 12, color: profile.isOnline ? AppColors.online : AppColors.offline),
+                          Icon(Icons.circle,
+                              size: 12,
+                              color: !profile.isOnline
+                                  ? AppColors.offline
+                                  : (_unreachable ? AppColors.warning : AppColors.online)),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              profile.isOnline ? "You're online and visible to riders" : "You're offline",
+                              profile.isOnline
+                                  ? (_unreachable
+                                      ? "Online, but RavelGo can't be reached"
+                                      : "You're online and visible to riders")
+                                  : "You're offline",
                               style: const TextStyle(fontWeight: FontWeight.w600),
                             ),
                           ),
@@ -322,7 +415,9 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                             child: Text(
                               _handlingRequest
                                   ? "You have a ride request."
-                                  : "Waiting for ride requests. We'll notify you the moment one is offered to you.",
+                                  : _unreachable
+                                      ? "Not connected — no ride request can reach you until this clears."
+                                      : "Waiting for ride requests. We'll notify you the moment one is offered to you.",
                               style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
                             ),
                           ),
@@ -340,6 +435,7 @@ class _DriverHomeScreenState extends State<DriverHomeScreen> {
                       ),
                     ),
                 ],
+              ),
               ),
             ),
           ),

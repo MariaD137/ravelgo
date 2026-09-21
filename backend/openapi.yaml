@@ -37,9 +37,16 @@ tags:
   - name: Wallet
   - name: Loyalty & Promotions
   - name: Pricing
+  - name: Eats
+  - name: Stays
+  - name: Places
+  - name: Referrals
 
 paths:
   /health:
+    servers:
+      - url: /
+        description: Served at the host root, outside the /api base above
     get:
       tags: [Health]
       summary: Liveness/readiness check
@@ -59,6 +66,9 @@ paths:
           description: Database unreachable
 
   /health/pricing:
+    servers:
+      - url: /
+        description: Served at the host root, outside the /api base above
     get:
       tags: [Health]
       summary: Ride-pricing diagnostics (row counts only; no auth, no rates, no PII)
@@ -105,6 +115,28 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /riders/me:
+    patch:
+      tags: [Riders]
+      summary: Update my own contact details (Rider)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phoneNumber: { type: string }
+                firstName: { type: string }
+                lastName: { type: string }
+      responses:
+        "200":
+          description: Updated rider
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [Riders]
       summary: Create/upsert my rider profile (Rider)
@@ -199,6 +231,11 @@ paths:
       parameters:
         - $ref: "#/components/parameters/page"
         - $ref: "#/components/parameters/pageSize"
+        - name: status
+          in: query
+          required: false
+          description: Narrow the list to drivers in one approval status (e.g. PENDING_REVIEW for the review queue).
+          schema: { $ref: "#/components/schemas/DriverStatus" }
       responses:
         "200":
           description: Paginated drivers
@@ -206,28 +243,6 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/PaginatedDriver" }
   /drivers/me:
-    post:
-      tags: [Drivers]
-      summary: Create/upsert my driver profile (Driver)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [firstName, lastName, email]
-              properties:
-                firstName: { type: string }
-                lastName: { type: string }
-                email: { type: string, format: email }
-                phoneNumber: { type: string }
-                preferredLanguage: { type: string, default: English }
-      responses:
-        "201":
-          description: Driver profile
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Driver" }
     get:
       tags: [Drivers]
       summary: My own driver profile (Driver)
@@ -346,7 +361,13 @@ paths:
   /drivers/{id}/status:
     patch:
       tags: [Drivers]
-      summary: Suspend/reactivate a driver (Admin)
+      summary: Approve (ACTIVE), suspend, or send a driver back to review (Admin, drivers:write)
+      description: >-
+        The single authoritative approval action. Driver.status is what the driver app
+        reads (GET /drivers/me), what gates going online (PATCH /drivers/me/availability)
+        and what trip matching requires. Reviewing individual documents never changes it.
+        Idempotent: repeating the current status returns 200 without re-notifying the driver.
+        Writes an audit row and sends the driver a DRIVER_ACCOUNT_STATUS_CHANGED notification.
       parameters:
         - $ref: "#/components/parameters/id"
       requestBody:
@@ -364,6 +385,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Driver" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: No driver with this id
 
   /vehicles/me:
     get:
@@ -378,6 +403,20 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/Vehicle" }
   /vehicles:
+    get:
+      tags: [Vehicles]
+      summary: List every vehicle on the platform (Admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated vehicles
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [Vehicles]
       summary: Add a vehicle (Driver)
@@ -393,6 +432,17 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Vehicle" }
   /vehicles/{id}:
+    delete:
+      tags: [Vehicles]
+      summary: Delete one of my own vehicles (Driver)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "204":
+          description: Deleted
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [Vehicles]
       summary: Update one of my own vehicles (Driver)
@@ -912,7 +962,12 @@ paths:
                 properties:
                   activeTrips: { type: integer }
                   onlineDrivers: { type: integer }
-                  pendingApprovals: { type: integer }
+                  pendingDriverApplications:
+                    type: integer
+                    description: Drivers whose Driver.status is still PENDING_REVIEW (awaiting the approval decision).
+                  pendingApprovals:
+                    type: integer
+                    description: Pending document reviews plus pending Car Paddy requests (not driver applications).
 
   /admin-users:
     get:
@@ -2062,6 +2117,1069 @@ paths:
                   amount: { type: number }
                   status: { type: string, enum: [PENDING] }
         "400": { $ref: "#/components/responses/BadRequest" }
+
+  /drivers/apply:
+    post:
+      tags: [Drivers]
+      summary: Apply to become a driver; the server adds the Driver group
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firstName, lastName, email]
+              properties:
+                firstName: { type: string }
+                lastName: { type: string }
+                email: { type: string }
+                phoneNumber: { type: string }
+                preferredLanguage: { type: string }
+      responses:
+        "201":
+          description: Driver profile created
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /drivers/me/availability:
+    patch:
+      tags: [Drivers]
+      summary: Go online/offline (Driver; only an ACTIVE driver may go online)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [isOnline]
+              properties:
+                isOnline: { type: boolean }
+                status: { type: string }
+      responses:
+        "200":
+          description: Updated driver
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /drivers/me/location:
+    post:
+      tags: [Drivers]
+      summary: Report my current position (Driver)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lat, lng]
+              properties:
+                lat: { type: number }
+                lng: { type: number }
+      responses:
+        "200":
+          description: Recorded location
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /drivers/{driverId}/documents/{documentId}/url:
+    get:
+      tags: [Documents]
+      summary: Signed S3 URL for one of a driver's documents (Admin)
+      parameters:
+        - { name: driverId, in: path, required: true, schema: { type: string } }
+        - { name: documentId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Short-lived signed URL
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /trips/mine:
+    get:
+      tags: [Trips]
+      summary: My own trips (Rider or Driver, scoped to the caller)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated trips
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /trips/{id}/cancel:
+    post:
+      tags: [Trips]
+      summary: Cancel my trip before it is under way (Rider)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Cancelled trip
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /trips/{id}/pay:
+    post:
+      tags: [Payments]
+      summary: Pay for my completed trip by CARD, CASH or WALLET (Rider)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method]
+              properties:
+                method: { type: string }
+      responses:
+        "201":
+          description: Payment
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /trips/{id}/rider-location:
+    post:
+      tags: [Trips]
+      summary: Report the rider's position during an active trip (Rider)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lat, lng]
+              properties:
+                lat: { type: number }
+                lng: { type: number }
+      responses:
+        "200":
+          description: Recorded location
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /courier-requests/mine:
+    get:
+      tags: [Courier]
+      summary: Deliveries assigned to me (Driver)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated delivery requests
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /courier-requests/sent:
+    get:
+      tags: [Courier]
+      summary: Deliveries I sent (Rider)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated delivery requests
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /courier-requests/{id}/cancel:
+    post:
+      tags: [Courier]
+      summary: Cancel a delivery I sent (Rider)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Cancelled delivery request
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /settings/payment:
+    get:
+      tags: [Admin]
+      summary: Payment rules every app must honour (cash limit, allowed methods)
+      responses:
+        "200":
+          description: Payment settings
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/settings/payment:
+    patch:
+      tags: [Admin]
+      summary: Update the platform payment rules (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                cashPaymentLimit: { type: number }
+                cashEnabled: { type: boolean }
+      responses:
+        "200":
+          description: Updated payment settings
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/analytics:
+    get:
+      tags: [Admin]
+      summary: Trip/revenue series for the admin dashboard (Admin)
+      responses:
+        "200":
+          description: Analytics series
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/audit:
+    get:
+      tags: [Admin]
+      summary: Audit log of admin actions (Admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated audit entries
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/live-map:
+    get:
+      tags: [Admin]
+      summary: Current positions of online drivers, with freshness (Admin)
+      responses:
+        "200":
+          description: Live map snapshot
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/cash-reconciliation:
+    get:
+      tags: [Admin]
+      summary: Cash owed by each driver against what has been remitted (Admin)
+      responses:
+        "200":
+          description: Cash reconciliation rows
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/cash-remittances:
+    post:
+      tags: [Admin]
+      summary: Record a cash remittance handed in by a driver (Admin, cash:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [driverId, amount]
+              properties:
+                driverId: { type: string }
+                amount: { type: number }
+                note: { type: string }
+      responses:
+        "201":
+          description: Cash remittance
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/vehicles/{id}/class:
+    patch:
+      tags: [Vehicles]
+      summary: Set a vehicle's ride class (Admin, drivers:write)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [vehicleClass]
+              properties:
+                vehicleClass: { type: string }
+      responses:
+        "200":
+          description: Updated vehicle
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /payouts:
+    get:
+      tags: [Payments]
+      summary: All driver payouts (Admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated payouts
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /payouts/{id}:
+    get:
+      tags: [Payments]
+      summary: One payout (Driver; own payouts only)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Payout
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /payouts/history:
+    get:
+      tags: [Payments]
+      summary: My own payout history (Driver)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated payouts
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /payouts/banks:
+    get:
+      tags: [Payments]
+      summary: Banks payouts can be sent to (Driver)
+      responses:
+        "200":
+          description: Supported banks
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /payouts/bank-account:
+    get:
+      tags: [Payments]
+      summary: My saved payout bank account (Driver)
+      responses:
+        "200":
+          description: Bank account
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Payments]
+      summary: Save/replace my payout bank account (Driver)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accountNumber, bankCode]
+              properties:
+                accountNumber: { type: string }
+                bankCode: { type: string }
+      responses:
+        "201":
+          description: Bank account
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /payouts/calculate:
+    post:
+      tags: [Payments]
+      summary: Preview what a driver is owed for a period (Admin, payouts:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [driverId, periodStart, periodEnd]
+              properties:
+                driverId: { type: string }
+                periodStart: { type: string }
+                periodEnd: { type: string }
+      responses:
+        "200":
+          description: Calculated payout
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /payouts/create:
+    post:
+      tags: [Payments]
+      summary: Create a payout for a driver and period (Admin, payouts:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [driverId, periodStart, periodEnd]
+              properties:
+                driverId: { type: string }
+                periodStart: { type: string }
+                periodEnd: { type: string }
+      responses:
+        "201":
+          description: Payout
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /payouts/{id}/process:
+    post:
+      tags: [Payments]
+      summary: Send a created payout to the provider (Admin, payouts:write)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Payout
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /payouts/{id}/complete:
+    post:
+      tags: [Payments]
+      summary: Mark a payout settled (Admin, payouts:write)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Payout
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /payouts/{id}/fail:
+    post:
+      tags: [Payments]
+      summary: Mark a payout failed (Admin, payouts:write)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        "200":
+          description: Payout
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /rentals/{id}:
+    get:
+      tags: [Rentals]
+      summary: One rental listing
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Rental listing
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /rentals/{id}/book:
+    post:
+      tags: [Rentals]
+      summary: Book a rental listing
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [startDate, endDate]
+              properties:
+                startDate: { type: string }
+                endDate: { type: string }
+      responses:
+        "201":
+          description: Rental booking
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /rental-bookings/mine:
+    get:
+      tags: [Rentals]
+      summary: My own rental bookings
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated rental bookings
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /rental-bookings/{id}:
+    get:
+      tags: [Rentals]
+      summary: One of my rental bookings
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Rental booking
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /rental-bookings/{id}/pay:
+    post:
+      tags: [Rentals]
+      summary: Pay for a rental booking
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method]
+              properties:
+                method: { type: string }
+      responses:
+        "201":
+          description: Payment
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /rental-bookings/{id}/cancel:
+    patch:
+      tags: [Rentals]
+      summary: Cancel one of my rental bookings
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Cancelled booking
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /stays:
+    get:
+      tags: [Stays]
+      summary: Browse published short-stay listings
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated stay listings
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Stays]
+      summary: Create a short-stay listing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, pricePerNight]
+              properties:
+                title: { type: string }
+                description: { type: string }
+                pricePerNight: { type: number }
+                address: { type: string }
+      responses:
+        "201":
+          description: Stay listing
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /stays/mine:
+    get:
+      tags: [Stays]
+      summary: Short-stay listings I own
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated stay listings
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /stays/{id}:
+    get:
+      tags: [Stays]
+      summary: One short-stay listing
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Stay listing
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /stays/{id}/status:
+    patch:
+      tags: [Stays]
+      summary: Approve/reject a short-stay listing (Admin, listings:write)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string }
+                rejectionReason: { type: string }
+      responses:
+        "200":
+          description: Updated listing
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /stays/{id}/book:
+    post:
+      tags: [Stays]
+      summary: Book a short-stay listing
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [checkIn, checkOut]
+              properties:
+                checkIn: { type: string }
+                checkOut: { type: string }
+                guests: { type: integer }
+      responses:
+        "201":
+          description: Stay booking
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /stays/{id}/bookings:
+    get:
+      tags: [Stays]
+      summary: Bookings against one listing (Admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated stay bookings
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /stays/bookings/mine:
+    get:
+      tags: [Stays]
+      summary: My own short-stay bookings
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated stay bookings
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /eats/restaurants:
+    get:
+      tags: [Eats]
+      summary: Browse restaurants
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated restaurants
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /eats/restaurants/{id}:
+    get:
+      tags: [Eats]
+      summary: One restaurant with its menu
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Restaurant
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /eats/orders:
+    post:
+      tags: [Eats]
+      summary: Place a food order (Rider)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [restaurantId, items]
+              properties:
+                restaurantId: { type: string }
+                items: { type: array }
+                deliveryAddress: { type: string }
+      responses:
+        "201":
+          description: Food order
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /eats/orders/mine:
+    get:
+      tags: [Eats]
+      summary: My own food orders (Rider)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: Paginated food orders
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /places/autocomplete:
+    get:
+      tags: [Places]
+      summary: Place suggestions for an address search
+      parameters:
+        - { name: input, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Place suggestions
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /places/details:
+    get:
+      tags: [Places]
+      summary: Coordinates and formatted address for a place
+      parameters:
+        - { name: placeId, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Place details
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /geocode/forward:
+    get:
+      tags: [Places]
+      summary: Coordinates for an address
+      parameters:
+        - { name: address, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Coordinates
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /geocode/reverse:
+    get:
+      tags: [Places]
+      summary: Address for a pair of coordinates
+      parameters:
+        - { name: lat, in: query, required: true, schema: { type: string } }
+        - { name: lng, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Address
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /openapi.json:
+    servers:
+      - url: /
+        description: Served at the host root, outside the /api base above
+    get:
+      tags: [Health]
+      summary: This document, as JSON
+      security: []
+      responses:
+        "200":
+          description: OpenAPI document
+          content:
+            application/json:
+              schema: { type: object }
+
+  /riders/me/referral:
+    get:
+      tags: [Referrals]
+      summary: My referral code, the programme terms and my invite stats (Rider)
+      responses:
+        "200":
+          description: Referral summary
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /riders/me/referral/claim:
+    post:
+      tags: [Referrals]
+      summary: Use someone else's invite code (Rider, before the first completed ride)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        "201":
+          description: Referral recorded
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /settings/referral:
+    get:
+      tags: [Referrals]
+      summary: Current referral programme terms
+      responses:
+        "200":
+          description: Referral programme
+          content:
+            application/json:
+              schema: { type: object }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /admin/settings/referral:
+    patch:
+      tags: [Referrals]
+      summary: Configure the referral programme (Admin, settings:write)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                referralEnabled: { type: boolean }
+                referralRewardAmount: { type: number }
+                referralRefereeRewardAmount: { type: number }
+                referralQualifyingTrips: { type: integer }
+      responses:
+        "200":
+          description: Updated referral programme
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /admin/referrals:
+    get:
+      tags: [Referrals]
+      summary: All referrals and their status (Admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+        - { name: status, in: query, schema: { type: string, enum: [PENDING, REWARDED] } }
+      responses:
+        "200":
+          description: Paginated referrals
+          content:
+            application/json:
+              schema: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /health/schema:
+    servers:
+      - url: /
+        description: Served at the host root, outside the /api base above
+    get:
+      tags: [Health]
+      summary: Whether every migration this build ships has been applied here
+      security: []
+      responses:
+        "200":
+          description: The database is up to date with this build
+          content:
+            application/json:
+              schema: { type: object }
+        "503":
+          description: Migrations are pending or failed; the response names them
+          content:
+            application/json:
+              schema: { type: object }
 
 components:
   securitySchemes:

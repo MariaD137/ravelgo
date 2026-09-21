@@ -203,6 +203,10 @@ model User {
   phoneNumber     String?
   isLoyaltyMember Boolean    @default(false)
   suspended       Boolean    @default(false)
+  // This rider's own code to hand out (services/referral.ts). Issued lazily
+  // on first read of GET /riders/me/referral rather than at signup, so the
+  // column stays null for everyone who never opens the invite screen.
+  referralCode    String?    @unique
   // Only meaningful when role == ADMIN. Null means "no preset assigned" —
   // see the AdminRole doc comment above for why that means full access.
   adminRole       AdminRole?
@@ -236,6 +240,10 @@ model User {
   rentalBookings       RentalBooking[]       @relation("RenterRentalBookings")
   notifications        Notification[]
   pushTokens           PushToken[]
+  // Referrals this user handed their code to, and the single referral that
+  // brought this user in (if any).
+  referralsMade        Referral[]            @relation("Referrer")
+  referredBy           Referral?             @relation("Referee")
 }
 
 model Driver {
@@ -249,6 +257,15 @@ model Driver {
   preferredLanguage  String       @default("English")
   quietModePreferred Boolean      @default(false)
   subscriptionActive Boolean      @default(false)
+  // Last known position, persisted from the driver's own location reports
+  // (POST /drivers/me/location, and the WebSocket "location" message) so
+  // trip matching can prefer the nearest eligible driver
+  // (services/matching.ts). Null until the driver has ever reported one; a
+  // report older than MATCHING_LOCATION_MAX_AGE_MS is treated as unknown.
+  // Never exposed to riders (lib/trip-view.ts builds an explicit summary).
+  lastLat            Float?
+  lastLng            Float?
+  lastLocationAt     DateTime?
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 
@@ -260,6 +277,10 @@ model Driver {
   courierRequestsHandled CourierRequest[]    @relation("CourierDriver")
   subscription           DriverSubscription?
   cashRemittances        CashRemittance[]
+
+  // Backs the matching candidate query: online, ACTIVE drivers with a recent
+  // location report.
+  @@index([status, isOnline, lastLocationAt])
 }
 
 model Vehicle {
@@ -650,14 +671,30 @@ model Payment {
 // setting, not a client-side constant, per the "never trust the frontend for
 // money rules" requirement on the ₦15,000 cash cap.
 model AppSetting {
-  id                   String   @id
+  id                   String  @id
   // NGN. Cash is only offered as a payment option for a trip whose fare is at
   // or below this amount — see lib/payment-rules.ts#isCashPaymentAllowed.
-  cashPaymentLimit     Float    @default(15000)
-  cashPaymentEnabled   Boolean  @default(true)
-  cardPaymentEnabled   Boolean  @default(true)
-  walletPaymentEnabled Boolean  @default(true)
-  updatedAt            DateTime @updatedAt
+  cashPaymentLimit     Float   @default(15000)
+  cashPaymentEnabled   Boolean @default(true)
+  cardPaymentEnabled   Boolean @default(true)
+  walletPaymentEnabled Boolean @default(true)
+
+  // --- Referral program (lib/referral-rules.ts) ---------------------------
+  // Off by default and deliberately so: turning it on starts crediting real
+  // money to real wallets, which is a business decision an admin makes
+  // explicitly (PATCH /api/admin/settings/referral), never something a
+  // deploy switches on by itself.
+  referralEnabled             Boolean @default(false)
+  // NGN credited to the REFERRER once their referee qualifies.
+  referralRewardAmount        Float   @default(1000)
+  // NGN credited to the NEW rider at the same moment. 0 = referrer-only,
+  // which is the default until someone decides otherwise.
+  referralRefereeRewardAmount Float   @default(0)
+  // How many trips the new rider must COMPLETE before either side is paid.
+  // 1 by default; raise it to make farming less attractive.
+  referralQualifyingTrips     Int     @default(1)
+
+  updatedAt DateTime @updatedAt
 }
 
 // A driver's physical cash hand-in, recorded by a Finance/Super admin after
@@ -691,6 +728,46 @@ model LoyaltyTier {
   discountPercent   Float
   perks             String?
   createdAt         DateTime @default(now())
+}
+
+/// One rider inviting another, and the money that follows.
+///
+/// PENDING the moment a new rider claims someone's code; REWARDED once that
+/// new rider has COMPLETED the configured number of trips and both wallet
+/// credits have actually been written. There is no third state: the reward
+/// and the status change happen in one transaction, so a row is REWARDED
+/// only if the money really moved (services/referral.ts).
+///
+/// The reward amounts are copied onto the row when it pays out rather than
+/// read back from AppSetting later, so changing the program tomorrow never
+/// rewrites what someone was actually paid yesterday.
+model Referral {
+  id                   String         @id @default(uuid())
+  referrerId           String
+  referrer             User           @relation("Referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  // Unique: a rider can be referred exactly once, ever. This is the database
+  // half of the anti-abuse rules in services/referral.ts — a second claim
+  // cannot be written even if the application check were somehow bypassed.
+  refereeId            String         @unique
+  referee              User           @relation("Referee", fields: [refereeId], references: [id], onDelete: Cascade)
+  // The code as typed, recorded for support even if the referrer later
+  // regenerates or the row is renamed.
+  code                 String
+  status               ReferralStatus @default(PENDING)
+  // What each side was actually paid, in NGN. Null until REWARDED.
+  referrerRewardAmount Float?
+  refereeRewardAmount  Float?
+  createdAt            DateTime       @default(now())
+  rewardedAt           DateTime?
+
+  // Backs "my referrals" on the invite screen and the admin list.
+  @@index([referrerId, status])
+  @@index([status, createdAt])
+}
+
+enum ReferralStatus {
+  PENDING
+  REWARDED
 }
 
 model Promotion {
@@ -931,6 +1008,7 @@ enum WalletTransactionType {
   RENTAL_PAYMENT // rider paid for a car rental booking from their balance
   DELIVERY_PAYMENT // sender paid for a courier delivery from their balance
   REFUND
+  REFERRAL_BONUS // credited to a rider whose referral qualified (services/referral.ts)
 }
 
 enum WalletTransactionStatus {

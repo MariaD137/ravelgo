@@ -22,6 +22,7 @@ import 'package:ravelgo_admin/views/safety/fraud_alerts_screen.dart';
 import 'package:ravelgo_admin/views/settings/admin_profile_screen.dart';
 import 'package:ravelgo_admin/views/settings/admin_users_screen.dart';
 import 'package:ravelgo_admin/views/settings/payment_settings_screen.dart';
+import 'package:ravelgo_admin/views/settings/referral_settings_screen.dart';
 import 'package:ravelgo_admin/views/stays/stays_management_screen.dart';
 import 'package:ravelgo_admin/views/subscriptions/driver_subscriptions_screen.dart';
 import 'package:ravelgo_admin/views/vehicles/vehicle_inventory_screen.dart';
@@ -83,6 +84,7 @@ class SideMenuAdmin extends StatelessWidget {
             _item(context, Icons.receipt_long_outlined, "Audit Log", () => const AuditLogScreen()),
             _item(context, Icons.manage_accounts_outlined, "Admin Users", () => const AdminUsersScreen()),
             _item(context, Icons.settings_outlined, "Payment Settings", () => const PaymentSettingsScreen()),
+            _item(context, Icons.card_giftcard_outlined, "Referral Programme", () => const ReferralSettingsScreen()),
             _item(context, Icons.person_outline, "My Profile", () => const AdminProfileScreen()),
             _item(context, Icons.logout, "Log out", () => const AdminLoginScreen(), replace: true, preAction: AuthService.signOut),
           ],

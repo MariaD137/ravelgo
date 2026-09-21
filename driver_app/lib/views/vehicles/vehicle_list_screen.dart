@@ -3,6 +3,9 @@ import 'package:ravelgo_driver_app/services/api_client.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/vehicles/add_vehicle_screen.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
+import 'package:ravelgo_driver_app/widgets/empty_state.dart';
+import 'package:ravelgo_driver_app/widgets/shimmer.dart';
 
 /// The driver's real vehicles — the single source of truth also used by the
 /// rental-listing flow (DriverApi.myVehicles()). No local/hardcoded records.
@@ -40,16 +43,14 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e is ApiException && e.statusCode == 403
-            ? 'Your account isn\'t set up as a driver yet.'
-            : e.toString();
+        _error = describeApiFailure(e, what: 'your vehicles');
         _loading = false;
       });
     }
   }
 
   Future<void> _addOrEdit({Vehicle? existing}) async {
-    final saved = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => AddVehicleScreen(existing: existing)));
+    final saved = await Navigator.push<bool>(context, AppPageRoute(builder: (_) => AddVehicleScreen(existing: existing)));
     if (saved == true) _load();
   }
 
@@ -86,7 +87,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
       floatingActionButton: FloatingActionButton(
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
-        onPressed: _busy ? null : () => _addOrEdit(),
+        onPressed: (_busy || _loading || _error != null) ? null : () => _addOrEdit(),
         child: const Icon(Icons.add),
       ),
       body: _body(),
@@ -94,29 +95,23 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
   }
 
   Widget _body() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
-              TextButton(onPressed: _load, child: const Text('Try again')),
-            ],
-          ),
-        ),
-      );
-    }
-    if (_vehicles.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text("You haven't added a vehicle yet. Tap + to add one.", style: TextStyle(color: AppColors.textSecondary)),
-        ),
-      );
-    }
+    return AsyncBody(
+      stateKey: _loading ? "loading" : (_error != null ? "error" : "data:${_vehicles.length}"),
+      child: _loading
+          ? const ShimmerList()
+          : _error != null
+              ? EmptyState(icon: Icons.cloud_off, title: "Couldn't load vehicles", subtitle: _error!, onRetry: _load)
+              : _vehicles.isEmpty
+                  ? const EmptyState(
+                      icon: Icons.directions_car_outlined,
+                      title: "No vehicles yet",
+                      subtitle: "Tap + to add your first vehicle.",
+                    )
+                  : _vehicleList(),
+    );
+  }
+
+  Widget _vehicleList() {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(

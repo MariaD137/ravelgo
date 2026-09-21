@@ -5,6 +5,7 @@ import 'package:amplify_push_notifications_pinpoint/amplify_push_notifications_p
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:ravelgo_driver_app/services/driver_profile_events.dart';
 import 'package:ravelgo_driver_app/services/push_token_api.dart';
 
 /// Wires the app up to real device push notifications, end to end:
@@ -117,6 +118,15 @@ class PushNotificationService {
         _handleNotificationOpened,
         onError: (Object _) {},
       );
+
+      // A push that arrives while the driver is looking at the app: for an
+      // account-status change, re-fetch the record right away so the home
+      // screen updates without the driver having to tap anything. Only a
+      // refresh trigger — the status itself is still read from the backend.
+      Amplify.Notifications.Push.onNotificationReceivedInForeground.listen(
+        _handleNotificationReceivedInForeground,
+        onError: (Object _) {},
+      );
     } on AmplifyAlreadyConfiguredException {
       _configured = true;
     } catch (_) {
@@ -138,17 +148,24 @@ class PushNotificationService {
   }
 
   /// Called when the driver taps a delivered push notification. Reads the
-  /// same referenceType/referenceId data payload the backend attaches to
-  /// every push (see backend/src/lib/notifications.ts) — actual navigation
+  /// same type/referenceType/referenceId data payload the backend attaches
+  /// to every push (see backend/src/lib/notifications.ts) — actual navigation
   /// is wired by whichever screen is listening via [onNotificationTapped].
-  static void Function(String? referenceType, String? referenceId)? onNotificationTapped;
+  static void Function(String? type, String? referenceType, String? referenceId)? onNotificationTapped;
 
   static void _handleNotificationOpened(PushNotificationMessage message) {
     final data = message.data;
     onNotificationTapped?.call(
+      data['type']?.toString(),
       data['referenceType']?.toString(),
       data['referenceId']?.toString(),
     );
+  }
+
+  static void _handleNotificationReceivedInForeground(PushNotificationMessage message) {
+    if (DriverProfileEvents.isAccountStatusChange(message.data['type']?.toString())) {
+      DriverProfileEvents.requestRefresh();
+    }
   }
 
   /// Call on logout so a future push never reaches a signed-out session.

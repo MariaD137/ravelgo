@@ -42,3 +42,25 @@ test("GET /health/pricing surfaces a database failure as 503 with the error code
   // The raw table name stays in the server log, not the response.
   assert.doesNotMatch(JSON.stringify(res.body), /public\.RideCategory/);
 });
+
+/**
+ * /health/schema is the probe that would have caught the Rent-a-Car outage:
+ * the deploy went fully green while every Driver-backed query returned
+ * "Database schema is out of date on this server", because no other probe
+ * touches those tables.
+ */
+test("GET /health/schema reports the migration state, unauthenticated and without leaking anything", async () => {
+  const res = await request(app).get("/health/schema");
+
+  assert.equal(res.status, 200, "the test database is fully migrated");
+  assert.equal(res.body.status, "ok");
+  assert.deepEqual(res.body.pending, []);
+  assert.deepEqual(res.body.failed, []);
+  assert.equal(res.body.expected, res.body.applied);
+  assert.ok(res.body.expected > 0, "it really counted the migrations shipped on disk");
+
+  // Diagnostics only: no rows, no credentials, no connection details.
+  const blob = JSON.stringify(res.body);
+  assert.ok(!blob.includes("postgres"), "must not leak connection details");
+  assert.ok(!blob.includes("password"));
+});

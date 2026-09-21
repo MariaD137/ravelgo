@@ -87,9 +87,19 @@ silently trusting an old coordinate forever.
   a `{"type":"trip:status"}` event to everyone subscribed to that trip's
   room, immediately after the Postgres write succeeds.
 - **RT-04 — ride-matching**: not part of the WebSocket layer itself —
-  `src/services/matching.ts` runs synchronously inside `POST /api/trips`,
-  see that file's own notes on why a synchronous "first available driver"
-  match is the right starting point rather than a queue/worker.
+  `src/services/matching.ts` runs synchronously inside `POST /api/trips`
+  (and again on decline/expiry, when a driver goes online, and — throttled —
+  whenever a driver's position is persisted), see that file's own notes on
+  why a synchronous match is the right starting point rather than a
+  queue/worker. Matching is location-aware: every driver position that
+  reaches the hub (WebSocket `location` message or `POST
+  /api/drivers/me/location`) is also written to `Driver.lastLat/lastLng/
+  lastLocationAt` by `src/services/driver-location.ts` (throttled to one
+  write per driver per 10 s), and matching ranks eligible drivers whose
+  position is fresher than two minutes by great-circle distance to the
+  pickup, capped at 25 km. The in-memory hub stays the source for the Live
+  Map and rider trip rooms; the Postgres copy exists only so matching can
+  query it, and it does not depend on the single-instance assumption above.
 
 ## Wire protocol (client-facing)
 

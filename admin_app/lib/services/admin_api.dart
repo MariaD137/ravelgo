@@ -1,4 +1,5 @@
 import 'package:ravelgo_admin/services/api_client.dart';
+import 'package:ravelgo_admin/services/paging.dart';
 
 double _d(dynamic v) => v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
 int _i(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
@@ -17,7 +18,13 @@ class DashboardStats {
   final int onlineDrivers;
   final int driversOnTrip;
   final int availableDrivers;
+  // Pending DOCUMENT + Car Paddy reviews. NOT the number of drivers waiting
+  // for an approval decision — see pendingDriverApplications.
   final int pendingApprovals;
+  // Drivers whose Driver.status is still PENDING_REVIEW: the real approval
+  // queue, i.e. the ones the "Approve driver" action on the detail screen
+  // hasn't been taken for yet.
+  final int pendingDriverApplications;
   final int pendingRideRequests;
   final int activeLogisticsDeliveries;
   final int registeredRiders;
@@ -30,6 +37,7 @@ class DashboardStats {
     required this.driversOnTrip,
     required this.availableDrivers,
     required this.pendingApprovals,
+    required this.pendingDriverApplications,
     required this.pendingRideRequests,
     required this.activeLogisticsDeliveries,
     required this.registeredRiders,
@@ -43,6 +51,7 @@ class DashboardStats {
         driversOnTrip: _i(j['driversOnTrip']),
         availableDrivers: _i(j['availableDrivers']),
         pendingApprovals: _i(j['pendingApprovals']),
+        pendingDriverApplications: _i(j['pendingDriverApplications']),
         pendingRideRequests: _i(j['pendingRideRequests']),
         activeLogisticsDeliveries: _i(j['activeLogisticsDeliveries']),
         registeredRiders: _i(j['registeredRiders']),
@@ -119,7 +128,8 @@ class AdminDriver {
       userId: '${user?['id'] ?? j['id']}',
       name: _name(user),
       email: '${user?['email'] ?? ''}',
-      status: '${j['status'] ?? 'PENDING_REVIEW'}',
+      // Never default a missing status to a real review outcome.
+      status: '${j['status'] ?? ''}',
       isOnline: j['isOnline'] == true,
       rating: j['rating'] == null ? 5.0 : _d(j['rating']),
       totalTrips: _i(j['totalTrips']),
@@ -215,6 +225,9 @@ class AdminTrip {
   // an unpaid/not-yet-charged trip, not an error.
   final String? paymentStatus;
   final String? paymentMethod;
+  // The amount actually charged, so the refund dialog can default to a full
+  // refund and reject anything above it before the backend has to.
+  final double? paymentAmount;
 
   AdminTrip({
     required this.id,
@@ -227,7 +240,12 @@ class AdminTrip {
     required this.requestedAt,
     this.paymentStatus,
     this.paymentMethod,
+    this.paymentAmount,
   });
+
+  /// Only a settled payment can be refunded — the backend answers 409 for
+  /// anything else (payments.routes.ts), so the action is not offered.
+  bool get isRefundable => paymentStatus == 'SUCCEEDED';
 
   factory AdminTrip.fromJson(Map<String, dynamic> j) {
     final driver = j['driver'] as Map?;
@@ -243,6 +261,7 @@ class AdminTrip {
       requestedAt: _dt(j['requestedAt']),
       paymentStatus: payment?['status']?.toString(),
       paymentMethod: payment?['method']?.toString(),
+      paymentAmount: payment?['amount'] == null ? null : _d(payment!['amount']),
     );
   }
 }
@@ -1296,9 +1315,26 @@ class AdminApi {
   static Future<DashboardStats> dashboard() async =>
       DashboardStats.fromJson(await ApiClient.get('/api/admin/dashboard') as Map<String, dynamic>);
 
-  static Future<List<AdminDriver>> drivers() async {
-    final data = await ApiClient.get('/api/drivers?pageSize=100');
-    return _list(data).whereType<Map<String, dynamic>>().map(AdminDriver.fromJson).toList();
+  /// Drivers, optionally narrowed server-side to one approval status
+  /// (GET /api/drivers?status=PENDING_REVIEW). Filtering on the server means
+  /// the pending queue is the whole queue, not just whichever pending drivers
+  /// happened to fall inside the first page of "all drivers".
+  static Future<PagedResult<AdminDriver>> drivers({String? status, int page = 1}) async {
+    final data = await ApiClient.get('/api/drivers?${pagedQuery(page, filters: {'status': status})}');
+    return PagedResult.fromJson(data as Map<String, dynamic>, AdminDriver.fromJson);
+  }
+
+  /// Every driver in one status, across all pages — for pickers (e.g. the
+  /// payout form) that need the whole set rather than a page of it. Bounded
+  /// so a runaway backend can never loop this forever.
+  static Future<List<AdminDriver>> allDrivers({required String status, int maxPages = 20}) async {
+    final all = <AdminDriver>[];
+    for (var page = 1; page <= maxPages; page++) {
+      final result = await drivers(status: status, page: page);
+      all.addAll(result.items);
+      if (!result.hasNext) break;
+    }
+    return all;
   }
 
   static Future<AdminDriver> driver(String id) async =>
@@ -1322,9 +1358,9 @@ class AdminApi {
     return '${data['url']}';
   }
 
-  static Future<List<AdminRider>> riders() async {
-    final data = await ApiClient.get('/api/riders?pageSize=100');
-    return _list(data).whereType<Map<String, dynamic>>().map(AdminRider.fromJson).toList();
+  static Future<PagedResult<AdminRider>> riders({int page = 1}) async {
+    final data = await ApiClient.get('/api/riders?${pagedQuery(page)}');
+    return PagedResult.fromJson(data as Map<String, dynamic>, AdminRider.fromJson);
   }
 
   static Future<void> setRiderSuspended(String id, bool suspended) async {
@@ -1334,9 +1370,13 @@ class AdminApi {
   static Future<AdminRiderDetail> rider(String id) async =>
       AdminRiderDetail.fromJson(await ApiClient.get('/api/riders/$id') as Map<String, dynamic>);
 
-  static Future<List<AdminTrip>> trips() async {
-    final data = await ApiClient.get('/api/trips?pageSize=100');
-    return _list(data).whereType<Map<String, dynamic>>().map(AdminTrip.fromJson).toList();
+  /// Trips, optionally narrowed server-side to a set of statuses
+  /// (GET /api/trips?status=MATCHED,IN_PROGRESS).
+  static Future<PagedResult<AdminTrip>> trips({Set<String> statuses = const {}, int page = 1, int pageSize = kAdminPageSize}) async {
+    final data = await ApiClient.get(
+      '/api/trips?${pagedQuery(page, pageSize: pageSize, filters: {'status': statuses.isEmpty ? null : statuses.join(',')})}',
+    );
+    return PagedResult.fromJson(data as Map<String, dynamic>, AdminTrip.fromJson);
   }
 
   static Future<AdminTrip> trip(String id) async =>
@@ -1348,25 +1388,25 @@ class AdminApi {
     return days.whereType<Map<String, dynamic>>().map(AnalyticsDay.fromJson).toList();
   }
 
-  static Future<List<AuditEntry>> audit() async {
-    final data = await ApiClient.get('/api/admin/audit?pageSize=100');
-    return _list(data).whereType<Map<String, dynamic>>().map(AuditEntry.fromJson).toList();
+  static Future<PagedResult<AuditEntry>> audit({int page = 1}) async {
+    final data = await ApiClient.get('/api/admin/audit?${pagedQuery(page)}');
+    return PagedResult.fromJson(data as Map<String, dynamic>, AuditEntry.fromJson);
   }
 
   // ---- Support tickets ----
-  static Future<List<SupportTicket>> supportTickets() async {
-    final data = await ApiClient.get('/api/support-tickets?pageSize=100');
-    return _list(data).whereType<Map<String, dynamic>>().map(SupportTicket.fromJson).toList();
+  static Future<PagedResult<SupportTicket>> supportTickets({int page = 1}) async {
+    final data = await ApiClient.get('/api/support-tickets?${pagedQuery(page)}');
+    return PagedResult.fromJson(data as Map<String, dynamic>, SupportTicket.fromJson);
   }
 
   static Future<void> setTicketStatus(String id, String status) async {
     await ApiClient.patch('/api/support-tickets/$id/status', {'status': status});
   }
 
-  // ---- Emergency / fraud alerts (same endpoint; screens filter by type) ----
-  static Future<List<EmergencyAlert>> alerts() async {
-    final data = await ApiClient.get('/api/emergency-alerts?pageSize=100');
-    return _list(data).whereType<Map<String, dynamic>>().map(EmergencyAlert.fromJson).toList();
+  // ---- Emergency / fraud alerts (same endpoint; the type filter is server-side) ----
+  static Future<PagedResult<EmergencyAlert>> alerts({String? type, int page = 1}) async {
+    final data = await ApiClient.get('/api/emergency-alerts?${pagedQuery(page, filters: {'type': type})}');
+    return PagedResult.fromJson(data as Map<String, dynamic>, EmergencyAlert.fromJson);
   }
 
   static Future<void> setAlertStatus(String id, String status) async {
@@ -1374,9 +1414,11 @@ class AdminApi {
   }
 
   // ---- Courier requests ----
-  static Future<List<CourierRequest>> courierRequests() async {
-    final data = await ApiClient.get('/api/courier-requests?pageSize=100');
-    return _list(data).whereType<Map<String, dynamic>>().map(CourierRequest.fromJson).toList();
+  static Future<PagedResult<CourierRequest>> courierRequests({Set<String> statuses = const {}, int page = 1}) async {
+    final data = await ApiClient.get(
+      '/api/courier-requests?${pagedQuery(page, filters: {'status': statuses.isEmpty ? null : statuses.join(',')})}',
+    );
+    return PagedResult.fromJson(data as Map<String, dynamic>, CourierRequest.fromJson);
   }
 
   static Future<void> setCourierStatus(String id, String status) async {
@@ -1384,9 +1426,9 @@ class AdminApi {
   }
 
   // ---- Car Paddy requests ----
-  static Future<List<CarPaddyRequest>> carPaddyRequests() async {
-    final data = await ApiClient.get('/api/car-paddy?pageSize=100');
-    return _list(data).whereType<Map<String, dynamic>>().map(CarPaddyRequest.fromJson).toList();
+  static Future<PagedResult<CarPaddyRequest>> carPaddyRequests({int page = 1}) async {
+    final data = await ApiClient.get('/api/car-paddy?${pagedQuery(page)}');
+    return PagedResult.fromJson(data as Map<String, dynamic>, CarPaddyRequest.fromJson);
   }
 
   static Future<void> reviewCarPaddy(String id, String status) async {
@@ -1394,9 +1436,9 @@ class AdminApi {
   }
 
   // ---- Rental listings ----
-  static Future<List<RentalListing>> rentals() async {
-    final data = await ApiClient.get('/api/rentals?pageSize=100');
-    return _list(data).whereType<Map<String, dynamic>>().map(RentalListing.fromJson).toList();
+  static Future<PagedResult<RentalListing>> rentals({int page = 1}) async {
+    final data = await ApiClient.get('/api/rentals?${pagedQuery(page)}');
+    return PagedResult.fromJson(data as Map<String, dynamic>, RentalListing.fromJson);
   }
 
   static Future<void> setRentalStatus(String id, String status) async {
@@ -1404,9 +1446,9 @@ class AdminApi {
   }
 
   // ---- Short Stays (property listings) ----
-  static Future<List<StayListing>> stays() async {
-    final data = await ApiClient.get('/api/stays?pageSize=100');
-    return _list(data).whereType<Map<String, dynamic>>().map(StayListing.fromJson).toList();
+  static Future<PagedResult<StayListing>> stays({int page = 1}) async {
+    final data = await ApiClient.get('/api/stays?${pagedQuery(page)}');
+    return PagedResult.fromJson(data as Map<String, dynamic>, StayListing.fromJson);
   }
 
   static Future<StayListing> stay(String id) async =>
@@ -1524,9 +1566,9 @@ class AdminApi {
   }
 
   // ---- Vehicle inventory (admin, cross-driver) ----
-  static Future<List<AdminVehicle>> vehicles() async {
-    final data = await ApiClient.get('/api/vehicles?pageSize=100');
-    return _list(data).whereType<Map<String, dynamic>>().map(AdminVehicle.fromJson).toList();
+  static Future<PagedResult<AdminVehicle>> vehicles({int page = 1}) async {
+    final data = await ApiClient.get('/api/vehicles?${pagedQuery(page)}');
+    return PagedResult.fromJson(data as Map<String, dynamic>, AdminVehicle.fromJson);
   }
 
   /// Admin-set (or clear, with null) a vehicle's ride-category eligibility
@@ -1539,10 +1581,9 @@ class AdminApi {
   }
 
   // ---- Payouts ----
-  static Future<List<AdminPayout>> payouts({String? status}) async {
-    final query = status == null ? '' : '&status=$status';
-    final data = await ApiClient.get('/api/payouts?pageSize=100$query');
-    return _list(data).whereType<Map<String, dynamic>>().map(AdminPayout.fromJson).toList();
+  static Future<PagedResult<AdminPayout>> payouts({String? status, int page = 1}) async {
+    final data = await ApiClient.get('/api/payouts?${pagedQuery(page, filters: {'status': status})}');
+    return PagedResult.fromJson(data as Map<String, dynamic>, AdminPayout.fromJson);
   }
 
   static Future<PayoutCalculation> calculatePayout(String driverId, String period) async {
@@ -1877,9 +1918,83 @@ class AdminApi {
   }
 
   // ---- All payments (for the Payments & Cash overview) ----
-  static Future<List<AdminPayment>> payments() async {
-    final data = await ApiClient.get('/api/payments?pageSize=100');
-    return _list(data).whereType<Map<String, dynamic>>().map(AdminPayment.fromJson).toList();
+  /// One page of payments plus the backend's whole-table SUCCEEDED totals
+  /// per method, so the overview's revenue figures never depend on how many
+  /// rows fit in a page.
+  static Future<PaymentsPage> payments({int page = 1}) async {
+    final data = await ApiClient.get('/api/payments?${pagedQuery(page)}') as Map<String, dynamic>;
+    final totals = (data['totals'] as Map?) ?? const {};
+    return PaymentsPage(
+      page: PagedResult.fromJson(data, AdminPayment.fromJson),
+      cash: _d(totals['cash']),
+      card: _d(totals['card']),
+      wallet: _d(totals['wallet']),
+    );
+  }
+
+  // ---- Referrals ----
+  // The referral programme pays real money out of real wallets, so the app
+  // only ever reads and writes what the backend reports; the switch that
+  // turns it on is guarded by requireAdminPermission("settings:write")
+  // server-side, and every change is audited there.
+
+  static Future<ReferralProgram> referralProgram() async {
+    final data = await ApiClient.get('/api/settings/referral');
+    return ReferralProgram.fromJson((data as Map).cast<String, dynamic>());
+  }
+
+  /// Change the programme. Pass only what is changing — the backend audits
+  /// each field that actually differs.
+  static Future<ReferralProgram> updateReferralProgram({
+    bool? enabled,
+    double? rewardAmount,
+    double? refereeRewardAmount,
+    int? qualifyingTrips,
+  }) async {
+    final data = await ApiClient.patch('/api/admin/settings/referral', {
+      if (enabled != null) 'referralEnabled': enabled,
+      if (rewardAmount != null) 'referralRewardAmount': rewardAmount,
+      if (refereeRewardAmount != null) 'referralRefereeRewardAmount': refereeRewardAmount,
+      if (qualifyingTrips != null) 'referralQualifyingTrips': qualifyingTrips,
+    });
+    return ReferralProgram.fromJson((data as Map).cast<String, dynamic>());
+  }
+
+  static Future<PagedResult<AdminReferral>> referrals({String? status, int page = 1}) async {
+    final data = await ApiClient.get(
+      '/api/admin/referrals?${pagedQuery(page, filters: {'status': status})}',
+    ) as Map<String, dynamic>;
+    return PagedResult.fromJson(data, AdminReferral.fromJson);
+  }
+
+  // ---- Refunds (A-3 / B-6) ----
+  // POST /api/trips/:id/refund and /api/courier-requests/:id/refund already
+  // existed and already did the whole job — reverse the commission on the
+  // ledger, return CARD funds through Paystack, credit a WALLET balance, and
+  // write an audit row. There was simply no way to reach either from the
+  // admin app, so a refund meant a manual database/Paystack intervention.
+  //
+  // Authorization stays entirely server-side (requireAdminPermission
+  // "payouts:write"): this app never decides who may refund, it just shows
+  // the backend's answer, including a 403 for a role that may not.
+
+  /// Refund a trip's payment. [amount] omitted means a full refund.
+  /// Returns the amount the backend actually refunded.
+  static Future<double> refundTrip(String tripId, {required String reason, double? amount}) async {
+    final data = await ApiClient.post('/api/trips/$tripId/refund', {
+      'reason': reason,
+      if (amount != null) 'amount': amount,
+    });
+    return _d((data as Map)['refunded']);
+  }
+
+  /// Refund a delivery's payment. Mirrors [refundTrip].
+  static Future<double> refundDelivery(String requestId, {required String reason, double? amount}) async {
+    final data = await ApiClient.post('/api/courier-requests/$requestId/refund', {
+      'reason': reason,
+      if (amount != null) 'amount': amount,
+    });
+    return _d((data as Map)['refunded']);
   }
 
   // ---- Notifications (AA-2) ----
@@ -1950,4 +2065,82 @@ class AdminNotificationPage {
   final int unreadCount;
   final int total;
   AdminNotificationPage({required this.items, required this.unreadCount, required this.total});
+}
+
+class PaymentsPage {
+  final PagedResult<AdminPayment> page;
+  // All-time SUCCEEDED revenue by method, computed server-side.
+  final double cash;
+  final double card;
+  final double wallet;
+  const PaymentsPage({required this.page, required this.cash, required this.card, required this.wallet});
+  double get total => cash + card + wallet;
+}
+
+/// The referral programme's terms (GET /api/settings/referral).
+class ReferralProgram {
+  final bool enabled;
+  final double rewardAmount;
+  final double refereeRewardAmount;
+  final int qualifyingTrips;
+
+  const ReferralProgram({
+    required this.enabled,
+    required this.rewardAmount,
+    required this.refereeRewardAmount,
+    required this.qualifyingTrips,
+  });
+
+  factory ReferralProgram.fromJson(Map<String, dynamic> j) => ReferralProgram(
+        enabled: j['enabled'] == true,
+        rewardAmount: _d(j['rewardAmount']),
+        refereeRewardAmount: _d(j['refereeRewardAmount']),
+        qualifyingTrips: j['qualifyingTrips'] == null ? 1 : _i(j['qualifyingTrips']),
+      );
+}
+
+/// One referral, with both parties (GET /api/admin/referrals).
+class AdminReferral {
+  final String id;
+  final String code;
+  // PENDING | REWARDED
+  final String status;
+  final String referrerName;
+  final String referrerEmail;
+  final String refereeName;
+  final String refereeEmail;
+  final double? referrerRewardAmount;
+  final DateTime createdAt;
+  final DateTime? rewardedAt;
+
+  AdminReferral({
+    required this.id,
+    required this.code,
+    required this.status,
+    required this.referrerName,
+    required this.referrerEmail,
+    required this.refereeName,
+    required this.refereeEmail,
+    required this.referrerRewardAmount,
+    required this.createdAt,
+    required this.rewardedAt,
+  });
+
+  factory AdminReferral.fromJson(Map<String, dynamic> j) {
+    final referrer = (j['referrer'] as Map?) ?? const {};
+    final referee = (j['referee'] as Map?) ?? const {};
+    return AdminReferral(
+      id: '${j['id']}',
+      code: '${j['code'] ?? ''}',
+      status: '${j['status'] ?? ''}',
+      referrerName: _name(referrer),
+      referrerEmail: '${referrer['email'] ?? ''}',
+      refereeName: _name(referee),
+      refereeEmail: '${referee['email'] ?? ''}',
+      referrerRewardAmount:
+          j['referrerRewardAmount'] == null ? null : _d(j['referrerRewardAmount']),
+      createdAt: _dt(j['createdAt']),
+      rewardedAt: j['rewardedAt'] == null ? null : _dt(j['rewardedAt']),
+    );
+  }
 }

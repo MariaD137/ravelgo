@@ -5,6 +5,9 @@ import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/utils/date_utils.dart';
 import 'package:ravelgo_driver_app/views/trips/trip_detail_screen.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
+import 'package:ravelgo_driver_app/widgets/empty_state.dart';
+import 'package:ravelgo_driver_app/widgets/shimmer.dart';
 
 class MyTripsScreen extends StatefulWidget {
   final bool embedded;
@@ -40,9 +43,7 @@ class _MyTripsScreenState extends State<MyTripsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e is ApiException && e.statusCode == 403
-            ? 'Your account isn\'t set up as a driver yet.'
-            : e.toString();
+        _error = describeApiFailure(e, what: 'your trips');
         _loading = false;
       });
     }
@@ -87,14 +88,28 @@ class _MyTripsScreenState extends State<MyTripsScreen> {
   }
 
   Widget _list() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) {
-      return _empty(Icons.cloud_off, "Couldn't load trips", _error!, showRetry: true);
-    }
-    if (_trips.isEmpty) {
-      return _empty(Icons.local_taxi_outlined, "No trips yet",
-          "Go online from the Home tab to start receiving trips.");
-    }
+    return AsyncBody(
+      stateKey: _loading ? "loading" : (_error != null ? "error" : "data:${_trips.length}"),
+      child: _loading
+          ? const ShimmerList()
+          : _error != null
+              ? EmptyState(
+                  icon: Icons.cloud_off,
+                  title: "Couldn't load trips",
+                  subtitle: _error!,
+                  onRetry: _load,
+                )
+              : _trips.isEmpty
+                  ? const EmptyState(
+                      icon: Icons.local_taxi_outlined,
+                      title: "No trips yet",
+                      subtitle: "Go online from the Home tab to start receiving trips.",
+                    )
+                  : _tripList(),
+    );
+  }
+
+  Widget _tripList() {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
@@ -106,7 +121,7 @@ class _MyTripsScreenState extends State<MyTripsScreen> {
           final t = _trips[i];
           return InkWell(
             onTap: () async {
-              await Navigator.push(context, MaterialPageRoute(builder: (_) => TripDetailScreen(trip: t)));
+              await Navigator.push(context, AppPageRoute(builder: (_) => TripDetailScreen(trip: t)));
               _load(); // reflect any status change made on the detail screen
             },
             child: Container(
@@ -141,22 +156,4 @@ class _MyTripsScreenState extends State<MyTripsScreen> {
     );
   }
 
-  Widget _empty(IconData icon, String title, String subtitle, {bool showRetry = false}) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      children: [
-        const SizedBox(height: 100),
-        Icon(icon, size: 56, color: AppColors.textMuted),
-        const SizedBox(height: 16),
-        Center(child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600))),
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 40),
-          child: Text(subtitle, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textSecondary)),
-        ),
-        if (showRetry)
-          Center(child: TextButton(onPressed: _load, child: const Text("Try again"))),
-      ],
-    );
-  }
 }

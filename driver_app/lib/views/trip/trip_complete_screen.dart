@@ -3,6 +3,7 @@ import 'package:ravelgo_driver_app/config/currency.dart';
 import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
 
 class TripCompleteScreen extends StatefulWidget {
   final DriverTrip trip;
@@ -75,7 +76,7 @@ class _TripCompleteScreenState extends State<TripCompleteScreen> {
                 text: "Done",
                 onPressed: () {
                   Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const DriverShell()),
+                    AppPageRoute(builder: (_) => const DriverShell()),
                     (route) => false,
                   );
                 },

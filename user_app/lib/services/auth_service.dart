@@ -122,6 +122,30 @@ class AuthService {
     return null;
   }
 
+  /// Force a token refresh against Cognito with the stored refresh token,
+  /// even when the access token we hold still looks valid locally. This is
+  /// what SessionGuard uses after a 401: a token can be revoked server-side
+  /// (admin sign-out-everywhere, a disabled user, a password change) while
+  /// [validAccessToken] happily keeps returning it, because nothing about it
+  /// has expired yet. Returns false if the refresh token is gone or refused,
+  /// which means the session really is over.
+  static Future<bool> refreshTokens() async {
+    try {
+      final user = currentUser ?? await _pool.getCurrentUser();
+      final refreshToken =
+          session?.getRefreshToken() ?? (await user?.getSession())?.getRefreshToken();
+      if (user == null || refreshToken == null || refreshToken.getToken() == null) {
+        return false;
+      }
+      final refreshed = await user.refreshSession(refreshToken);
+      if (refreshed == null || !refreshed.isValid()) return false;
+      _applySession(user, refreshed);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static void _applySession(CognitoUser user, CognitoUserSession s) {
     currentUser = user;
     session = s;

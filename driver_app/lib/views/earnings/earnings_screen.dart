@@ -6,6 +6,7 @@ import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/earnings/cash_out_screen.dart';
 import 'package:ravelgo_driver_app/views/earnings/payout_history_screen.dart';
 import 'package:ravelgo_driver_app/views/incentives/incentives_screen.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
 
 /// A gross/commission/net split for one period, built entirely from real
 /// backend numbers (Trip.driverEarnings/platformCommission,
@@ -144,9 +145,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e is ApiException && e.statusCode == 403
-            ? 'Your account isn\'t set up as a driver yet.'
-            : e.toString();
+        _error = describeApiFailure(e, what: 'your earnings');
         _loading = false;
       });
     }
@@ -266,21 +265,21 @@ class _EarningsScreenState extends State<EarningsScreen> {
                       title: "Payout account",
                       subtitle: "Where your earnings are paid out",
                       leading: Icons.account_balance_outlined,
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CashOutScreen()))),
+                      onTap: () => Navigator.push(context, AppPageRoute(builder: (_) => const CashOutScreen()))),
                   AppComponents.divider(),
                   AppComponents.tile(
                       title: "Payout history",
                       subtitle: "View past transfers",
                       leading: Icons.history,
                       onTap: () =>
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const PayoutHistoryScreen()))),
+                          Navigator.push(context, AppPageRoute(builder: (_) => const PayoutHistoryScreen()))),
                   AppComponents.divider(),
                   AppComponents.tile(
                       title: "Skill-based incentives",
                       subtitle: "Bonuses for milestones & ratings",
                       leading: Icons.emoji_events_outlined,
                       onTap: () =>
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const IncentivesScreen()))),
+                          Navigator.push(context, AppPageRoute(builder: (_) => const IncentivesScreen()))),
                 ],
               ),
             ),

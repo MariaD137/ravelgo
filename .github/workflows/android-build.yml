@@ -6,12 +6,18 @@ name: Android Build (rider + driver)
 # and can be started by hand from the Actions tab (Run workflow). Download
 # the APK from the run's Artifacts.
 #
-# .env is generated from repository secrets (Settings -> Secrets and
-# variables -> Actions), never hardcoded here and never typed into Claude —
-# same rule as the CloudShell deploy scripts' own secrets step. Add these
-# once to get a real, working (not just installable) build:
-#   GOOGLE_MAPS_API_KEY, COGNITO_USER_POOL_ID, COGNITO_CLIENT_ID
-#   (user_app only) PINPOINT_APPLICATION_ID, PUSH_IDENTITY_POOL_ID
+# API_BASE_URL and the Cognito pool/client IDs are read from the deployed
+# staging CloudFormation stacks (via the same OIDC role staging-deploy.yml
+# uses) — the SAME source the driver-web/admin-web builds use — so an APK
+# can never point at a different backend or user pool than the admin
+# console it is meant to work with. (Previously the App Runner URL was
+# hardcoded here and the pool IDs came from separately-maintained secrets;
+# either drifting silently made admin approvals appear not to reach the
+# driver app.) Everything else is a repository secret (Settings -> Secrets
+# and variables -> Actions), never hardcoded here and never typed into
+# Claude — same rule as the CloudShell deploy scripts' own secrets step:
+#   GOOGLE_MAPS_API_KEY
+#   PINPOINT_APPLICATION_ID, PUSH_IDENTITY_POOL_ID (device push; both apps)
 # No Paystack key belongs here — unlike the removed Stripe integration, the
 # app never holds any payment-provider credential (see paystack_service.dart).
 # Until they're set, the app still builds and installs, but can't sign in
@@ -27,9 +33,18 @@ on:
       - "driver_app/**"
       - ".github/workflows/android-build.yml"
 
+permissions:
+  id-token: write # required to assume the AWS role via OIDC
+  contents: read
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    # The staging OIDC role (infra/lib/ci-stack.ts) trusts jobs on the main
+    # branch OR jobs that declare `environment: staging` — the same
+    # declaration staging-deploy.yml's jobs carry — so config discovery below
+    # works from any branch this workflow is dispatched on.
+    environment: staging
     strategy:
       fail-fast: false
       matrix:
@@ -39,6 +54,38 @@ jobs:
         working-directory: ${{ matrix.app }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_STAGING_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # Identical to staging-deploy.yml's "Discover deployed config" step so
+      # the APK and the web builds are guaranteed to share one backend and one
+      # Cognito user pool. Fails loudly (rather than building against a stale
+      # or empty URL) if any output can't be read.
+      - name: Discover deployed staging config
+        id: config
+        working-directory: .
+        run: |
+          set -euo pipefail
+          API_URL="$(aws cloudformation describe-stacks --stack-name RavelGo-Api-staging \
+            --query "Stacks[0].Outputs[?OutputKey=='ServiceUrl'].OutputValue" --output text)"
+          POOL_ID="$(aws cloudformation describe-stacks --stack-name RavelGo-Auth-staging \
+            --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text)"
+          CLIENT_ID="$(aws cloudformation describe-stacks --stack-name RavelGo-Auth-staging \
+            --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" --output text)"
+          for v in API_URL POOL_ID CLIENT_ID; do
+            if [[ -z "${!v}" || "${!v}" == "None" ]]; then
+              echo "::error::Could not read $v from the deployed staging stacks."; exit 1
+            fi
+          done
+          {
+            echo "api_url=$API_URL"
+            echo "pool_id=$POOL_ID"
+            echo "client_id=$CLIENT_ID"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Set up Java (needed for the Android build)
         uses: actions/setup-java@v4
@@ -52,29 +99,27 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Create .env (real staging config, from repo secrets)
+      # Push config is written for BOTH apps: the driver app has the same
+      # Pinpoint integration (push_notification_service.dart) and relies on
+      # it to learn promptly that an admin approved the account. Left unset,
+      # push stays a safe no-op and the app falls back to polling its status.
+      - name: Create .env (real staging config)
         env:
           GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
-          COGNITO_USER_POOL_ID: ${{ secrets.COGNITO_USER_POOL_ID }}
-          COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
           PINPOINT_APPLICATION_ID: ${{ secrets.PINPOINT_APPLICATION_ID }}
           PUSH_IDENTITY_POOL_ID: ${{ secrets.PUSH_IDENTITY_POOL_ID }}
         run: |
           {
             echo "GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY"
-            echo "API_BASE_URL=https://gpgg9ykamj.us-east-1.awsapprunner.com"
-            echo "COGNITO_USER_POOL_ID=$COGNITO_USER_POOL_ID"
-            echo "COGNITO_CLIENT_ID=$COGNITO_CLIENT_ID"
-            echo "AWS_REGION=us-east-1"
+            echo "API_BASE_URL=${{ steps.config.outputs.api_url }}"
+            echo "COGNITO_USER_POOL_ID=${{ steps.config.outputs.pool_id }}"
+            echo "COGNITO_CLIENT_ID=${{ steps.config.outputs.client_id }}"
+            echo "AWS_REGION=${{ vars.AWS_REGION }}"
             echo "CURRENCY_SYMBOL=₦"
             echo "CURRENCY_CODE=NGN"
+            echo "PINPOINT_APPLICATION_ID=$PINPOINT_APPLICATION_ID"
+            echo "PUSH_IDENTITY_POOL_ID=$PUSH_IDENTITY_POOL_ID"
           } > .env
-          if [ "${{ matrix.app }}" = "user_app" ]; then
-            {
-              echo "PINPOINT_APPLICATION_ID=$PINPOINT_APPLICATION_ID"
-              echo "PUSH_IDENTITY_POOL_ID=$PUSH_IDENTITY_POOL_ID"
-            } >> .env
-          fi
 
       - name: Install dependencies
         run: flutter pub get

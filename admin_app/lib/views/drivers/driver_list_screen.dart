@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/pagination_bar.dart';
+
 import 'package:ravelgo_admin/views/drivers/driver_detail_screen.dart';
 
 class DriverListScreen extends StatefulWidget {
@@ -25,6 +27,9 @@ class DriverListScreen extends StatefulWidget {
 class _DriverListScreenState extends State<DriverListScreen> {
   bool _loading = true;
   String? _error;
+  int _page = 1;
+  int _totalPages = 1;
+  int _total = 0;
   List<AdminDriver> _drivers = const [];
   String? _statusFilter;
   bool _onlineOnly = false;
@@ -39,16 +44,22 @@ class _DriverListScreenState extends State<DriverListScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({int? page}) async {
+    if (page != null) _page = page;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final drivers = await AdminApi.drivers();
+      // The status chip is applied server-side so this list is complete for
+      // that status, not just the first page of all drivers.
+      final result = await AdminApi.drivers(status: _statusFilter, page: _page);
       if (!mounted) return;
+      if (result.isPastEnd) return await _load(page: result.totalPages);
       setState(() {
-        _drivers = drivers;
+        _drivers = result.items;
+        _total = result.total;
+        _totalPages = result.totalPages;
         _loading = false;
       });
     } catch (e) {
@@ -76,10 +87,13 @@ class _DriverListScreenState extends State<DriverListScreen> {
   String _label(String s) =>
       s.isEmpty ? '' : s[0] + s.substring(1).toLowerCase().replaceAll('_', ' ');
 
-  List<AdminDriver> get _filtered => _drivers
-      .where((d) => _statusFilter == null || d.status == _statusFilter)
-      .where((d) => !_onlineOnly || d.isOnline)
-      .toList();
+  List<AdminDriver> get _filtered => _drivers.where((d) => !_onlineOnly || d.isOnline).toList();
+
+  void _setStatusFilter(String? status) {
+    if (status == _statusFilter) return;
+    setState(() => _statusFilter = status);
+    _load(page: 1); // a changed filter always restarts from the first page
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -109,7 +123,7 @@ class _DriverListScreenState extends State<DriverListScreen> {
           FilterChip(
             label: const Text('All', style: TextStyle(fontSize: 12)),
             selected: _statusFilter == null,
-            onSelected: (_) => setState(() => _statusFilter = null),
+            onSelected: (_) => _setStatusFilter(null),
           ),
           const SizedBox(width: 8),
           for (final s in _statuses) ...[
@@ -117,7 +131,7 @@ class _DriverListScreenState extends State<DriverListScreen> {
               label: Text(_label(s), style: const TextStyle(fontSize: 12)),
               selected: _statusFilter == s,
               selectedColor: _statusColor(s).withValues(alpha: 0.15),
-              onSelected: (v) => setState(() => _statusFilter = v ? s : null),
+              onSelected: (v) => _setStatusFilter(v ? s : null),
             ),
             const SizedBox(width: 8),
           ],
@@ -150,6 +164,22 @@ class _DriverListScreenState extends State<DriverListScreen> {
   );
 
   Widget _list() {
+    return Column(
+      children: [
+        Expanded(child: _listView()),
+        PaginationBar(
+          page: _page,
+          totalPages: _totalPages,
+          total: _total,
+          itemLabel: 'drivers',
+          busy: _loading,
+          onPageChanged: (p) => _load(page: p),
+        ),
+      ],
+    );
+  }
+
+  Widget _listView() {
     final drivers = _filtered;
     if (drivers.isEmpty) {
       return Center(

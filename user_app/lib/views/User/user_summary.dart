@@ -1,10 +1,67 @@
-
 import 'package:flutter/material.dart';
+import 'package:ravelgo_user_app/components/initials_avatar.dart';
+import 'package:ravelgo_user_app/services/api_client.dart';
+import 'package:ravelgo_user_app/services/auth_service.dart';
+import 'package:ravelgo_user_app/services/rider_api.dart';
 import 'package:ravelgo_user_app/views/bottommenu/BottomNavigationView.dart';
 import 'package:ravelgo_user_app/theme/app_theme.dart';
 
-class UserSummary extends StatelessWidget {
+/// The rider's own profile card, opened from the drawer.
+///
+/// This screen used to show a stock portrait, the name "Thelma Ibeh", a
+/// "4.55 Rating" and three cards captioned "Customer ratings" / "Acceptance
+/// rate" / "Acceptance rate" with no values under them — none of it real,
+/// none of it this rider's, and acceptance rate is a driver metric that does
+/// not exist for riders at all. It now shows what the backend actually holds
+/// for the signed-in rider (GET /api/riders/me) and nothing else.
+class UserSummary extends StatefulWidget {
   const UserSummary({Key? key}) : super(key: key);
+
+  @override
+  State<UserSummary> createState() => _UserSummaryState();
+}
+
+class _UserSummaryState extends State<UserSummary> {
+  String? _name;
+  String? _email;
+  String? _error;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final me = await RiderApi.getMe();
+      if (!mounted) return;
+      setState(() {
+        _name = me == null
+            ? null
+            : [me['firstName'], me['lastName']]
+                .where((e) => e != null && '$e'.trim().isNotEmpty)
+                .join(' ')
+                .trim();
+        _email = me?['email']?.toString() ?? AuthService.email;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        // Say which problem this is — a dead connection, an expired session
+        // and a server fault need different things from the rider.
+        _error = describeApiFailure(e, what: 'your profile');
+        _email = AuthService.email;
+        _loading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,76 +86,51 @@ class UserSummary extends StatelessWidget {
 
               const SizedBox(height: 20),
 
-              /// Profile Avatar
-              ClipRRect(
-                borderRadius: BorderRadius.circular(60),
-                child: SizedBox(
-                  width: 60,
-                  height: 60,
-                  child: Image.asset("assets/fake_profile.png"), // preview image
-                ),
-              ),
+              InitialsAvatar(name: _name, size: 72),
 
               const SizedBox(height: 16),
 
-              /// Name
-              const Text(
-                "Thelma Ibeh",
-                style: TextStyle(
+              Text(
+                _loading
+                    ? 'Loading…'
+                    : ((_name?.isNotEmpty ?? false)
+                        ? _name!
+                        : (_email ?? 'Rider')),
+                style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w600,
                 ),
               ),
 
-              const SizedBox(height: 8),
+              if (!_loading && (_email?.isNotEmpty ?? false)) ...[
+                const SizedBox(height: 6),
+                Text(
+                  _email!,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
 
-              /// Rating Row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(
-                    Icons.star,
-                    color: AppColors.success,
-                    size: 20,
+              if (_error != null) ...[
+                const SizedBox(height: 16),
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppColors.error,
                   ),
-                  SizedBox(width: 6),
-                  Text(
-                    "4.55 Rating",
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: _load,
+                  child: const Text('Try again'),
+                ),
+              ],
 
               const SizedBox(height: 40),
-
-              /// Cards Row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children:  [
-                  Expanded(
-                    child: SummaryCard(
-                      title: "Customer ratings",
-                    ),
-                  ),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: SummaryCard(
-                      title: "Acceptance rate",
-                    ),
-                  ),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: SummaryCard(
-                      title: "Acceptance rate",
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 30),
 
               /// View More
               GestureDetector(
@@ -118,55 +150,6 @@ class UserSummary extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class SummaryCard extends StatelessWidget {
-  final String title;
-
-  const SummaryCard({
-    Key? key,
-    required this.title,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      // height: 70,
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: const Color(0xFFE8C75F),
-        ),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children:  [
-          Align(
-            alignment: Alignment.center,
-            child: Text(title,style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.normal,
-            ),
-            ),
-          ),
-
-          SizedBox(height: 5,),
-          Align(
-            alignment: Alignment.center,
-            child: Image.asset(
-              "assets/circle_left.png",
-              fit: BoxFit.fill,
-              height: 22,
-              width: 22,
-            ),
-          ),
-        ],
       ),
     );
   }

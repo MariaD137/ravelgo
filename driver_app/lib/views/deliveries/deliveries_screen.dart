@@ -5,6 +5,9 @@ import 'package:ravelgo_driver_app/services/driver_api.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/deliveries/delivery_detail_screen.dart';
 import 'package:ravelgo_driver_app/views/deliveries/delivery_proof_screen.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
+import 'package:ravelgo_driver_app/widgets/empty_state.dart';
+import 'package:ravelgo_driver_app/widgets/shimmer.dart';
 
 /// Package delivery requests: browse unassigned ones to accept, and track the
 /// ones this driver already accepted through to drop-off. Only an ACTIVE
@@ -63,9 +66,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
       setState(() {
         _error = e is ApiException && e.statusCode == 409
             ? 'Your account isn\'t approved for deliveries yet. You can go online for deliveries once an admin approves you.'
-            : (e is ApiException && e.statusCode == 403
-                ? 'Your account isn\'t set up as a driver yet.'
-                : 'Could not load deliveries — check your connection.');
+            : describeApiFailure(e, what: 'deliveries');
         _loading = false;
       });
     }
@@ -116,7 +117,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
   /// screen instead of flipping the status directly.
   Future<void> _completeDelivery(CourierRequest r) async {
     final updated = await Navigator.of(context).push<CourierRequest>(
-      MaterialPageRoute(builder: (_) => DeliveryProofScreen(request: r)),
+      AppPageRoute(builder: (_) => DeliveryProofScreen(request: r)),
     );
     if (updated != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Marked delivered.')));
@@ -126,7 +127,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
 
   Future<void> _openDetail(CourierRequest r) async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => DeliveryDetailScreen(deliveryId: r.id, initial: r)),
+      AppPageRoute(builder: (_) => DeliveryDetailScreen(deliveryId: r.id, initial: r)),
     );
     if (mounted) await _load();
   }
@@ -158,46 +159,33 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
           tabs: const [Tab(text: 'Available'), Tab(text: 'Assigned'), Tab(text: 'Active'), Tab(text: 'Completed')],
         ),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : (_error != null
-              ? _errorView()
-              : TabBarView(
-                  controller: _tabs,
-                  children: [
-                    _availableList(),
-                    _jobList(_assigned, emptyText: 'No deliveries assigned to you yet.'),
-                    _jobList(_active, emptyText: 'No deliveries in progress.'),
-                    _jobList(_completed, emptyText: 'No completed deliveries yet.'),
-                  ],
-                )),
+      body: AsyncBody(
+        stateKey: _loading ? "loading" : (_error != null ? "error" : "data"),
+        child: _loading
+            ? const ShimmerList()
+            : (_error != null
+                ? EmptyState(icon: Icons.cloud_off, title: "Couldn't load deliveries", subtitle: _error!, onRetry: _load)
+                : TabBarView(
+                    controller: _tabs,
+                    children: [
+                      _availableList(),
+                      _jobList(_assigned, emptyText: 'No deliveries assigned to you yet.'),
+                      _jobList(_active, emptyText: 'No deliveries in progress.'),
+                      _jobList(_completed, emptyText: 'No completed deliveries yet.'),
+                    ],
+                  )),
+      ),
     );
   }
-
-  Widget _errorView() => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.danger)),
-              const SizedBox(height: 8),
-              TextButton(onPressed: _load, child: const Text('Try again')),
-            ],
-          ),
-        ),
-      );
 
   Widget _availableList() {
     if (_available.isEmpty) {
       return RefreshIndicator(
         onRefresh: _load,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
-            SizedBox(height: 120),
-            Center(child: Text('No delivery requests waiting right now.', style: TextStyle(color: AppColors.textSecondary))),
-          ],
+        child: const EmptyState(
+          icon: Icons.inventory_2_outlined,
+          title: "Nothing waiting right now",
+          subtitle: "No delivery requests waiting right now.",
         ),
       );
     }
@@ -246,13 +234,7 @@ class _DeliveriesScreenState extends State<DeliveriesScreen> with SingleTickerPr
     if (jobs.isEmpty) {
       return RefreshIndicator(
         onRefresh: _load,
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: [
-            const SizedBox(height: 120),
-            Center(child: Text(emptyText, style: const TextStyle(color: AppColors.textSecondary))),
-          ],
-        ),
+        child: EmptyState(icon: Icons.local_shipping_outlined, title: "Nothing here yet", subtitle: emptyText),
       );
     }
     return RefreshIndicator(

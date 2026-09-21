@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
+import 'package:ravelgo_admin/services/paging.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
 import 'package:ravelgo_admin/utils/date_utils.dart';
 import 'package:ravelgo_admin/views/couriers/courier_requests_screen.dart';
@@ -41,30 +42,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _error = null;
     });
     try {
+      // The weekly chart and revenue come from GET /api/admin/analytics —
+      // real whole-table aggregates for the last 7 days — rather than being
+      // summed from whatever trips fit in one page. The recent-trips list
+      // only ever needs the newest few, so it asks for exactly those.
       final results = await Future.wait([
         AdminApi.dashboard(),
-        AdminApi.trips(),
+        AdminApi.analytics(),
+        AdminApi.trips(page: 1, pageSize: 6),
       ]);
       final stats = results[0] as DashboardStats;
-      final trips = results[1] as List<AdminTrip>;
+      final days = results[1] as List<AnalyticsDay>;
+      final recent = (results[2] as PagedResult<AdminTrip>).items;
 
-      final now = DateTime.now();
-      final monday = DateTime(
-        now.year,
-        now.month,
-        now.day,
-      ).subtract(Duration(days: now.weekday - 1));
+      // Buckets are the rolling last 7 days, so each weekday appears once;
+      // place each on its weekday column (Mon = 0).
       final week = List<double>.filled(7, 0);
       double revenue = 0;
-      for (final t in trips) {
-        final di = t.requestedAt.difference(monday).inDays;
-        if (di >= 0 && di < 7) week[di] += 1;
-        if (t.status == 'COMPLETED') revenue += t.fare;
+      for (final d in days) {
+        final date = DateTime.tryParse(d.date);
+        if (date != null) week[date.weekday - 1] = d.completedTrips.toDouble();
+        revenue += d.revenue;
       }
       if (!mounted) return;
       setState(() {
         _stats = stats;
-        _trips = trips;
+        _trips = recent;
         _revenue = revenue;
         _week = week;
         _loading = false;
@@ -182,7 +185,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   SizedBox(
                     width: cardWidth,
                     child: AppComponents.statCard(
-                      "Revenue (completed)",
+                      "Revenue (last 7 days)",
                       "₦${_revenue.toStringAsFixed(0)}",
                       Icons.payments_outlined,
                       color: AppColors.info,
@@ -192,8 +195,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   SizedBox(
                     width: cardWidth,
                     child: AppComponents.statCard(
-                      "Pending approvals",
-                      "${_stats!.pendingApprovals}",
+                      // Drivers awaiting the approval decision — the same
+                      // set the tap-through list shows. (pendingApprovals is
+                      // document/Car Paddy reviews, a different number.)
+                      "Pending driver applications",
+                      "${_stats!.pendingDriverApplications}",
                       Icons.pending_actions_outlined,
                       color: AppColors.warning,
                       onTap: () => _openDrivers(statusFilter: 'PENDING_REVIEW'),

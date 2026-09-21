@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/pagination_bar.dart';
+
 import 'package:ravelgo_admin/utils/date_utils.dart';
 
 class SupportTicketsScreen extends StatefulWidget {
@@ -16,6 +18,9 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen> {
   bool _loading = true;
   bool _busy = false;
   String? _error;
+  int _page = 1;
+  int _totalPages = 1;
+  int _total = 0;
   List<SupportTicket> _tickets = const [];
 
   @override
@@ -24,16 +29,20 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({int? page}) async {
+    if (page != null) _page = page;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final t = await AdminApi.supportTickets();
+      final result = await AdminApi.supportTickets(page: _page);
       if (!mounted) return;
+      if (result.isPastEnd) return await _load(page: result.totalPages);
       setState(() {
-        _tickets = t;
+        _tickets = result.items;
+        _total = result.total;
+        _totalPages = result.totalPages;
         _loading = false;
       });
     } catch (e) {
@@ -83,6 +92,22 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen> {
   }
 
   Widget _list() {
+    return Column(
+      children: [
+        Expanded(child: _listView()),
+        PaginationBar(
+          page: _page,
+          totalPages: _totalPages,
+          total: _total,
+          itemLabel: 'tickets',
+          busy: _loading,
+          onPageChanged: (p) => _load(page: p),
+        ),
+      ],
+    );
+  }
+
+  Widget _listView() {
     if (_tickets.isEmpty) {
       return const Center(child: Text("No support tickets.", style: TextStyle(color: AppColors.textSecondary)));
     }

@@ -11,7 +11,13 @@ class DriverProfile {
   final String preferredLanguage;
   final bool quietModePreferred;
   final bool isOnline;
-  final String status; // PENDING_REVIEW | ACTIVE | SUSPENDED
+  // PENDING_REVIEW | ACTIVE | SUSPENDED, exactly as the backend's Driver.status
+  // reads — or "" before the record has actually been fetched. The default is
+  // deliberately empty, not PENDING_REVIEW: an unloaded/failed fetch must
+  // never be rendered as if the backend had said "under review".
+  final String status;
+  // Per-document review state from the same GET /drivers/me response.
+  final List<DriverDocument> documents;
 
   const DriverProfile({
     this.firstName = "Driver",
@@ -23,10 +29,20 @@ class DriverProfile {
     this.preferredLanguage = "English",
     this.quietModePreferred = false,
     this.isOnline = false,
-    this.status = "PENDING_REVIEW",
+    this.status = "",
+    this.documents = const [],
   });
 
   bool get isApproved => status == "ACTIVE";
+  bool get isPendingReview => status == "PENDING_REVIEW";
+  bool get isSuspended => status == "SUSPENDED";
+
+  /// True once a real backend status has been loaded into this profile.
+  bool get hasStatus => status.isNotEmpty;
+
+  int get approvedDocumentCount => documents.where((d) => d.status == 'APPROVED').length;
+  int get rejectedDocumentCount => documents.where((d) => d.status == 'REJECTED').length;
+  int get pendingDocumentCount => documents.where((d) => d.status == 'PENDING').length;
 
   String get fullName => [firstName, lastName].where((e) => e.trim().isNotEmpty).join(' ').trim();
 
@@ -43,6 +59,7 @@ class DriverProfile {
         quietModePreferred: r.quietModePreferred,
         isOnline: r.isOnline,
         status: r.status,
+        documents: r.documents,
       );
 
   DriverProfile copyWith({
@@ -50,6 +67,7 @@ class DriverProfile {
     String? preferredLanguage,
     bool? quietModePreferred,
     String? status,
+    List<DriverDocument>? documents,
   }) {
     return DriverProfile(
       firstName: firstName,
@@ -62,6 +80,7 @@ class DriverProfile {
       quietModePreferred: quietModePreferred ?? this.quietModePreferred,
       isOnline: isOnline ?? this.isOnline,
       status: status ?? this.status,
+      documents: documents ?? this.documents,
     );
   }
 }

@@ -77,7 +77,28 @@ adminUsersRouter.get("/admin-users", requireAuth, requireAdminPermission("manage
 // their own profile regardless of preset, same as any other app's "my
 // account" page.
 adminUsersRouter.get("/admin-users/me", requireAuth, requireRole("Admin"), async (req, res) => {
-  const me = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
+  // select matches AdminUserRow exactly (declared above) rather than pulling
+  // every User scalar. An unscoped findUnique here would also select columns
+  // added by a migration this environment may not have applied yet (e.g.
+  // referralCode from zz10_referrals) and throw P2022 -- meaning an admin
+  // could be fully authenticated by Cognito and still fail this, the very
+  // first authenticated call the Admin App makes after sign-in, on a 500 that
+  // has nothing to do with their account. This is why "Could not verify your
+  // admin account" can appear right after a correct password.
+  const me = await prisma.user.findUnique({
+    where: { cognitoSub: req.user!.sub },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      adminRole: true,
+      suspended: true,
+      createdAt: true,
+      lastLoginAt: true,
+      cognitoSub: true,
+    },
+  });
   if (!me) {
     // A Cognito "Admin"-group member with no Postgres User row at all — the
     // same legacy shape effectiveAdminRole() treats as full access (see
@@ -107,7 +128,7 @@ adminUsersRouter.get("/admin-users/me", requireAuth, requireRole("Admin"), async
 // for whether MFA is enabled (see serializeAdminUser).
 adminUsersRouter.post("/admin-users/me/mfa-enrolled", requireAuth, requireRole("Admin"), async (req, res) => {
   const me = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
-  void recordAudit({
+  await recordAudit({
     actorSub: req.user!.sub,
     action: "ADMIN_USER_MFA_ENABLED",
     entityType: "User",
@@ -166,7 +187,7 @@ adminUsersRouter.post(
     const created = await prisma.user.create({
       data: { cognitoSub: username, role: "ADMIN", firstName, lastName, email, adminRole },
     });
-    void recordAudit({
+    await recordAudit({
       actorSub: req.user!.sub,
       action: "ADMIN_USER_CREATED",
       entityType: "User",
@@ -200,7 +221,7 @@ adminUsersRouter.post(
       firstName: target.firstName,
       lastName: target.lastName,
     });
-    void recordAudit({
+    await recordAudit({
       actorSub: req.user!.sub,
       action: "ADMIN_USER_INVITATION_RESENT",
       entityType: "User",
@@ -225,7 +246,7 @@ adminUsersRouter.post(
     if (!target) return res.status(404).json({ error: "Admin user not found" });
 
     await cognitoGroups.adminResetUserPassword(target.cognitoSub);
-    void recordAudit({
+    await recordAudit({
       actorSub: req.user!.sub,
       action: "ADMIN_USER_PASSWORD_RESET_REQUESTED",
       entityType: "User",
@@ -259,7 +280,7 @@ adminUsersRouter.patch("/admin-users/:id/role", requireAuth, requireAdminPermiss
   }
 
   const updated = await prisma.user.update({ where: { id: target.id }, data: { adminRole: parsed.data.adminRole } });
-  void recordAudit({
+  await recordAudit({
     actorSub: req.user!.sub,
     action: "ADMIN_USER_ROLE_CHANGED",
     entityType: "User",
@@ -299,7 +320,7 @@ adminUsersRouter.patch("/admin-users/:id/status", requireAuth, requireAdminPermi
 
   const updated = await prisma.user.update({ where: { id: target.id }, data: { suspended: parsed.data.suspended } });
   await cognitoGroups.setUserEnabled(target.cognitoSub, !parsed.data.suspended);
-  void recordAudit({
+  await recordAudit({
     actorSub: req.user!.sub,
     action: parsed.data.suspended ? "ADMIN_USER_DISABLED" : "ADMIN_USER_ENABLED",
     entityType: "User",

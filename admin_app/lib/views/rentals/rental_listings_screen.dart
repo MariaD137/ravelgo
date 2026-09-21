@@ -3,6 +3,8 @@ import 'package:ravelgo_admin/config/currency.dart';
 import 'package:ravelgo_admin/services/admin_api.dart';
 import 'package:ravelgo_admin/services/api_client.dart';
 import 'package:ravelgo_admin/theme/app_theme.dart';
+import 'package:ravelgo_admin/widgets/pagination_bar.dart';
+
 import 'package:ravelgo_admin/views/rentals/rental_listing_detail_screen.dart';
 
 /// Luxury rental listings awaiting review (GET /api/rentals, admin sees all).
@@ -17,6 +19,9 @@ class _RentalListingsScreenState extends State<RentalListingsScreen> {
   bool _loading = true;
   bool _busy = false;
   String? _error;
+  int _page = 1;
+  int _totalPages = 1;
+  int _total = 0;
   List<RentalListing> _items = const [];
 
   @override
@@ -25,16 +30,20 @@ class _RentalListingsScreenState extends State<RentalListingsScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({int? page}) async {
+    if (page != null) _page = page;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final items = await AdminApi.rentals();
+      final result = await AdminApi.rentals(page: _page);
       if (!mounted) return;
+      if (result.isPastEnd) return await _load(page: result.totalPages);
       setState(() {
-        _items = items;
+        _items = result.items;
+        _total = result.total;
+        _totalPages = result.totalPages;
         _loading = false;
       });
     } catch (e) {
@@ -115,6 +124,22 @@ class _RentalListingsScreenState extends State<RentalListingsScreen> {
       );
 
   Widget _list() {
+    return Column(
+      children: [
+        Expanded(child: _listView()),
+        PaginationBar(
+          page: _page,
+          totalPages: _totalPages,
+          total: _total,
+          itemLabel: 'listings',
+          busy: _loading,
+          onPageChanged: (p) => _load(page: p),
+        ),
+      ],
+    );
+  }
+
+  Widget _listView() {
     if (_items.isEmpty) {
       return const Center(child: Text("No rental listings.", style: TextStyle(color: AppColors.textSecondary)));
     }

@@ -8,6 +8,7 @@ import 'package:ravelgo_driver_app/services/realtime_service.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/safety/emergency_screen.dart';
 import 'package:ravelgo_driver_app/views/trip/trip_complete_screen.dart';
+import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
 
 /// Drives a REAL matched trip through its lifecycle (P0 #3). The two stage
 /// changes that matter to the backend — starting the trip and completing it —
@@ -128,7 +129,7 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
       await _transition('COMPLETED', then: () {
         _stopStreaming();
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => TripCompleteScreen(trip: _trip)),
+          AppPageRoute(builder: (_) => TripCompleteScreen(trip: _trip)),
         );
       });
       return;
@@ -277,7 +278,7 @@ class _ActiveTripScreenState extends State<ActiveTripScreen> {
                     child: IconButton(
                         icon: const Icon(Icons.shield_outlined, color: AppColors.error),
                         onPressed: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => const EmergencyScreen()));
+                          Navigator.push(context, AppPageRoute(builder: (_) => const EmergencyScreen()));
                         }),
                   ),
                 ),

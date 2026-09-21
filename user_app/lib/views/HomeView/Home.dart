@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:ravelgo_user_app/components/LocationService.dart';
 import 'package:ravelgo_user_app/components/SafeGoogleMap.dart';
-import 'package:ravelgo_user_app/components/ride_controller.dart';
 import 'package:ravelgo_user_app/views/AppDrawer/AppDrawer.dart';
-import 'package:ravelgo_user_app/views/HomeView/ride_view_popup.dart';
 import 'package:ravelgo_user_app/views/User/invite_a_friend.dart';
 import 'package:ravelgo_user_app/views/TexiModule/SelectRide.dart';
 import 'package:ravelgo_user_app/views/Services/CarRentalScreen.dart';
@@ -44,98 +42,84 @@ class _HomePageState extends State<HomePage> {
       backgroundColor: AppColors.background,
       body: SafeArea(
 
-        child:ValueListenableBuilder<bool>(
-            valueListenable: RideController.isRideActive,
-            builder: (context, isRideActive, _) {
-              return Stack(
-                children: [
-                  // A real map showing this device's actual GPS position via
-                  // the native "my location" layer — the same GoogleMap the
-                  // driver home screen and active-trip screen use, not a
-                  // decorative static image. No fabricated markers.
-                  Positioned.fill(
-                    child: SafeGoogleMap(
-                      initialCameraPosition: const CameraPosition(target: _defaultCenter, zoom: 15),
-                      myLocationEnabled: true,
-                      myLocationButtonEnabled: false,
-                      zoomControlsEnabled: false,
-                      onMapCreated: (controller) {
-                        _mapController = controller;
-                        _centerOnDeviceLocation();
-                      },
-                    ),
-                  ),
+        child: Stack(
+          children: [
+            // A real map showing this device's actual GPS position via the
+            // native "my location" layer — the same GoogleMap the driver
+            // home screen and active-trip screen use, not a decorative
+            // static image. No fabricated markers.
+            Positioned.fill(
+              child: SafeGoogleMap(
+                initialCameraPosition: const CameraPosition(target: _defaultCenter, zoom: 15),
+                myLocationEnabled: true,
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+                onMapCreated: (controller) {
+                  _mapController = controller;
+                  _centerOnDeviceLocation();
+                },
+              ),
+            ),
 
+            // Top-left menu button (circular)
+            Positioned(
+              top: 12,
+              left: 12,
+              child: _circleIconButton(icon: Icons.menu, onTap: () {
+                _scaffoldKey.currentState?.openDrawer();
+              }),
+            ),
 
-                  // Top-left menu button (circular)
-                  Positioned(
-                    top: 12,
-                    left: 12,
-                    child: _circleIconButton(icon: Icons.menu, onTap: () {
-                      _scaffoldKey.currentState?.openDrawer();
-                    }),
-                  ),
+            // Top-right notification bell
+            Positioned(
+              top: 12,
+              right: 64,
+              child: _circleIconButton(
+                  icon: Icons.notifications_none,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                    );
+                  }),
+            ),
 
-                  // Top-right notification bell
-                  Positioned(
-                    top: 12,
-                    right: 64,
-                    child: _circleIconButton(
-                        icon: Icons.notifications_none,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-                          );
-                        }),
-                  ),
+            // Top-right shield button
+            Positioned(
+              top: 12,
+              right: 12,
+              child: _circleIconButton(
+                  icon: Icons.shield_outlined,
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SafetyScreen()),
+                    );
+                  }),
+            ),
 
-                  // Top-right shield button
-                  Positioned(
-                    top: 12,
-                    right: 12,
-                    child: _circleIconButton(
-                        icon: Icons.shield_outlined,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const SafetyScreen()),
-                          );
-                        }),
-                  ),
-
-
-                  /// HOME SHEET
-                  if (!isRideActive)
-                    DraggableScrollableSheet(
-                      // Opens leaving the real map visible above it; drag up
-                      // for the full sheet, or down toward minChildSize to
-                      // see more of the map.
-                      initialChildSize: 0.55,
-                      minChildSize: 0.35,
-                      maxChildSize: 0.92,
-                      builder: (context, scrollController) {
-                        return _buildHomeSheet(scrollController);
-                      },
-                    ),
-
-                  /// RIDE POPUP
-                  if (isRideActive)
-                    DraggableScrollableSheet(
-                      initialChildSize: 0.35,
-                      minChildSize: 0.2,
-                      maxChildSize: 0.8,
-                      builder: (context, scrollController) {
-                        return  RideViewPopup(onClose: () {
-                            RideController.stopRide();
-                          },
-                        );
-                      },
-                    ),
-
-                ],
-              );
-            },
+            /// HOME SHEET
+            // An active ride is not shown here: a real trip lives on
+            // SearchDriverScreen, which is pushed by the booking flow and
+            // renders the backend's own trip, driver and live position. The
+            // sheet that used to sit here instead was a demo — a hardcoded
+            // driver name, a stock avatar from an external placeholder
+            // service, a hardcoded route, and a timer that "progressed" the
+            // ride on its own. It was also unreachable (nothing ever
+            // started a ride through it), so removing it changes no
+            // behaviour a rider could ever have seen.
+            DraggableScrollableSheet(
+              // Opens leaving the real map visible above it; drag up for the
+              // full sheet, or down toward minChildSize to see more of the
+              // map.
+              initialChildSize: 0.55,
+              minChildSize: 0.35,
+              maxChildSize: 0.92,
+              builder: (context, scrollController) {
+                return _buildHomeSheet(scrollController);
+              },
+            ),
+          ],
         ),
       ),
     );

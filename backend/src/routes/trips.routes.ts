@@ -4,7 +4,7 @@ import { prisma } from "../db/prisma";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { blockIfAdminLacksPermission } from "../lib/admin-permissions";
 import { recordAudit } from "../lib/audit";
-import { paginate, paginationQuerySchema } from "../lib/pagination";
+import { csvList, inFilter, paginate, paginationQuerySchema } from "../lib/pagination";
 import {
   broadcastTripStatus,
   clearRiderLocation,
@@ -14,6 +14,7 @@ import {
 } from "../realtime/hub";
 import { notifyAllAdmins, notifyUser } from "../lib/notifications";
 import { acceptTripOffer, declineTripOffer, matchDriverToTrip } from "../services/matching";
+import { maybeRewardReferral } from "../services/referral";
 import { driverHasActiveDelivery } from "../lib/driver-conflicts";
 import { quoteFare, quoteFareForCategory } from "../services/pricing";
 import { MAX_FINAL_FARE_MULTIPLIER, MIN_FINAL_FARE_MULTIPLIER, moneyAmountSchema } from "../lib/money";
@@ -446,6 +447,12 @@ tripsRouter.patch("/trips/:id/status", requireAuth, requireRole("Driver", "Admin
       entityId: trip.id,
       metadata: { finalFare: trip.finalFare, driverId: trip.driverId, riderId: trip.riderId },
     });
+    // A completed trip is the only thing that can qualify a referral, so this
+    // is the one place it is settled. Awaited so a rider who has just earned
+    // a reward can see it immediately, but maybeRewardReferral never throws:
+    // a referral problem must not fail a trip that genuinely completed, and a
+    // failure leaves the row PENDING for the next completed trip to retry.
+    await maybeRewardReferral(trip.riderId);
   } else if (trip.status === "CANCELLED") {
     await notifyUser(trip.riderId, "RIDE_CANCELLED", "Ride cancelled", "Your ride was cancelled.", {
       type: "TRIP",
@@ -590,20 +597,31 @@ tripsRouter.post("/trips/:id/rider-location", requireAuth, requireRole("Rider"),
   res.json(location);
 });
 
+const adminTripsQuerySchema = paginationQuerySchema.extend({
+  // Optional server-side status filter, comma-separated (?status=MATCHED,IN_PROGRESS)
+  // so the Admin App's multi-select chips narrow the whole table, not one page.
+  status: z.preprocess(
+    csvList,
+    z.array(z.enum(["REQUESTED", "OFFERED", "MATCHED", "IN_PROGRESS", "COMPLETED", "CANCELLED", "DISPUTED"])).optional(),
+  ),
+});
+
 // Admin: monitor all trips
 tripsRouter.get("/trips", requireAuth, requireRole("Admin"), async (req, res) => {
-  const parsed = paginationQuerySchema.safeParse(req.query);
+  const parsed = adminTripsQuerySchema.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { page, pageSize } = parsed.data;
+  const { page, pageSize, status } = parsed.data;
+  const where = { status: inFilter(status) };
 
   const [trips, total] = await Promise.all([
     prisma.trip.findMany({
+      where,
       include: { rider: true, driver: { include: { user: true } }, payment: true },
       orderBy: { requestedAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.trip.count(),
+    prisma.trip.count({ where }),
   ]);
   // Admin-only route, so payment state is always safe to attach here.
   const serialized = trips.map((t) => (t.payment ? { ...serializeTrip(t), payment: t.payment } : serializeTrip(t)));
