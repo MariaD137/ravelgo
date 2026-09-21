@@ -77,7 +77,28 @@ adminUsersRouter.get("/admin-users", requireAuth, requireAdminPermission("manage
 // their own profile regardless of preset, same as any other app's "my
 // account" page.
 adminUsersRouter.get("/admin-users/me", requireAuth, requireRole("Admin"), async (req, res) => {
-  const me = await prisma.user.findUnique({ where: { cognitoSub: req.user!.sub } });
+  // select matches AdminUserRow exactly (declared above) rather than pulling
+  // every User scalar. An unscoped findUnique here would also select columns
+  // added by a migration this environment may not have applied yet (e.g.
+  // referralCode from zz10_referrals) and throw P2022 -- meaning an admin
+  // could be fully authenticated by Cognito and still fail this, the very
+  // first authenticated call the Admin App makes after sign-in, on a 500 that
+  // has nothing to do with their account. This is why "Could not verify your
+  // admin account" can appear right after a correct password.
+  const me = await prisma.user.findUnique({
+    where: { cognitoSub: req.user!.sub },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      adminRole: true,
+      suspended: true,
+      createdAt: true,
+      lastLoginAt: true,
+      cognitoSub: true,
+    },
+  });
   if (!me) {
     // A Cognito "Admin"-group member with no Postgres User row at all — the
     // same legacy shape effectiveAdminRole() treats as full access (see

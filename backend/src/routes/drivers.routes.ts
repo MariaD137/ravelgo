@@ -182,10 +182,35 @@ driversRouter.patch("/drivers/me/preferences", requireAuth, requireRole("Driver"
 });
 
 // Driver: get my own profile
+//
+// select, not include: an unscoped findFirst here would pull every scalar on
+// Driver, including lastLat/lastLng/lastLocationAt (zz09_driver_last_location)
+// -- columns this response never serialized before that migration existed and
+// the driver app has never read. Against an environment where zz09 hasn't
+// been applied yet, that unscoped shape throws P2022 ("column does not
+// exist") and turns EVERY driver's "who am I" call into a 500, which is
+// exactly what this app's error screen has been showing. Naming every field
+// explicitly means a future additive migration to Driver can no longer break
+// this endpoint the same way.
 driversRouter.get("/drivers/me", requireAuth, requireRole("Driver"), async (req, res) => {
   const driver = await prisma.driver.findFirst({
     where: { user: { cognitoSub: req.user!.sub } },
-    include: { vehicles: true, documents: true, user: { select: { phoneNumber: true } } },
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      isOnline: true,
+      rating: true,
+      totalTrips: true,
+      preferredLanguage: true,
+      quietModePreferred: true,
+      subscriptionActive: true,
+      createdAt: true,
+      updatedAt: true,
+      vehicles: true,
+      documents: true,
+      user: { select: { phoneNumber: true } },
+    },
   });
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
   res.json(driver);

@@ -18,7 +18,14 @@ const DOCUMENT_URL_EXPIRY_SECONDS = 300;
 
 // Driver: view my own documents
 documentsRouter.get("/documents/me", requireAuth, requireRole("Driver"), async (req, res) => {
-  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  // select: id only. This runs on every /documents/* call a driver makes —
+  // an unscoped findFirst here would pull every Driver scalar, including
+  // ones added by a migration this environment hasn't applied yet (P2022),
+  // turning a schema change unrelated to documents into a 500 here too.
+  const driver = await prisma.driver.findFirst({
+    where: { user: { cognitoSub: req.user!.sub } },
+    select: { id: true },
+  });
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
   const documents = await prisma.driverDocument.findMany({ where: { driverId: driver.id } });
@@ -34,7 +41,14 @@ documentsRouter.get("/documents/me", requireAuth, requireRole("Driver"), async (
 // raw key, which identifies but doesn't grant access to the private S3
 // object) — a fresh signed URL is generated here on demand.
 documentsRouter.get("/documents/:id/url", requireAuth, requireRole("Driver"), async (req, res) => {
-  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  // select: id only. This runs on every /documents/* call a driver makes —
+  // an unscoped findFirst here would pull every Driver scalar, including
+  // ones added by a migration this environment hasn't applied yet (P2022),
+  // turning a schema change unrelated to documents into a 500 here too.
+  const driver = await prisma.driver.findFirst({
+    where: { user: { cognitoSub: req.user!.sub } },
+    select: { id: true },
+  });
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
   const doc = await prisma.driverDocument.findUnique({ where: { id: req.params.id } });
@@ -84,7 +98,14 @@ documentsRouter.post("/documents", requireAuth, requireRole("Driver"), async (re
     return res.status(403).json({ error: "fileKey does not belong to the calling user" });
   }
 
-  const driver = await prisma.driver.findFirst({ where: { user: { cognitoSub: req.user!.sub } } });
+  // select: id only. This runs on every /documents/* call a driver makes —
+  // an unscoped findFirst here would pull every Driver scalar, including
+  // ones added by a migration this environment hasn't applied yet (P2022),
+  // turning a schema change unrelated to documents into a 500 here too.
+  const driver = await prisma.driver.findFirst({
+    where: { user: { cognitoSub: req.user!.sub } },
+    select: { id: true },
+  });
   if (!driver) return res.status(404).json({ error: "Driver profile not found" });
 
   const doc = await prisma.driverDocument.create({
