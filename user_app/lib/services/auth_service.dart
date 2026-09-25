@@ -215,17 +215,46 @@ class AuthService {
     await user.changePassword(oldPassword, newPassword);
   }
 
+  /// Set by signIn() when Cognito responds with the SOFTWARE_TOKEN_MFA
+  /// challenge. Consumed by submitMfaCode().
+  static CognitoUser? _pendingMfaUser;
+
   /// Sign in and persist the resulting tokens (via the pool's storage) for
   /// API calls and across reloads.
+  ///
+  /// Throws CognitoUserTotpRequiredException for an account that has TOTP
+  /// MFA enrolled. The pool is shared by all three apps (infra/lib/auth-stack.ts),
+  /// so an account that enrolled via the Admin App gets this challenge here
+  /// too — the caller must collect the 6-digit authenticator code and call
+  /// submitMfaCode() to finish signing in.
   static Future<void> signIn({required String email, required String password}) async {
     final user = CognitoUser(email, _pool);
-    final s = await user.authenticateUser(
-      AuthenticationDetails(username: email, password: password),
-    );
+    AuthService.email = email;
+    try {
+      final s = await user.authenticateUser(
+        AuthenticationDetails(username: email, password: password),
+      );
+      if (s != null) {
+        _applySession(user, s);
+      }
+    } on CognitoUserTotpRequiredException {
+      _pendingMfaUser = user;
+      rethrow;
+    }
+  }
+
+  /// Completes sign-in after signIn() threw CognitoUserTotpRequiredException,
+  /// by submitting the 6-digit code from the user's authenticator app.
+  static Future<void> submitMfaCode({required String code}) async {
+    final user = _pendingMfaUser;
+    if (user == null) {
+      throw CognitoClientException('Your session expired — please sign in again.');
+    }
+    final s = await user.sendMFACode(code, 'SOFTWARE_TOKEN_MFA');
     if (s != null) {
       _applySession(user, s);
     }
-    AuthService.email = email;
+    _pendingMfaUser = null;
   }
 
   /// Clear the session locally and from persistent storage.
