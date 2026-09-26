@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'package:amazon_cognito_identity_dart_2/cognito.dart' show CognitoUserTotpRequiredException;
 import 'package:flutter/material.dart';
 import 'package:ravelgo_user_app/views/Login/ForgotPassword.dart';
+import 'package:ravelgo_user_app/views/Login/MfaCode.dart';
 import 'package:ravelgo_user_app/views/Signup/CreateAccount.dart';
 import 'package:ravelgo_user_app/views/bottommenu/BottomNavigationView.dart';
 import 'package:ravelgo_user_app/services/auth_service.dart';
@@ -44,10 +46,18 @@ class _LoginState extends State<Login> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
-      await AuthService.signIn(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-      );
+      try {
+        await AuthService.signIn(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
+      } on CognitoUserTotpRequiredException {
+        // Account has authenticator-app MFA enrolled: collect the code first.
+        if (!mounted) return;
+        final verified = await Navigator.of(context)
+            .push<bool>(MaterialPageRoute(builder: (context) => const MfaCodeScreen()));
+        if (verified != true) return;
+      }
       try {
         await RiderApi.provisionMe();
       } catch (_) {

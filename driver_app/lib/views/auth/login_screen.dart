@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'package:amazon_cognito_identity_dart_2/cognito.dart' show CognitoUserTotpRequiredException;
 import 'package:flutter/material.dart';
 import 'package:ravelgo_driver_app/services/auth_service.dart';
 import 'package:ravelgo_driver_app/services/push_notification_service.dart';
 import 'package:ravelgo_driver_app/theme/app_theme.dart';
 import 'package:ravelgo_driver_app/views/auth/create_account_screen.dart';
 import 'package:ravelgo_driver_app/views/auth/forgot_password_screen.dart';
+import 'package:ravelgo_driver_app/views/auth/mfa_code_screen.dart';
 import 'package:ravelgo_driver_app/views/shell/driver_shell.dart';
 import 'package:ravelgo_driver_app/widgets/app_page_route.dart';
 
@@ -36,10 +38,18 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
-      await AuthService.signIn(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-      );
+      try {
+        await AuthService.signIn(
+          email: _emailController.text.trim(),
+          password: _passwordController.text,
+        );
+      } on CognitoUserTotpRequiredException {
+        // Account has authenticator-app MFA enrolled: collect the code first.
+        if (!mounted) return;
+        final verified = await Navigator.of(context)
+            .push<bool>(AppPageRoute(builder: (context) => const MfaCodeScreen()));
+        if (verified != true) return;
+      }
       unawaited(PushNotificationService.configureAndRegister());
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
